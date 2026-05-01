@@ -50,43 +50,73 @@ export class ContentRepoService implements OnModuleInit {
     await this.ensureKnowledgeBaseRepo();
   }
 
+  /**
+   * KB 仓库初始化 — 完整流程：
+   *
+   * 1. 仓库不存在 → 根据 KB_REMOTE_URL 决定 clone 还是 init
+   * 2. 仓库存在   → 检查是否需要补设 remote
+   * 3. 确保 git config 有 user.name/email（容器内没有全局配置）
+   * 4. 确保 main 分支存在（clone 下来的一般有，init 的需要创建）
+   * 5. 确保当月 workspace/YYYY-MM 分支存在并 checkout
+   *
+   * 全部在 ContentRepoService 中完成，避免与 ContentGitService.onModuleInit 竞态。
+   */
   private async ensureKnowledgeBaseRepo(): Promise<void> {
-    if (existsSync(join(this.repoRoot, '.git'))) {
-      // 仓库已存在，检查是否需要补设 remote
-      await this.ensureRemote();
-      this.logger.log(`Knowledge-base repo: ${this.repoRoot}`);
-      return;
+    const repoExists = existsSync(join(this.repoRoot, '.git'));
+
+    // ── Step 1: 获取或创建仓库 ──
+    if (!repoExists) {
+      const remoteUrl = process.env.KB_REMOTE_URL?.trim();
+      if (remoteUrl) {
+        this.logger.log(`Cloning knowledge-base from ${remoteUrl}`);
+        await mkdir(this.repoRoot, { recursive: true });
+        await simpleGit().clone(remoteUrl, this.repoRoot);
+        this.logger.log(`Cloned knowledge-base repo to ${this.repoRoot}`);
+      } else {
+        this.logger.warn('Knowledge-base repo not found — initializing empty repo (no KB_REMOTE_URL)');
+        await mkdir(this.repoRoot, { recursive: true });
+        await this.git.init();
+      }
     }
 
-    const remoteUrl = process.env.KB_REMOTE_URL?.trim();
+    // ── Step 2: 补设 remote（仓库已存在或刚 init，但还没有 origin）──
+    await this.ensureRemote();
 
-    if (remoteUrl) {
-      // 有远端地址：clone 下来
-      this.logger.log(`Cloning knowledge-base from ${remoteUrl}`);
-      await mkdir(this.repoRoot, { recursive: true });
-      await simpleGit().clone(remoteUrl, this.repoRoot);
-      this.logger.log(`Cloned knowledge-base repo to ${this.repoRoot}`);
-    } else {
-      // 无远端：本地初始化空仓库，创建 main 分支 + 初始 commit
-      this.logger.warn(
-        `Knowledge-base repo not found at ${this.repoRoot} — auto-initializing (no KB_REMOTE_URL configured)`,
-      );
-      await mkdir(this.repoRoot, { recursive: true });
-      await this.git.init();
-      await this.git.addConfig('user.name', 'Liminal Field');
-      await this.git.addConfig('user.email', 'bot@liminal.field');
-      await this.git.raw(['commit', '--allow-empty', '-m', 'init: empty knowledge base']);
-      // 确保 main 分支存在（git init 默认分支可能叫 master）
-      const branches = await this.git.branchLocal();
-      if (!branches.all.includes('main')) {
+    // ── Step 3: 确保 git config（容器内没有全局配置，commit 需要）──
+    await this.git.addConfig('user.name', 'Liminal Field', false, 'local');
+    await this.git.addConfig('user.email', 'bot@liminal.field', false, 'local');
+
+    // ── Step 4: 确保 main 分支存在 ──
+    const branches = await this.git.branchLocal();
+    if (!branches.all.includes('main')) {
+      // 空仓库没有任何 commit，先建一个
+      const hasCommits = branches.all.length > 0;
+      if (!hasCommits) {
+        await this.git.raw(['commit', '--allow-empty', '-m', 'init: empty knowledge base']);
+        this.logger.log('Created initial empty commit');
+      }
+      // 初始 commit 可能落在默认分支（main/master），重新检查
+      const updated = await this.git.branchLocal();
+      if (!updated.all.includes('main')) {
         await this.git.branch(['main']);
       }
-      // 直接创建当月工作分支，避免与 ContentGitService.onModuleInit 竞态
-      const now = new Date();
-      const monthBranch = `workspace/${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      await this.git.checkout(['-b', monthBranch, 'main']);
-      this.logger.log(`Initialized knowledge-base repo at ${this.repoRoot} (branch: ${monthBranch})`);
     }
+
+    // ── Step 5: 确保当月工作分支存在并 checkout ──
+    const now = new Date();
+    const monthBranch = `workspace/${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const allBranches = await this.git.branchLocal();
+
+    if (allBranches.all.includes(monthBranch)) {
+      if (allBranches.current !== monthBranch) {
+        await this.git.checkout(monthBranch);
+      }
+    } else {
+      await this.git.checkout(['-b', monthBranch, 'main']);
+      this.logger.log(`Created monthly branch ${monthBranch}`);
+    }
+
+    this.logger.log(`Knowledge-base ready: ${this.repoRoot} (branch: ${monthBranch})`);
   }
 
   /** 如果配了 KB_REMOTE_URL 但仓库还没有 origin，补设一下 */
