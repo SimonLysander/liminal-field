@@ -81,7 +81,11 @@ export class ContentRepoService implements OnModuleInit {
       if (!branches.all.includes('main')) {
         await this.git.branch(['main']);
       }
-      this.logger.log(`Initialized knowledge-base repo at ${this.repoRoot}`);
+      // 直接创建当月工作分支，避免与 ContentGitService.onModuleInit 竞态
+      const now = new Date();
+      const monthBranch = `workspace/${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      await this.git.checkout(['-b', monthBranch, 'main']);
+      this.logger.log(`Initialized knowledge-base repo at ${this.repoRoot} (branch: ${monthBranch})`);
     }
   }
 
