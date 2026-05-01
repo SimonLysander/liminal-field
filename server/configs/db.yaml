@@ -1,0 +1,19 @@
+mongo:
+  host: localhost
+  port: 27017
+  username: admin
+  password: 3AY94J3UIO2TmRJ6tK
+  database: liminal_field
+  options:
+    authSource: admin
+
+minio:
+  endpoint: localhost
+  port: 9000
+  useSSL: false
+  accessKey: minioadmin
+  secretKey: minioadmin
+  bucket: draft-assets
+
+content:
+  repoRoot: /Users/berrylucas/Desktop/Claude Practice/liminial-field-project/liminal-field-kb

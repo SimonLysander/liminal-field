@@ -90,6 +90,3 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 docs/
 /content/
-
-# Sensitive config files (credentials in YAML)
-configs/
