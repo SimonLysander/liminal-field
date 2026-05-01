@@ -1,0 +1,18 @@
+{
+  "plugins": ["prettier-plugin-organize-imports"],
+  "importOrder": ["react", "<THIRD_PARTY_MODULES>", "^@/(.*)$", "^[./]"],
+  "printWidth": 100,
+  "tabWidth": 2,
+  "useTabs": false,
+  "semi": true,
+  "singleQuote": true,
+  "trailingComma": "all",
+  "bracketSpacing": true,
+  "arrowParens": "always",
+  "htmlWhitespaceSensitivity": "ignore",
+  "endOfLine": "auto",
+  "proseWrap": "always",
+  "quoteProps": "consistent",
+  "vueIndentScriptAndStyle": false,
+  "singleAttributePerLine": false
+}

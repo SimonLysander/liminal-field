@@ -1,0 +1,390 @@
+import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { existsSync } from 'fs';
+import { mkdir, readdir, readFile, stat, unlink, writeFile } from 'fs/promises';
+import { extname, join, parse } from 'path';
+import { randomUUID } from 'crypto';
+import simpleGit, { SimpleGit } from 'simple-git';
+import { ContentItem } from './content-item.entity';
+import { ContentAssetType } from './dto/content-detail.dto';
+
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
+const AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.m4a', '.ogg']);
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mov']);
+
+export interface ParsedAssetRef {
+  path: string;
+  type: ContentAssetType;
+}
+
+export interface ParsedContentSource {
+  bodyMarkdown: string;
+  plainText: string;
+  assetRefs: ParsedAssetRef[];
+}
+
+export interface StoredAsset {
+  path: string;
+  fileName: string;
+}
+
+export interface ListedAsset extends StoredAsset {
+  type: ContentAssetType;
+  size: number;
+}
+
+@Injectable()
+export class ContentRepoService implements OnModuleInit {
+  private readonly logger = new Logger(ContentRepoService.name);
+  private readonly repoRoot: string;
+  private readonly contentRoot: string;
+  private readonly git: SimpleGit;
+
+  constructor(private readonly configService: ConfigService) {
+    this.repoRoot = this.configService.getOrThrow<string>('content.repoRoot');
+    this.contentRoot = join(this.repoRoot, 'content');
+    this.git = simpleGit(this.repoRoot);
+  }
+
+  async onModuleInit() {
+    await this.ensureKnowledgeBaseRepo();
+  }
+
+  private async ensureKnowledgeBaseRepo(): Promise<void> {
+    if (existsSync(join(this.repoRoot, '.git'))) {
+      this.logger.log(`Knowledge-base repo: ${this.repoRoot}`);
+      return;
+    }
+
+    this.logger.warn(
+      `Knowledge-base repo not found at ${this.repoRoot} — auto-initializing`,
+    );
+    await mkdir(this.repoRoot, { recursive: true });
+    await this.git.init();
+    await this.git.checkoutLocalBranch('workspace/local');
+    this.logger.log(`Initialized knowledge-base repo at ${this.repoRoot}`);
+  }
+
+  private getContentDirectory(contentId: string): string {
+    return join(this.contentRoot, contentId);
+  }
+
+  getContentRootPath(): string {
+    return this.contentRoot;
+  }
+
+  getContentDirectoryPath(contentId: string): string {
+    return this.getContentDirectory(contentId);
+  }
+
+  private getMainMarkdownPath(contentId: string): string {
+    return join(this.getContentDirectory(contentId), 'main.md');
+  }
+
+  private getReadmePath(contentId: string): string {
+    return join(this.getContentDirectory(contentId), 'README.md');
+  }
+
+  private getAssetsDirectory(contentId: string): string {
+    return join(this.getContentDirectory(contentId), 'assets');
+  }
+
+  private resolveRepositoryRoot(): string {
+    return this.repoRoot;
+  }
+
+  private sanitizeAssetFileName(originalFileName: string): string {
+    const parsed = parse(originalFileName);
+    const baseName = (parsed.name || 'asset')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-zA-Z0-9-_]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+    const safeBaseName = baseName || 'asset';
+    const extension = extname(parsed.base)
+      .toLowerCase()
+      .replace(/[^a-z0-9.]/g, '')
+      .slice(0, 20);
+
+    // 上传文件名来自外部输入，落盘前统一清洗并加随机后缀，避免路径穿越和同名覆盖。
+    return `${safeBaseName}-${randomUUID().slice(0, 8)}${extension}`;
+  }
+
+  private toAssetType(assetPath: string): ContentAssetType {
+    const normalized = assetPath.toLowerCase();
+    const extension = normalized.slice(normalized.lastIndexOf('.'));
+
+    if (IMAGE_EXTENSIONS.has(extension)) {
+      return 'image';
+    }
+    if (AUDIO_EXTENSIONS.has(extension)) {
+      return 'audio';
+    }
+    if (VIDEO_EXTENSIONS.has(extension)) {
+      return 'video';
+    }
+    return 'file';
+  }
+
+  private extractLinkTargets(bodyMarkdown: string): string[] {
+    const matches = bodyMarkdown.matchAll(
+      /(?:!\[[^\]]*]\(([^)\s]+)\)|\[[^\]]*]\(([^)\s]+)\))/g,
+    );
+
+    const targets: string[] = [];
+    for (const match of matches) {
+      const target = match[1] ?? match[2];
+      if (target) {
+        targets.push(target);
+      }
+    }
+    return targets;
+  }
+
+  private extractAssetRefs(bodyMarkdown: string): ParsedAssetRef[] {
+    // 内容协议只把 ./assets/ 下的相对路径视为可托管资源，避免把任意外链误当成项目内附件。
+    const assetPaths = new Set<string>();
+    for (const target of this.extractLinkTargets(bodyMarkdown)) {
+      if (target.startsWith('./assets/')) {
+        assetPaths.add(target);
+      }
+    }
+
+    return Array.from(assetPaths).map((path) => ({
+      path,
+      type: this.toAssetType(path),
+    }));
+  }
+
+  private extractPlainText(bodyMarkdown: string): string {
+    // plainText 不是做富文本还原，而是提供稳定的搜索/摘要输入，因此优先保留文本语义、丢弃样式标记。
+    return bodyMarkdown
+      .replace(/```[\s\S]*?```/g, ' ')
+      .replace(/`([^`]*)`/g, '$1')
+      .replace(/!\[[^\]]*]\(([^)\s]+)\)/g, ' ')
+      .replace(/\[([^\]]+)]\(([^)\s]+)\)/g, '$1')
+      .replace(/^#{1,6}\s+/gm, '')
+      .replace(/^\s*>\s?/gm, '')
+      .replace(/^\s*[-*+]\s+/gm, '')
+      .replace(/^\s*\d+\.\s+/gm, '')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/_([^_]+)_/g, '$1')
+      .replace(/~~([^~]+)~~/g, '$1')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\r?\n+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private validateMainMarkdown(bodyMarkdown: string): void {
+    // V1 协议只做最小但刚性的保存校验：正文不能为空，附件引用必须遵守统一相对路径规则。
+    const plainText = this.extractPlainText(bodyMarkdown);
+    if (!plainText) {
+      throw new BadRequestException(
+        '`main.md` must contain at least one non-empty text paragraph',
+      );
+    }
+
+    for (const target of this.extractLinkTargets(bodyMarkdown)) {
+      if (target.includes('assets/') && !target.startsWith('./assets/')) {
+        throw new BadRequestException(
+          'Asset references in `main.md` must use ./assets/ relative paths',
+        );
+      }
+      if (
+        target.startsWith('./assets/') &&
+        target.length <= './assets/'.length
+      ) {
+        throw new BadRequestException(
+          'Asset references in `main.md` must include a file name',
+        );
+      }
+    }
+  }
+
+  private getRecentUpdatesLines(content: ContentItem): string[] {
+    const latestChangeLogs = content.changeLogs.slice(0, 3);
+    if (latestChangeLogs.length === 0) {
+      return ['- No updates yet'];
+    }
+
+    return latestChangeLogs.map(
+      (changeLog) =>
+        `- ${changeLog.createdAt.toISOString().slice(0, 10)} | ${changeLog.changeType} | ${changeLog.changeNote}`,
+    );
+  }
+
+  private getReadmeTitle(content: ContentItem): string {
+    return content.latestVersion?.title ?? 'Untitled Content';
+  }
+
+  private getReadmeSummary(content: ContentItem): string {
+    return content.latestVersion?.summary ?? '';
+  }
+
+  private getReadmeLines(
+    content: ContentItem,
+    assetRefs: ParsedAssetRef[],
+  ): string[] {
+    return [
+      `# ${this.getReadmeTitle(content)}`,
+      '',
+      this.getReadmeSummary(content),
+      '',
+      '## Recent Updates',
+      '',
+      ...this.getRecentUpdatesLines(content),
+      '',
+      `Created: ${content.createdAt.toISOString().slice(0, 10)}`,
+      `Media: ${this.getMediaSummary(assetRefs)}`,
+      '',
+    ];
+  }
+
+  private getMediaSummary(assetRefs: ParsedAssetRef[]): string {
+    const counts = assetRefs.reduce<Record<ContentAssetType, number>>(
+      (accumulator, assetRef) => {
+        accumulator[assetRef.type] += 1;
+        return accumulator;
+      },
+      {
+        image: 0,
+        audio: 0,
+        video: 0,
+        file: 0,
+      },
+    );
+
+    const parts: string[] = [];
+    if (counts.image) parts.push(`${counts.image} images`);
+    if (counts.audio) parts.push(`${counts.audio} audio`);
+    if (counts.video) parts.push(`${counts.video} videos`);
+    if (counts.file) parts.push(`${counts.file} files`);
+
+    return parts.length ? parts.join(', ') : 'No media';
+  }
+
+  async ensureContentScaffold(contentId: string): Promise<void> {
+    await mkdir(this.getContentDirectory(contentId), { recursive: true });
+    await mkdir(this.getAssetsDirectory(contentId), { recursive: true });
+  }
+
+  async storeAsset(
+    contentId: string,
+    originalFileName: string,
+    buffer: Buffer,
+  ): Promise<StoredAsset> {
+    await this.ensureContentScaffold(contentId);
+
+    const fileName = this.sanitizeAssetFileName(originalFileName);
+    await writeFile(join(this.getAssetsDirectory(contentId), fileName), buffer);
+
+    return {
+      path: `./assets/${fileName}`,
+      fileName,
+    };
+  }
+
+  async listAssets(contentId: string): Promise<ListedAsset[]> {
+    try {
+      const assetFileNames = await readdir(this.getAssetsDirectory(contentId));
+
+      // 资产列表直接以磁盘目录为准，这样上传完成后前端不必依赖正文是否已经引用该文件。
+      const assets = await Promise.all(
+        assetFileNames.map(async (fileName) => {
+          const filePath = join(this.getAssetsDirectory(contentId), fileName);
+          const fileStat = await stat(filePath);
+
+          return {
+            path: `./assets/${fileName}`,
+            fileName,
+            type: this.toAssetType(fileName),
+            size: fileStat.size,
+          };
+        }),
+      );
+
+      return assets.sort((left, right) =>
+        left.fileName.localeCompare(right.fileName),
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  async writeMainMarkdown(
+    contentId: string,
+    bodyMarkdown: string,
+  ): Promise<void> {
+    // 先校验再落盘，避免把协议上不合法的正文写进 Git 真源后再靠别处兜底。
+    this.validateMainMarkdown(bodyMarkdown);
+    await this.ensureContentScaffold(contentId);
+    await writeFile(this.getMainMarkdownPath(contentId), bodyMarkdown, 'utf8');
+  }
+
+  private async readVersionedMainMarkdown(
+    contentId: string,
+    commitHash: string,
+  ): Promise<string> {
+    const trackedFilePath = `content/${contentId}/main.md`;
+    return this.git.show([`${commitHash}:${trackedFilePath}`]);
+  }
+
+  async readContentSource(
+    contentId: string,
+    options?: { commitHash?: string },
+  ): Promise<ParsedContentSource> {
+    const bodyMarkdown = options?.commitHash
+      ? await this.readVersionedMainMarkdown(contentId, options.commitHash)
+      : await readFile(this.getMainMarkdownPath(contentId), 'utf8');
+    return {
+      bodyMarkdown,
+      plainText: this.extractPlainText(bodyMarkdown),
+      assetRefs: this.extractAssetRefs(bodyMarkdown),
+    };
+  }
+
+  async writeReadme(
+    content: ContentItem,
+    assetRefs: ParsedAssetRef[],
+  ): Promise<void> {
+    // README 是仓库浏览摘要，不是第二份正文，因此这里只写协议规定的轻量展示信息。
+    await writeFile(
+      this.getReadmePath(content._id),
+      this.getReadmeLines(content, assetRefs).join('\n'),
+      'utf8',
+    );
+  }
+
+  async deleteAsset(contentId: string, fileName: string): Promise<void> {
+    const filePath = join(this.getAssetsDirectory(contentId), fileName);
+    try {
+      await unlink(filePath);
+    } catch {
+      // File already gone
+    }
+  }
+
+  async readAssetBuffer(
+    contentId: string,
+    fileName: string,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    const filePath = join(this.getAssetsDirectory(contentId), fileName);
+    const buffer = await readFile(filePath);
+    const ext = extname(fileName).toLowerCase();
+    let contentType = 'application/octet-stream';
+    if (IMAGE_EXTENSIONS.has(ext)) {
+      const mimeMap: Record<string, string> = {
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.webp': 'image/webp',
+        '.gif': 'image/gif',
+      };
+      contentType = mimeMap[ext] || contentType;
+    }
+    return { buffer, contentType };
+  }
+}

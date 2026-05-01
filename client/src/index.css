@@ -1,0 +1,663 @@
+/*
+ * Liminal Field — Global Styles
+ *
+ * Architecture: Tailwind v4 handles utility classes; CSS custom properties handle
+ * the dual-theme design token system (daylight/midnight). This split keeps theming
+ * centralized while letting components use Tailwind for layout and spacing.
+ */
+
+@plugin "tailwind-scrollbar-hide";
+
+@import "tailwindcss";
+
+@custom-variant dark (&:is([data-theme="midnight"] *));
+
+/*
+ * Tailwind @theme — 将设计系统 CSS 变量桥接为 Tailwind utility class。
+ * 所有值引用 [data-theme] / :root 上的 CSS 变量，运行时主题切换自动生效。
+ *
+ * 生成规则：
+ *   --color-ink     → text-ink, bg-ink, border-ink ...
+ *   --font-size-lg  → text-lg (font-size)
+ *   --shadow-sm     → shadow-sm
+ *   --font-family-* → font-sans, font-mono ...
+ */
+@theme {
+  /* ── 圆角 ── */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 12px;
+  --radius-3xl: 12px;
+  --radius-4xl: 12px;
+
+  /* ── 颜色：表面色 ── */
+  --color-paper: var(--paper);
+  --color-paper-dark: var(--paper-dark);
+  --color-paper-shadow: var(--paper-shadow);
+  --color-paper-light: var(--paper-light);
+  --color-paper-white: var(--paper-white);
+  --color-shelf: var(--shelf);
+  --color-sidebar-bg: var(--sidebar-bg);
+  --color-bar-bg: var(--bar-bg);
+
+  /* ── 颜色：墨色四级 ── */
+  --color-ink: var(--ink);
+  --color-ink-light: var(--ink-light);
+  --color-ink-faded: var(--ink-faded);
+  --color-ink-ghost: var(--ink-ghost);
+
+  /* ── 颜色：强调色（设计系统原始 token）── */
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-border: var(--accent-border);
+  --color-accent-contrast: var(--accent-contrast);
+
+  /*
+   * ── shadcn / Plate UI 兼容层 ──
+   *
+   * Plate UI kit 组件使用 shadcn 的标准 Tailwind class（bg-popover, text-foreground,
+   * border-border 等）。这些 class 解析为 --color-* 变量，必须在 @theme 中定义。
+   *
+   * 注意：shadcn 的 "accent" 指 hover/selected 背景色（浅灰），与我们设计系统的
+   * --accent（主色 #1D1D1F）含义不同。我们的代码全部通过 var(--accent) inline style
+   * 引用设计系统主色，不经过 Tailwind class，所以不会冲突。
+   */
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
+  --color-card: var(--paper);
+  --color-card-foreground: var(--ink);
+  --color-popover: var(--paper);
+  --color-popover-foreground: var(--ink);
+  --color-primary: var(--ink);
+  --color-primary-foreground: var(--paper);
+  --color-secondary: var(--paper-dark);
+  --color-secondary-foreground: var(--ink);
+  --color-muted: var(--paper-dark);
+  --color-muted-foreground: var(--ink-faded);
+  --color-accent: var(--paper-dark);
+  --color-accent-foreground: var(--ink);
+  --color-destructive: var(--mark-red);
+  --color-destructive-foreground: #FFFFFF;
+  --color-border: var(--separator);
+  --color-input: var(--separator);
+  --color-ring: var(--ink);
+  --color-brand: var(--ink);
+  --color-highlight: var(--highlight);
+
+  /* ── 颜色：语义标记色 ── */
+  --color-mark-red: var(--mark-red);
+  --color-mark-blue: var(--mark-blue);
+  --color-mark-green: var(--mark-green);
+
+  /* ── 颜色：结构线 ── */
+  --color-spine: var(--spine);
+  --color-spine-strong: var(--spine-strong);
+  --color-separator: var(--separator);
+  --color-box-border: var(--box-border);
+
+  /* ── 颜色：其他 ── */
+  --color-photo-border: var(--photo-border);
+
+  /* ── 字号（覆盖 Tailwind 默认 text-* 字号）── */
+  --font-size-2xs: var(--text-2xs);
+  --font-size-xs: var(--text-xs);
+  --font-size-sm: var(--text-sm);
+  --font-size-base: var(--text-base);
+  --font-size-md: var(--text-md);
+  --font-size-lg: var(--text-lg);
+  --font-size-xl: var(--text-xl);
+  --font-size-2xl: var(--text-2xl);
+  --font-size-3xl: var(--text-3xl);
+  --font-size-4xl: var(--text-4xl);
+  --font-size-5xl: var(--text-5xl);
+  --font-size-6xl: var(--text-6xl);
+
+  /* ── 字体族 ── */
+  --font-family-sans: var(--font-sans);
+  --font-family-serif: var(--font-serif);
+  --font-family-mono: var(--font-mono);
+  --font-family-title: var(--font-title);
+
+  /* ── 阴影 ── */
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+}
+
+/* ========== Design Tokens — Apple-inspired, Monochrome ========== */
+
+/* Daylight — light theme with black accent */
+[data-theme="daylight"] {
+  /* Surfaces */
+  --paper: #FFFFFF;
+  --paper-dark: #F5F5F7;
+  --paper-shadow: #EFEFEF;
+  --shelf: rgba(0,0,0,0.04);
+  --paper-light: #F5F5F7;
+  --paper-white: #FFFFFF;
+
+  /* Typography — four ink levels for visual hierarchy */
+  --ink: #1D1D1F;
+  --ink-light: #424245;
+  --ink-faded: #6E6E73;
+  --ink-ghost: #AEAEB2;
+
+  /* Accent — monochrome: black in daylight, white in midnight */
+  --accent: #1D1D1F;
+  --accent-soft: rgba(0,0,0,0.06);
+  --accent-border: rgba(0,0,0,0.15);
+  --accent-contrast: #FFFFFF;
+
+  /* Marks — semantic annotation colors (only non-monochrome elements) */
+  --mark-red: #FF3B30;
+  --mark-blue: #007AFF;
+  --mark-green: #34C759;
+
+  /* Structure */
+  --spine: rgba(60,60,67,0.06);
+  --spine-strong: rgba(60,60,67,0.14);
+  --box-border: rgba(0,0,0,0.06);
+  --separator: rgba(60,60,67,0.12);
+
+  /* Shadows — layered, Apple-style depth */
+  --shadow-xs: 0 0.5px 1px rgba(0,0,0,0.04);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.06);
+  --shadow-md: 0 2px 8px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04);
+  --shadow-lg: 0 8px 28px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.04);
+  --page-shadow: var(--shadow-sm);
+  --page-shadow-hover: var(--shadow-md);
+
+  /* Misc */
+  --photo-border: #F5F5F7;
+  --omnibar-bg: rgba(255,255,255,0.82);
+  --omnibar-shadow: var(--shadow-lg);
+  --sidebar-bg: #F2F2F2;
+  --bar-bg: rgba(255,255,255,0.8);
+  --inset-light: inset 0 1px 0 rgba(255,255,255,0.5);
+
+  /*
+   * shadcn compat — 在 [data-theme] 上重复定义，确保 Radix Portal
+   * 等挂载在 <body> 末尾的元素正确继承颜色（@theme 定义在 :root 层级，
+   * 对 Portal 元素的 var() 链可能断裂）
+   */
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
+  --color-card: var(--paper);
+  --color-card-foreground: var(--ink);
+  --color-popover: var(--paper);
+  --color-popover-foreground: var(--ink);
+  --color-primary: var(--ink);
+  --color-primary-foreground: var(--paper);
+  --color-secondary: var(--paper-dark);
+  --color-secondary-foreground: var(--ink);
+  --color-muted: var(--paper-dark);
+  --color-muted-foreground: var(--ink-faded);
+  --color-accent: var(--paper-dark);
+  --color-accent-foreground: var(--ink);
+  --color-destructive: var(--mark-red);
+  --color-border: var(--separator);
+  --color-input: var(--separator);
+  --color-ring: var(--ink);
+  --color-brand: var(--ink);
+}
+
+/* Midnight — dark theme with white accent */
+[data-theme="midnight"] {
+  --paper: #161617;
+  --paper-dark: #1C1C1E;
+  --paper-shadow: #0A0A0A;
+  --shelf: rgba(255,255,255,0.06);
+  --paper-light: #1C1C1E;
+  --paper-white: #1C1C1E;
+
+  --ink: #F5F5F7;
+  --ink-light: #D1D1D6;
+  --ink-faded: #98989D;
+  --ink-ghost: #48484A;
+
+  --accent: #F5F5F7;
+  --accent-soft: rgba(255,255,255,0.08);
+  --accent-border: rgba(255,255,255,0.18);
+  --accent-contrast: #1D1D1F;
+
+  --mark-red: #FF453A;
+  --mark-blue: #0A84FF;
+  --mark-green: #30D158;
+
+  --spine: rgba(84,84,88,0.18);
+  --spine-strong: rgba(84,84,88,0.36);
+  --box-border: rgba(255,255,255,0.08);
+  --separator: rgba(84,84,88,0.36);
+
+  --shadow-xs: 0 0.5px 1px rgba(0,0,0,0.2);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.2), 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md: 0 2px 8px rgba(0,0,0,0.25), 0 4px 16px rgba(0,0,0,0.2);
+  --shadow-lg: 0 8px 28px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.25);
+  --page-shadow: var(--shadow-sm);
+  --page-shadow-hover: var(--shadow-md);
+
+  --photo-border: #2C2C2E;
+  --omnibar-bg: rgba(44,44,46,0.82);
+  --omnibar-shadow: var(--shadow-lg);
+  --sidebar-bg: #1C1C1E;
+  --bar-bg: rgba(28,28,30,0.82);
+  --inset-light: inset 0 1px 0 rgba(255,255,255,0.06);
+
+  /* shadcn compat — Portal 元素继承保障（同 daylight） */
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
+  --color-card: var(--paper);
+  --color-card-foreground: var(--ink);
+  --color-popover: var(--paper);
+  --color-popover-foreground: var(--ink);
+  --color-primary: var(--ink);
+  --color-primary-foreground: var(--paper);
+  --color-secondary: var(--paper-dark);
+  --color-secondary-foreground: var(--ink);
+  --color-muted: var(--paper-dark);
+  --color-muted-foreground: var(--ink-faded);
+  --color-accent: var(--paper-dark);
+  --color-accent-foreground: var(--ink);
+  --color-destructive: var(--mark-red);
+  --color-border: var(--separator);
+  --color-input: var(--separator);
+  --color-ring: var(--ink);
+  --color-brand: var(--ink);
+}
+
+/* ========== Editor Caret ========== */
+
+[data-slate-editor] {
+  caret-color: var(--ink);
+}
+
+/* ========== Global Resets & Typography ========== */
+
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-serif: "New York", "Iowan Old Style", "Apple Garamond", Baskerville,
+    Georgia, ui-serif, serif;
+  --font-mono: "SF Mono", SFMono-Regular, ui-monospace, Menlo, Consolas, monospace;
+  --font-title: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    "Segoe UI", Helvetica, Arial, sans-serif;
+  /*
+   * Border radius — tiered system, px values scale with element size.
+   *
+   * Tier     Size   Components
+   * ──────── ────── ─────────────────────────────────────────────
+   * sm        6px   ActionPill, SideLink buttons, tag pills,
+   *                 nav-item hover, search bar, outline heading,
+   *                 VersionTimeline active item, focus-visible ring
+   * md        8px   Polaroid frame, image area (gallery), content
+   *                 body container (ContentVersionView), info cards
+   * lg       10px   Sidebar card, TreePanel card, editor card,
+   *                 TreeNodeItem hover/selected state, asset cards,
+   *                 draft info box, code blocks (note reader)
+   * xl       12px   NodeFormModal, ConfirmDialog, CommitDialog,
+   *                 AI chat panel, doc-create field group
+   *
+   * The @theme block above maps Tailwind's rounded-* utilities to
+   * these tiers, so e.g. `rounded-lg` = 10px, `rounded-xl` = 12px.
+   */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+
+  /*
+   * Type scale — 语义角色映射（对标 Apple HIG）
+   *
+   * 角色                Apple 名称       token       场景
+   * ──────────────────────────────────────────────────────────
+   * 标签/计数           Caption          text-2xs    section label、节点计数、分隔符
+   * 辅助文字            Subheadline      text-xs     面包屑、加载状态、底部按钮
+   * TOC 条目            Callout          text-sm     大纲条目、版本时间线
+   * 面板标题/导航项      Body/Headline    text-base   节点名、面板标题、导航菜单项
+   * 卡片正文            —                text-md     卡片描述、表格、内联代码
+   * 阅读正文            Title 3          text-lg     markdown body、对话消息
+   * h3                  —                text-xl     markdown h3
+   * h2                  —                text-2xl    markdown h2
+   * h1                  —                text-3xl    markdown h1
+   * 页面标题            Title 1          text-4xl    页面级标题
+   * 大标题              Large Title      text-5xl    文章标题
+   * 页面主标题          —                text-6xl    首页问候
+   *
+   * 规则：展示端和管理端相同语义角色使用相同 token，全部通过 Tailwind class 引用。
+   */
+  --text-4xs: 0.5rem;     /* 8px */
+  --text-3xs: 0.5625rem;  /* 9px */
+  --text-2xs: 0.625rem;   /* 10px — Caption */
+  --text-xs: 0.6875rem;   /* 11px — Subheadline */
+  --text-sm: 0.75rem;     /* 12px — Callout */
+  --text-base: 0.8125rem; /* 13px — Body / Headline */
+  --text-md: 0.875rem;    /* 14px */
+  --text-lg: 0.9375rem;   /* 15px — 阅读正文 */
+  --text-xl: 1rem;        /* 16px — h3 */
+  --text-2xl: 1.125rem;   /* 18px — h2 */
+  --text-3xl: 1.25rem;    /* 20px — h1 */
+  --text-4xl: 1.375rem;   /* 22px — 页面标题 */
+  --text-5xl: 1.625rem;   /* 26px — 大标题 */
+  --text-6xl: 1.75rem;    /* 28px — 页面主标题 */
+
+  /* shadcn highlight 标记色 */
+  --highlight: oklch(0.852 0.199 91.936);
+}
+
+/* Responsive base font size — bump from 16→17 for overall readability */
+html { font-size: 16px; }
+@media (max-width: 1024px) { html { font-size: 16px; } }
+@media (max-width: 768px)  { html { font-size: 15px; } }
+@media (max-width: 480px)  { html { font-size: 14px; } }
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--paper);
+  color: var(--ink);
+  transition: background 0.5s ease, color 0.5s ease;
+  min-height: 100vh;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "kern" 1;
+  letter-spacing: -0.01em;
+}
+
+/* Hide scrollbars globally — content scrolls without visible tracks */
+* { scrollbar-width: none; }
+::-webkit-scrollbar { display: none; }
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Heading scroll offset — compensate for sticky toolbars/headers */
+[data-slate-editor] h1,
+[data-slate-editor] h2,
+[data-slate-editor] h3 {
+  scroll-margin-top: 60px;
+}
+[data-heading-id] {
+  scroll-margin-top: 80px;
+}
+
+/* Plate editor: suppress focus outline on the contentEditable surface */
+[data-slate-editor]:focus-visible,
+[data-slate-editor]:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Plate toolbar buttons — pill hover state */
+.plate-toolbar-btn:hover {
+  background: var(--shelf);
+  color: var(--ink);
+}
+
+/* Plate code block: inline code marks inside code blocks should not double-up backgrounds */
+pre code {
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+/*
+ * Plate indent-based list: 标记放入内容盒内。
+ * Plate 通过 inline style 设置 marginLeft 控制嵌套缩进层级，
+ * CSS margin-left 无法覆盖（除非 !important，但会破坏嵌套缩进）。
+ * inside 将标记纳入文本流，不依赖 margin 空间，与 Plate 缩进系统兼容。
+ */
+.plate-editor-content [style*="list-style-type"] {
+  list-style-position: inside;
+}
+
+/* Plate editor placeholder — refined ghost text */
+.plate-editor-content [data-slate-placeholder] {
+  color: var(--ink-ghost) !important;
+  opacity: 0.6 !important;
+  font-style: italic;
+}
+
+/* Outline heading hover */
+.outline-heading-btn:hover {
+  background: var(--shelf);
+  color: var(--ink) !important;
+}
+
+button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+a { color: inherit; text-decoration: none; }
+
+/*
+ * Theme transition: only active during the ~0.5s switch window.
+ * Covers background, color, border, box-shadow, and fill/stroke for SVG icons.
+ */
+body.theme-transitioning,
+body.theme-transitioning *,
+body.theme-transitioning *::before,
+body.theme-transitioning *::after {
+  transition: background 0.8s ease, background-color 0.8s ease,
+    color 0.8s ease, border-color 0.8s ease,
+    box-shadow 0.8s ease, fill 0.8s ease, stroke 0.8s ease !important;
+}
+
+/* ========== Text Mark Annotations ========== */
+
+.mark-blue {
+  background-image: linear-gradient(var(--mark-blue), var(--mark-blue));
+  background-position: 0 88%;
+  background-size: 100% 2px;
+  background-repeat: no-repeat;
+}
+.mark-red {
+  background-image: linear-gradient(var(--mark-red), var(--mark-red));
+  background-position: 0 88%;
+  background-size: 100% 2px;
+  background-repeat: no-repeat;
+}
+.mark-green {
+  background-image: linear-gradient(var(--mark-green), var(--mark-green));
+  background-position: 0 88%;
+  background-size: 100% 2px;
+  background-repeat: no-repeat;
+}
+[data-theme="midnight"] .mark-blue { text-shadow: 0 0 12px rgba(10,132,255,0.2); }
+[data-theme="midnight"] .mark-red { text-shadow: 0 0 12px rgba(255,69,58,0.2); }
+[data-theme="midnight"] .mark-green { text-shadow: 0 0 12px rgba(48,209,88,0.2); }
+
+/* ========== TOC scroll-to highlight flash ========== */
+
+@keyframes toc-flash {
+  0%, 40% { background-color: rgba(0,0,0,0.18); }
+  100%    { background-color: transparent; }
+}
+.toc-highlight {
+  animation: toc-flash 2.5s ease-out forwards;
+  border-radius: 4px;
+}
+[data-theme="midnight"] .toc-highlight {
+  animation-name: toc-flash-dark;
+}
+@keyframes toc-flash-dark {
+  0%, 40% { background-color: rgba(255,255,255,0.22); }
+  100%    { background-color: transparent; }
+}
+
+/* ========== Glow Pulse Animation (Agent hero) ========== */
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+/* ========== Immersive Mode Hint ========== */
+
+@keyframes hint-fade {
+  0%, 60% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ========== Theme Icon Toggle ========== */
+
+.theme-icon-light { display: flex; }
+.theme-icon-dark { display: none; }
+[data-theme="midnight"] .theme-icon-light { display: none; }
+[data-theme="midnight"] .theme-icon-dark { display: flex; }
+
+/* ========== Hover utilities — CSS-only to avoid stale inline styles on re-render ========== */
+.nav-item:hover { background: var(--shelf); }
+.hover-shelf:hover { background: var(--shelf); }
+.hover-shadow-xs:hover { box-shadow: var(--shadow-xs); }
+.hover-shadow-sm:hover { box-shadow: var(--shadow-sm); }
+.hover-shadow-md:hover { box-shadow: var(--shadow-md); }
+.hover-ink:hover { color: var(--ink); }
+.hover-ink-faded:hover { color: var(--ink-faded); }
+.focus-border:focus { border-color: var(--spine-strong); box-shadow: var(--shadow-sm); }
+.polaroid-frame:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+
+/* ========== Sidebar search hover theme override ========== */
+
+[data-theme="midnight"] .sidebar-search:hover {
+  background: rgba(255,255,255,0.08);
+}
+
+/* ========== AI FAB theme override ========== */
+
+[data-theme="midnight"] .ai-fab {
+  background: #2C2C2E;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.2);
+}
+[data-theme="midnight"] .ai-fab.active {
+  background: var(--ink);
+}
+[data-theme="midnight"] .ai-chat-panel {
+  background: #2C2C2E;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3), 0 12px 40px rgba(0,0,0,0.25),
+    0 0 0 0.5px rgba(255,255,255,0.06);
+}
+[data-theme="midnight"] .ai-chat-input-row input {
+  background: rgba(255,255,255,0.06);
+}
+
+/* midnight 主题 highlight 色覆盖 */
+[data-theme="midnight"] {
+  --highlight: oklch(0.852 0.199 91.936);
+}
+
+/* ========== Code Block Syntax Highlighting (One Light / One Dark) ========== */
+
+.hljs-comment,
+.hljs-code,
+.hljs-formula { color: #a0a1a7; font-style: italic; }
+
+.hljs-keyword,
+.hljs-doctag,
+.hljs-template-tag,
+.hljs-template-variable,
+.hljs-variable.language_ { color: #a626a4; }
+
+.hljs-type { color: #c18401; }
+
+.hljs-string,
+.hljs-regexp { color: #50a14f; }
+
+.hljs-title,
+.hljs-title.class_,
+.hljs-title.class_.inherited__,
+.hljs-title.function_ { color: #4078f2; }
+
+.hljs-attr,
+.hljs-attribute { color: #c18401; }
+
+.hljs-literal,
+.hljs-number { color: #986801; }
+
+.hljs-operator,
+.hljs-selector-attr,
+.hljs-selector-class,
+.hljs-selector-id { color: #4078f2; }
+
+.hljs-meta,
+.hljs-variable { color: #e45649; }
+
+.hljs-name,
+.hljs-quote,
+.hljs-selector-tag,
+.hljs-selector-pseudo { color: #e45649; }
+
+.hljs-built_in,
+.hljs-symbol { color: #c18401; }
+
+.hljs-bullet { color: #4078f2; }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong,
+.hljs-section { font-weight: bold; }
+.hljs-section { color: #4078f2; }
+.hljs-addition { color: #50a14f; background: #f0fff4; }
+.hljs-deletion { color: #e45649; background: #ffeef0; }
+
+/* midnight — One Dark */
+[data-theme="midnight"] {
+  .hljs-comment,
+  .hljs-code,
+  .hljs-formula { color: #5c6370; }
+
+  .hljs-keyword,
+  .hljs-doctag,
+  .hljs-template-tag,
+  .hljs-template-variable,
+  .hljs-variable.language_ { color: #c678dd; }
+
+  .hljs-type { color: #e5c07b; }
+
+  .hljs-string,
+  .hljs-regexp { color: #98c379; }
+
+  .hljs-title,
+  .hljs-title.class_,
+  .hljs-title.class_.inherited__,
+  .hljs-title.function_ { color: #61afef; }
+
+  .hljs-attr,
+  .hljs-attribute { color: #e5c07b; }
+
+  .hljs-literal,
+  .hljs-number { color: #d19a66; }
+
+  .hljs-operator,
+  .hljs-selector-attr,
+  .hljs-selector-class,
+  .hljs-selector-id { color: #61afef; }
+
+  .hljs-meta,
+  .hljs-variable { color: #e06c75; }
+
+  .hljs-name,
+  .hljs-quote,
+  .hljs-selector-tag,
+  .hljs-selector-pseudo { color: #e06c75; }
+
+  .hljs-built_in,
+  .hljs-symbol { color: #e5c07b; }
+
+  .hljs-section { color: #61afef; }
+  .hljs-addition { color: #98c379; background: #2a3a2a; }
+  .hljs-deletion { color: #e06c75; background: #3a2a2a; }
+}
