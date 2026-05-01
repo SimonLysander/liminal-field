@@ -71,7 +71,7 @@ const MarkdownBody = memo(function MarkdownBody({
         },
         p: ({ children }) => (
           /* hangingPunctuation 无对应 Tailwind class，保留 inline style */
-          <p className="mb-5 text-justify" style={{ hangingPunctuation: 'allow-end' }}>{children}</p>
+          <p className="mb-5 leading-reading text-justify" style={{ hangingPunctuation: 'allow-end' }}>{children}</p>
         ),
         blockquote: ({ children }) => (
           <blockquote
