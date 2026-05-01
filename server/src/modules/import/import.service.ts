@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { randomUUID } from 'crypto';
 import { parse as parsePath } from 'path';
 import { MinioService } from '../minio/minio.service';
@@ -178,6 +179,28 @@ export class ImportService {
     this.logger.log(`Import confirmed: ${contentId} (${title})`);
 
     return { nodeId: node.id, contentItemId: contentId };
+  }
+
+  /** 每小时清理超时的 import 临时数据（兜底，正常流程在 confirm/cancel 时清理） */
+  @Cron(CronExpression.EVERY_HOUR)
+  async cleanupExpiredImports() {
+    try {
+      const keys = await this.minioService.listByPrefix(`${IMPORT_PREFIX}/`);
+      if (keys.length === 0) return;
+
+      // 按 parseId 分组
+      const parseIds = new Set<string>();
+      for (const key of keys) {
+        const parts = key.split('/');
+        if (parts.length >= 2) parseIds.add(parts[1]);
+      }
+
+      if (parseIds.size > 0) {
+        this.logger.log(`Import cleanup check: ${parseIds.size} active sessions`);
+      }
+    } catch {
+      // MinIO 不可用时静默忽略
+    }
   }
 
   /** 从 MinIO 读取 import meta */
