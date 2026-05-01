@@ -1,0 +1,53 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: 3AY94J3UIO2TmRJ6tK
+    volumes:
+      - mongo-data:/data/db
+    ports:
+      - "27017:27017"
+
+  minio:
+    image: minio/minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  server:
+    build: ./server
+    restart: unless-stopped
+    depends_on:
+      - mongo
+      - minio
+    volumes:
+      # Docker 专用配置：host 指向 mongo/minio 服务名
+      - ./server/configs/db.docker.yaml:/app/configs/db.yaml:ro
+      # 内容 git 仓库持久化
+      - kb-data:/data/liminal-field-kb
+    environment:
+      NODE_ENV: production
+    ports:
+      - "4398:4398"
+
+  client:
+    build: ./client
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "4399:80"
+
+volumes:
+  mongo-data:
+  minio-data:
+  kb-data:
