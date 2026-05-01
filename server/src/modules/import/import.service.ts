@@ -43,6 +43,9 @@ export class ImportService {
     // 标题层级归一化：找到最小标题级别，整体前移到 h1
     markdown = this.normalizeHeadingLevels(markdown);
 
+    // 将 Obsidian 风格 ==highlight== 转换为 Plate 识别的 <mark> 标签
+    markdown = markdown.replace(/==((?:[^=]|=[^=])+)==/g, '<mark>$1</mark>');
+
     // 扫描非 http(s) 开头的图片引用
     const localImageRegex = /!\[([^\]]*)\]\(((?!https?:\/\/)[^)]+)\)/g;
     const assets: AssetRefDto[] = [];

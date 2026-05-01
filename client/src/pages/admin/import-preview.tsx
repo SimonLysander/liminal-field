@@ -26,6 +26,7 @@ export default function ImportPreviewPage() {
   const parentId = searchParams.get('parentId') ?? undefined;
 
   const [data, setData] = useState<ParseResult | null>(null);
+  const [title, setTitle] = useState('');
   const [assets, setAssets] = useState<AssetRef[]>([]);
   const [confirming, setConfirming] = useState(false);
   const [resolving, setResolving] = useState(false);
@@ -44,6 +45,7 @@ export default function ImportPreviewPage() {
     if (cached) {
       const parsed = JSON.parse(cached) as ParseResult;
       setData(parsed);
+      setTitle(parsed.title);
       setAssets(parsed.assets);
     } else {
       toast.info('导入会话已过期，请重新上传');
@@ -115,7 +117,7 @@ export default function ImportPreviewPage() {
     if (!parseId) return;
     setConfirming(true);
     try {
-      const result = await importApi.confirm(parseId, parentId, data?.title);
+      const result = await importApi.confirm(parseId, parentId, title);
       sessionStorage.removeItem(`import-${parseId}`);
       toast.success('导入成功');
       navigate(`/admin/edit/${result.contentItemId}`);
@@ -171,7 +173,7 @@ export default function ImportPreviewPage() {
           style={{ borderColor: 'var(--separator)', background: 'var(--sidebar-bg)' }}
         >
           <div className="flex-1 overflow-y-auto space-y-5 px-5 py-5">
-            {/* 文件信息 */}
+            {/* 文件信息 + 标题可编辑 */}
             <section>
               <h3
                 className="mb-2 font-semibold"
@@ -179,13 +181,54 @@ export default function ImportPreviewPage() {
               >
                 文件信息
               </h3>
-              <div className="space-y-1" style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-faded)' }}>
-                <p>标题：{data.title}</p>
-                <p>格式：Markdown</p>
+              <div className="space-y-2">
+                <label className="flex flex-col gap-1">
+                  <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--ink-ghost)' }}>标题</span>
+                  <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    className="w-full rounded-md border-none px-2.5 py-1.5 outline-none"
+                    style={{ background: 'var(--shelf)', color: 'var(--ink)', fontSize: 'var(--text-sm)', fontFamily: 'var(--font-sans)' }}
+                  />
+                </label>
+                <p style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-ghost)' }}>格式：Markdown</p>
               </div>
             </section>
 
-            {/* 资源状态 */}
+            {/* 大纲（限制最大高度 40%，内部滚动） */}
+            {toc.length > 0 && (
+              <section>
+                <h3
+                  className="mb-2 font-semibold"
+                  style={{ color: 'var(--ink)', fontSize: 'var(--text-sm)' }}
+                >
+                  大纲
+                </h3>
+                <div className="overflow-y-auto" style={{ maxHeight: '40vh' }}>
+                  {toc.map((item) => (
+                    <motion.div
+                      key={item.id}
+                      className="cursor-pointer border-l-2 py-[5px] transition-all duration-200"
+                      style={{
+                        fontSize: 'var(--text-xs)',
+                        color: activeToc === item.id ? 'var(--ink)' : 'var(--ink-faded)',
+                        fontWeight: activeToc === item.id ? 500 : 400,
+                        borderColor: activeToc === item.id ? 'var(--pip-a)' : 'transparent',
+                        paddingLeft: `${(item.level - 1) * 8 + 10}px`,
+                      }}
+                      animate={{ paddingLeft: activeToc === item.id ? (item.level - 1) * 8 + 12 : (item.level - 1) * 8 + 10 }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                      onClick={() => scrollToHeading(item.id)}
+                    >
+                      {item.text}
+                    </motion.div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* 资源引用（移到下面） */}
             <section>
               <h3
                 className="mb-2 font-semibold"
@@ -254,38 +297,6 @@ export default function ImportPreviewPage() {
                 >
                   选择包含图片的文件夹，将按文件名自动匹配
                 </p>
-              </section>
-            )}
-
-            {/* 大纲 */}
-            {toc.length > 0 && (
-              <section>
-                <h3
-                  className="mb-2 font-semibold"
-                  style={{ color: 'var(--ink)', fontSize: 'var(--text-sm)' }}
-                >
-                  大纲
-                </h3>
-                <div className="space-y-0">
-                  {toc.map((item) => (
-                    <motion.div
-                      key={item.id}
-                      className="cursor-pointer border-l-2 py-[5px] transition-all duration-200"
-                      style={{
-                        fontSize: 'var(--text-xs)',
-                        color: activeToc === item.id ? 'var(--ink)' : 'var(--ink-faded)',
-                        fontWeight: activeToc === item.id ? 500 : 400,
-                        borderColor: activeToc === item.id ? 'var(--pip-a)' : 'transparent',
-                        paddingLeft: `${(item.level - 1) * 8 + 10}px`,
-                      }}
-                      animate={{ paddingLeft: activeToc === item.id ? (item.level - 1) * 8 + 12 : (item.level - 1) * 8 + 10 }}
-                      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                      onClick={() => scrollToHeading(item.id)}
-                    >
-                      {item.text}
-                    </motion.div>
-                  ))}
-                </div>
               </section>
             )}
           </div>
