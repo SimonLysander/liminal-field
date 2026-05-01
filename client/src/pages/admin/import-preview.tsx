@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Check, X, FolderOpen } from 'lucide-react';
+import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import MarkdownBody from '@/components/shared/MarkdownBody';
 import { importApi, type AssetRef, type ParseResult } from '@/services/import';
@@ -28,6 +29,9 @@ export default function ImportPreviewPage() {
   const [assets, setAssets] = useState<AssetRef[]>([]);
   const [confirming, setConfirming] = useState(false);
   const [resolving, setResolving] = useState(false);
+  const [toc, setToc] = useState<{ level: number; text: string; id: string }[]>([]);
+  const [activeToc, setActiveToc] = useState('');
+  const contentRef = useRef<HTMLDivElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -46,6 +50,50 @@ export default function ImportPreviewPage() {
       navigate('/admin/content');
     }
   }, [parseId, navigate]);
+
+  // TOC：从渲染后的 DOM 提取标题
+  useLayoutEffect(() => {
+    const container = contentRef.current;
+    if (!container || !data) { setToc([]); return; }
+    const els = container.querySelectorAll<HTMLElement>('[data-heading-id]');
+    const entries: { level: number; text: string; id: string }[] = [];
+    els.forEach((el) => {
+      const tag = el.tagName.toLowerCase();
+      const level = tag === 'h1' ? 1 : tag === 'h2' ? 2 : 3;
+      entries.push({ level, text: el.textContent || '', id: el.getAttribute('data-heading-id') || '' });
+    });
+    setToc(entries);
+  }, [data]);
+
+  // Scroll spy：追踪当前阅读位置
+  const handleScroll = useCallback(() => {
+    const container = contentRef.current;
+    if (!container || toc.length === 0) return;
+    const threshold = container.getBoundingClientRect().top + 50;
+    const headingEls = container.querySelectorAll('[data-heading-id]');
+    for (let i = headingEls.length - 1; i >= 0; i--) {
+      const el = headingEls[i] as HTMLElement;
+      if (el.getBoundingClientRect().top <= threshold) {
+        setActiveToc(el.getAttribute('data-heading-id') || '');
+        return;
+      }
+    }
+    if (toc[0]) setActiveToc(toc[0].id);
+  }, [toc]);
+
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, [handleScroll]);
+
+  const scrollToHeading = (headingId: string) => {
+    const el = contentRef.current?.querySelector(`[data-heading-id="${headingId}"]`) as HTMLElement | null;
+    if (!el || !contentRef.current) return;
+    const top = el.getBoundingClientRect().top - contentRef.current.getBoundingClientRect().top + contentRef.current.scrollTop - 16;
+    contentRef.current.scrollTo({ top, behavior: 'smooth' });
+  };
 
   const handleResolveAssets = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -113,7 +161,7 @@ export default function ImportPreviewPage() {
       {/* Body — 双栏 */}
       <div className="flex flex-1 overflow-hidden">
         {/* 左侧：Markdown 预览 */}
-        <main className="flex-[2] overflow-y-auto px-12 py-8">
+        <main ref={contentRef} className="flex-[2] overflow-y-auto px-12 py-8">
           <MarkdownBody markdown={data.markdown} />
         </main>
 
@@ -206,6 +254,38 @@ export default function ImportPreviewPage() {
                 >
                   选择包含图片的文件夹，将按文件名自动匹配
                 </p>
+              </section>
+            )}
+
+            {/* 大纲 */}
+            {toc.length > 0 && (
+              <section>
+                <h3
+                  className="mb-2 font-semibold"
+                  style={{ color: 'var(--ink)', fontSize: 'var(--text-sm)' }}
+                >
+                  大纲
+                </h3>
+                <div className="space-y-0">
+                  {toc.map((item) => (
+                    <motion.div
+                      key={item.id}
+                      className="cursor-pointer border-l-2 py-[5px] transition-all duration-200"
+                      style={{
+                        fontSize: 'var(--text-xs)',
+                        color: activeToc === item.id ? 'var(--ink)' : 'var(--ink-faded)',
+                        fontWeight: activeToc === item.id ? 500 : 400,
+                        borderColor: activeToc === item.id ? 'var(--pip-a)' : 'transparent',
+                        paddingLeft: `${(item.level - 1) * 8 + 10}px`,
+                      }}
+                      animate={{ paddingLeft: activeToc === item.id ? (item.level - 1) * 8 + 12 : (item.level - 1) * 8 + 10 }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                      onClick={() => scrollToHeading(item.id)}
+                    >
+                      {item.text}
+                    </motion.div>
+                  ))}
+                </div>
               </section>
             )}
           </div>
