@@ -34,6 +34,7 @@ services:
       - kb-data:/data/liminal-field-kb
     environment:
       NODE_ENV: production
+      TZ: Asia/Shanghai
       JWT_SECRET: ${JWT_SECRET}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       # server 通过 db.yaml 读取连接信息，这里传入供 db.docker.yaml 使用
