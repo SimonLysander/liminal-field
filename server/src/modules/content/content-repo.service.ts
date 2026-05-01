@@ -1,6 +1,5 @@
-import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { existsSync } from 'fs';
 import { mkdir, readdir, readFile, stat, unlink, writeFile } from 'fs/promises';
 import { extname, join, parse } from 'path';
 import { randomUUID } from 'crypto';
@@ -34,9 +33,9 @@ export interface ListedAsset extends StoredAsset {
 }
 
 @Injectable()
-export class ContentRepoService implements OnModuleInit {
+export class ContentRepoService {
   private readonly logger = new Logger(ContentRepoService.name);
-  private readonly repoRoot: string;
+  readonly repoRoot: string;
   private readonly contentRoot: string;
   private readonly git: SimpleGit;
 
@@ -44,99 +43,6 @@ export class ContentRepoService implements OnModuleInit {
     this.repoRoot = this.configService.getOrThrow<string>('content.repoRoot');
     this.contentRoot = join(this.repoRoot, 'content');
     this.git = simpleGit(this.repoRoot);
-  }
-
-  async onModuleInit() {
-    await this.ensureKnowledgeBaseRepo();
-  }
-
-  /**
-   * KB 仓库初始化 — 完整流程：
-   *
-   * 1. 仓库不存在 → 根据 KB_REMOTE_URL 决定 clone 还是 init
-   * 2. 仓库存在   → 检查是否需要补设 remote
-   * 3. 确保 git config 有 user.name/email（容器内没有全局配置）
-   * 4. 确保 main 分支存在（clone 下来的一般有，init 的需要创建）
-   * 5. 确保当月 workspace/YYYY-MM 分支存在并 checkout
-   *
-   * 全部在 ContentRepoService 中完成，避免与 ContentGitService.onModuleInit 竞态。
-   */
-  private async ensureKnowledgeBaseRepo(): Promise<void> {
-    const repoExists = existsSync(join(this.repoRoot, '.git'));
-
-    // ── Step 1: 获取或创建仓库 ──
-    if (!repoExists) {
-      const remoteUrl = process.env.KB_REMOTE_URL?.trim();
-      if (remoteUrl) {
-        this.logger.log(`Cloning knowledge-base from ${remoteUrl}`);
-        await mkdir(this.repoRoot, { recursive: true });
-        await simpleGit().clone(remoteUrl, this.repoRoot);
-        this.logger.log(`Cloned knowledge-base repo to ${this.repoRoot}`);
-      } else {
-        this.logger.warn('Knowledge-base repo not found — initializing empty repo (no KB_REMOTE_URL)');
-        await mkdir(this.repoRoot, { recursive: true });
-        await this.git.init();
-      }
-    }
-
-    // ── Step 2: 补设 remote（仓库已存在或刚 init，但还没有 origin）──
-    await this.ensureRemote();
-
-    // ── Step 3: 确保 git config（容器内没有全局配置，commit 需要）──
-    await this.git.addConfig('user.name', 'Liminal Field', false, 'local');
-    await this.git.addConfig('user.email', 'bot@liminal.field', false, 'local');
-
-    // ── Step 4: 确保 main 分支存在 ──
-    const branches = await this.git.branchLocal();
-    if (!branches.all.includes('main')) {
-      // 空仓库没有任何 commit，先建一个
-      const hasCommits = branches.all.length > 0;
-      if (!hasCommits) {
-        await this.git.raw(['commit', '--allow-empty', '-m', 'init: empty knowledge base']);
-        this.logger.log('Created initial empty commit');
-      }
-      // 初始 commit 可能落在默认分支（main/master），重新检查
-      const updated = await this.git.branchLocal();
-      if (!updated.all.includes('main')) {
-        await this.git.branch(['main']);
-      }
-    }
-
-    // ── Step 5: 确保当月工作分支存在并 checkout ──
-    const now = new Date();
-    const monthBranch = `workspace/${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const allBranches = await this.git.branchLocal();
-
-    if (allBranches.all.includes(monthBranch)) {
-      if (allBranches.current !== monthBranch) {
-        await this.git.checkout(monthBranch);
-      }
-    } else {
-      await this.git.checkout(['-b', monthBranch, 'main']);
-      this.logger.log(`Created monthly branch ${monthBranch}`);
-    }
-
-    this.logger.log(`Knowledge-base ready: ${this.repoRoot} (branch: ${monthBranch})`);
-  }
-
-  /** 如果配了 KB_REMOTE_URL 但仓库还没有 origin，补设一下 */
-  private async ensureRemote(): Promise<void> {
-    const remoteUrl = process.env.KB_REMOTE_URL?.trim();
-    if (!remoteUrl) return;
-
-    try {
-      const remotes = await this.git.getRemotes(true);
-      const origin = remotes.find((r) => r.name === 'origin');
-      if (!origin) {
-        await this.git.addRemote('origin', remoteUrl);
-        this.logger.log(`Added remote origin: ${remoteUrl}`);
-      } else if (origin.refs.fetch !== remoteUrl) {
-        await this.git.remote(['set-url', 'origin', remoteUrl]);
-        this.logger.log(`Updated remote origin: ${remoteUrl}`);
-      }
-    } catch {
-      this.logger.warn('Failed to configure remote origin');
-    }
   }
 
   private getContentDirectory(contentId: string): string {

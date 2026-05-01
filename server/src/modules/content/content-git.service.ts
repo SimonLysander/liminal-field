@@ -6,7 +6,9 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
-import { isAbsolute, relative } from 'path';
+import { existsSync } from 'fs';
+import { mkdir } from 'fs/promises';
+import { isAbsolute, join, relative } from 'path';
 import simpleGit, { SimpleGit } from 'simple-git';
 import { ContentRepoService } from './content-repo.service';
 import { ContentHistoryEntryDto } from './dto/content-history.dto';
@@ -29,12 +31,26 @@ export class ContentGitService implements OnModuleInit {
     this.git = simpleGit(this.repoRoot);
   }
 
-  /** 启动时初始化工作分支并打印存储层状态 */
+  /**
+   * KB git 仓库完整初始化流程：
+   *
+   * 1. 仓库不存在 → 根据 KB_REMOTE_URL 决定 clone 还是 init
+   * 2. 确保 remote origin（补设或更新）
+   * 3. 确保 git config 有 user.name/email（容器内没有全局配置）
+   * 4. 确保 main 分支存在（空仓库需要先创建 initial commit）
+   * 5. 确保当月 workspace/YYYY-MM 分支存在并 checkout
+   *    - 旧月分支有 commit → 归档到 main
+   *    - 旧月分支无 commit → 直接删除
+   */
   async onModuleInit(): Promise<void> {
     try {
-      await this.prepareWritableWorkspace();
+      await this.ensureRepo();
+      await this.ensureRemote();
+      await this.ensureGitConfig();
+      await this.ensureMainBranch();
+      await this.ensureWorkspaceBranchReady();
     } catch (error: any) {
-      this.logger.error(`Git workspace init failed: ${error.message}`);
+      this.logger.error(`Git init failed: ${error.message}`);
       return;
     }
 
@@ -51,6 +67,44 @@ export class ContentGitService implements OnModuleInit {
     this.logger.log(
       `Git storage ready — branch: ${branch}, commits: ${commitCount?.trim() ?? '?'}, remote: ${remote?.trim() ?? 'none'}`,
     );
+  }
+
+  /** Step 1: 获取或创建仓库 */
+  private async ensureRepo(): Promise<void> {
+    if (existsSync(join(this.repoRoot, '.git'))) return;
+
+    const remoteUrl = process.env.KB_REMOTE_URL?.trim();
+    await mkdir(this.repoRoot, { recursive: true });
+
+    if (remoteUrl) {
+      this.logger.log(`Cloning knowledge-base from ${remoteUrl}`);
+      await simpleGit().clone(remoteUrl, this.repoRoot);
+    } else {
+      this.logger.log('Initializing empty knowledge-base repo (no KB_REMOTE_URL)');
+      await this.git.init();
+    }
+  }
+
+  /** Step 2: 补设或更新 remote origin */
+  private async ensureRemote(): Promise<void> {
+    const remoteUrl = process.env.KB_REMOTE_URL?.trim();
+    if (!remoteUrl) return;
+
+    const remotes = await this.git.getRemotes(true);
+    const origin = remotes.find((r) => r.name === 'origin');
+    if (!origin) {
+      await this.git.addRemote('origin', remoteUrl);
+      this.logger.log(`Added remote origin: ${remoteUrl}`);
+    } else if (origin.refs.fetch !== remoteUrl) {
+      await this.git.remote(['set-url', 'origin', remoteUrl]);
+      this.logger.log(`Updated remote origin: ${remoteUrl}`);
+    }
+  }
+
+  /** Step 3: 容器内没有全局 git config，设到 repo 级别 */
+  private async ensureGitConfig(): Promise<void> {
+    await this.git.addConfig('user.name', this.resolveAuthorName(), false, 'local');
+    await this.git.addConfig('user.email', this.resolveAuthorEmail(), false, 'local');
   }
 
   private resolveRepositoryRoot(): string {
@@ -130,34 +184,20 @@ export class ContentGitService implements OnModuleInit {
     }
   }
 
-  /**
-   * 确保 main 分支存在。
-   * 空仓库（无任何 commit）时先创建初始 commit，否则无法建分支。
-   */
+  /** Step 4: 确保 main 分支存在（空仓库需先创建 initial commit） */
   private async ensureMainBranch(): Promise<void> {
-    const mainExists = await this.tryRun(() =>
-      this.git.raw(['show-ref', '--verify', '--quiet', 'refs/heads/main']),
-    );
-    if (mainExists !== null) return;
+    const branches = await this.git.branchLocal();
+    if (branches.all.includes('main')) return;
 
-    // 空仓库没有 HEAD，需要先做一个初始 commit 才能创建分支
-    const hasHead = await this.tryRun(() =>
-      this.git.raw(['rev-parse', '--verify', 'HEAD']),
-    );
-    if (hasHead === null) {
-      await this.git.raw([
-        '-c', `user.name=${this.resolveAuthorName()}`,
-        '-c', `user.email=${this.resolveAuthorEmail()}`,
-        'commit', '--allow-empty', '-m', 'init: empty knowledge base',
-      ]);
-      this.logger.log('Created initial empty commit for new repository');
+    // 空仓库没有任何 commit → 先创建一个（git config 已在 step 3 设好）
+    if (branches.all.length === 0) {
+      await this.git.raw(['commit', '--allow-empty', '-m', 'init: empty knowledge base']);
+      this.logger.log('Created initial empty commit');
     }
 
-    // empty commit 可能已经在默认分支 main 上创建了，再检查一次
-    const mainNowExists = await this.tryRun(() =>
-      this.git.raw(['show-ref', '--verify', '--quiet', 'refs/heads/main']),
-    );
-    if (mainNowExists === null) {
+    // commit 可能落在默认分支 main 上（git init 的默认），再检查一次
+    const updated = await this.git.branchLocal();
+    if (!updated.all.includes('main')) {
       await this.git.branch(['main']);
     }
     this.logger.log('Main branch ready');
@@ -184,62 +224,39 @@ export class ContentGitService implements OnModuleInit {
     this.logger.log(`Archived ${branch} to main`);
   }
 
-  private async ensureWorkspaceBranchReady(): Promise<string> {
+  /** Step 5: 确保当月工作分支存在并 checkout，旧月分支归档 */
+  private async ensureWorkspaceBranchReady(): Promise<void> {
     const targetBranch = this.resolveWorkBranch();
-    const currentBranch = await this.tryRun(() =>
-      this.git.raw(['symbolic-ref', '--quiet', '--short', 'HEAD']),
-    );
+    const branches = await this.git.branchLocal();
 
-    if (currentBranch === targetBranch) {
-      return targetBranch;
-    }
+    // 已在目标分支
+    if (branches.current === targetBranch) return;
 
-    await this.ensureMainBranch();
-
-    if (
-      currentBranch &&
-      currentBranch.startsWith('workspace/') &&
-      currentBranch !== targetBranch
-    ) {
-      // 检查旧分支是否有 commit，空分支（如首次初始化的 workspace/local）直接删掉
+    // 旧月分支需要归档到 main
+    if (branches.current.startsWith('workspace/') && branches.current !== targetBranch) {
       const hasCommits = await this.tryRun(() =>
-        this.git.raw(['log', '--oneline', '-1', currentBranch]),
+        this.git.raw(['log', '--oneline', '-1', branches.current]),
       );
       if (hasCommits) {
-        await this.archiveMonthBranch(currentBranch);
+        await this.archiveMonthBranch(branches.current);
       } else {
-        this.logger.log(`Skipping archive of empty branch ${currentBranch}`);
         await this.git.checkout('main');
-        await this.git.deleteLocalBranch(currentBranch, true);
+        await this.git.deleteLocalBranch(branches.current, true);
+        this.logger.log(`Deleted empty branch ${branches.current}`);
       }
     }
 
-    const status = await this.git.status();
-    if (!status.isClean()) {
-      throw new ConflictException(
-        'Knowledge-base repository has uncommitted changes; refusing to switch branch',
-      );
-    }
-
-    const branchExists = await this.tryRun(() =>
-      this.git.raw([
-        'show-ref',
-        '--verify',
-        '--quiet',
-        `refs/heads/${targetBranch}`,
-      ]),
-    );
-
-    if (branchExists === null) {
-      await this.git.checkoutBranch(targetBranch, 'main');
-      this.logger.log(`Created new monthly branch ${targetBranch} from main`);
-    } else {
+    // 切到或创建目标分支
+    const updated = await this.git.branchLocal();
+    if (updated.all.includes(targetBranch)) {
       await this.git.checkout(targetBranch);
+    } else {
+      await this.git.checkout(['-b', targetBranch, 'main']);
+      this.logger.log(`Created monthly branch ${targetBranch}`);
     }
-
-    return targetBranch;
   }
 
+  /** 运行时确保工作分支就绪（处理跨月切换） */
   async prepareWritableWorkspace(): Promise<void> {
     await this.ensureWorkspaceBranchReady();
   }
