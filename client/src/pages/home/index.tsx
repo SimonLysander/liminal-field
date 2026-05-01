@@ -14,6 +14,13 @@ function getGreeting() {
 
 /* ---------- Mock Data ---------- */
 
+/* 活动类型 → pip 颜色映射：仅影响类型标签这一处细节 */
+const TYPE_PIP: Record<string, string> = {
+  '文稿': 'var(--pip-a)',    /* 雾蓝 */
+  'Gallery': 'var(--pip-b)', /* 苔绿 */
+  'Agent': 'var(--pip-c)',   /* 淡紫 */
+};
+
 const activities = [
   { date: 'Apr 22', text: '编辑了「阈限空间里的创作方法论」，新增第三章关于边界感知的段落。', type: '文稿' },
   { date: 'Apr 21', text: '上传了 4 张青岛海边的照片，标记为「扁平光」风格。', type: 'Gallery' },
@@ -55,7 +62,7 @@ export default function HomePage() {
       >
         <h1
           className="text-6xl font-bold leading-tight"
-          style={{ color: 'var(--ink)', letterSpacing: '-0.025em' }}
+          style={{ color: 'var(--ink)', letterSpacing: 'var(--tracking-tight)' }}
         >
           {getGreeting()}
         </h1>
@@ -97,7 +104,10 @@ export default function HomePage() {
               </span>
               <span
                 className="shrink-0 rounded px-2 py-0.5 text-base"
-                style={{ color: 'var(--ink-ghost)', background: 'var(--paper-dark)' }}
+                style={{
+                  color: TYPE_PIP[a.type] ?? 'var(--ink-ghost)',
+                  background: 'var(--paper-dark)',
+                }}
               >
                 {a.type}
               </span>
