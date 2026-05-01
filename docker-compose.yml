@@ -3,25 +3,25 @@ services:
     image: docker.1ms.run/mongo:7
     restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: 3AY94J3UIO2TmRJ6tK
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
     volumes:
       - mongo-data:/data/db
     ports:
-      - "27017:27017"
+      - "27018:27017"
 
   minio:
     image: docker.1ms.run/minio/minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
     volumes:
       - minio-data:/data
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "9002:9000"
+      - "9003:9001"
 
   server:
     build: ./server
@@ -30,12 +30,21 @@ services:
       - mongo
       - minio
     volumes:
-      # Docker 专用配置：host 指向 mongo/minio 服务名
       - ./server/configs/db.docker.yaml:/app/configs/db.yaml:ro
-      # 内容 git 仓库持久化
       - kb-data:/data/liminal-field-kb
     environment:
       NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      # server 通过 db.yaml 读取连接信息，这里传入供 db.docker.yaml 使用
+      MONGO_HOST: mongo
+      MONGO_USER: ${MONGO_USER}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_DATABASE: ${MONGO_DATABASE}
+      MINIO_HOST: minio
+      MINIO_USER: ${MINIO_USER}
+      MINIO_PASSWORD: ${MINIO_PASSWORD}
+      MINIO_BUCKET: ${MINIO_BUCKET}
     ports:
       - "4398:4398"
 

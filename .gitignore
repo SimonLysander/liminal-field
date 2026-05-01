@@ -27,6 +27,11 @@ dist-ssr
 
 .superpowers
 
+# 部署敏感配置（密码/密钥）
+.env
+server/.env
+server/configs/db.yaml
+
 
 # compiled output
 /dist

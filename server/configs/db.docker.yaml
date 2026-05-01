@@ -1,19 +1,19 @@
 mongo:
-  host: mongo
+  host: ${MONGO_HOST}
   port: 27017
-  username: admin
-  password: 3AY94J3UIO2TmRJ6tK
-  database: liminal-field
+  username: ${MONGO_USER}
+  password: ${MONGO_PASSWORD}
+  database: ${MONGO_DATABASE}
   options:
     authSource: admin
 
 minio:
-  endpoint: minio
+  endpoint: ${MINIO_HOST}
   port: 9000
   useSSL: false
-  accessKey: minioadmin
-  secretKey: minioadmin
-  bucket: draft-assets
+  accessKey: ${MINIO_USER}
+  secretKey: ${MINIO_PASSWORD}
+  bucket: ${MINIO_BUCKET}
 
 content:
   repoRoot: /data/liminal-field-kb
