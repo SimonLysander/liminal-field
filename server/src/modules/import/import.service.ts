@@ -1,12 +1,12 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { randomUUID } from 'crypto';
 import { parse as parsePath } from 'path';
 import { MinioService } from '../minio/minio.service';
-import { ContentService } from '../content/content.service';
 import { ContentRepoService } from '../content/content-repo.service';
-import { ContentStatus, ContentChangeType } from '../content/content-item.entity';
-import { ContentSaveAction } from '../content/dto/save-content.dto';
+import { ContentGitService } from '../content/content-git.service';
+import { ContentRepository } from '../content/content.repository';
+import { ContentItem, ContentChangeType } from '../content/content-item.entity';
 import { NavigationNodeService } from '../navigation/navigation.service';
 import { AssetRefDto, ParseResultDto } from './dto/parse-result.dto';
 import { ConfirmImportDto } from './dto/confirm-import.dto';
@@ -26,8 +26,9 @@ export class ImportService {
 
   constructor(
     private readonly minioService: MinioService,
-    private readonly contentService: ContentService,
     private readonly contentRepoService: ContentRepoService,
+    private readonly contentGitService: ContentGitService,
+    private readonly contentRepository: ContentRepository,
     private readonly navigationNodeService: NavigationNodeService,
   ) {}
 
@@ -45,6 +46,9 @@ export class ImportService {
 
     // 将 Obsidian 风格 ==highlight== 转换为 Plate 识别的 <mark> 标签
     markdown = markdown.replace(/==((?:[^=]|=[^=])+)==/g, '<mark>$1</mark>');
+
+    // 收窄多余空行：连续 3 行及以上空行压缩为 2 行（保留段落间距）
+    markdown = markdown.replace(/\n{3,}/g, '\n\n');
 
     // 扫描非 http(s) 开头的图片引用
     const localImageRegex = /!\[([^\]]*)\]\(((?!https?:\/\/)[^)]+)\)/g;
@@ -113,28 +117,18 @@ export class ImportService {
   }
 
   /**
-   * 确认导入：创建 content item + structure node，
-   * 将已匹配资源写入 git 仓库，重写 markdown 路径。
-   *
-   * 流程分两步提交：
-   * 1. createContent 创建 CI（占位内容）→ 拿到 contentId
-   * 2. 存储资源到磁盘 → 重写路径 → saveContent 提交真实内容
+   * 确认导入：单次 commit 创建 content item + structure node。
+   * 直接使用底层服务，避免 createContent+saveContent 产生两次提交。
    */
   async confirm(dto: ConfirmImportDto): Promise<{ nodeId: string; contentItemId: string }> {
     const meta = await this.getMeta(dto.parseId);
     const title = dto.title || meta.title;
+    const now = new Date();
+    const contentId = `ci_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
 
-    // Step 1: 创建 content item（占位内容），获取 contentId
-    const content = await this.contentService.createContent({
-      title,
-      status: ContentStatus.committed,
-      bodyMarkdown: '',
-      changeNote: '初始创建',
-      changeType: ContentChangeType.major,
-    });
-    const contentId = content.id;
+    await this.contentGitService.prepareWritableWorkspace();
 
-    // Step 2: 收集已 resolved 的资源 buffer，存入 git 仓库
+    // 存储已匹配的资源到 git 仓库，收集路径映射
     const pathMap = new Map<string, string>();
     for (const asset of meta.assets) {
       if (asset.status === 'resolved') {
@@ -150,29 +144,50 @@ export class ImportService {
       }
     }
 
-    // Step 3: 重写 markdown 中的图片路径
-    let rewrittenMarkdown = meta.markdown;
+    // 重写 markdown 中的图片路径
+    let body = meta.markdown;
     for (const asset of meta.assets) {
       if (asset.status === 'resolved') {
         const newPath = pathMap.get(asset.filename);
         if (newPath) {
-          rewrittenMarkdown = rewrittenMarkdown.split(asset.ref).join(newPath);
+          body = body.split(asset.ref).join(newPath);
         }
       }
     }
+    body = body || '\u200B';
 
-    // Step 4: 提交真实内容（第二次 commit）
-    await this.contentService.saveContent(contentId, {
+    // 写入 main.md + README → 单次 git commit
+    await this.contentRepoService.writeMainMarkdown(contentId, body);
+    const source = await this.contentRepoService.readContentSource(contentId);
+    const changeNote = '从文件导入';
+    const changeLog = {
       title,
       summary: title,
-      status: ContentStatus.committed,
-      bodyMarkdown: rewrittenMarkdown,
-      changeNote: '从文件导入',
+      changeNote,
       changeType: ContentChangeType.major,
-      action: ContentSaveAction.commit,
+      changedAt: now,
+    };
+    await this.contentRepoService.writeReadme(
+      { id: contentId, _id: contentId, latestVersion: { commitHash: '', title, summary: title }, changeLogs: [changeLog], createdAt: now, updatedAt: now } as ContentItem,
+      source.assetRefs,
+    );
+
+    const commitHash = await this.contentGitService.recordCommittedContentChange(contentId, changeNote);
+    if (!commitHash) {
+      throw new BadRequestException('导入提交失败');
+    }
+
+    // 创建 MongoDB 记录
+    await this.contentRepository.create({
+      id: contentId,
+      latestVersion: { commitHash, title, summary: title },
+      publishedVersion: null,
+      changeLogs: [{ ...changeLog, commitHash }],
+      createdAt: now,
+      updatedAt: now,
     });
 
-    // Step 5: 创建 structure node（传 contentItemId 避免重复创建 CI）
+    // 创建 structure node（传 contentItemId 避免重复创建 CI）
     const node = await this.navigationNodeService.createStructureNode({
       name: title,
       type: 'DOC',
@@ -180,7 +195,7 @@ export class ImportService {
       contentItemId: contentId,
     });
 
-    // Step 6: 清理 MinIO 临时数据
+    // 清理 MinIO 临时数据
     await this.minioService.removeByPrefix(`${IMPORT_PREFIX}/${dto.parseId}/`);
     this.logger.log(`Import confirmed: ${contentId} (${title})`);
 

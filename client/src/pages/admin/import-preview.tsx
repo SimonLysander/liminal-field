@@ -120,7 +120,11 @@ export default function ImportPreviewPage() {
       const result = await importApi.confirm(parseId, parentId, title);
       sessionStorage.removeItem(`import-${parseId}`);
       toast.success('导入成功');
-      navigate(`/admin/edit/${result.contentItemId}`);
+      // 跳转到管理预览页
+      const params = new URLSearchParams();
+      if (parentId) params.set('topic', parentId);
+      params.set('doc', result.contentItemId);
+      navigate(`/admin/content?${params.toString()}`);
     } catch (err) {
       toast.error(parseError(err, '导入失败'));
     } finally {
