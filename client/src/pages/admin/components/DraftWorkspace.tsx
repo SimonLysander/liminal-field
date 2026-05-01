@@ -119,7 +119,6 @@ export const DraftWorkspace = ({
           key={resetKey}
           initialMarkdown={draftState.bodyMarkdown}
           onChange={(md) => onEditorChange('bodyMarkdown', md)}
-          charCount={draftState.bodyMarkdown.length}
         />
       </DraftAssetProvider>
     </div>

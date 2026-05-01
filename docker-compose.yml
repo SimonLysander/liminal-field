@@ -1,6 +1,6 @@
 services:
   mongo:
-    image: mongo:7
+    image: docker.1ms.run/mongo:7
     restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
@@ -11,7 +11,7 @@ services:
       - "27017:27017"
 
   minio:
-    image: minio/minio
+    image: docker.1ms.run/minio/minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:

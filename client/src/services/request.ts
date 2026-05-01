@@ -55,7 +55,7 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
   // 非 2xx 响应：优先用 HTTP status 作为错误码（兼容 NestJS { statusCode, message } 格式
   // 和自定义 { code, msg } 格式），确保 isApiError(e, 404) 等能正确匹配。
   if (!res.ok) {
-    const msg = json.msg || (json as Record<string, unknown>)['message'] as string || `HTTP ${res.status}`;
+    const msg = json.msg || (json as unknown as Record<string, unknown>)['message'] as string || `HTTP ${res.status}`;
     throw new ApiError(res.status, msg);
   }
 

@@ -468,19 +468,7 @@ function EmptyState({ title, subtitle }: { title: string; subtitle: string }) {
   );
 }
 
-function SideSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="mb-7">
-      <div
-        className="mb-3.5 font-semibold uppercase"
-        style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)', letterSpacing: '0.06em' }}
-      >
-        {title}
-      </div>
-      {children}
-    </div>
-  );
-}
+
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { isApiError } from '@/services/request';
 import { notesApi as contentItemsApi } from '@/services/workspace';
 import type {
   CreateStructureNodeDto,

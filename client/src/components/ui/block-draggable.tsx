@@ -4,13 +4,11 @@ import * as React from 'react';
 
 import { useDraggable, useDropLine } from '@platejs/dnd';
 import { GripVertical } from 'lucide-react';
-import { type TElement, getPluginByType, isType, KEYS } from 'platejs';
+import { getPluginByType, isType, KEYS } from 'platejs';
 import {
   type PlateElementProps,
   type RenderNodeWrapper,
   MemoizedChildren,
-  useEditorRef,
-  useElement,
 } from 'platejs/react';
 
 import { cn } from '@/lib/utils';
