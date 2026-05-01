@@ -497,7 +497,8 @@ export default function Sidebar() {
                 <div className="text-xs" style={{ color: 'var(--ink-ghost)' }}>{s.date}</div>
               </div>
               {s.status === 'active' && (
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: 'var(--ink)', opacity: 0.4 }} />
+                /* pip-c（淡紫）作为"进行中"状态的细节语义标记，仅此一处使用 pip 色 */
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: 'var(--pip-c)' }} />
               )}
             </div>
           ))}
