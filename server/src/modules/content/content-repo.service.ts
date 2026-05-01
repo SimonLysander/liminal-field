@@ -52,17 +52,48 @@ export class ContentRepoService implements OnModuleInit {
 
   private async ensureKnowledgeBaseRepo(): Promise<void> {
     if (existsSync(join(this.repoRoot, '.git'))) {
+      // 仓库已存在，检查是否需要补设 remote
+      await this.ensureRemote();
       this.logger.log(`Knowledge-base repo: ${this.repoRoot}`);
       return;
     }
 
-    this.logger.warn(
-      `Knowledge-base repo not found at ${this.repoRoot} — auto-initializing`,
-    );
-    await mkdir(this.repoRoot, { recursive: true });
-    await this.git.init();
-    await this.git.checkoutLocalBranch('workspace/local');
-    this.logger.log(`Initialized knowledge-base repo at ${this.repoRoot}`);
+    const remoteUrl = process.env.KB_REMOTE_URL?.trim();
+
+    if (remoteUrl) {
+      // 有远端地址：clone 下来
+      this.logger.log(`Cloning knowledge-base from ${remoteUrl}`);
+      await mkdir(this.repoRoot, { recursive: true });
+      await simpleGit().clone(remoteUrl, this.repoRoot);
+      this.logger.log(`Cloned knowledge-base repo to ${this.repoRoot}`);
+    } else {
+      // 无远端：本地初始化空仓库
+      this.logger.warn(
+        `Knowledge-base repo not found at ${this.repoRoot} — auto-initializing (no KB_REMOTE_URL configured)`,
+      );
+      await mkdir(this.repoRoot, { recursive: true });
+      await this.git.init();
+    }
+  }
+
+  /** 如果配了 KB_REMOTE_URL 但仓库还没有 origin，补设一下 */
+  private async ensureRemote(): Promise<void> {
+    const remoteUrl = process.env.KB_REMOTE_URL?.trim();
+    if (!remoteUrl) return;
+
+    try {
+      const remotes = await this.git.getRemotes(true);
+      const origin = remotes.find((r) => r.name === 'origin');
+      if (!origin) {
+        await this.git.addRemote('origin', remoteUrl);
+        this.logger.log(`Added remote origin: ${remoteUrl}`);
+      } else if (origin.refs.fetch !== remoteUrl) {
+        await this.git.remote(['set-url', 'origin', remoteUrl]);
+        this.logger.log(`Updated remote origin: ${remoteUrl}`);
+      }
+    } catch {
+      this.logger.warn('Failed to configure remote origin');
+    }
   }
 
   private getContentDirectory(contentId: string): string {
