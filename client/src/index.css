@@ -600,6 +600,19 @@ body.theme-transitioning *::after {
 .focus-border:focus { border-color: var(--spine-strong); box-shadow: var(--shadow-sm); }
 .polaroid-frame:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
 
+/* 按压反馈 — button 类元素 :active 加内陷阴影 + 微缩放 */
+button:active:not(:disabled),
+[role="button"]:active {
+  box-shadow: var(--shadow-inset);
+  transform: scale(0.975);
+  transition: transform var(--duration-fast) var(--ease-spring),
+              box-shadow var(--duration-fast) var(--ease-out);
+}
+
+/* hover-overlay utility — 与 hover-shelf 并列，供后续新增组件使用 */
+.hover-overlay:hover  { background: var(--hover-overlay); }
+.active-overlay:active { background: var(--active-overlay); }
+
 /* ========== Sidebar search hover theme override ========== */
 
 [data-theme="midnight"] .sidebar-search:hover {
