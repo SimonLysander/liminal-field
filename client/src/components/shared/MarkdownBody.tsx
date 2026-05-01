@@ -83,7 +83,7 @@ const MarkdownBody = memo(function MarkdownBody({
         ),
         pre: ({ children }) => (
           <pre
-            className="my-4 overflow-x-auto whitespace-pre-wrap rounded-xl p-4 bg-shelf font-mono text-base leading-[1.7] text-ink-light"
+            className="my-4 overflow-x-auto whitespace-pre-wrap rounded-lg p-4 bg-muted font-mono text-base leading-[1.7] text-ink-light"
           >
             {children}
           </pre>
@@ -93,7 +93,7 @@ const MarkdownBody = memo(function MarkdownBody({
           if (className) return <code className={className} {...props}>{children}</code>;
           return (
             <code
-              className="rounded-md px-1.5 py-[2px] bg-shelf font-mono text-md text-ink-light"
+              className="rounded-md px-1.5 py-[2px] bg-muted font-mono text-md text-ink-light"
               {...props}
             >
               {children}
