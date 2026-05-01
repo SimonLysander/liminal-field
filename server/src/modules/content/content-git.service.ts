@@ -132,7 +132,7 @@ export class ContentGitService implements OnModuleInit {
 
   /**
    * 确保 main 分支存在。
-   * 首次从 workspace/local 升级时，从当前 HEAD 创建 main。
+   * 空仓库（无任何 commit）时先创建初始 commit，否则无法建分支。
    */
   private async ensureMainBranch(): Promise<void> {
     const mainExists = await this.tryRun(() =>
@@ -140,11 +140,17 @@ export class ContentGitService implements OnModuleInit {
     );
     if (mainExists !== null) return;
 
-    const currentBranch = await this.tryRun(() =>
-      this.git.raw(['symbolic-ref', '--quiet', '--short', 'HEAD']),
+    // 空仓库没有 HEAD，需要先做一个初始 commit 才能创建分支
+    const hasHead = await this.tryRun(() =>
+      this.git.raw(['rev-parse', '--verify', 'HEAD']),
     );
+    if (hasHead === null) {
+      await this.git.raw(['commit', '--allow-empty', '-m', 'init: empty knowledge base']);
+      this.logger.log('Created initial empty commit for new repository');
+    }
+
     await this.git.branch(['main']);
-    this.logger.log(`Created main branch from ${currentBranch ?? 'HEAD'}`);
+    this.logger.log('Created main branch');
   }
 
   /**
