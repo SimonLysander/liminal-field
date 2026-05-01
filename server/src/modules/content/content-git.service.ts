@@ -145,7 +145,14 @@ export class ContentGitService implements OnModuleInit {
       this.git.raw(['rev-parse', '--verify', 'HEAD']),
     );
     if (hasHead === null) {
-      await this.git.raw(['commit', '--allow-empty', '-m', 'init: empty knowledge base']);
+      await this.git
+        .env({
+          GIT_AUTHOR_NAME: this.resolveAuthorName(),
+          GIT_AUTHOR_EMAIL: this.resolveAuthorEmail(),
+          GIT_COMMITTER_NAME: this.resolveAuthorName(),
+          GIT_COMMITTER_EMAIL: this.resolveAuthorEmail(),
+        })
+        .raw(['commit', '--allow-empty', '-m', 'init: empty knowledge base']);
       this.logger.log('Created initial empty commit for new repository');
     }
 
