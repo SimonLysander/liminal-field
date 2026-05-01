@@ -10,9 +10,10 @@ import { PlateElement } from 'platejs/react';
 import { cn } from '@/lib/utils';
 
 export function LinkElement(props: PlateElementProps<TLinkElement>) {
+  // SuggestionPlugin may not be registered; use optional chaining to avoid crash
   const suggestionData = props.editor
     .getApi(SuggestionPlugin)
-    .suggestion.suggestionData(props.element) as
+    .suggestion?.suggestionData(props.element) as
     | TInlineSuggestionData
     | undefined;
 

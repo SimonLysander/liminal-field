@@ -3,7 +3,7 @@ mongo:
   port: 27017
   username: admin
   password: 3AY94J3UIO2TmRJ6tK
-  database: liminal_field
+  database: liminal-field
   options:
     authSource: admin
 

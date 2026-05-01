@@ -346,6 +346,19 @@ function FormalSidePanel({
   );
 }
 
+/** 跨天显示 "M/D HH:mm"，当天只显示 "HH:mm" */
+function formatCommitTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  const time = d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  if (sameDay) return time;
+  return `${d.getMonth() + 1}/${d.getDate()} ${time}`;
+}
+
 function VersionTimeline({
   history,
   publishedHash,
@@ -427,7 +440,7 @@ function VersionTimeline({
               <span style={{ fontFamily: 'var(--font-mono)' }}>
                 {entry.commitHash.slice(0, 8)}
               </span>
-              <span>· {new Date(entry.committedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</span>
+              <span>· {formatCommitTime(entry.committedAt)}</span>
               {isPublished && (
                 <span
                   className="rounded px-1.5 py-[1px] font-semibold"

@@ -115,12 +115,12 @@ export class NoteViewService {
     return result;
   }
 
-  /** 获取草稿：先确认 contentItem 存在，再查 draft，区分"内容不存在"和"无草稿"。 */
-  async getDraft(id: string): Promise<EditorDraftDto> {
+  /** 获取草稿：先确认 contentItem 存在，再查 draft。无草稿返回 null（200），避免 404 污染浏览器 console。 */
+  async getDraft(id: string): Promise<EditorDraftDto | null> {
     await this.contentService.assertContentItemExists(id);
     const draft = await this.editorDraftRepository.findByContentItemId(id);
     if (!draft) {
-      throw new NotFoundException(`Draft for content ${id} not found`);
+      return null;
     }
     return this.toDraftDto(draft);
   }

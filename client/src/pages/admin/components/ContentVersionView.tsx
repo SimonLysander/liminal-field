@@ -101,14 +101,15 @@ export const ContentVersionView = ({
           {!preview && (
             <>
               <div className="mt-2 flex items-center gap-2.5">
-                <StatusPill status={content.status} />
+                {/* 管理端展示的是 latestVersion；若最新版本尚未发布，状态应显示"已提交"而非"已发布" */}
+                <StatusPill status={content.hasUnpublishedChanges ? 'committed' : content.status} />
                 <span style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)' }}>
                   只读
                 </span>
               </div>
               {content.status === 'published' && content.hasUnpublishedChanges && (
                 <p className="mt-2" style={{ color: 'var(--mark-red)', fontSize: 'var(--text-xs)' }}>
-                  存在更新的已提交版本。公开页面仍在使用 {content.publishedVersion?.commitHash.slice(0, 8) ?? '--'}。
+                  公开页面仍在使用旧版本 {content.publishedVersion?.commitHash?.slice(0, 8) ?? '--'}，点击「发布最新」更新。
                 </p>
               )}
             </>

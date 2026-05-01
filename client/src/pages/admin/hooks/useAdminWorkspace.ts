@@ -244,17 +244,13 @@ export function useAdminWorkspace() {
   const prevContentItemIdRef = useRef<string | null>(null);
 
   const probeDraftPresence = useCallback(async (contentItemId: string) => {
-    try {
-      const draft = await contentItemsApi.getDraft(contentItemId);
+    const draft = await contentItemsApi.getDraft(contentItemId);
+    if (draft) {
       setDraftPresence({ exists: true, savedAt: draft.savedAt });
-      return draft;
-    } catch (draftError) {
-      if (isApiError(draftError, 404)) {
-        setDraftPresence(EMPTY_DRAFT_PRESENCE);
-        return null;
-      }
-      throw draftError;
+    } else {
+      setDraftPresence(EMPTY_DRAFT_PRESENCE);
     }
+    return draft;
   }, []);
 
   const loadFormalContent = useCallback(
@@ -494,47 +490,17 @@ export function useAdminWorkspace() {
 
   const publishContent = useCallback(async () => {
     if (!activeContentItemId) return;
-
-    const saved = await contentItemsApi.save(activeContentItemId, {
-      title: formalContent.latestVersion.title,
-      summary: formalContent.latestVersion.summary,
-      status: 'published',
-      bodyMarkdown: formalContent.bodyMarkdown,
-      changeNote: '发布已提交版本',
-      changeType: 'patch',
-      action: 'publish',
-    });
-
+    const saved = await contentItemsApi.publish(activeContentItemId);
     setFormalContent(toFormalContentState(saved));
     toast.success(`内容已发布 ${new Date(saved.updatedAt).toLocaleString('zh-CN')}`);
-  }, [
-    formalContent.bodyMarkdown,
-    formalContent.latestVersion.summary,
-    formalContent.latestVersion.title,
-    activeContentItemId,
-  ]);
+  }, [activeContentItemId]);
 
   const unpublishContent = useCallback(async () => {
     if (!activeContentItemId) return;
-
-    const saved = await contentItemsApi.save(activeContentItemId, {
-      title: formalContent.latestVersion.title,
-      summary: formalContent.latestVersion.summary,
-      status: 'committed',
-      bodyMarkdown: formalContent.bodyMarkdown,
-      changeNote: '取消发布当前版本',
-      changeType: 'patch',
-      action: 'unpublish',
-    });
-
+    const saved = await contentItemsApi.unpublish(activeContentItemId);
     setFormalContent(toFormalContentState(saved));
     toast.success(`已取消发布 ${new Date(saved.updatedAt).toLocaleString('zh-CN')}`);
-  }, [
-    formalContent.bodyMarkdown,
-    formalContent.latestVersion.summary,
-    formalContent.latestVersion.title,
-    activeContentItemId,
-  ]);
+  }, [activeContentItemId]);
 
   /* ================================================================
    * 版本预览

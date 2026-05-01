@@ -354,6 +354,9 @@ export class ContentGitService implements OnModuleInit {
       return [];
     }
 
+    // 只保留属于该 content 的正式 commit（message 以 "content(ci_xxx):" 开头），
+    // 过滤掉维护性 commit（如 README 清理、批量修复等不影响内容的杂项 commit）
+    const contentPrefix = `content(${contentId}):`;
     return rawHistory
       .split('\n')
       .filter(Boolean)
@@ -369,6 +372,7 @@ export class ContentGitService implements OnModuleInit {
           message,
           action: this.detectHistoryAction(contentId, message),
         };
-      });
+      })
+      .filter((entry) => entry.message.startsWith(contentPrefix));
   }
 }

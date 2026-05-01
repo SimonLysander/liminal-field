@@ -383,7 +383,13 @@ export class ContentService {
     }
 
     if (dto.action === ContentSaveAction.publish) {
-      nextPublishedVersion = { ...nextLatestVersion };
+      // 不能 spread Mongoose 子文档（typegoose 通过 getter 存数据，spread 出来是 {}），
+      // 必须用 buildVersionSnapshot 构造纯 JS 对象
+      nextPublishedVersion = this.buildVersionSnapshot(
+        nextLatestVersion.commitHash,
+        nextLatestVersion.title,
+        nextLatestVersion.summary ?? '',
+      );
     }
 
     if (dto.action === ContentSaveAction.unpublish) {

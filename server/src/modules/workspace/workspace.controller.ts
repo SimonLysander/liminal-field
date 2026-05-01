@@ -217,12 +217,17 @@ export class WorkspaceController {
 
   @Put(':scope/items/:id/publish')
   async publish(@Param('scope') scope: string, @Param('id') id: string) {
-    return this.workspaceService.publish(scope, id);
+    await this.workspaceService.publish(scope, id);
+    // notes scope 前端依赖含 latestVersion/publishedVersion 的完整格式
+    if (scope === 'notes') return this.noteViewService.getById(id, 'all');
+    return this.workspaceService.getById(scope, id);
   }
 
   @Put(':scope/items/:id/unpublish')
   async unpublish(@Param('scope') scope: string, @Param('id') id: string) {
-    return this.workspaceService.unpublish(scope, id);
+    await this.workspaceService.unpublish(scope, id);
+    if (scope === 'notes') return this.noteViewService.getById(id, 'all');
+    return this.workspaceService.getById(scope, id);
   }
 
   // ─── 附件（上传、列表、文件直出）───

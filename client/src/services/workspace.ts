@@ -283,6 +283,12 @@ export const notesApi = {
   deleteDraft: (id: string) =>
     request<void>(`/spaces/notes/items/${id}/draft`, { method: 'DELETE' }),
 
+  publish: (id: string) =>
+    request<ContentDetail>(`/spaces/notes/items/${id}/publish`, { method: 'PUT' }),
+
+  unpublish: (id: string) =>
+    request<ContentDetail>(`/spaces/notes/items/${id}/unpublish`, { method: 'PUT' }),
+
   getByVersion: (id: string, commitHash: string) =>
     request<ContentDetail>(`/spaces/notes/items/${id}/versions/${commitHash}`),
 
