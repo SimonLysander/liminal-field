@@ -35,6 +35,17 @@
 - 间距/圆角/布局：Tailwind class 优先
 - 一个项目一套写法，不混用
 
+\# 代码变更检查
+
+每次修改代码后、提交前，必须运行：
+
+1. **Server**: `cd server && pnpm build` — SWC 编译检查
+2. **Client**: `cd client && npx tsc -b --noEmit` — TypeScript 类型检查
+3. **Server 单元测试**: `cd server && npx jest --passWithNoTests` — 如果改了业务逻辑
+4. **Client build**: `cd client && pnpm build` — 如果要验证生产构建（Docker 部署前必跑）
+
+不通过不提交。
+
 \# 关键踩坑记录
 
 ## 批量重构必须走 branch + review + 验收
