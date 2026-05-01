@@ -198,7 +198,17 @@ export class ContentGitService implements OnModuleInit {
       currentBranch.startsWith('workspace/') &&
       currentBranch !== targetBranch
     ) {
-      await this.archiveMonthBranch(currentBranch);
+      // 检查旧分支是否有 commit，空分支（如首次初始化的 workspace/local）直接删掉
+      const hasCommits = await this.tryRun(() =>
+        this.git.raw(['log', '--oneline', '-1', currentBranch]),
+      );
+      if (hasCommits) {
+        await this.archiveMonthBranch(currentBranch);
+      } else {
+        this.logger.log(`Skipping archive of empty branch ${currentBranch}`);
+        await this.git.checkout('main');
+        await this.git.deleteLocalBranch(currentBranch, true);
+      }
     }
 
     const status = await this.git.status();
