@@ -313,7 +313,7 @@
 
   /* ── 新增：阴影扩展（透明度 ×1.6，与现有 midnight 阴影规律一致） ── */
   --shadow-xl:    0 20px 48px rgba(0,0,0,0.29), 0 6px 14px rgba(0,0,0,0.13);
-  --shadow-inset: inset 0 1px 3px rgba(0,0,0,0.25);
+  --shadow-inset: inset 0 1px 3px rgba(0,0,0,0.16);
 
   /* ── 新增：动画节奏（与 daylight 相同，主题无关） ── */
   --duration-fast:   120ms;
