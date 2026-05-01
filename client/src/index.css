@@ -126,6 +126,24 @@
   --shadow-sm: var(--shadow-sm);
   --shadow-md: var(--shadow-md);
   --shadow-lg: var(--shadow-lg);
+
+  /* ── 阴影扩展 ── */
+  --shadow-xl: var(--shadow-xl);
+  --shadow-inset: var(--shadow-inset);
+
+  /* ── 排版细节 ── */
+  --tracking-tight: var(--tracking-tight);
+  --tracking-label: var(--tracking-label);
+  --leading-reading: var(--leading-reading);
+
+  /* ── 交互叠加层 ── */
+  --color-hover-overlay: var(--hover-overlay);
+  --color-active-overlay: var(--active-overlay);
+
+  /* ── 细节专用小色（pip） ── */
+  --color-pip-a: var(--pip-a);
+  --color-pip-b: var(--pip-b);
+  --color-pip-c: var(--pip-c);
 }
 
 /* ========== Design Tokens — Apple-inspired, Monochrome ========== */
@@ -203,6 +221,31 @@
   --color-input: var(--separator);
   --color-ring: var(--ink);
   --color-brand: var(--ink);
+
+  /* ── 新增：阴影扩展 ── */
+  --shadow-xl:    0 20px 48px rgba(0,0,0,0.18), 0 6px 14px rgba(0,0,0,0.08);
+  --shadow-inset: inset 0 1px 3px rgba(0,0,0,0.10);
+
+  /* ── 新增：动画节奏（CSS 变量，不进 @theme） ── */
+  --duration-fast:   120ms;
+  --duration-normal: 220ms;
+  --duration-slow:   380ms;
+  --ease-out:        cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-spring:     cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ── 新增：排版细节 ── */
+  --tracking-tight: -0.025em;
+  --tracking-label:  0.07em;
+  --leading-reading: 1.7;
+
+  /* ── 新增：交互叠加层 ── */
+  --hover-overlay:  rgba(0,0,0,0.04);
+  --active-overlay: rgba(0,0,0,0.09);
+
+  /* ── 新增：细节专用小色（pip）——低饱和度，仅用于新增细节元素 ── */
+  --pip-a: hsl(210 20% 60%);   /* 雾蓝  */
+  --pip-b: hsl(150 15% 55%);   /* 苔绿  */
+  --pip-c: hsl(280 12% 60%);   /* 淡紫  */
 }
 
 /* Midnight — dark theme with white accent */
@@ -267,6 +310,31 @@
   --color-input: var(--separator);
   --color-ring: var(--ink);
   --color-brand: var(--ink);
+
+  /* ── 新增：阴影扩展（透明度 ×1.6，与现有 midnight 阴影规律一致） ── */
+  --shadow-xl:    0 20px 48px rgba(0,0,0,0.29), 0 6px 14px rgba(0,0,0,0.13);
+  --shadow-inset: inset 0 1px 3px rgba(0,0,0,0.25);
+
+  /* ── 新增：动画节奏（与 daylight 相同，主题无关） ── */
+  --duration-fast:   120ms;
+  --duration-normal: 220ms;
+  --duration-slow:   380ms;
+  --ease-out:        cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-spring:     cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ── 新增：排版细节（主题无关） ── */
+  --tracking-tight: -0.025em;
+  --tracking-label:  0.07em;
+  --leading-reading: 1.7;
+
+  /* ── 新增：交互叠加层（midnight 用白色透明度） ── */
+  --hover-overlay:  rgba(255,255,255,0.05);
+  --active-overlay: rgba(255,255,255,0.10);
+
+  /* ── 新增：细节专用小色（pip）——midnight 亮度上调 ── */
+  --pip-a: hsl(210 22% 68%);
+  --pip-b: hsl(150 16% 62%);
+  --pip-c: hsl(280 14% 67%);
 }
 
 /* ========== Editor Caret ========== */
