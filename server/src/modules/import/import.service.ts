@@ -38,7 +38,10 @@ export class ImportService {
   async parse(fileName: string, buffer: Buffer): Promise<ParseResultDto> {
     const parseId = randomUUID().replace(/-/g, '').slice(0, 16);
     const title = parsePath(fileName).name;
-    const markdown = buffer.toString('utf-8');
+    let markdown = buffer.toString('utf-8');
+
+    // 标题层级归一化：找到最小标题级别，整体前移到 h1
+    markdown = this.normalizeHeadingLevels(markdown);
 
     // 扫描非 http(s) 开头的图片引用
     const localImageRegex = /!\[([^\]]*)\]\(((?!https?:\/\/)[^)]+)\)/g;
@@ -179,6 +182,29 @@ export class ImportService {
     this.logger.log(`Import confirmed: ${contentId} (${title})`);
 
     return { nodeId: node.id, contentItemId: contentId };
+  }
+
+  /**
+   * 标题层级归一化：找到文档中最小的标题级别，整体前移使其从 h1 开始。
+   * 例如文档最高是 ####(h4)，则 h4→h1, h5→h2, h6→h3。
+   */
+  private normalizeHeadingLevels(markdown: string): string {
+    const headingRegex = /^(#{1,6})\s/gm;
+    let minLevel = 7;
+    let match: RegExpExecArray | null;
+
+    while ((match = headingRegex.exec(markdown)) !== null) {
+      minLevel = Math.min(minLevel, match[1].length);
+    }
+
+    // 已经从 h1 开始，或没有标题
+    if (minLevel <= 1 || minLevel > 6) return markdown;
+
+    const shift = minLevel - 1;
+    return markdown.replace(/^(#{1,6})\s/gm, (_, hashes: string) => {
+      const newLevel = Math.max(1, hashes.length - shift);
+      return '#'.repeat(newLevel) + ' ';
+    });
   }
 
   /** 每小时清理超时的 import 临时数据（兜底，正常流程在 confirm/cancel 时清理） */
