@@ -206,24 +206,27 @@ function NoteReader({ id }: { id: string }) {
           >
             ← 返回
           </button>
-          <span className="text-md" style={{ color: 'var(--ink-ghost)' }}>
-            约 {wordCount > 1000 ? `${(wordCount / 1000).toFixed(1)}k` : wordCount} 字 · {readMin} min
+          <span
+            className="rounded-md px-2 py-0.5 text-2xs"
+            style={{ color: 'var(--pip-a)', background: 'color-mix(in srgb, var(--pip-a) 8%, transparent)' }}
+          >
+            {wordCount > 1000 ? `${(wordCount / 1000).toFixed(1)}k` : wordCount} 字 · {readMin} min
           </span>
         </div>
 
         {/* 文章标题 */}
         <div
-          className="relative mb-10 text-5xl font-bold leading-snug"
+          className="relative mb-10 text-5xl font-bold leading-snug tracking-tight"
           style={{
             fontFamily: 'var(--font-serif)',
             color: 'var(--ink)',
-            letterSpacing: '-0.015em',
           }}
         >
           {title}
+          {/* 标题装饰线 — 用 pip-a 雾蓝色，给黑白页面一点色彩呼吸 */}
           <span
             className="mt-5 block h-[2px] w-8 rounded-sm"
-            style={{ background: 'var(--ink)', opacity: 0.15 }}
+            style={{ background: 'var(--pip-a)', opacity: 0.5 }}
           />
         </div>
 
@@ -251,8 +254,8 @@ function NoteReader({ id }: { id: string }) {
         >
           <div>
             <div
-              className="mb-3 text-2xs font-semibold uppercase"
-              style={{ color: 'var(--ink-ghost)', letterSpacing: '0.04em' }}
+              className="mb-3 text-2xs font-semibold uppercase tracking-label"
+              style={{ color: 'var(--ink-ghost)' }}
             >
               目录
             </div>
@@ -263,7 +266,7 @@ function NoteReader({ id }: { id: string }) {
                 style={{
                   color: activeToc === item.id ? 'var(--ink)' : 'var(--ink-faded)',
                   fontWeight: activeToc === item.id ? 500 : 400,
-                  borderColor: activeToc === item.id ? 'var(--ink)' : 'transparent',
+                  borderColor: activeToc === item.id ? 'var(--pip-a)' : 'transparent',
                   paddingLeft: `${(item.level - 1) * 8 + 10}px`,
                 }}
                 animate={{ paddingLeft: activeToc === item.id ? (item.level - 1) * 8 + 12 : (item.level - 1) * 8 + 10 }}

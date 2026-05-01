@@ -39,7 +39,7 @@ const MarkdownBody = memo(function MarkdownBody({
             <h1
               {...props}
               data-heading-id={hid}
-              className="mb-3 mt-8 font-bold font-heading leading-snug text-ink text-3xl tracking-[-0.02em]"
+              className="mb-3 mt-8 font-bold font-heading leading-snug text-ink text-3xl tracking-tight"
             >
               {children}
             </h1>
@@ -51,7 +51,7 @@ const MarkdownBody = memo(function MarkdownBody({
             <h2
               {...props}
               data-heading-id={hid}
-              className="mb-2.5 mt-7 font-semibold font-heading leading-snug text-ink text-2xl tracking-[-0.015em]"
+              className="mb-2.5 mt-7 font-semibold font-heading leading-snug text-ink text-2xl tracking-[-0.012em]"
             >
               {children}
             </h2>
@@ -75,7 +75,8 @@ const MarkdownBody = memo(function MarkdownBody({
         ),
         blockquote: ({ children }) => (
           <blockquote
-            className="my-4 border-l-[3px] py-0.5 pl-5 border-ink-ghost text-ink-faded"
+            className="my-4 border-l-[3px] py-0.5 pl-5 text-ink-faded"
+            style={{ borderColor: 'var(--pip-a)' }}
           >
             {children}
           </blockquote>
@@ -102,13 +103,20 @@ const MarkdownBody = memo(function MarkdownBody({
         ul: ({ children }) => <ul className="my-3 list-disc pl-7">{children}</ul>,
         ol: ({ children }) => <ol className="my-3 list-decimal pl-7">{children}</ol>,
         li: ({ children }) => <li className="py-0.5">{children}</li>,
-        hr: () => <hr className="my-8 border-separator" />,
+        hr: () => (
+          <div className="my-8 flex items-center justify-center gap-2">
+            <span className="h-px flex-1" style={{ background: 'linear-gradient(to right, transparent, var(--separator))' }} />
+            <span className="h-1 w-1 rounded-full" style={{ background: 'var(--pip-a)', opacity: 0.4 }} />
+            <span className="h-px flex-1" style={{ background: 'linear-gradient(to left, transparent, var(--separator))' }} />
+          </div>
+        ),
         a: ({ href, children }) => (
           <a
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            className="transition-colors duration-150 text-ink underline underline-offset-[3px]"
+            className="transition-colors duration-150 underline underline-offset-[3px]"
+            style={{ color: 'var(--pip-a)' }}
           >
             {children}
           </a>

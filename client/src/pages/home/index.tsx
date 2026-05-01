@@ -74,8 +74,8 @@ export default function HomePage() {
       {/* Activity feed */}
       <div>
         <div
-          className="mb-3.5 text-base font-semibold uppercase"
-          style={{ color: 'var(--ink-ghost)', letterSpacing: '0.04em' }}
+          className="mb-3.5 text-2xs font-semibold uppercase tracking-label"
+          style={{ color: 'var(--ink-ghost)' }}
         >
           最近活动
         </div>
@@ -83,8 +83,11 @@ export default function HomePage() {
           {activities.map((a, i) => (
             <motion.div
               key={i}
-              className="group flex cursor-default items-start gap-4 py-3.5 transition-colors duration-150"
-              style={{ borderBottom: i < activities.length - 1 ? '0.5px solid var(--separator)' : 'none' }}
+              className="hover-overlay group flex cursor-default items-start gap-4 rounded-lg px-2 py-3.5 transition-colors"
+              style={{
+                borderBottom: i < activities.length - 1 ? '0.5px solid var(--separator)' : 'none',
+                transition: `background var(--duration-fast) var(--ease-out)`,
+              }}
               custom={i}
               initial="hidden"
               animate="show"
@@ -119,8 +122,8 @@ export default function HomePage() {
       {/* Feature cards */}
       <div>
         <div
-          className="mb-3.5 text-base font-semibold uppercase"
-          style={{ color: 'var(--ink-ghost)', letterSpacing: '0.04em' }}
+          className="mb-3.5 text-2xs font-semibold uppercase tracking-label"
+          style={{ color: 'var(--ink-ghost)' }}
         >
           精选
         </div>
@@ -128,17 +131,16 @@ export default function HomePage() {
           {features.map((f, i) => (
             <motion.div
               key={i}
-              className="hover-shadow-md flex cursor-pointer flex-col rounded-xl p-6 transition-all duration-300"
+              className="hover-card flex cursor-pointer flex-col rounded-xl p-6"
               style={{ background: 'var(--paper-dark)' }}
               custom={i + 3}
               initial="hidden"
               animate="show"
               variants={fadeUp}
-              whileHover={{ y: -2, transition: { duration: 0.25, ease: appleEase } }}
             >
               <div
-                className="mb-3.5 text-base font-semibold uppercase"
-                style={{ color: 'var(--ink-ghost)', letterSpacing: '0.03em' }}
+                className="mb-3.5 text-2xs font-semibold uppercase tracking-label"
+                style={{ color: 'var(--ink-ghost)' }}
               >
                 {f.label}
               </div>

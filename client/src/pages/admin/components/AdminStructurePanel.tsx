@@ -11,31 +11,26 @@
  * 与展示端 Sidebar 保持同一套 token，不用 inline fontSize。
  */
 
-import { useCallback, useState } from 'react';
-import { motion } from 'motion/react';
-import {
-  ChevronLeft,
-  ChevronRight,
-  Folder,
-  FileText,
-  RefreshCw,
-  Plus,
-  MoreHorizontal,
-} from 'lucide-react';
-import {
-  HoverCard,
-  HoverCardTrigger,
-  HoverCardContent,
-} from '@/components/ui/hover-card';
+import { ContentFade, LoadingState } from '@/components/LoadingState';
 import {
   DropdownMenu,
-  DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import type { StructureNode } from '@/services/structure';
-import { LoadingState, ContentFade } from '@/components/LoadingState';
+import {
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  Folder,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+} from 'lucide-react';
+import { useCallback, useState } from 'react';
 
 /* ---------- Types ---------- */
 
@@ -139,9 +134,19 @@ function NodeItem({
       >
         {/* Icon */}
         {isFolder ? (
-          <Folder size={14} strokeWidth={1.5} className="shrink-0" style={{ color: isSelected ? 'var(--ink)' : 'var(--ink-ghost)' }} />
+          <Folder
+            size={14}
+            strokeWidth={1.5}
+            className="shrink-0"
+            style={{ color: isSelected ? 'var(--ink)' : 'var(--ink-ghost)' }}
+          />
         ) : (
-          <FileText size={14} strokeWidth={1.5} className="shrink-0" style={{ color: isSelected ? 'var(--ink)' : 'var(--ink-ghost)' }} />
+          <FileText
+            size={14}
+            strokeWidth={1.5}
+            className="shrink-0"
+            style={{ color: isSelected ? 'var(--ink)' : 'var(--ink-ghost)' }}
+          />
         )}
 
         <span
@@ -153,7 +158,12 @@ function NodeItem({
 
         {/* Folder drill-in chevron */}
         {isFolder && node.hasChildren && (
-          <ChevronRight size={12} strokeWidth={2} className="shrink-0" style={{ color: 'var(--ink-ghost)' }} />
+          <ChevronRight
+            size={12}
+            strokeWidth={2}
+            className="shrink-0"
+            style={{ color: 'var(--ink-ghost)' }}
+          />
         )}
 
         {/* Hover actions — absolute 脱离文档流，单个 ··· 触发 DropdownMenu，不占文字宽度 */}
@@ -178,19 +188,33 @@ function NodeItem({
                 border: 'none',
                 background: 'var(--sidebar-bg)',
                 borderRadius: 'var(--radius-lg)',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.12), 0 8px 24px rgba(0,0,0,0.1), 0 0 0 0.5px rgba(0,0,0,0.06)',
+                boxShadow:
+                  '0 2px 8px rgba(0,0,0,0.12), 0 8px 24px rgba(0,0,0,0.1), 0 0 0 0.5px rgba(0,0,0,0.06)',
                 minWidth: 140,
               }}
             >
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(node); }}>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(node);
+                }}
+              >
                 重命名
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onMoveTo(node); }}>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMoveTo(node);
+                }}
+              >
                 移动到...
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onClick={(e) => { e.stopPropagation(); onDelete(node); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(node);
+                }}
                 style={{ color: 'var(--mark-red)' }}
               >
                 删除
@@ -356,7 +380,8 @@ export function AdminStructurePanel({
                         border: 'none',
                         background: 'var(--sidebar-bg)',
                         borderRadius: 'var(--radius-lg)',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.12), 0 8px 24px rgba(0,0,0,0.1), 0 0 0 0.5px rgba(0,0,0,0.06)',
+                        boxShadow:
+                          '0 2px 8px rgba(0,0,0,0.12), 0 8px 24px rgba(0,0,0,0.1), 0 0 0 0.5px rgba(0,0,0,0.06)',
                       }}
                     >
                       <div
@@ -364,7 +389,12 @@ export function AdminStructurePanel({
                         style={{ color: 'var(--ink-light)' }}
                         onClick={() => onGoToBreadcrumb(null)}
                       >
-                        <Folder size={13} strokeWidth={1.5} className="shrink-0" style={{ color: 'var(--ink-ghost)' }} />
+                        <Folder
+                          size={13}
+                          strokeWidth={1.5}
+                          className="shrink-0"
+                          style={{ color: 'var(--ink-ghost)' }}
+                        />
                         根目录
                       </div>
                       {breadcrumb.slice(0, -1).map((item, i) => (
@@ -378,13 +408,20 @@ export function AdminStructurePanel({
                           }}
                           onClick={() => onGoToBreadcrumb(i)}
                         >
-                          <Folder size={13} strokeWidth={1.5} className="shrink-0" style={{ color: 'var(--ink-ghost)' }} />
+                          <Folder
+                            size={13}
+                            strokeWidth={1.5}
+                            className="shrink-0"
+                            style={{ color: 'var(--ink-ghost)' }}
+                          />
                           {item.name}
                         </div>
                       ))}
                     </HoverCardContent>
                   </HoverCard>
-                  <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>/</span>
+                  <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>
+                    /
+                  </span>
                   <span
                     className="max-w-[100px] truncate text-xs"
                     style={{ color: 'var(--ink-light)' }}
@@ -400,12 +437,16 @@ export function AdminStructurePanel({
 
       {/* Node list — 当前层级 */}
       <div className="flex-1 overflow-y-auto px-2.5 pb-4">
-        <ContentFade stateKey={loading ? 'loading' : error ? 'error' : `list-${currentParentId || 'root'}`}>
+        <ContentFade
+          stateKey={loading ? 'loading' : error ? 'error' : `list-${currentParentId || 'root'}`}
+        >
           {loading ? (
             <LoadingState />
           ) : error ? (
             <div className="rounded-xl p-3" style={{ background: 'rgba(255,59,48,0.06)' }}>
-              <p className="text-xs" style={{ color: 'var(--mark-red)' }}>{error}</p>
+              <p className="text-xs" style={{ color: 'var(--mark-red)' }}>
+                {error}
+              </p>
               <button
                 className="mt-2 text-xs font-medium transition-colors duration-150"
                 style={{ color: 'var(--ink-faded)' }}
@@ -445,23 +486,23 @@ export function AdminStructurePanel({
 
       {/* Bottom actions */}
       <div
-        className="flex items-center justify-between px-3 pb-3 pt-2.5"
+        className="flex items-center justify-between px-3 py-1.5"
         style={{ borderTop: '0.5px solid var(--separator)' }}
       >
         <button
-          className="hover-shelf flex items-center gap-1.5 rounded-lg px-2 py-1 text-2xs transition-colors duration-150"
+          className="hover-shelf flex items-center gap-1 rounded px-1.5 py-0.5 text-base transition-colors duration-150"
           style={{ color: 'var(--ink-faded)' }}
           onClick={onReload}
         >
-          <RefreshCw size={11} strokeWidth={1.5} />
+          <RefreshCw size={9} strokeWidth={1.5} />
           刷新
         </button>
         <button
-          className="hover-shelf flex items-center gap-1 rounded-lg px-2 py-1 text-2xs font-medium transition-colors duration-150"
+          className="hover-shelf flex items-center gap-1 rounded px-1.5 py-0.5 text-base font-medium transition-colors duration-150"
           style={{ color: 'var(--ink)' }}
           onClick={() => onAddChild(currentParentId)}
         >
-          <Plus size={11} strokeWidth={2} />
+          <Plus size={10} strokeWidth={2} />
           新建
         </button>
       </div>
