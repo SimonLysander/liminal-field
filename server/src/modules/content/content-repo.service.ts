@@ -67,12 +67,21 @@ export class ContentRepoService implements OnModuleInit {
       await simpleGit().clone(remoteUrl, this.repoRoot);
       this.logger.log(`Cloned knowledge-base repo to ${this.repoRoot}`);
     } else {
-      // 无远端：本地初始化空仓库
+      // 无远端：本地初始化空仓库，创建 main 分支 + 初始 commit
       this.logger.warn(
         `Knowledge-base repo not found at ${this.repoRoot} — auto-initializing (no KB_REMOTE_URL configured)`,
       );
       await mkdir(this.repoRoot, { recursive: true });
       await this.git.init();
+      await this.git.addConfig('user.name', 'Liminal Field');
+      await this.git.addConfig('user.email', 'bot@liminal.field');
+      await this.git.raw(['commit', '--allow-empty', '-m', 'init: empty knowledge base']);
+      // 确保 main 分支存在（git init 默认分支可能叫 master）
+      const branches = await this.git.branchLocal();
+      if (!branches.all.includes('main')) {
+        await this.git.branch(['main']);
+      }
+      this.logger.log(`Initialized knowledge-base repo at ${this.repoRoot}`);
     }
   }
 
