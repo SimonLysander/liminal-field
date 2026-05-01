@@ -153,8 +153,14 @@ export class ContentGitService implements OnModuleInit {
       this.logger.log('Created initial empty commit for new repository');
     }
 
-    await this.git.branch(['main']);
-    this.logger.log('Created main branch');
+    // empty commit 可能已经在默认分支 main 上创建了，再检查一次
+    const mainNowExists = await this.tryRun(() =>
+      this.git.raw(['show-ref', '--verify', '--quiet', 'refs/heads/main']),
+    );
+    if (mainNowExists === null) {
+      await this.git.branch(['main']);
+    }
+    this.logger.log('Main branch ready');
   }
 
   /**
