@@ -142,7 +142,7 @@ export default function GalleryEditPage() {
             style={{ background: 'var(--ink)', color: 'var(--paper)' }}
             onClick={() => void handleSave()}
           >
-            {id ? '保存草稿' : '创建'}
+            {id ? '保存' : '创建'}
           </button>
         </div>
       </div>

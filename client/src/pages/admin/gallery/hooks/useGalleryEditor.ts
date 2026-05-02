@@ -292,7 +292,7 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     [photos, coverPhotoFileName, savePhotoMeta],
   );
 
-  // ─── 手动保存草稿（不做 Git commit，只存草稿） ───
+  // ─── 手动保存（正式保存：Git commit + 删除草稿） ───
 
   const save = useCallback(async () => {
     const id = effectiveIdRef.current;
@@ -300,14 +300,13 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
 
     setSaveStatus('saving');
     try {
-      await galleryApi.saveDraft(id, {
+      await galleryApi.update(id, {
         title: titleRef.current,
-        summary: titleRef.current,
-        bodyMarkdown: proseRef.current || '\u200B',
-        changeNote: '手动保存草稿',
+        description: proseRef.current || '\u200B',
       });
+      await galleryApi.deleteDraft(id).catch(() => {});
       setSaveStatus('saved');
-      toast.success('草稿已保存');
+      toast.success('已保存');
     } catch {
       setSaveStatus('dirty');
       toast.error('保存失败');

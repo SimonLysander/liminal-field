@@ -111,26 +111,6 @@ export default function GalleryAdmin() {
 
   // ─── 操作处理 ───
 
-  /** 提交草稿：读取草稿内容 → 写入正式版本（Git commit）→ 删除草稿 → 刷新 */
-  const handleCommitDraft = async (id: string) => {
-    try {
-      const draft = await galleryApi.getDraft(id);
-      await galleryApi.update(id, {
-        title: draft.title,
-        description: draft.bodyMarkdown === '\u200B' ? '' : draft.bodyMarkdown,
-      });
-      await galleryApi.deleteDraft(id).catch(() => {});
-      toast.success('已提交');
-      void loadPosts();
-      /* 重新加载详情和草稿状态 */
-      const [d] = await Promise.all([galleryApi.getById(id)]);
-      setDetail(d);
-      setDraftInfo({ exists: false });
-    } catch {
-      toast.error('提交失败');
-    }
-  };
-
   /** 丢弃草稿：删除草稿 → 刷新 */
   const handleDiscardDraft = async (id: string) => {
     try {
@@ -309,9 +289,9 @@ export default function GalleryAdmin() {
                 >
                   {draftInfo.exists ? (
                     <div className="space-y-2">
-                      <InfoRow label="已有草稿" value="是" />
+                      <InfoRow label="未保存的编辑" value="是" />
                       <InfoRow
-                        label="上次保存"
+                        label="上次编辑"
                         value={draftInfo.savedAt ? new Date(draftInfo.savedAt).toLocaleString('zh-CN') : '--'}
                       />
                       <div className="flex gap-4 pt-2">
@@ -327,16 +307,7 @@ export default function GalleryAdmin() {
                           style={{ color: 'var(--mark-red)' }}
                           onClick={() => void handleDiscardDraft(detail.id)}
                         >
-                          丢弃草稿
-                        </button>
-                      </div>
-                      <div className="pt-2">
-                        <button
-                          className="w-full rounded-lg py-2 text-xs font-medium transition-colors"
-                          style={{ background: 'var(--ink)', color: 'var(--paper)' }}
-                          onClick={() => void handleCommitDraft(detail.id)}
-                        >
-                          提交草稿
+                          丢弃
                         </button>
                       </div>
                     </div>
