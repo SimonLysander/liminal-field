@@ -35,13 +35,10 @@ export function CodeBlockElement(props: PlateElementProps<TCodeBlockElement>) {
 
   return (
     <PlateElement {...props}>
-      <div className="relative my-4 rounded-lg bg-muted">
-        <pre className="overflow-x-auto p-4 pr-24 font-mono leading-relaxed [tab-size:2] print:break-inside-avoid" style={{ fontSize: 'var(--text-sm)' }}>
-          <code className="block">{props.children}</code>
-        </pre>
-
+      <div className="my-4 rounded-lg bg-muted">
+        {/* 工具栏独立行，避免与代码第一行重叠 */}
         <div
-          className="absolute top-2 right-2 z-10 flex select-none gap-0.5"
+          className="flex items-center justify-end gap-0.5 px-2 pt-1.5"
           contentEditable={false}
         >
           {!readOnly && isLangSupported(element.lang) && (
@@ -65,6 +62,10 @@ export function CodeBlockElement(props: PlateElementProps<TCodeBlockElement>) {
             value={() => NodeApi.string(element)}
           />
         </div>
+
+        <pre className="overflow-x-auto px-4 pb-4 pt-1 font-mono leading-relaxed [tab-size:2] print:break-inside-avoid" style={{ fontSize: 'var(--text-sm)' }}>
+          <code className="block">{props.children}</code>
+        </pre>
       </div>
     </PlateElement>
   );
