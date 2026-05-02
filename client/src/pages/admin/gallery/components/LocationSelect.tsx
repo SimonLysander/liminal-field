@@ -28,7 +28,7 @@ export function LocationSelect({ value, onChange }: LocationSelectProps) {
       {/* 药丸形触发按钮：有值时显示地点，无值时显示占位文案 */}
       <PopoverTrigger asChild>
         <button
-          className="rounded-full px-3 py-1 text-xs flex items-center gap-1 cursor-pointer"
+          className="w-fit rounded-full px-3 py-1 text-xs flex items-center gap-1 cursor-pointer"
           style={{ background: "var(--shelf)", color: "var(--ink-faded)" }}
         >
           <span>📍</span>

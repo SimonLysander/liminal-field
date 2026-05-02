@@ -121,15 +121,13 @@ export default function GalleryEditPage() {
           <ChevronLeft size={16} strokeWidth={2} />
         </button>
 
-        <span className="shrink-0 text-sm" style={{ color: 'var(--ink-ghost)' }}>/</span>
-
         <input
           type="text"
           value={title}
           onChange={(e) => updateTitle(e.target.value)}
-          placeholder="无标题"
-          className="min-w-0 flex-1 border-none bg-transparent text-sm font-medium outline-none placeholder:text-[var(--ink-ghost)]"
-          style={{ color: 'var(--ink)' }}
+          placeholder="动态标题"
+          className="min-w-0 flex-1 border-none bg-transparent text-base font-semibold outline-none placeholder:text-[var(--ink-ghost)]"
+          style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}
         />
 
         {/* 右侧：保存状态 + 操作按钮 */}
