@@ -19,7 +19,7 @@ import { LoadingState, ContentFade } from '@/components/LoadingState';
 import { galleryApi, type GalleryPost, type GalleryPostDetail } from '@/services/workspace';
 import { smoothBounce } from '@/lib/motion';
 import { GalleryPostListItem, GalleryPostPreview } from './components/GalleryFeedCard';
-import { PhotoEditModal } from './components/PhotoEditModal';
+import { PhotoLightbox } from './components/PhotoLightbox';
 
 // ─── 空状态 ───
 
@@ -238,16 +238,13 @@ export default function GalleryAdmin() {
         </div>
       </main>
 
-      {/* 照片查看 Modal（预览模式，只读） */}
+      {/* 照片大图预览 */}
       {detail && (
-        <PhotoEditModal
+        <PhotoLightbox
           open={modalOpen}
-          photos={detail.photos}
+          urls={detail.photos.map((p) => p.url)}
           initialIndex={modalPhotoIndex}
           onClose={() => setModalOpen(false)}
-          onCaptionChange={() => {}}
-          onSetCover={() => {}}
-          onDelete={() => {}}
         />
       )}
     </>
