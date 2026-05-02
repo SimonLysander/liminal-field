@@ -74,19 +74,26 @@ function fixCodeBlockLines(nodes: TElement[]): TElement[] {
   });
 }
 
-/** 轻量 loading 骨架，与项目 LoadingState 风格一致 */
+/** 骨架屏：模拟文本行的脉冲条，比文字更自然 */
 function ReadOnlySkeleton() {
+  const widths = ['85%', '70%', '90%', '60%', '80%', '45%'];
   return (
-    <div className="flex items-center justify-center py-16">
-      <motion.span
-        className="text-xs"
-        style={{ color: 'var(--ink-ghost)' }}
-        animate={{ opacity: [0.4, 1, 0.4] }}
-        transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-      >
-        正在渲染内容...
-      </motion.span>
-    </div>
+    <motion.div
+      className="space-y-3 py-4"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2 }}
+    >
+      {widths.map((w, i) => (
+        <motion.div
+          key={i}
+          className="h-3 rounded-sm"
+          style={{ width: w, background: 'var(--shelf)' }}
+          animate={{ opacity: [0.4, 0.7, 0.4] }}
+          transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut', delay: i * 0.1 }}
+        />
+      ))}
+    </motion.div>
   );
 }
 
