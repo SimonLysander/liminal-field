@@ -133,4 +133,39 @@ export class MinioService implements OnModuleInit {
 
     return materialized;
   }
+
+  /** 通用对象写入：将 buffer 以指定 MIME 类型存入任意 objectKey */
+  async putObject(objectKey: string, buffer: Buffer, mimeType: string): Promise<void> {
+    await this.client.putObject(this.bucket, objectKey, buffer, buffer.length, {
+      'Content-Type': mimeType,
+    });
+  }
+
+  /** 通用对象读取：按 objectKey 下载并返回完整 Buffer */
+  async getObject(objectKey: string): Promise<Buffer> {
+    const stream = await this.client.getObject(this.bucket, objectKey);
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  }
+
+  /** 列出指定前缀下的全部对象 key */
+  async listByPrefix(prefix: string): Promise<string[]> {
+    const keys: string[] = [];
+    const stream = this.client.listObjects(this.bucket, prefix, true);
+    for await (const obj of stream) {
+      if (obj.name) keys.push(obj.name);
+    }
+    return keys;
+  }
+
+  /** 删除指定前缀下的全部对象 */
+  async removeByPrefix(prefix: string): Promise<void> {
+    const keys = await this.listByPrefix(prefix);
+    if (keys.length === 0) return;
+    await this.client.removeObjects(this.bucket, keys);
+    this.logger.log(`Removed ${keys.length} objects under prefix "${prefix}"`);
+  }
 }

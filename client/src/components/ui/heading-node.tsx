@@ -6,7 +6,7 @@ import { type VariantProps, cva } from 'class-variance-authority';
 import { PlateElement } from 'platejs/react';
 
 const headingVariants = cva(
-  'relative mb-1 data-[nav-target=true]:rounded-md data-[nav-target=true]:bg-(--color-highlight)',
+  'relative mb-1 text-ink data-[nav-target=true]:rounded-md data-[nav-target=true]:bg-(--color-highlight)',
   {
     variants: {
       variant: {

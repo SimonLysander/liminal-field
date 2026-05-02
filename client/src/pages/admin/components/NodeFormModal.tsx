@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Folder, FileText } from 'lucide-react';
 import { smoothBounce } from '@/lib/motion';
 import type { StructureNodeType } from '@/services/structure';
 import { parseError } from '../helpers';
 import { type ModalState, type NodeSubmitPayload } from '../types';
+import { importApi } from '@/services/import';
+import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
 
 /**
  * Modal dialog for creating or editing tree nodes.
@@ -25,7 +28,10 @@ export const NodeFormModal = ({
   const [name, setName] = useState(modal.node?.name ?? '');
   const [type, setType] = useState<StructureNodeType>(modal.node?.type ?? 'FOLDER');
   const [submitting, setSubmitting] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [error, setError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
 
   const isCreate = modal.mode === 'create';
 
@@ -64,12 +70,37 @@ export const NodeFormModal = ({
     }
   };
 
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    setError('');
+    try {
+      const result = await importApi.parse(file);
+      onClose();
+      const params = new URLSearchParams({ parseId: result.parseId });
+      if (modal.parentId) params.set('parentId', modal.parentId);
+      navigate(`/admin/content/import-preview?${params.toString()}`);
+    } catch (err) {
+      setError(parseError(err, '文件解析失败'));
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const typeOptions: { value: StructureNodeType; label: string; icon: React.ReactNode }[] = [
     { value: 'FOLDER', label: '主题', icon: <Folder size={15} strokeWidth={1.5} /> },
     { value: 'DOC', label: '文稿', icon: <FileText size={15} strokeWidth={1.5} /> },
   ];
 
   return (
+    <>
+    <ThresholdOverlay visible={importing} label="正在解析文件..." />
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
       style={{ background: 'rgba(0,0,0,0.2)', backdropFilter: 'blur(4px)' }}
@@ -128,6 +159,32 @@ export const NodeFormModal = ({
             </FieldLabel>
           )}
 
+          {isCreate && type === 'DOC' && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".md,.docx,.pdf,.pptx"
+                className="hidden"
+                onChange={handleFileSelected}
+              />
+              <button
+                type="button"
+                onClick={handleImportClick}
+                disabled={importing}
+                className="w-full rounded-lg py-2 text-center font-medium transition-opacity duration-150 disabled:opacity-50"
+                style={{
+                  background: 'var(--shelf)',
+                  color: 'var(--ink-faded)',
+                  fontSize: 'var(--text-sm)',
+                  border: '1px dashed var(--separator)',
+                }}
+              >
+                {importing ? '解析中...' : '从文件导入'}
+              </button>
+            </>
+          )}
+
           {error && (
             <p style={{ color: 'var(--mark-red)', fontSize: 'var(--text-xs)' }}>{error}</p>
           )}
@@ -153,6 +210,7 @@ export const NodeFormModal = ({
         </form>
       </motion.div>
     </div>
+    </>
   );
 };
 

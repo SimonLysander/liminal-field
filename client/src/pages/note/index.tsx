@@ -74,6 +74,7 @@ function NoteReader({ id }: { id: string }) {
   const [activeToc, setActiveToc] = useState('');
   const [aiOpen, setAiOpen] = useState(false);
   const centerRef = useRef<HTMLDivElement>(null);
+  const tocPanelRef = useRef<HTMLDivElement>(null);
   const aiInputRef = useRef<HTMLInputElement>(null);
 
   const [toc, setToc] = useState<TocEntry[]>([]);
@@ -153,6 +154,13 @@ function NoteReader({ id }: { id: string }) {
     return () => el.removeEventListener('scroll', handleScroll);
   }, [handleScroll]);
 
+  // TOC active 项变化时，自动滚到可见位置
+  useEffect(() => {
+    if (!activeToc || !tocPanelRef.current) return;
+    const activeEl = tocPanelRef.current.querySelector(`[data-toc-id="${activeToc}"]`);
+    activeEl?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [activeToc]);
+
   /**
    * 点击 TOC 条目时滚动到对应标题，并短暂高亮目标标题。
    * 高亮的意义：相邻标题（如 h2 紧接 h3）间距很小，滚动位移几乎不可感知，
@@ -179,7 +187,11 @@ function NoteReader({ id }: { id: string }) {
   const readMin = Math.max(1, Math.ceil(wordCount / 400));
 
   if (loading) {
-    return <LoadingState variant="full" />;
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <LoadingState />
+      </div>
+    );
   }
 
   if (error || !content) {
@@ -246,12 +258,13 @@ function NoteReader({ id }: { id: string }) {
        </div>
       </div>
 
-      {/* Right — TOC panel */}
-      {toc.length > 0 && (
-        <div
-          className="flex w-[200px] shrink-0 flex-col gap-7 overflow-y-auto px-4 py-10"
-          style={{ borderLeft: '0.5px solid var(--separator)' }}
-        >
+      {/* Right — TOC panel（始终预留宽度，避免内容加载后布局抖动） */}
+      <div
+        ref={tocPanelRef}
+        className="flex w-[200px] shrink-0 flex-col gap-7 overflow-y-auto px-4 py-10"
+        style={{ borderLeft: '0.5px solid var(--separator)' }}
+      >
+        {toc.length > 0 && (
           <div>
             <div
               className="mb-3 text-2xs font-semibold uppercase tracking-label"
@@ -262,11 +275,12 @@ function NoteReader({ id }: { id: string }) {
             {toc.map((item) => (
               <motion.div
                 key={item.id}
+                data-toc-id={item.id}
                 className="cursor-pointer border-l-2 py-[5px] text-sm transition-all duration-200"
                 style={{
-                  color: activeToc === item.id ? 'var(--ink)' : 'var(--ink-faded)',
+                  color: activeToc === item.id ? 'var(--ink-light)' : 'var(--ink-faded)',
                   fontWeight: activeToc === item.id ? 500 : 400,
-                  borderColor: activeToc === item.id ? 'var(--pip-a)' : 'transparent',
+                  borderColor: activeToc === item.id ? 'var(--ink-light)' : 'transparent',
                   paddingLeft: `${(item.level - 1) * 8 + 10}px`,
                 }}
                 animate={{ paddingLeft: activeToc === item.id ? (item.level - 1) * 8 + 12 : (item.level - 1) * 8 + 10 }}
@@ -277,8 +291,8 @@ function NoteReader({ id }: { id: string }) {
               </motion.div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* AI floating action button */}
       <div className="absolute bottom-6 right-6 z-10 flex flex-col items-end gap-3">

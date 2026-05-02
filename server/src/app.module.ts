@@ -9,6 +9,7 @@ import { NavigationModule } from './modules/navigation/navigation.module';
 import { WorkspaceModule } from './modules/workspace/workspace.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { MinioModule } from './modules/minio/minio.module';
+import { ImportModule } from './modules/import/import.module';
 import { yamlLoader } from './config/yaml.loader';
 
 @Module({
@@ -37,6 +38,7 @@ import { yamlLoader } from './config/yaml.loader';
     ContentModule,
     NavigationModule,
     WorkspaceModule,
+    ImportModule,
   ],
   controllers: [AppController],
   providers: [AppService],

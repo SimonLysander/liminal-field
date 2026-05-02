@@ -10,6 +10,6 @@ import { NavigationNodeController } from './navigation.controller';
   imports: [TypegooseModule.forFeature([NavigationNode]), ContentModule],
   controllers: [NavigationNodeController],
   providers: [NavigationNodeService, NavigationRepository],
-  exports: [NavigationRepository],
+  exports: [NavigationRepository, NavigationNodeService],
 })
 export class NavigationModule {}

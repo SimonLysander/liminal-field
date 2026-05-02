@@ -47,6 +47,7 @@ services:
       MINIO_PASSWORD: ${MINIO_PASSWORD}
       MINIO_BUCKET: ${MINIO_BUCKET}
       KB_REMOTE_URL: ${KB_REMOTE_URL:-}
+      MINERU_TOKEN: ${MINERU_TOKEN:-}
     ports:
       - "4398:4398"
 

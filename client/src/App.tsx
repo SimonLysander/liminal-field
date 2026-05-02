@@ -37,6 +37,7 @@ const AdminShell = lazy(() => import('./pages/admin'));
 const ContentAdmin = lazy(() => import('./pages/admin/content'));
 const GalleryAdmin = lazy(() => import('./pages/admin/gallery'));
 const DraftEditPage = lazy(() => import('./pages/admin/edit'));
+const ImportPreviewPage = lazy(() => import('./pages/admin/import-preview'));
 const LoginPage = lazy(() => import('./pages/login'));
 
 /**
@@ -160,6 +161,16 @@ function App() {
             <AuthGuard>
               <Suspense fallback={<LoadingState variant="full" />}>
                 <DraftEditPage />
+              </Suspense>
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/admin/content/import-preview"
+          element={
+            <AuthGuard>
+              <Suspense fallback={<LoadingState variant="full" />}>
+                <ImportPreviewPage />
               </Suspense>
             </AuthGuard>
           }

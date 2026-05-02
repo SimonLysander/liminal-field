@@ -519,6 +519,11 @@ body.theme-transitioning *::after {
     color 0.8s ease, border-color 0.8s ease,
     box-shadow 0.8s ease, fill 0.8s ease, stroke 0.8s ease !important;
 }
+/* Slate 编辑器内部节点数量极多，逐个过渡会卡顿——跳过内部元素，只过渡容器 */
+body.theme-transitioning [data-slate-node] *,
+body.theme-transitioning [data-slate-leaf] {
+  transition: none !important;
+}
 
 /* ========== Text Mark Annotations ========== */
 

@@ -31,19 +31,18 @@ import { cn } from '@/lib/utils';
 
 export function CodeBlockElement(props: PlateElementProps<TCodeBlockElement>) {
   const { editor, element } = props;
+  const readOnly = useReadOnly();
 
   return (
     <PlateElement {...props}>
-      <div className="relative my-4 rounded-lg bg-muted">
-        <pre className="overflow-x-auto p-4 pr-24 font-mono leading-relaxed [tab-size:2] print:break-inside-avoid" style={{ fontSize: 'var(--text-sm)' }}>
-          <code className="block">{props.children}</code>
-        </pre>
-
+      <div className="my-4 rounded-lg bg-muted">
+        {/* 工具栏独立行，避免与代码第一行重叠 */}
         <div
-          className="absolute top-2 right-2 z-10 flex select-none gap-0.5"
+          className="flex items-center justify-end gap-0.5 border-b px-2 py-1"
+          style={{ borderColor: 'color-mix(in srgb, var(--ink) 6%, transparent)' }}
           contentEditable={false}
         >
-          {isLangSupported(element.lang) && (
+          {!readOnly && isLangSupported(element.lang) && (
             <Button
               size="icon"
               variant="ghost"
@@ -61,9 +60,17 @@ export function CodeBlockElement(props: PlateElementProps<TCodeBlockElement>) {
             size="icon"
             variant="ghost"
             className="size-6 gap-1 text-muted-foreground text-xs"
-            value={() => NodeApi.string(element)}
+            value={() =>
+              (element.children as TCodeBlockElement['children'])
+                .map((line) => NodeApi.string(line))
+                .join('\n')
+            }
           />
         </div>
+
+        <pre className="overflow-x-auto px-4 pb-4 pt-1 font-mono leading-relaxed [tab-size:2] print:break-inside-avoid" style={{ fontSize: 'var(--text-sm)' }}>
+          <code className="block">{props.children}</code>
+        </pre>
       </div>
     </PlateElement>
   );
@@ -87,7 +94,13 @@ function CodeBlockCombobox() {
     [searchValue]
   );
 
-  if (readOnly) return null;
+  if (readOnly) {
+    // read-only 模式只显示语言标签，样式与编辑器的 Button 对齐
+    const label = languages.find((l) => l.value === value)?.label ?? (value !== 'plaintext' ? value : '');
+    return label ? (
+      <span className="flex h-6 select-none items-center gap-1 px-2 text-muted-foreground text-xs">{label}</span>
+    ) : null;
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -199,7 +212,15 @@ const languages: { label: string; value: string }[] = [
   { label: 'CSS', value: 'css' },
   { label: 'JavaScript', value: 'javascript' },
   { label: 'TypeScript', value: 'typescript' },
+  { label: 'Java', value: 'java' },
   { label: 'Python', value: 'python' },
+  { label: 'Go', value: 'go' },
+  { label: 'Rust', value: 'rust' },
   { label: 'Shell', value: 'bash' },
+  { label: 'C', value: 'c' },
   { label: 'C++', value: 'cpp' },
+  { label: 'SQL', value: 'sql' },
+  { label: 'JSON', value: 'json' },
+  { label: 'YAML', value: 'yaml' },
+  { label: 'Markdown', value: 'markdown' },
 ];
