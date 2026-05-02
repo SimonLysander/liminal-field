@@ -1,9 +1,7 @@
 /*
  * ThresholdOverlay — 全屏过渡遮罩
  *
- * "阈限线"动画：一条 pip-a 色细线从中心展开，持续呼吸，
- * 配合状态文字表达"正在跨越状态"。
- * 视觉语言与项目名 "Liminal"（阈限/过渡）呼应。
+ * 不透明主题色背景 + 阈限线动画 + 呼吸状态文字。
  *
  * 使用方式：
  *   <ThresholdOverlay visible={loading} label="正在导入内容..." />
@@ -24,7 +22,7 @@ export function ThresholdOverlay({
       {visible && (
         <motion.div
           className="fixed inset-0 z-[100] flex flex-col items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.2)', backdropFilter: 'blur(4px)' }}
+          style={{ background: 'var(--paper)' }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -33,11 +31,11 @@ export function ThresholdOverlay({
           {/* 阈限线 — 从中心展开 + 呼吸 */}
           <motion.div
             className="rounded-full"
-            style={{ height: 1, background: 'var(--pip-a)' }}
+            style={{ height: 1, background: 'var(--ink-light)' }}
             initial={{ width: 0, opacity: 0 }}
             animate={{
               width: 120,
-              opacity: [0, 1, 0.4, 1, 0.4],
+              opacity: [0, 1, 0.3, 1, 0.3],
             }}
             transition={{
               width: { duration: 0.5, ease: smoothBounce },
@@ -45,7 +43,7 @@ export function ThresholdOverlay({
             }}
           />
 
-          {/* 状态文字 — 呼吸动画，与 LoadingState 一致 */}
+          {/* 状态文字 — 呼吸动画 */}
           <motion.span
             className="mt-5 text-xs"
             style={{ color: 'var(--ink-ghost)' }}
