@@ -322,13 +322,25 @@ export const galleryApi = {
   create: (dto: CreateGalleryPostDto) =>
     request<GalleryPost>('/spaces/gallery/items', {
       method: 'POST',
-      body: JSON.stringify(dto),
+      // 后端 DTO 字段名为 bodyMarkdown，补充 changeNote 满足后端 @IsNotEmpty() 校验
+      body: JSON.stringify({
+        title: dto.title,
+        bodyMarkdown: dto.description || '\u200B',
+        changeNote: '创建画廊动态',
+      }),
     }),
 
   update: (id: string, dto: UpdateGalleryPostDto) =>
     request<GalleryPost>(`/spaces/gallery/items/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(dto),
+      // 后端 DTO 字段名为 bodyMarkdown，补充 changeNote 满足后端 @IsNotEmpty() 校验
+      body: JSON.stringify({
+        title: dto.title,
+        bodyMarkdown: dto.description !== undefined
+          ? (dto.description || '\u200B')
+          : undefined,
+        changeNote: '更新画廊动态',
+      }),
     }),
 
   remove: (id: string) =>
