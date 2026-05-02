@@ -141,7 +141,7 @@ export function PhotoEditModal({
         {/* ── 左侧：照片预览区 ── */}
         <div
           className="relative flex w-[320px] shrink-0 items-center justify-center"
-          style={{ background: '#111', minHeight: '480px' }}
+          style={{ background: 'var(--shelf)', minHeight: '480px' }}
         >
           {/* 大图预览 */}
           <img
@@ -236,7 +236,7 @@ export function PhotoEditModal({
               说明
             </div>
 
-            {/* Textarea */}
+            {/* Textarea — 30 字符上限 */}
             <textarea
               className="w-full resize-none rounded-md px-3 py-2.5 text-sm outline-none transition-colors duration-150"
               style={{
@@ -246,11 +246,22 @@ export function PhotoEditModal({
                 minHeight: '96px',
               }}
               placeholder="为这张照片添加说明..."
+              maxLength={30}
               value={captionDraft}
               onChange={(e) => setCaptionDraft(e.target.value)}
               /* 失焦时立即提交，确保用户切换方式不是翻页时也能保存 */
               onBlur={() => onCaptionChange(photo.id, captionDraft)}
             />
+
+            {/* 字符计数：达到上限时变红 */}
+            <div
+              className="mt-1 text-right text-2xs"
+              style={{
+                color: captionDraft.length >= 30 ? 'var(--mark-red)' : 'var(--ink-ghost)',
+              }}
+            >
+              {captionDraft.length} / 30
+            </div>
           </div>
 
           {/* Bottom action bar */}
