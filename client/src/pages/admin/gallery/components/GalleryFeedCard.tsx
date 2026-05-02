@@ -132,7 +132,8 @@ export function GalleryPostPreview({
         </h1>
         {(onPublish || onUnpublish || onDelete) && (
           <div className="flex shrink-0 items-center gap-2">
-            {post.status === 'draft' && onPublish && (
+            {/* 未发布 或 有未发布变更 → 显示"发布" */}
+            {(post.status === 'draft' || post.hasUnpublishedChanges) && onPublish && (
               <button
                 className="rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors"
                 style={{ background: 'var(--shelf)', color: 'var(--ink)', border: '0.5px solid var(--separator)' }}
@@ -141,7 +142,8 @@ export function GalleryPostPreview({
                 发布
               </button>
             )}
-            {post.status === 'published' && onUnpublish && (
+            {/* 已发布且无新变更 → 显示"取消发布" */}
+            {post.status === 'published' && !post.hasUnpublishedChanges && onUnpublish && (
               <button
                 className="rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors"
                 style={{ background: 'var(--shelf)', color: 'var(--ink)', border: '0.5px solid var(--separator)' }}
