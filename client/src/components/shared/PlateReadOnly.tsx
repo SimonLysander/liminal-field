@@ -1,17 +1,26 @@
 /*
- * PlateReadOnly — Plate read-only 渲染器
+ * PlateReadOnly — Plate read-only 渲染器（异步化）
  *
- * 用与编辑器相同的插件和组件渲染 markdown，确保编辑端和展示端 100% 视觉一致。
- * 不加载编辑交互（DnD、ExitBreak、TrailingBlock），只保留渲染所需的插件。
+ * 大文档（100 页+）的 deserializeMd 是 CPU 密集操作，会阻塞主线程。
+ * 通过 startTransition 将解析和渲染标记为低优先级，
+ * 先展示轻量 loading 骨架，保持 UI 响应。
  *
  * heading 元素在渲染后通过 layout effect 标记 data-heading-id，
  * 供 TOC 面板提取目录结构。
  */
 
-import { useLayoutEffect, useMemo, useRef } from 'react';
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  useEffect,
+} from 'react';
 import { Plate, usePlateEditor } from 'platejs/react';
 import { deserializeMd } from '@platejs/markdown';
 import type { TElement } from 'platejs';
+import { motion } from 'motion/react';
 
 import { BasicNodesKit } from '@/components/editor/plugins/basic-nodes-kit';
 import { CodeBlockKit } from '@/components/editor/plugins/code-block-kit';
@@ -28,7 +37,6 @@ import remarkGfm from 'remark-gfm';
 /**
  * read-only 插件集：不含 remarkMdx。
  * remarkMdx 会把 { }、< > 等当 JSX/表达式解析，遇到 LaTeX 残留会静默截断内容。
- * read-only 场景不需要解析 MDX（<span style>、<mark>、<date> 等），只用 remarkGfm 即可。
  */
 const ReadOnlyPlugins = [
   ...BasicNodesKit,
@@ -46,7 +54,7 @@ const ReadOnlyPlugins = [
 
 /**
  * deserializeMd 会把 code_block 的所有行合并成单个 code_line，
- * 按 \n 拆分回多个 code_line 节点。与 PlateEditor.tsx 的同名函数逻辑一致。
+ * 按 \n 拆分回多个 code_line 节点。
  */
 function fixCodeBlockLines(nodes: TElement[]): TElement[] {
   return nodes.map((node) => {
@@ -66,6 +74,22 @@ function fixCodeBlockLines(nodes: TElement[]): TElement[] {
   });
 }
 
+/** 轻量 loading 骨架，与项目 LoadingState 风格一致 */
+function ReadOnlySkeleton() {
+  return (
+    <div className="flex items-center justify-center py-16">
+      <motion.span
+        className="text-xs"
+        style={{ color: 'var(--ink-ghost)' }}
+        animate={{ opacity: [0.4, 1, 0.4] }}
+        transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+      >
+        正在渲染内容...
+      </motion.span>
+    </div>
+  );
+}
+
 export default function PlateReadOnly({
   markdown,
   contentItemId,
@@ -75,6 +99,8 @@ export default function PlateReadOnly({
   contentItemId?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [ready, setReady] = useState(false);
+  const [isPending, startTransition] = useTransition();
 
   const processedMarkdown = useMemo(() => {
     let md = markdown || '';
@@ -84,38 +110,60 @@ export default function PlateReadOnly({
     return md;
   }, [markdown, contentItemId]);
 
-  const editor = usePlateEditor(
-    {
-      plugins: ReadOnlyPlugins,
-      value: (editor) => {
-        try {
-          const nodes = deserializeMd(editor, processedMarkdown);
-          return fixCodeBlockLines(nodes);
-        } catch (err) {
-          console.error('[PlateReadOnly] deserializeMd failed, falling back to plain text:', err);
-          return [{ type: 'p', children: [{ text: processedMarkdown }] }];
-        }
-      },
-    },
-    // key 绑定 markdown 内容，内容变化时重建 editor
-    [processedMarkdown],
-  );
+  // markdown 变化时重置 ready，用 startTransition 延迟重建 editor
+  useEffect(() => {
+    setReady(false);
+    startTransition(() => {
+      setReady(true);
+    });
+  }, [processedMarkdown]);
 
   // 渲染后标记 heading ID，供 TOC 提取
   useLayoutEffect(() => {
+    if (!ready) return;
     const container = containerRef.current;
     if (!container) return;
     const headings = container.querySelectorAll('h1, h2, h3, h4, h5, h6');
     headings.forEach((el, i) => {
       el.setAttribute('data-heading-id', `heading-${i}`);
     });
-  }, [processedMarkdown]);
+  }, [ready, processedMarkdown]);
+
+  if (!ready || isPending) {
+    return <ReadOnlySkeleton />;
+  }
 
   return (
     <div ref={containerRef} style={{ color: 'var(--ink-light)' }}>
-      <Plate editor={editor} readOnly>
-        <Editor variant="none" readOnly />
-      </Plate>
+      <PlateReadOnlyInner markdown={processedMarkdown} />
     </div>
+  );
+}
+
+/**
+ * 内层组件：usePlateEditor 必须在 ready 之后才调用，
+ * 避免在 transition pending 期间创建重量级 editor 实例。
+ */
+function PlateReadOnlyInner({ markdown }: { markdown: string }) {
+  const editor = usePlateEditor(
+    {
+      plugins: ReadOnlyPlugins,
+      value: (editor) => {
+        try {
+          const nodes = deserializeMd(editor, markdown);
+          return fixCodeBlockLines(nodes);
+        } catch (err) {
+          console.error('[PlateReadOnly] deserializeMd failed:', err);
+          return [{ type: 'p', children: [{ text: markdown }] }];
+        }
+      },
+    },
+    [markdown],
+  );
+
+  return (
+    <Plate editor={editor} readOnly>
+      <Editor variant="none" readOnly />
+    </Plate>
   );
 }
