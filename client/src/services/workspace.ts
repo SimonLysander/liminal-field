@@ -148,6 +148,12 @@ export interface GalleryPost {
   photoCount: number;
   createdAt: string;
   updatedAt: string;
+  /** key-value 标签，如 { location: '上海', season: '春' } */
+  tags: Record<string, string>;
+  /** 封面照片的原始文件名，null 表示未设置 */
+  coverPhotoFileName: string | null;
+  /** 预览图 URL 列表（前 N 张缩略图，由后端返回） */
+  previewPhotoUrls: string[];
 }
 
 export interface GalleryPhoto {
@@ -156,6 +162,8 @@ export interface GalleryPhoto {
   fileName: string;
   size: number;
   order: number;
+  /** 照片说明文字，空字符串表示无说明 */
+  caption: string;
 }
 
 export interface GalleryPostDetail extends GalleryPost {
@@ -170,6 +178,23 @@ export interface CreateGalleryPostDto {
 export interface UpdateGalleryPostDto {
   title?: string;
   description?: string;
+}
+
+/** 单张照片的元数据，用于批量更新 meta 接口 */
+export interface PhotoMetaItem {
+  fileName: string;
+  caption: string;
+  order: number;
+}
+
+/** PUT /spaces/gallery/items/:id/meta 请求体 */
+export interface UpdateGalleryMetaDto {
+  /** 照片元数据列表，覆盖当前所有照片的 caption / order */
+  photos?: PhotoMetaItem[];
+  /** 封面照片文件名，null 表示清除封面 */
+  coverPhotoFileName?: string | null;
+  /** key-value 标签 */
+  tags?: Record<string, string>;
 }
 
 // ─── 工具函数 ───
@@ -371,5 +396,31 @@ export const galleryApi = {
     request<GalleryPost>(`/spaces/gallery/items/${id}/unpublish`, {
       method: 'PUT',
     }),
+
+  /** 获取画廊动态元数据（标签、封面、照片说明/排序） */
+  getMeta: (id: string) =>
+    request<GalleryPostDetail>(`/spaces/gallery/items/${id}/meta`),
+
+  /** 更新画廊动态元数据 */
+  updateMeta: (id: string, dto: UpdateGalleryMetaDto) =>
+    request<GalleryPostDetail>(`/spaces/gallery/items/${id}/meta`, {
+      method: 'PUT',
+      body: JSON.stringify(dto),
+    }),
+
+  /** 获取草稿，复用 notesApi 相同的 EditorDraft 结构 */
+  getDraft: (id: string) =>
+    request<EditorDraft>(`/spaces/gallery/items/${id}/draft`),
+
+  /** 保存草稿，复用 notesApi 相同的 SaveDraftDto 结构 */
+  saveDraft: (id: string, dto: SaveDraftDto) =>
+    request<EditorDraft>(`/spaces/gallery/items/${id}/draft`, {
+      method: 'PUT',
+      body: JSON.stringify(dto),
+    }),
+
+  /** 删除草稿 */
+  deleteDraft: (id: string) =>
+    request<void>(`/spaces/gallery/items/${id}/draft`, { method: 'DELETE' }),
 };
 
