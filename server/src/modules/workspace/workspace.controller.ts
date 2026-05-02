@@ -37,7 +37,8 @@ import { CreateWorkspaceItemDto } from './dto/create-workspace-item.dto';
 import { UpdateWorkspaceItemDto } from './dto/update-workspace-item.dto';
 import { EditorDraftDto } from './dto/editor-draft.dto';
 import { SaveDraftDto } from './dto/save-draft.dto';
-import { GalleryPostDetailDto } from './dto/gallery-view.dto';
+import { GalleryPostDetailDto, GalleryDraftDto } from './dto/gallery-view.dto';
+import { SaveGalleryPostDto } from './dto/save-gallery-post.dto';
 
 type MultipartRequest = {
   file: () => Promise<MultipartFile | undefined>;
@@ -95,25 +96,37 @@ export class WorkspaceController {
 
   // ─── Gallery 特有路由（必须在通用 :scope 路由之前注册）───
 
-  /** 获取画廊帖子的编辑器草稿（复用 NoteViewService，草稿以 contentItemId 为键）。 */
-  @Get('gallery/items/:id/draft')
-  async getGalleryDraft(@Param('id') id: string): Promise<EditorDraftDto> {
-    return this.noteViewService.getDraft(id);
+  /**
+   * 画廊帖子正式提交：接收结构化 JSON，后端负责序列化为 frontmatter main.md。
+   * 必须注册在通用 ':scope/items/:id' 之前，否则 'gallery' 会被匹配为 scope 参数。
+   */
+  @Put('gallery/items/:id')
+  async updateGalleryPost(
+    @Param('id') id: string,
+    @Body() dto: SaveGalleryPostDto,
+  ): Promise<GalleryPostDetailDto> {
+    return this.galleryViewService.commitPost(id, dto);
   }
 
-  /** 保存画廊帖子的编辑器草稿。 */
+  /** 获取画廊帖子的结构化草稿（后端反序列化 frontmatter，前端只收 JSON）。 */
+  @Get('gallery/items/:id/draft')
+  async getGalleryDraft(@Param('id') id: string): Promise<GalleryDraftDto> {
+    return this.galleryViewService.getDraft(id);
+  }
+
+  /** 保存画廊帖子的草稿（前端发结构化 JSON，后端序列化为 frontmatter 存储）。 */
   @Put('gallery/items/:id/draft')
   async saveGalleryDraft(
     @Param('id') id: string,
-    @Body() dto: SaveDraftDto,
-  ): Promise<EditorDraftDto> {
-    return this.noteViewService.saveDraft(id, dto);
+    @Body() dto: SaveGalleryPostDto,
+  ): Promise<GalleryDraftDto> {
+    return this.galleryViewService.saveDraft(id, dto);
   }
 
-  /** 删除画廊帖子的编辑器草稿。 */
+  /** 删除画廊帖子的草稿（提交后清理）。 */
   @Delete('gallery/items/:id/draft')
   async deleteGalleryDraft(@Param('id') id: string): Promise<void> {
-    return this.noteViewService.deleteDraft(id);
+    return this.galleryViewService.deleteDraft(id);
   }
 
   /** 画廊帖子的版本历史（复用 NoteViewService）。 */
@@ -122,13 +135,13 @@ export class WorkspaceController {
     return this.noteViewService.getHistory(id);
   }
 
-  /** 画廊帖子的历史版本内容（复用 NoteViewService）。 */
+  /** 画廊帖子的历史版本内容（返回解析后的结构化数据，不暴露 frontmatter）。 */
   @Get('gallery/items/:id/versions/:commitHash')
   async getGalleryByVersion(
     @Param('id') id: string,
     @Param('commitHash') commitHash: string,
-  ): Promise<ContentDetailDto> {
-    return this.noteViewService.getByVersion(id, commitHash);
+  ) {
+    return this.galleryViewService.getByVersion(id, commitHash);
   }
 
   // ─── 草稿资源（MinIO 临时存储）───

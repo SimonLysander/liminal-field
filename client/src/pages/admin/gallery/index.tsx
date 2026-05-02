@@ -88,7 +88,7 @@ export default function GalleryAdmin() {
   const [historyLoading, setHistoryLoading] = useState(false);
 
   /* 版本预览：点击历史版本时加载该版本的内容 */
-  const [preview, setPreview] = useState<{ commitHash: string; title: string; description: string; committedAt: string } | null>(null);
+  const [preview, setPreview] = useState<{ commitHash: string; title: string; description: string } | null>(null);
 
   /* 选中帖子变化时并行加载：详情 + 草稿 + 版本历史 */
   useEffect(() => {
@@ -138,12 +138,11 @@ export default function GalleryAdmin() {
       return;
     }
     try {
-      const versionContent = await galleryApi.getByVersion(selectedId, commitHash);
+      const ver = await galleryApi.getByVersion(selectedId, commitHash);
       setPreview({
-        commitHash,
-        title: versionContent.title,
-        description: versionContent.bodyMarkdown === '\u200B' ? '' : versionContent.bodyMarkdown,
-        committedAt: versionContent.updatedAt,
+        commitHash: ver.commitHash,
+        title: ver.title,
+        description: ver.prose,
       });
     } catch {
       toast.error('加载版本失败');

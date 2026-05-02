@@ -181,10 +181,34 @@ export interface CreateGalleryPostDto {
   description: string;
 }
 
+/** 画廊专属的保存 DTO，与后端 SaveGalleryPostDto 对应。前端只发结构化 JSON，不知道 frontmatter。 */
 export interface UpdateGalleryPostDto {
-  title?: string;
-  description?: string;
+  title: string;
+  prose: string;
+  photos?: Array<{ file: string; caption: string; tags?: Record<string, string> }>;
+  cover?: string | null;
+  tags?: Record<string, string>;
   changeNote?: string;
+}
+
+/** 画廊历史版本的结构化响应（后端解析 frontmatter 后返回）。 */
+export interface GalleryVersionContent {
+  commitHash: string;
+  title: string;
+  prose: string;
+  photos: Array<{ file: string; caption: string; tags: Record<string, string> }>;
+  cover: string | null;
+  tags: Record<string, string>;
+}
+
+/** 画廊草稿的结构化响应（后端反序列化 frontmatter 后返回，前端不接触 bodyMarkdown）。 */
+export interface GalleryDraft {
+  title: string;
+  prose: string;
+  photos: Array<{ file: string; caption: string; tags: Record<string, string> }>;
+  cover: string | null;
+  tags: Record<string, string>;
+  savedAt: string;
 }
 
 // ─── 工具函数 ───
@@ -345,17 +369,14 @@ export const galleryApi = {
       }),
     }),
 
+  /**
+   * 正式提交：发结构化 JSON 给后端 PUT /spaces/gallery/items/:id，
+   * 后端负责序列化为 frontmatter main.md，返回 GalleryPostDetailDto。
+   */
   update: (id: string, dto: UpdateGalleryPostDto) =>
-    request<GalleryPost>(`/spaces/gallery/items/${id}`, {
+    request<GalleryPostDetail>(`/spaces/gallery/items/${id}`, {
       method: 'PUT',
-      // 后端 DTO 字段名为 bodyMarkdown，补充 changeNote 满足后端 @IsNotEmpty() 校验
-      body: JSON.stringify({
-        title: dto.title,
-        bodyMarkdown: dto.description !== undefined
-          ? (dto.description || '\u200B')
-          : undefined,
-        changeNote: dto.changeNote ?? '更新画廊动态',
-      }),
+      body: JSON.stringify(dto),
     }),
 
   remove: (id: string) =>
@@ -389,13 +410,16 @@ export const galleryApi = {
       method: 'PUT',
     }),
 
-  /** 获取草稿，复用 notesApi 相同的 EditorDraft 结构 */
+  /**
+   * 获取结构化草稿（后端已反序列化 frontmatter，前端直接拿 JSON 字段）。
+   * 无草稿时后端返回 404，调用方需 catch 处理。
+   */
   getDraft: (id: string) =>
-    request<EditorDraft>(`/spaces/gallery/items/${id}/draft`),
+    request<GalleryDraft>(`/spaces/gallery/items/${id}/draft`),
 
-  /** 保存草稿，复用 notesApi 相同的 SaveDraftDto 结构 */
-  saveDraft: (id: string, dto: SaveDraftDto) =>
-    request<EditorDraft>(`/spaces/gallery/items/${id}/draft`, {
+  /** 保存结构化草稿（前端发 JSON，后端序列化为 frontmatter 存储）。 */
+  saveDraft: (id: string, dto: UpdateGalleryPostDto) =>
+    request<GalleryDraft>(`/spaces/gallery/items/${id}/draft`, {
       method: 'PUT',
       body: JSON.stringify(dto),
     }),
@@ -408,8 +432,8 @@ export const galleryApi = {
   getHistory: (id: string) =>
     request<ContentHistoryEntry[]>(`/spaces/gallery/items/${id}/history`),
 
-  /** 查看指定历史版本的内容 */
+  /** 查看指定历史版本的结构化内容（后端已解析 frontmatter） */
   getByVersion: (id: string, commitHash: string) =>
-    request<ContentDetail>(`/spaces/gallery/items/${id}/versions/${commitHash}`),
+    request<GalleryVersionContent>(`/spaces/gallery/items/${id}/versions/${commitHash}`),
 };
 
