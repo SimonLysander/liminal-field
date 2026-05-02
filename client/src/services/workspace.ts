@@ -382,21 +382,15 @@ export const galleryApi = {
   remove: (id: string) =>
     request<void>(`/spaces/gallery/items/${id}`, { method: 'DELETE' }),
 
-  /** 上传照片：对应后端 POST /spaces/gallery/items/:id/assets */
+  /** 上传照片到 MinIO 草稿存储，返回代理预览 URL。 */
   uploadPhoto: (id: string, file: File) => {
     const formData = new FormData();
     formData.append('file', file);
-    return request<GalleryPhoto>(`/spaces/gallery/items/${id}/assets`, {
-      method: 'POST',
-      body: formData,
-    });
+    return request<{ url: string; fileName: string; size: number }>(
+      `/spaces/gallery/items/${id}/draft-assets`,
+      { method: 'POST', body: formData },
+    );
   },
-
-  /** 删除照片：对应后端 DELETE /spaces/gallery/items/:id/assets/:photoId */
-  deletePhoto: (id: string, photoId: string) =>
-    request<void>(`/spaces/gallery/items/${id}/assets/${photoId}`, {
-      method: 'DELETE',
-    }),
 
   /** 发布。可选传 commitHash 发布指定历史版本，不传则发布 latestVersion。 */
   publish: (id: string, commitHash?: string) =>
