@@ -23,6 +23,8 @@
  * 不包含 CRUD 逻辑 — 那由 WorkspaceService 统一处理。
  */
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import { join, parse, extname } from 'path';
 import * as yaml from 'js-yaml';
 import { ContentRepository } from '../content/content.repository';
 import { ContentRepoService } from '../content/content-repo.service';
@@ -37,6 +39,7 @@ import {
 } from './dto/gallery-view.dto';
 import { EditorDraftRepository } from './editor-draft.repository';
 import { SaveGalleryPostDto } from './dto/save-gallery-post.dto';
+import { MinioService } from '../minio/minio.service';
 
 // 列表页最多显示的预览图数量。
 const PREVIEW_PHOTO_LIMIT = 9;
@@ -164,6 +167,7 @@ export class GalleryViewService {
     private readonly contentRepoService: ContentRepoService,
     private readonly contentService: ContentService,
     private readonly editorDraftRepository: EditorDraftRepository,
+    private readonly minioService: MinioService,
   ) {}
 
   /** 构建照片的统一访问 URL（走 /spaces/gallery/items/:id/assets/:fileName）。 */
@@ -425,5 +429,49 @@ export class GalleryViewService {
   /** 删除画廊草稿（提交后清理）。 */
   async deleteDraft(contentItemId: string): Promise<void> {
     await this.editorDraftRepository.deleteByContentItemId(contentItemId);
+  }
+
+  // ─── 草稿照片（MinIO 临时存储）───
+
+  /** 文件名消毒：小写 + 去特殊字符 + 追加 uuid8 后缀防冲突。 */
+  private sanitizeFileName(original: string): string {
+    const parsed = parse(original);
+    const baseName = parsed.name
+      .toLowerCase()
+      .replace(/[^a-zA-Z0-9-_]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+    const safeBaseName = baseName || 'photo';
+    const extension = extname(parsed.base).toLowerCase();
+    const suffix = randomUUID().slice(0, 8);
+    return `${safeBaseName}-${suffix}${extension}`;
+  }
+
+  /** 上传草稿照片到 MinIO，返回代理预览 URL。 */
+  async uploadDraftPhoto(
+    contentItemId: string,
+    input: { originalFileName: string; contentType: string; buffer: Buffer },
+  ): Promise<{ url: string; fileName: string; size: number }> {
+    await this.contentService.assertContentItemExists(contentItemId);
+    const fileName = this.sanitizeFileName(input.originalFileName);
+    await this.minioService.uploadDraftAsset(
+      contentItemId,
+      fileName,
+      input.buffer,
+      input.contentType,
+    );
+    return {
+      url: `/api/v1/spaces/gallery/items/${contentItemId}/draft-assets/${fileName}`,
+      fileName,
+      size: input.buffer.byteLength,
+    };
+  }
+
+  /** 代理返回 MinIO 中的草稿照片。 */
+  async getDraftPhoto(
+    contentItemId: string,
+    fileName: string,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    return this.minioService.getDraftAsset(contentItemId, fileName);
   }
 }
