@@ -19,6 +19,8 @@ import { ContentModule } from '../content/content.module';
 import { NavigationModule } from '../navigation/navigation.module';
 import { EditorDraft } from './editor-draft.entity';
 import { EditorDraftRepository } from './editor-draft.repository';
+import { GalleryPostMeta } from './gallery-post-meta.entity';
+import { GalleryPostMetaRepository } from './gallery-post-meta.repository';
 import { WorkspaceService } from './workspace.service';
 import { NoteViewService } from './note-view.service';
 import { GalleryViewService } from './gallery-view.service';
@@ -28,7 +30,7 @@ import { WorkspaceController } from './workspace.controller';
   imports: [
     ContentModule,
     NavigationModule,
-    TypegooseModule.forFeature([EditorDraft]),
+    TypegooseModule.forFeature([EditorDraft, GalleryPostMeta]),
   ],
   controllers: [WorkspaceController],
   providers: [
@@ -36,6 +38,7 @@ import { WorkspaceController } from './workspace.controller';
     NoteViewService,
     GalleryViewService,
     EditorDraftRepository,
+    GalleryPostMetaRepository,
   ],
   exports: [WorkspaceService, NoteViewService, GalleryViewService],
 })
