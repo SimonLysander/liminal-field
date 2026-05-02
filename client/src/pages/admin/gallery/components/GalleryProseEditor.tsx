@@ -97,14 +97,12 @@ function GalleryProseEditorInner() {
     <div className="flex flex-col">
       {/* 标签行：左侧"随笔"，右侧字符计数 */}
       <div className="mb-1 flex items-center justify-between px-0.5">
-        <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--ink-ghost)' }}>
+        <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>
           随笔
         </span>
         <span
-          style={{
-            fontSize: 'var(--text-2xs)',
-            color: isOverLimit ? 'var(--mark-red)' : 'var(--ink-ghost)',
-          }}
+          className="text-2xs"
+          style={{ color: isOverLimit ? 'var(--mark-red)' : 'var(--ink-ghost)' }}
         >
           {charCount} / {CHAR_LIMIT}
         </span>
@@ -139,11 +137,11 @@ function GalleryProseEditorInner() {
           </ToolbarGroup>
         </Toolbar>
 
-        {/* 编辑区：贴底，圆角下方 */}
+        {/* 编辑区：贴底，圆角下方，样式与 note 编辑器对齐 */}
         <EditorContainer className="rounded-b-md">
           <Editor
             variant="none"
-            className="min-h-[100px] w-full px-3 py-2 text-sm"
+            className="min-h-[120px] w-full px-4 pt-3 pb-8 text-base"
             placeholder="写点什么…"
           />
         </EditorContainer>
