@@ -16,11 +16,6 @@ import { toast } from 'sonner';
 
 import Topbar from '@/components/global/Topbar';
 import { LoadingState, ContentFade } from '@/components/LoadingState';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel,
-  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
-  AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
 import { galleryApi, type GalleryPost, type GalleryPostDetail } from '@/services/workspace';
 import { smoothBounce } from '@/lib/motion';
 import { GalleryPostListItem, GalleryPostPreview } from './components/GalleryFeedCard';
@@ -245,6 +240,9 @@ export default function GalleryAdmin() {
                   <GalleryPostPreview
                     post={detail}
                     onPhotoClick={(index) => { setModalPhotoIndex(index); setModalOpen(true); }}
+                    onPublish={() => void handlePublish(detail.id)}
+                    onUnpublish={() => void handleUnpublish(detail.id)}
+                    onDelete={() => void handleDelete(detail.id)}
                   />
                 ) : (
                   <EmptyState message="选择一条动态，或点击新建" />
@@ -312,39 +310,6 @@ export default function GalleryAdmin() {
                 </div>
               </div>
 
-              {/* 操作 */}
-              <div>
-                <SectionTitle>操作</SectionTitle>
-                <div className="space-y-2">
-                  <button
-                    className="w-full rounded-lg py-2 text-xs font-medium transition-colors"
-                    style={{ background: 'var(--shelf)', color: 'var(--ink)', border: '0.5px solid var(--separator)' }}
-                    onClick={() => detail.status === 'draft' ? void handlePublish(detail.id) : void handleUnpublish(detail.id)}
-                  >
-                    {detail.status === 'draft' ? '发布' : '取消发布'}
-                  </button>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <button
-                        className="w-full rounded-lg py-2 text-xs font-medium transition-colors"
-                        style={{ color: 'var(--mark-red)', border: '0.5px solid var(--separator)' }}
-                      >
-                        删除
-                      </button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>确认删除？</AlertDialogTitle>
-                        <AlertDialogDescription>删除后无法恢复。</AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>取消</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => void handleDelete(detail.id)}>删除</AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
-              </div>
             </aside>
           )}
         </div>

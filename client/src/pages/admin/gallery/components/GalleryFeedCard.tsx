@@ -123,24 +123,63 @@ export function GalleryPostListItem({ post, isSelected, onClick }: GalleryPostLi
 interface GalleryPostPreviewProps {
   post: GalleryPost & { photos?: Array<{ id: string; url: string; fileName: string; caption: string }> };
   onPhotoClick?: (index: number) => void;
+  onPublish?: () => void;
+  onUnpublish?: () => void;
+  onDelete?: () => void;
 }
 
 export function GalleryPostPreview({
   post,
   onPhotoClick,
+  onPublish,
+  onUnpublish,
+  onDelete,
 }: GalleryPostPreviewProps) {
   const locationTag = post.tags?.location;
   const photoUrls = post.photos?.map((p) => p.url) ?? post.previewPhotoUrls ?? [];
 
   return (
     <div className="mx-auto max-w-[740px]">
-      {/* 标题 */}
-      <h1
-        className="mb-5 text-2xl font-semibold leading-tight"
-        style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}
-      >
-        {post.title}
-      </h1>
+      {/* 标题 + 操作按钮 */}
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <h1
+          className="min-w-0 flex-1 text-2xl font-semibold leading-tight"
+          style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}
+        >
+          {post.title}
+        </h1>
+        {(onPublish || onUnpublish || onDelete) && (
+          <div className="flex shrink-0 items-center gap-2">
+            {post.status === 'draft' && onPublish && (
+              <button
+                className="rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors"
+                style={{ background: 'var(--shelf)', color: 'var(--ink)', border: '0.5px solid var(--separator)' }}
+                onClick={onPublish}
+              >
+                发布
+              </button>
+            )}
+            {post.status === 'published' && onUnpublish && (
+              <button
+                className="rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors"
+                style={{ background: 'var(--shelf)', color: 'var(--ink)', border: '0.5px solid var(--separator)' }}
+                onClick={onUnpublish}
+              >
+                取消发布
+              </button>
+            )}
+            {onDelete && (
+              <button
+                className="rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors"
+                style={{ color: 'var(--mark-red)', border: '0.5px solid var(--separator)' }}
+                onClick={onDelete}
+              >
+                删除
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* 照片网格（可点击查看大图） */}
       {photoUrls.length > 0 && (
