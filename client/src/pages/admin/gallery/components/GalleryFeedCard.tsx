@@ -1,17 +1,13 @@
 // src/pages/admin/gallery/components/GalleryFeedCard.tsx
 //
-// 画廊 Feed 卡片组件 — 朋友圈风格，展示单条画廊动态。
-// 包含：标题 + 状态徽章 + ⋯ 操作菜单、照片预览网格、
-// 简介文字（line-clamp-2）、地点 + 时间 + 照片数量的 footer。
+// 画廊管理布局的两个核心展示组件：
+//   - GalleryPostListItem   左侧列表项 (thumbnail + title + badge + date)
+//   - GalleryPostPreview    右侧预览区（照片网格 + 详情 + 操作按钮）
+//
+// GalleryFeedCard（原 Feed 卡片）已被这两个组件取代，此文件保留以便
+// 历史引用仍能编译，但推荐从 index.tsx 直接使用上述两者。
 
-import { MoreHorizontal, MapPin } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { MapPin } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,7 +21,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import type { GalleryPost } from '@/services/workspace';
 
-// ─── 工具：相对时间（不依赖外部库，满足当前精度需求）───
+// ─── 工具：相对时间（不依赖外部库）───
 
 function formatRelativeTime(dateStr: string): string {
   const now = Date.now();
@@ -42,53 +38,12 @@ function formatRelativeTime(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
 }
 
-// ─── 照片预览网格 ───
-// 1 张：全宽，16/9 比例；2 张：两列，1/1 比例；3+ 张：三列，最多 9 张，1/1 比例
-
-function PhotoPreviewGrid({ urls }: { urls: string[] }) {
-  if (urls.length === 0) return null;
-
-  const count = urls.length;
-
-  if (count === 1) {
-    return (
-      <div className="mt-3 overflow-hidden rounded-lg" style={{ aspectRatio: '16/9' }}>
-        <img
-          src={urls[0]}
-          alt=""
-          className="h-full w-full object-cover"
-        />
-      </div>
-    );
-  }
-
-  const cols = count === 2 ? 2 : 3;
-  const displayUrls = urls.slice(0, 9);
-
-  return (
-    <div
-      className="mt-3 grid gap-1 overflow-hidden rounded-lg"
-      style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
-    >
-      {displayUrls.map((url, index) => (
-        <div key={index} style={{ aspectRatio: '1' }} className="overflow-hidden">
-          <img
-            src={url}
-            alt=""
-            className="h-full w-full object-cover"
-          />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 // ─── 状态徽章 ───
 
 function StatusBadge({ status }: { status: 'draft' | 'published' }) {
   return (
     <span
-      className="rounded px-1.5 py-0.5 text-xs font-medium"
+      className="shrink-0 rounded px-1.5 py-0.5 text-2xs font-medium"
       style={{
         background: status === 'published' ? 'rgba(52,199,89,0.1)' : 'var(--shelf)',
         color: status === 'published' ? 'var(--mark-green)' : 'var(--ink-ghost)',
@@ -99,7 +54,203 @@ function StatusBadge({ status }: { status: 'draft' | 'published' }) {
   );
 }
 
-// ─── Props ───
+// ─── 照片预览网格（右侧预览区用）───
+// 1 张：全宽 16:9；2 张：2 列 1:1；3+ 张：3 列 1:1，最多显示 9 张
+
+function PhotoPreviewGrid({ urls }: { urls: string[] }) {
+  if (urls.length === 0) return null;
+
+  const count = urls.length;
+
+  if (count === 1) {
+    return (
+      <div className="overflow-hidden rounded-lg" style={{ aspectRatio: '16/9' }}>
+        <img src={urls[0]} alt="" className="h-full w-full object-cover" />
+      </div>
+    );
+  }
+
+  const cols = count === 2 ? 2 : 3;
+  const displayUrls = urls.slice(0, 9);
+
+  return (
+    <div
+      className="grid gap-1 overflow-hidden rounded-lg"
+      style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+    >
+      {displayUrls.map((url, index) => (
+        <div key={index} style={{ aspectRatio: '1' }} className="overflow-hidden">
+          <img src={url} alt="" className="h-full w-full object-cover" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── GalleryPostListItem — 左侧列表项 ───
+// 缩略图 (38×38) + 标题 + 状态徽章 + 更新日期，点击选中
+
+interface GalleryPostListItemProps {
+  post: GalleryPost;
+  isSelected: boolean;
+  onClick: () => void;
+}
+
+export function GalleryPostListItem({ post, isSelected, onClick }: GalleryPostListItemProps) {
+  const thumbnail = post.previewPhotoUrls?.[0] ?? post.coverUrl ?? null;
+
+  return (
+    <div
+      className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors duration-150"
+      style={{
+        background: isSelected ? 'var(--shelf)' : undefined,
+        color: isSelected ? 'var(--ink)' : 'var(--ink-light)',
+      }}
+      onClick={onClick}
+    >
+      {/* 缩略图 */}
+      <div
+        className="shrink-0 overflow-hidden rounded"
+        style={{ width: 38, height: 38, background: 'var(--separator)' }}
+      >
+        {thumbnail ? (
+          <img src={thumbnail} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            <span style={{ color: 'var(--ink-ghost)', fontSize: 16 }}>📷</span>
+          </div>
+        )}
+      </div>
+
+      {/* 文字内容：标题 + 徽章 + 日期 */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span
+            className="min-w-0 flex-1 truncate text-base"
+            style={{ fontWeight: isSelected ? 500 : 400 }}
+          >
+            {post.title}
+          </span>
+          <StatusBadge status={post.status} />
+        </div>
+        <div className="mt-0.5 text-2xs" style={{ color: 'var(--ink-ghost)' }}>
+          {formatRelativeTime(post.updatedAt)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── GalleryPostPreview — 右侧预览区 ───
+// 完整预览：大标题 + 照片网格 + 描述 + 地点标签 + 状态 + 操作按钮
+
+interface GalleryPostPreviewProps {
+  post: GalleryPost;
+  onEdit: () => void;
+  onPublish: () => void;
+  onUnpublish: () => void;
+  onDelete: () => void;
+}
+
+export function GalleryPostPreview({
+  post,
+  onEdit,
+  onPublish,
+  onUnpublish,
+  onDelete,
+}: GalleryPostPreviewProps) {
+  const locationTag = post.tags?.location;
+
+  return (
+    <div className="mx-auto max-w-[680px]">
+      {/* 标题 + 操作按钮（同一行） */}
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <h1
+          className="min-w-0 flex-1 text-2xl font-semibold leading-tight"
+          style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}
+        >
+          {post.title}
+        </h1>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            className="rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors duration-150"
+            style={{ background: 'var(--ink)', color: 'var(--paper)' }}
+            onClick={onEdit}
+          >
+            编辑
+          </button>
+          <button
+            className="rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors duration-150"
+            style={{ background: 'var(--shelf)', color: 'var(--ink)', border: '0.5px solid var(--separator)' }}
+            onClick={post.status === 'draft' ? onPublish : onUnpublish}
+          >
+            {post.status === 'draft' ? '发布' : '取消发布'}
+          </button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <button
+                className="rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors duration-150"
+                style={{ color: 'var(--mark-red)', border: '0.5px solid var(--separator)' }}
+              >
+                删除
+              </button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>确认删除？</AlertDialogTitle>
+                <AlertDialogDescription>删除后无法恢复。将同时删除该动态下的所有照片。</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>取消</AlertDialogCancel>
+                <AlertDialogAction className="bg-red-500 hover:bg-red-600" onClick={onDelete}>删除</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </div>
+
+      {/* 状态 + 时间 */}
+      <div className="mb-5 flex items-center gap-3">
+        <StatusBadge status={post.status} />
+        <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
+          {post.photoCount} 张 · 更新于 {formatRelativeTime(post.updatedAt)}
+        </span>
+      </div>
+
+      {/* 照片预览网格 */}
+      {(post.previewPhotoUrls?.length ?? 0) > 0 && (
+        <div className="mb-5">
+          <PhotoPreviewGrid urls={post.previewPhotoUrls} />
+        </div>
+      )}
+
+      {/* 描述文字 */}
+      {post.description && (
+        <p className="mb-4 text-sm leading-relaxed" style={{ color: 'var(--ink-light)' }}>
+          {post.description}
+        </p>
+      )}
+
+      {/* 地点标签 */}
+      {locationTag && (
+        <div className="mb-4">
+          <span
+            className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs"
+            style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
+          >
+            <MapPin size={11} strokeWidth={1.5} />
+            {locationTag}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── GalleryFeedCard（保留，已废弃）───
+// 旧版 Feed 布局使用的卡片，保留以防外部仍有引用。
+// 新布局请使用 GalleryPostListItem + GalleryPostPreview。
 
 interface GalleryFeedCardProps {
   post: GalleryPost;
@@ -109,8 +260,7 @@ interface GalleryFeedCardProps {
   onDelete: () => void;
 }
 
-// ─── 主组件 ───
-
+/** @deprecated 请改用 GalleryPostListItem + GalleryPostPreview */
 export function GalleryFeedCard({
   post,
   onEdit,
@@ -118,120 +268,13 @@ export function GalleryFeedCard({
   onUnpublish,
   onDelete,
 }: GalleryFeedCardProps) {
-  const locationTag = post.tags?.location;
-
   return (
-    <div
-      className="rounded-xl px-5 py-4"
-      style={{
-        background: 'var(--paper)',
-        border: '0.5px solid var(--separator)',
-      }}
-    >
-      {/* Header row：标题 + 状态徽章 + ⋯ 菜单 */}
-      <div className="flex items-center gap-2">
-        <span className="flex-1 truncate text-base font-semibold" style={{ color: 'var(--ink)' }}>
-          {post.title}
-        </span>
-        <StatusBadge status={post.status} />
-
-        {/* ⋯ 操作菜单 */}
-        <AlertDialog>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors duration-150"
-                style={{ color: 'var(--ink-ghost)' }}
-                aria-label="更多操作"
-              >
-                <MoreHorizontal size={16} strokeWidth={1.5} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[7rem]">
-              {/* 编辑 */}
-              <DropdownMenuItem onSelect={onEdit}>编辑</DropdownMenuItem>
-
-              {/* 发布 / 取消发布 */}
-              {post.status === 'draft' ? (
-                <DropdownMenuItem onSelect={onPublish}>发布</DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem onSelect={onUnpublish}>取消发布</DropdownMenuItem>
-              )}
-
-              <DropdownMenuSeparator />
-
-              {/* 删除——AlertDialogTrigger 包裹，点击后弹出确认对话框 */}
-              <AlertDialogTrigger asChild>
-                <DropdownMenuItem
-                  className="text-red-500 focus:text-red-500"
-                  onSelect={(e) => {
-                    // 阻止 DropdownMenu 在 AlertDialog 触发后关闭，让 AlertDialog 自己管理焦点
-                    e.preventDefault();
-                  }}
-                >
-                  删除
-                </DropdownMenuItem>
-              </AlertDialogTrigger>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* 删除确认对话框 */}
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>确认删除？</AlertDialogTitle>
-              <AlertDialogDescription>
-                删除后无法恢复。将同时删除该动态下的所有照片。
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>取消</AlertDialogCancel>
-              <AlertDialogAction
-                className="bg-red-500 hover:bg-red-600"
-                onClick={onDelete}
-              >
-                删除
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </div>
-
-      {/* 照片预览网格 */}
-      <PhotoPreviewGrid urls={post.previewPhotoUrls ?? []} />
-
-      {/* 简介文字（最多两行） */}
-      {post.description && (
-        <p
-          className="mt-3 line-clamp-2 text-sm"
-          style={{ color: 'var(--ink-light)' }}
-        >
-          {post.description}
-        </p>
-      )}
-
-      {/* Footer：地点 + 相对时间 + 照片数 */}
-      <div className="mt-3 flex items-center gap-2">
-        {/* 地点标签 */}
-        {locationTag && (
-          <span
-            className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
-            style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
-          >
-            <MapPin size={11} strokeWidth={1.5} />
-            {locationTag}
-          </span>
-        )}
-
-        {/* 时间 */}
-        <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
-          {formatRelativeTime(post.updatedAt)}
-        </span>
-
-        {/* 照片数量 */}
-        <span className="ml-auto text-xs" style={{ color: 'var(--ink-ghost)' }}>
-          {post.photoCount} 张
-        </span>
-      </div>
-    </div>
+    <GalleryPostPreview
+      post={post}
+      onEdit={onEdit}
+      onPublish={onPublish}
+      onUnpublish={onUnpublish}
+      onDelete={onDelete}
+    />
   );
 }
