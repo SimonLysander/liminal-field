@@ -7,7 +7,7 @@ export function BlockquoteElement(props: PlateElementProps) {
     <PlateElement
       as="blockquote"
       className="my-4 border-l-2 py-0.5 pl-5 pr-4 text-ink-faded"
-      style={{ borderColor: 'var(--ink)', background: 'var(--shelf)' }}
+      style={{ borderColor: 'var(--ink-light)', background: 'var(--shelf)' }}
       {...props}
     />
   );
