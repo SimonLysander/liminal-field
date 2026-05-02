@@ -7,6 +7,7 @@ import type { StructureNodeType } from '@/services/structure';
 import { parseError } from '../helpers';
 import { type ModalState, type NodeSubmitPayload } from '../types';
 import { importApi } from '@/services/import';
+import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
 
 /**
  * Modal dialog for creating or editing tree nodes.
@@ -100,6 +101,8 @@ export const NodeFormModal = ({
   ];
 
   return (
+    <>
+    <ThresholdOverlay visible={importing} label="正在解析文件..." />
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
       style={{ background: 'rgba(0,0,0,0.2)', backdropFilter: 'blur(4px)' }}
@@ -209,6 +212,7 @@ export const NodeFormModal = ({
         </form>
       </motion.div>
     </div>
+    </>
   );
 };
 

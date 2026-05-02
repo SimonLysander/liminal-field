@@ -4,6 +4,7 @@ import { ArrowLeft, Check, X, FolderOpen } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import MarkdownBody from '@/components/shared/MarkdownBody';
+import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
 import { importApi, type AssetRef, type ParseResult } from '@/services/import';
 import { parseError } from './helpers';
 
@@ -143,6 +144,8 @@ export default function ImportPreviewPage() {
 
   return (
     <div className="flex h-screen flex-col" style={{ background: 'var(--paper)' }}>
+      <ThresholdOverlay visible={confirming} label="正在导入内容..." />
+
       {/* Header */}
       <header
         className="flex items-center gap-3 border-b px-5 py-3"
