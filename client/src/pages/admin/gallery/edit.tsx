@@ -13,8 +13,6 @@
 
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft } from 'lucide-react';
-
 import Topbar from '@/components/global/Topbar';
 import { LoadingState } from '@/components/LoadingState';
 import { PhotoGrid } from './components/PhotoGrid';
@@ -111,24 +109,27 @@ export default function GalleryEditPage() {
         className="flex shrink-0 items-center gap-3 px-4"
         style={{ height: 48, borderBottom: '0.5px solid var(--separator)' }}
       >
-        {/* 左侧：返回按钮 + 标题输入 */}
+        {/* 左侧：← / 标题（与 note 编辑器导航一致） */}
         <button
-          className="flex shrink-0 items-center gap-0.5 rounded-md px-1.5 py-1 transition-colors duration-150"
-          style={{ color: 'var(--ink-faded)' }}
+          className="hover-shelf shrink-0 rounded-md px-2 py-1 transition-colors duration-150"
+          style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-base)' }}
           onClick={() => navigate('/admin/gallery')}
           aria-label="返回画廊列表"
         >
-          <ChevronLeft size={16} strokeWidth={2} />
+          ←
         </button>
-
+        <span className="shrink-0" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-base)' }}>/</span>
         <input
           type="text"
           value={title}
           onChange={(e) => updateTitle(e.target.value)}
-          placeholder="动态标题"
-          className="min-w-0 flex-1 border-none bg-transparent text-base font-semibold outline-none placeholder:text-[var(--ink-ghost)]"
-          style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}
+          placeholder="无标题"
+          className="w-[160px] shrink-0 truncate border-none bg-transparent font-medium outline-none placeholder:text-[var(--ink-ghost)]"
+          style={{ color: 'var(--ink)', fontSize: 'var(--text-base)' }}
         />
+
+        {/* 中间留白 */}
+        <div className="min-w-0 flex-1" />
 
         {/* 右侧：保存状态 + 操作按钮 */}
         <div className="flex shrink-0 items-center gap-3">
