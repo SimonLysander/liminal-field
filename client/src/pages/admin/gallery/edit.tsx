@@ -149,7 +149,7 @@ export default function GalleryEditPage() {
 
       {/* 滚动内容区 */}
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-[520px] px-4 py-6 flex flex-col gap-5">
+        <div className="mx-auto max-w-[740px] px-10 py-6 flex flex-col gap-5">
           {/* 照片网格 */}
           <PhotoGrid
             photos={photos}
