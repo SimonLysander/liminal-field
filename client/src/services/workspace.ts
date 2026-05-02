@@ -168,6 +168,8 @@ export interface GalleryPhoto {
   order: number;
   /** 照片说明文字，空字符串表示无说明 */
   caption: string;
+  /** 照片级 key-value 标签，如 { location: '上海' } */
+  tags: Record<string, string>;
 }
 
 export interface GalleryPostDetail extends GalleryPost {
@@ -183,23 +185,6 @@ export interface UpdateGalleryPostDto {
   title?: string;
   description?: string;
   changeNote?: string;
-}
-
-/** 单张照片的元数据，用于批量更新 meta 接口 */
-export interface PhotoMetaItem {
-  fileName: string;
-  caption: string;
-  order: number;
-}
-
-/** PUT /spaces/gallery/items/:id/meta 请求体 */
-export interface UpdateGalleryMetaDto {
-  /** 照片元数据列表，覆盖当前所有照片的 caption / order */
-  photos?: PhotoMetaItem[];
-  /** 封面照片文件名，null 表示清除封面 */
-  coverPhotoFileName?: string | null;
-  /** key-value 标签 */
-  tags?: Record<string, string>;
 }
 
 // ─── 工具函数 ───
@@ -400,17 +385,6 @@ export const galleryApi = {
   unpublish: (id: string) =>
     request<GalleryPost>(`/spaces/gallery/items/${id}/unpublish`, {
       method: 'PUT',
-    }),
-
-  /** 获取画廊动态元数据（标签、封面、照片说明/排序） */
-  getMeta: (id: string) =>
-    request<GalleryPostDetail>(`/spaces/gallery/items/${id}/meta`),
-
-  /** 更新画廊动态元数据 */
-  updateMeta: (id: string, dto: UpdateGalleryMetaDto) =>
-    request<GalleryPostDetail>(`/spaces/gallery/items/${id}/meta`, {
-      method: 'PUT',
-      body: JSON.stringify(dto),
     }),
 
   /** 获取草稿，复用 notesApi 相同的 EditorDraft 结构 */
