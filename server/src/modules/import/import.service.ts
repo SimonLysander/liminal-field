@@ -77,6 +77,13 @@ export class ImportService {
     // LaTeX 公式 → inline code（Plate 不支持 LaTeX，$..$ 会导致 remarkMdx 解析崩溃）
     markdown = markdown.replace(/\$\$([\s\S]*?)\$\$/g, (_, tex) => '\n```\n' + tex.trim() + '\n```\n');
     markdown = markdown.replace(/\$([^\n$]+?)\$/g, '`$1`');
+    // HTML <img> → markdown 图片语法（MinerU 有时输出 HTML 而非标准 md）
+    markdown = markdown.replace(
+      /<img[^>]+src=["']([^"']+)["'][^>]*\/?>/gi,
+      (_, src) => `![](${src})`,
+    );
+    // 清理包裹图片的 HTML 容器 div（MinerU 输出的 <div style="..."><div>...<img>...</div></div>）
+    markdown = markdown.replace(/<\/?div[^>]*>/gi, '');
     // 转义裸露的 { } ：remarkMdx 会把它们当 JSX 表达式解析，导致静默截断
     markdown = this.escapeBracesOutsideCode(markdown);
     markdown = markdown.replace(/\n{3,}/g, '\n\n');
