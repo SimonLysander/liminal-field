@@ -1,17 +1,26 @@
 // src/pages/admin/gallery/index.tsx
 //
-// 画廊管理主页面（Feed 布局）— 替换原三栏布局。
-// 朋友圈风格：顶部 filter tabs + "新建动态"按钮，主体为单列 Feed 卡片列表。
-// 最大宽度 600px 居中，背景色使用 var(--shelf) 提供与卡片的对比层次。
+// 画廊管理主页面 — 左列表 + 右预览布局
+//
+// 布局对齐 ContentAdmin / AdminStructurePanel 的模式：
+//   左侧 (200px, sidebar-bg)  — 过滤标签 + 帖子列表 + 新建按钮
+//   右侧 (flex-1, paper)      — 选中帖子预览（标题/照片/描述/操作）
+//
+// 与 notes 版本最大的不同：这是扁平一级列表，无文件夹 / 面包屑。
 
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { AnimatePresence, motion } from 'motion/react';
+import { Plus, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 import Topbar from '@/components/global/Topbar';
 import { LoadingState, ContentFade } from '@/components/LoadingState';
 import { galleryApi, type GalleryPost } from '@/services/workspace';
-import { GalleryFeedCard } from './components/GalleryFeedCard';
+import { smoothBounce } from '@/lib/motion';
+import { GalleryPostListItem, GalleryPostPreview } from './components/GalleryFeedCard';
+
+// ─── 常量 ───
 
 type StatusFilter = 'all' | 'draft' | 'published';
 
@@ -21,18 +30,48 @@ const FILTER_TABS: { key: StatusFilter; label: string }[] = [
   { key: 'published', label: '已发布' },
 ];
 
+// ─── 空状态 ───
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex flex-1 items-center justify-center">
+      <p className="text-sm" style={{ color: 'var(--ink-ghost)' }}>
+        {message}
+      </p>
+    </div>
+  );
+}
+
+// ─── 主组件 ───
+
 export default function GalleryAdmin() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [posts, setPosts] = useState<GalleryPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
-  // 加载帖子列表，status 参数传 undefined 时后端返回全部
+  /* 选中 ID 从 URL 参数 ?post=xxx 读取，保持 URL 同步 */
+  const selectedId = searchParams.get('post');
+  const selectedPost = posts.find((p) => p.id === selectedId) ?? null;
+
+  const setSelectedId = useCallback((id: string | null) => {
+    setSearchParams(id ? { post: id } : {}, { replace: true });
+  }, [setSearchParams]);
+
+  // ─── 数据加载 ───
+
   const loadPosts = async (filter: StatusFilter = statusFilter) => {
     setLoading(true);
     try {
       const data = await galleryApi.list(filter === 'all' ? undefined : filter);
       setPosts(data);
+      /* 如果当前选中的帖子在新列表中不存在了，清空 URL 参数 */
+      const currentId = searchParams.get('post');
+      if (currentId && !data.some((p) => p.id === currentId)) {
+        setSelectedId(null);
+      }
     } catch {
       toast.error('加载失败，请重试');
     } finally {
@@ -72,80 +111,140 @@ export default function GalleryAdmin() {
     try {
       await galleryApi.remove(id);
       toast.success('已删除');
+      // 删除后清除选中状态，再刷新列表
+      if (selectedId === id) setSelectedId(null);
       void loadPosts();
     } catch {
       toast.error('删除失败');
     }
   };
 
+  // ─── 渲染 ───
+
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      <Topbar />
-
-      {/* 内容区：背景 var(--shelf)，提供与白色卡片的层次对比 */}
-      <div className="flex-1 overflow-y-auto" style={{ background: 'var(--shelf)' }}>
-        <div className="mx-auto w-full max-w-[600px] px-4 py-5">
-
-          {/* 顶部操作栏：filter tabs + 新建按钮 */}
-          <div className="mb-5 flex items-center justify-between">
-            {/* Filter tabs */}
-            <div className="flex gap-1">
-              {FILTER_TABS.map((tab) => {
-                const isActive = statusFilter === tab.key;
-                return (
-                  <button
-                    key={tab.key}
-                    className="rounded-md px-3 py-1.5 text-sm font-medium transition-colors duration-150"
-                    style={{
-                      background: isActive ? 'var(--ink)' : 'transparent',
-                      color: isActive ? 'var(--paper)' : 'var(--ink-ghost)',
-                    }}
-                    onClick={() => setStatusFilter(tab.key)}
-                  >
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* 新建动态按钮 */}
-            <button
-              className="rounded-lg px-4 py-1.5 text-sm font-medium transition-colors duration-150"
-              style={{ background: 'var(--ink)', color: 'var(--paper)' }}
-              onClick={() => navigate('/admin/gallery/new')}
-            >
-              新建动态
-            </button>
+    <>
+      {/* ── 左侧面板：帖子列表 ── */}
+      <aside
+        className="flex w-[200px] shrink-0 flex-col overflow-hidden"
+        style={{
+          background: 'var(--sidebar-bg)',
+          borderRight: '0.5px solid var(--separator)',
+        }}
+      >
+        {/* Header：标题 + 数量 */}
+        <div className="px-5 pt-5 pb-1">
+          <div
+            className="text-base font-semibold"
+            style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}
+          >
+            画廊管理
           </div>
+          <div className="mt-1 text-2xs" style={{ color: 'var(--ink-ghost)' }}>
+            {posts.length} 条动态
+          </div>
+        </div>
 
-          {/* Feed 列表 */}
+        {/* Filter tabs：全部 / 草稿 / 已发布 */}
+        <div className="mt-3 px-2.5 pb-1">
+          <div className="flex gap-0.5">
+            {FILTER_TABS.map((tab) => {
+              const isActive = statusFilter === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  className="flex-1 rounded-md py-1 text-2xs font-medium transition-colors duration-150"
+                  style={{
+                    background: isActive ? 'var(--shelf)' : 'transparent',
+                    color: isActive ? 'var(--ink)' : 'var(--ink-ghost)',
+                  }}
+                  onClick={() => setStatusFilter(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 帖子列表 */}
+        <div className="flex-1 overflow-y-auto px-2.5 pb-4">
           <ContentFade stateKey={loading ? 'loading' : `list-${statusFilter}`}>
             {loading ? (
               <LoadingState />
             ) : posts.length === 0 ? (
-              <div
-                className="py-16 text-center text-sm"
-                style={{ color: 'var(--ink-ghost)' }}
-              >
+              <div className="px-3 py-8 text-center text-xs" style={{ color: 'var(--ink-ghost)' }}>
                 暂无动态
               </div>
             ) : (
-              <div className="flex flex-col gap-4">
+              <div className="mt-1">
                 {posts.map((post) => (
-                  <GalleryFeedCard
+                  <GalleryPostListItem
                     key={post.id}
                     post={post}
-                    onEdit={() => navigate(`/admin/gallery/edit/${post.id}`)}
-                    onPublish={() => void handlePublish(post.id)}
-                    onUnpublish={() => void handleUnpublish(post.id)}
-                    onDelete={() => void handleDelete(post.id)}
+                    isSelected={selectedId === post.id}
+                    onClick={() => setSelectedId(post.id)}
                   />
                 ))}
               </div>
             )}
           </ContentFade>
         </div>
-      </div>
-    </div>
+
+        {/* Bottom actions：刷新 + 新建 */}
+        <div
+          className="flex items-center justify-between px-3 py-1.5"
+          style={{ borderTop: '0.5px solid var(--separator)' }}
+        >
+          <button
+            className="hover-shelf flex items-center gap-1 rounded px-1.5 py-0.5 text-base transition-colors duration-150"
+            style={{ color: 'var(--ink-faded)' }}
+            onClick={() => void loadPosts()}
+          >
+            <RefreshCw size={9} strokeWidth={1.5} />
+            刷新
+          </button>
+          <button
+            className="hover-shelf flex items-center gap-1 rounded px-1.5 py-0.5 text-base font-medium transition-colors duration-150"
+            style={{ color: 'var(--ink)' }}
+            onClick={() => navigate('/admin/gallery/new')}
+          >
+            <Plus size={10} strokeWidth={2} />
+            新建
+          </button>
+        </div>
+      </aside>
+
+      {/* ── 右侧内容区：预览 ── */}
+      <main
+        className="relative z-0 flex flex-1 flex-col overflow-hidden"
+        style={{ background: 'var(--paper)' }}
+      >
+        <Topbar />
+        <div className="flex-1 overflow-y-auto px-10 py-9">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={selectedId ?? 'empty'}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -2 }}
+              transition={{ duration: 0.2, ease: smoothBounce }}
+              className="flex flex-1 flex-col"
+            >
+              {selectedPost ? (
+                <GalleryPostPreview
+                  post={selectedPost}
+                  onEdit={() => navigate(`/admin/gallery/edit/${selectedPost.id}`)}
+                  onPublish={() => void handlePublish(selectedPost.id)}
+                  onUnpublish={() => void handleUnpublish(selectedPost.id)}
+                  onDelete={() => void handleDelete(selectedPost.id)}
+                />
+              ) : (
+                <EmptyState message="选择一条动态，或点击新建" />
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </main>
+    </>
   );
 }
