@@ -138,6 +138,15 @@ export class WorkspaceController {
     return this.noteViewService.getHistory(id);
   }
 
+  /** 画廊帖子的历史版本内容（复用 NoteViewService）。 */
+  @Get('gallery/items/:id/versions/:commitHash')
+  async getGalleryByVersion(
+    @Param('id') id: string,
+    @Param('commitHash') commitHash: string,
+  ): Promise<ContentDetailDto> {
+    return this.noteViewService.getByVersion(id, commitHash);
+  }
+
   // ─── 草稿资源（MinIO 临时存储）───
 
   /** 上传草稿图片到 MinIO，返回预览 URL。 */

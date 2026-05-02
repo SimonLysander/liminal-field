@@ -87,12 +87,16 @@ export default function GalleryAdmin() {
   const [history, setHistory] = useState<ContentHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  /* 版本预览：点击历史版本时加载该版本的内容 */
+  const [preview, setPreview] = useState<{ commitHash: string; title: string; description: string; committedAt: string } | null>(null);
+
   /* 选中帖子变化时并行加载：详情 + 草稿 + 版本历史 */
   useEffect(() => {
     if (!selectedId) {
       setDetail(null);
       setDraftInfo({ exists: false });
       setHistory([]);
+      setPreview(null);
       return;
     }
     let cancelled = false;
@@ -124,6 +128,27 @@ export default function GalleryAdmin() {
   }, [selectedId]);
 
   // ─── 操作处理 ───
+
+  /** 切换版本预览：点击历史版本节点 */
+  const handlePreviewVersion = async (commitHash: string) => {
+    if (!selectedId) return;
+    /* 如果点的是最新版本，退出预览模式 */
+    if (history[0]?.commitHash === commitHash) {
+      setPreview(null);
+      return;
+    }
+    try {
+      const versionContent = await galleryApi.getByVersion(selectedId, commitHash);
+      setPreview({
+        commitHash,
+        title: versionContent.title,
+        description: versionContent.bodyMarkdown === '\u200B' ? '' : versionContent.bodyMarkdown,
+        committedAt: versionContent.updatedAt,
+      });
+    } catch {
+      toast.error('加载版本失败');
+    }
+  };
 
   /** 丢弃草稿：删除草稿 → 刷新 */
   const handleDiscardDraft = async (id: string) => {
@@ -262,13 +287,33 @@ export default function GalleryAdmin() {
                 {selectedId && detailLoading ? (
                   <LoadingState />
                 ) : detail ? (
-                  <GalleryPostPreview
-                    post={detail}
-                    onPhotoClick={(index) => { setModalPhotoIndex(index); setModalOpen(true); }}
-                    onPublish={() => void handlePublish(detail.id)}
-                    onUnpublish={() => void handleUnpublish(detail.id)}
-                    onDelete={() => void handleDelete(detail.id)}
-                  />
+                  <>
+                    {/* 版本预览横幅 */}
+                    {preview && (
+                      <div
+                        className="mb-4 flex items-center justify-between rounded-lg px-4 py-2.5"
+                        style={{ background: 'rgba(10,132,255,0.08)', border: '1px solid rgba(10,132,255,0.2)' }}
+                      >
+                        <span className="text-xs" style={{ color: 'var(--mark-blue)' }}>
+                          正在查看历史版本 {preview.commitHash.slice(0, 8)}
+                        </span>
+                        <button
+                          className="text-xs font-medium"
+                          style={{ color: 'var(--mark-blue)' }}
+                          onClick={() => setPreview(null)}
+                        >
+                          返回最新 →
+                        </button>
+                      </div>
+                    )}
+                    <GalleryPostPreview
+                      post={preview ? { ...detail, title: preview.title, description: preview.description } : detail}
+                      onPhotoClick={preview ? undefined : (index) => { setModalPhotoIndex(index); setModalOpen(true); }}
+                      onPublish={preview ? undefined : () => void handlePublish(detail.id)}
+                      onUnpublish={preview ? undefined : () => void handleUnpublish(detail.id)}
+                      onDelete={preview ? undefined : () => void handleDelete(detail.id)}
+                    />
+                  </>
                 ) : (
                   <EmptyState message="选择一条动态，或点击新建" />
                 )}
@@ -354,6 +399,8 @@ export default function GalleryAdmin() {
                     <VersionTimeline
                       history={history}
                       publishedHash={detail.publishedCommitHash ?? null}
+                      activePreviewHash={preview?.commitHash ?? null}
+                      onSelect={(hash) => void handlePreviewVersion(hash)}
                     />
                   )}
                 </div>
@@ -416,9 +463,13 @@ function formatCommitTime(iso: string): string {
 function VersionTimeline({
   history,
   publishedHash,
+  activePreviewHash,
+  onSelect,
 }: {
   history: ContentHistoryEntry[];
   publishedHash: string | null;
+  activePreviewHash?: string | null;
+  onSelect?: (commitHash: string) => void;
 }) {
   return (
     <div className="relative" style={{ paddingLeft: 16 }}>
@@ -430,14 +481,22 @@ function VersionTimeline({
       {history.map((entry, i) => {
         const isPublished = publishedHash === entry.commitHash;
         const isFirst = i === 0;
+        const isActive = activePreviewHash
+          ? activePreviewHash === entry.commitHash
+          : isFirst;
         const title = entry.message.split(' | ')[1]?.trim()
           || (entry.action === 'commit' ? '版本提交' : '版本更新');
 
         return (
           <div
             key={entry.commitHash}
-            className="relative"
-            style={{ padding: '8px 0 8px 12px' }}
+            className="relative cursor-pointer transition-all duration-150 hover:opacity-80"
+            style={{
+              padding: '8px 0 8px 12px',
+              background: isActive ? 'var(--accent-soft)' : 'transparent',
+              borderRadius: isActive ? 'var(--radius-sm)' : 0,
+            }}
+            onClick={() => onSelect?.(entry.commitHash)}
           >
             {/* 节点圆点 */}
             <span
@@ -447,13 +506,19 @@ function VersionTimeline({
                 top: 12,
                 width: 7,
                 height: 7,
-                background: isPublished
-                  ? 'var(--mark-green)'
-                  : isFirst
-                    ? 'var(--ink)'
-                    : 'var(--ink-ghost)',
+                background: isActive
+                  ? 'var(--mark-blue)'
+                  : isPublished
+                    ? 'var(--mark-green)'
+                    : isFirst
+                      ? 'var(--ink)'
+                      : 'var(--ink-ghost)',
                 border: '1.5px solid var(--paper-dark)',
-                boxShadow: isPublished ? '0 0 6px rgba(48,209,88,0.3)' : 'none',
+                boxShadow: isActive
+                  ? '0 0 6px rgba(10,132,255,0.4)'
+                  : isPublished
+                    ? '0 0 6px rgba(48,209,88,0.3)'
+                    : 'none',
               }}
             />
             <div

@@ -430,5 +430,9 @@ export const galleryApi = {
   /** 版本历史 */
   getHistory: (id: string) =>
     request<ContentHistoryEntry[]>(`/spaces/gallery/items/${id}/history`),
+
+  /** 查看指定历史版本的内容 */
+  getByVersion: (id: string, commitHash: string) =>
+    request<ContentDetail>(`/spaces/gallery/items/${id}/versions/${commitHash}`),
 };
 
