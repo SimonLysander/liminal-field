@@ -24,7 +24,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { arrayMove } from '@dnd-kit/sortable';
-import matter from 'gray-matter';
+import * as yaml from 'js-yaml';
 import { toast } from 'sonner';
 import {
   galleryApi,
@@ -88,24 +88,46 @@ function parseGalleryMainMd(raw: string | undefined | null): {
   if (!raw || raw === '\u200B') {
     return { photos: [], cover: null, tags: {}, prose: '' };
   }
-  const { data, content } = matter(raw);
+
+  /* 手动拆分 frontmatter（与后端 gallery-view.service.ts 逻辑一致） */
+  if (!raw.startsWith('---')) {
+    return { photos: [], cover: null, tags: {}, prose: raw };
+  }
+  const closingIdx = raw.indexOf('\n---', 3);
+  if (closingIdx === -1) {
+    return { photos: [], cover: null, tags: {}, prose: raw };
+  }
+
+  const yamlStr = raw.slice(4, closingIdx);
+  const prose = raw.slice(closingIdx + 4).trimStart();
+
+  let data: Record<string, unknown>;
+  try {
+    data = (yaml.load(yamlStr) as Record<string, unknown>) ?? {};
+  } catch {
+    return { photos: [], cover: null, tags: {}, prose: raw };
+  }
+
   return {
-    photos: ((data.photos ?? []) as Array<Record<string, unknown>>)
+    photos: (Array.isArray(data.photos) ? data.photos : [])
+      .filter((p): p is Record<string, unknown> => p !== null && typeof p === 'object')
       .map((p) => ({
-        file: (p.file as string) ?? '',
-        caption: (p.caption as string) ?? '',
-        tags: (p.tags as Record<string, string>) ?? {},
+        file: (typeof p.file === 'string' ? p.file : ''),
+        caption: (typeof p.caption === 'string' ? p.caption : ''),
+        tags: (p.tags && typeof p.tags === 'object' && !Array.isArray(p.tags)
+          ? p.tags as Record<string, string> : {}),
       }))
       .filter((p) => p.file),
-    cover: (data.cover as string) ?? null,
-    tags: (data.tags as Record<string, string>) ?? {},
-    prose: content.trim(),
+    cover: typeof data.cover === 'string' ? data.cover : null,
+    tags: (data.tags && typeof data.tags === 'object' && !Array.isArray(data.tags)
+      ? data.tags as Record<string, string> : {}),
+    prose,
   };
 }
 
 /**
  * 将本地状态序列化回完整 main.md（frontmatter YAML + prose）。
- * 规则：无任何 frontmatter 数据时直接返回 prose，避免多余的 --- 分隔符。
+ * 无 frontmatter 数据时直接返回 prose，避免多余的 --- 分隔符。
  */
 function serializeGalleryMainMd(data: {
   photos: FrontmatterPhotoEntry[];
@@ -120,11 +142,12 @@ function serializeGalleryMainMd(data: {
     fm.photos = data.photos.map((p) => ({
       file: p.file,
       caption: p.caption,
-      tags: p.tags,
+      ...(Object.keys(p.tags).length > 0 ? { tags: p.tags } : { tags: {} }),
     }));
   }
   if (Object.keys(fm).length === 0) return data.prose;
-  return matter.stringify(data.prose, fm);
+  const yamlStr = yaml.dump(fm, { indent: 2, lineWidth: -1 });
+  return `---\n${yamlStr}---\n\n${data.prose}`;
 }
 
 // ─── Hook ───
