@@ -68,6 +68,7 @@ export default function GalleryEditPage() {
     setCover,
     updateLocation,
     save,
+    commit,
     createPost,
   } = useGalleryEditor(id);
 
@@ -80,20 +81,18 @@ export default function GalleryEditPage() {
     setModalOpen(true);
   };
 
-  // 新建 vs 保存
-  const handleSave = async () => {
-    if (!id) {
-      // 新建场景：创建帖子，跳转到编辑页
-      try {
-        const newId = await createPost();
-        navigate(`/admin/gallery/edit/${newId}`, { replace: true });
-      } catch {
-        /* createPost 内部已 toast.error，无需重复处理 */
-      }
-    } else {
-      await save();
-      navigate(`/admin/gallery?post=${id}`);
-    }
+  // 新建：创建帖子
+  const handleCreate = async () => {
+    try {
+      const newId = await createPost();
+      navigate(`/admin/gallery/edit/${newId}`, { replace: true });
+    } catch { /* createPost 内部已 toast */ }
+  };
+
+  // 提交：业务提交 → 跳回管理页
+  const handleCommit = async () => {
+    await commit();
+    navigate(`/admin/gallery?post=${id}`);
   };
 
   if (loading) {
@@ -134,16 +133,34 @@ export default function GalleryEditPage() {
 
         {/* 右侧：保存状态 + 操作按钮 */}
         <div className="flex shrink-0 items-center gap-3">
-          {/* 新建场景下无需展示自动保存状态 */}
           {id && <SaveStatusBadge status={saveStatus} />}
 
-          <button
-            className="rounded-md px-3 py-1.5 text-sm font-medium transition-colors duration-150"
-            style={{ background: 'var(--ink)', color: 'var(--paper)' }}
-            onClick={() => void handleSave()}
-          >
-            {id ? '保存' : '创建'}
-          </button>
+          {id ? (
+            <>
+              <button
+                className="rounded-md px-3 py-1.5 text-sm transition-colors duration-150"
+                style={{ color: 'var(--ink-faded)', border: '0.5px solid var(--separator)' }}
+                onClick={() => void save()}
+              >
+                保存草稿
+              </button>
+              <button
+                className="rounded-md px-3 py-1.5 text-sm font-medium transition-colors duration-150"
+                style={{ background: 'var(--ink)', color: 'var(--paper)' }}
+                onClick={() => void handleCommit()}
+              >
+                提交
+              </button>
+            </>
+          ) : (
+            <button
+              className="rounded-md px-3 py-1.5 text-sm font-medium transition-colors duration-150"
+              style={{ background: 'var(--ink)', color: 'var(--paper)' }}
+              onClick={() => void handleCreate()}
+            >
+              创建
+            </button>
+          )}
         </div>
       </div>
 

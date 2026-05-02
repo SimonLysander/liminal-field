@@ -49,6 +49,7 @@ export interface GalleryEditorActions {
   setCover: (photoId: string) => void;
   updateLocation: (location: string | undefined) => void;
   save: () => Promise<void>;
+  commit: () => Promise<void>;
   createPost: () => Promise<string>;
 }
 
@@ -292,9 +293,31 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     [photos, coverPhotoFileName, savePhotoMeta],
   );
 
-  // ─── 手动保存（正式保存：Git commit + 删除草稿） ───
+  // ─── 手动保存草稿 ───
 
   const save = useCallback(async () => {
+    const id = effectiveIdRef.current;
+    if (!id) return;
+
+    setSaveStatus('saving');
+    try {
+      await galleryApi.saveDraft(id, {
+        title: titleRef.current,
+        summary: titleRef.current,
+        bodyMarkdown: proseRef.current || '\u200B',
+        changeNote: '保存草稿',
+      });
+      setSaveStatus('saved');
+      toast.success('草稿已保存');
+    } catch {
+      setSaveStatus('dirty');
+      toast.error('保存失败');
+    }
+  }, []);
+
+  // ─── 提交（业务提交：Git commit + 删除草稿） ───
+
+  const commit = useCallback(async () => {
     const id = effectiveIdRef.current;
     if (!id) return;
 
@@ -306,10 +329,10 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
       });
       await galleryApi.deleteDraft(id).catch(() => {});
       setSaveStatus('saved');
-      toast.success('已保存');
+      toast.success('已提交');
     } catch {
       setSaveStatus('dirty');
-      toast.error('保存失败');
+      toast.error('提交失败');
     }
   }, []);
 
@@ -342,6 +365,7 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     setCover,
     updateLocation,
     save,
+    commit,
     createPost,
   };
 }
