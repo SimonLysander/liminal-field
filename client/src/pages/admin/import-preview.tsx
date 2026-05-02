@@ -34,6 +34,7 @@ export default function ImportPreviewPage() {
   const [toc, setToc] = useState<{ level: number; text: string; id: string }[]>([]);
   const [activeToc, setActiveToc] = useState('');
   const contentRef = useRef<HTMLDivElement>(null);
+  const tocContainerRef = useRef<HTMLDivElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -90,6 +91,13 @@ export default function ImportPreviewPage() {
     el.addEventListener('scroll', handleScroll, { passive: true });
     return () => el.removeEventListener('scroll', handleScroll);
   }, [handleScroll]);
+
+  // TOC active 项变化时，自动滚到可见位置
+  useEffect(() => {
+    if (!activeToc || !tocContainerRef.current) return;
+    const activeEl = tocContainerRef.current.querySelector(`[data-toc-id="${activeToc}"]`);
+    activeEl?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [activeToc]);
 
   const scrollToHeading = (headingId: string) => {
     const el = contentRef.current?.querySelector(`[data-heading-id="${headingId}"]`) as HTMLElement | null;
@@ -212,10 +220,11 @@ export default function ImportPreviewPage() {
                 >
                   大纲
                 </h3>
-                <div className="overflow-y-auto" style={{ maxHeight: '40vh' }}>
+                <div ref={tocContainerRef} className="overflow-y-auto" style={{ maxHeight: '40vh' }}>
                   {toc.map((item) => (
                     <motion.div
                       key={item.id}
+                      data-toc-id={item.id}
                       className="cursor-pointer border-l-2 py-[5px] transition-all duration-200"
                       style={{
                         fontSize: 'var(--text-xs)',

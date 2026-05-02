@@ -74,6 +74,7 @@ function NoteReader({ id }: { id: string }) {
   const [activeToc, setActiveToc] = useState('');
   const [aiOpen, setAiOpen] = useState(false);
   const centerRef = useRef<HTMLDivElement>(null);
+  const tocPanelRef = useRef<HTMLDivElement>(null);
   const aiInputRef = useRef<HTMLInputElement>(null);
 
   const [toc, setToc] = useState<TocEntry[]>([]);
@@ -152,6 +153,13 @@ function NoteReader({ id }: { id: string }) {
     el.addEventListener('scroll', handleScroll, { passive: true });
     return () => el.removeEventListener('scroll', handleScroll);
   }, [handleScroll]);
+
+  // TOC active 项变化时，自动滚到可见位置
+  useEffect(() => {
+    if (!activeToc || !tocPanelRef.current) return;
+    const activeEl = tocPanelRef.current.querySelector(`[data-toc-id="${activeToc}"]`);
+    activeEl?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [activeToc]);
 
   /**
    * 点击 TOC 条目时滚动到对应标题，并短暂高亮目标标题。
@@ -249,6 +257,7 @@ function NoteReader({ id }: { id: string }) {
       {/* Right — TOC panel */}
       {toc.length > 0 && (
         <div
+          ref={tocPanelRef}
           className="flex w-[200px] shrink-0 flex-col gap-7 overflow-y-auto px-4 py-10"
           style={{ borderLeft: '0.5px solid var(--separator)' }}
         >
@@ -262,6 +271,7 @@ function NoteReader({ id }: { id: string }) {
             {toc.map((item) => (
               <motion.div
                 key={item.id}
+                data-toc-id={item.id}
                 className="cursor-pointer border-l-2 py-[5px] text-sm transition-all duration-200"
                 style={{
                   color: activeToc === item.id ? 'var(--ink)' : 'var(--ink-faded)',
