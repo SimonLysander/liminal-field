@@ -8,8 +8,12 @@ import { ContentGitService } from '../content/content-git.service';
 import { ContentRepository } from '../content/content.repository';
 import { ContentItem, ContentChangeType } from '../content/content-item.entity';
 import { NavigationNodeService } from '../navigation/navigation.service';
+import { MineruService } from './mineru.service';
 import { AssetRefDto, ParseResultDto } from './dto/parse-result.dto';
 import { ConfirmImportDto } from './dto/confirm-import.dto';
+
+/** 需要通过 MinerU 转换的文件扩展名 */
+const MINERU_EXTENSIONS = new Set(['.docx', '.doc', '.pdf', '.pptx', '.ppt']);
 
 /** MinIO 中 import 临时文件的前缀 */
 const IMPORT_PREFIX = 'import-temp';
@@ -26,6 +30,7 @@ export class ImportService {
 
   constructor(
     private readonly minioService: MinioService,
+    private readonly mineruService: MineruService,
     private readonly contentRepoService: ContentRepoService,
     private readonly contentGitService: ContentGitService,
     private readonly contentRepository: ContentRepository,
@@ -33,34 +38,57 @@ export class ImportService {
   ) {}
 
   /**
-   * 解析上传的 markdown 文件，扫描本地图片引用，
-   * 将结果暂存到 MinIO，返回 parseId 供后续步骤使用。
+   * 解析上传的文件，根据类型分流：
+   * - .md → 直接解析，扫描本地图片引用
+   * - .docx/.pdf 等 → 通过 MinerU API 转换为 markdown + 图片
+   *
+   * 结果暂存到 MinIO，返回 parseId 供后续步骤使用。
    */
   async parse(fileName: string, buffer: Buffer): Promise<ParseResultDto> {
     const parseId = randomUUID().replace(/-/g, '').slice(0, 16);
     const title = parsePath(fileName).name;
-    let markdown = buffer.toString('utf-8');
+    const ext = parsePath(fileName).ext.toLowerCase();
 
-    // 标题层级归一化：找到最小标题级别，整体前移到 h1
+    let markdown: string;
+    const assets: AssetRefDto[] = [];
+
+    if (MINERU_EXTENSIONS.has(ext)) {
+      // docx/pdf 等：走 MinerU 云端转换
+      const result = await this.mineruService.convert(fileName, buffer);
+      markdown = result.markdown;
+
+      // MinerU 提取的图片直接存入 MinIO 临时目录，标记为 resolved
+      for (const [imgName, imgBuffer] of result.images) {
+        await this.minioService.putObject(
+          `${IMPORT_PREFIX}/${parseId}/assets/${imgName}`,
+          imgBuffer,
+          this.guessMimeType(imgName),
+        );
+        // 查找 markdown 中对应的引用路径
+        const ref = this.findImageRef(markdown, imgName);
+        if (ref) {
+          assets.push({ ref, filename: imgName, status: 'resolved' });
+        }
+      }
+    } else {
+      // .md 文件：直接读取文本
+      markdown = buffer.toString('utf-8');
+    }
+
+    // 通用后处理
     markdown = this.normalizeHeadingLevels(markdown);
-
-    // 将 Obsidian 风格 ==highlight== 转换为 Plate 识别的 <mark> 标签
     markdown = markdown.replace(/==((?:[^=]|=[^=])+)==/g, '<mark>$1</mark>');
-
-    // 收窄多余空行：连续 3 行及以上空行压缩为 2 行（保留段落间距）
     markdown = markdown.replace(/\n{3,}/g, '\n\n');
 
-    // 扫描非 http(s) 开头的图片引用
+    // 扫描本地图片引用（.md 文件的图片，或 MinerU 结果中未匹配的引用）
     const localImageRegex = /!\[([^\]]*)\]\(((?!https?:\/\/)[^)]+)\)/g;
-    const assets: AssetRefDto[] = [];
-    const seen = new Set<string>();
-
+    const resolvedFiles = new Set(assets.map((a) => a.filename));
     let match: RegExpExecArray | null;
     while ((match = localImageRegex.exec(markdown)) !== null) {
       const ref = match[2];
       const filename = parsePath(ref).base;
-      if (seen.has(filename)) continue;
-      seen.add(filename);
+      if (resolvedFiles.has(filename)) continue;
+      resolvedFiles.add(filename);
       assets.push({ ref, filename, status: 'missing' });
     }
 
@@ -73,6 +101,26 @@ export class ImportService {
     );
 
     return { parseId, title, markdown, assets };
+  }
+
+  /** 在 markdown 中查找引用某个图片文件名的路径 */
+  private findImageRef(markdown: string, imgName: string): string | null {
+    const regex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+    let m: RegExpExecArray | null;
+    while ((m = regex.exec(markdown)) !== null) {
+      if (m[2].includes(imgName)) return m[2];
+    }
+    return null;
+  }
+
+  /** 根据扩展名推断 MIME 类型 */
+  private guessMimeType(fileName: string): string {
+    const ext = parsePath(fileName).ext.toLowerCase();
+    const map: Record<string, string> = {
+      '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
+    };
+    return map[ext] || 'application/octet-stream';
   }
 
   /**

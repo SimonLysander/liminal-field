@@ -166,7 +166,7 @@ export const NodeFormModal = ({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".md"
+                accept=".md,.docx,.pdf,.pptx"
                 className="hidden"
                 onChange={handleFileSelected}
               />
@@ -182,7 +182,7 @@ export const NodeFormModal = ({
                   border: '1px dashed var(--separator)',
                 }}
               >
-                {importing ? '解析中...' : '从文件导入 (.md)'}
+                {importing ? '解析中...' : '从文件导入'}
               </button>
             </>
           )}

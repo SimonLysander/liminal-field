@@ -17,3 +17,13 @@ minio:
 
 content:
   repoRoot: /data/liminal-field-kb
+
+mineru:
+  baseUrl: https://mineru.net
+  token: ${MINERU_TOKEN}
+  modelVersion: pipeline
+  language: ch
+  enableFormula: true
+  enableTable: true
+  pollIntervalMs: 3000
+  pollTimeoutMs: 600000
