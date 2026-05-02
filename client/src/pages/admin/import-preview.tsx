@@ -228,9 +228,9 @@ export default function ImportPreviewPage() {
                       className="cursor-pointer border-l-2 py-[5px] transition-all duration-200"
                       style={{
                         fontSize: 'var(--text-xs)',
-                        color: activeToc === item.id ? 'var(--ink)' : 'var(--ink-faded)',
+                        color: activeToc === item.id ? 'var(--ink-light)' : 'var(--ink-faded)',
                         fontWeight: activeToc === item.id ? 500 : 400,
-                        borderColor: activeToc === item.id ? 'var(--pip-a)' : 'transparent',
+                        borderColor: activeToc === item.id ? 'var(--ink-light)' : 'transparent',
                         paddingLeft: `${(item.level - 1) * 8 + 10}px`,
                       }}
                       animate={{ paddingLeft: activeToc === item.id ? (item.level - 1) * 8 + 12 : (item.level - 1) * 8 + 10 }}
