@@ -92,6 +92,7 @@ export default function GalleryEditPage() {
       }
     } else {
       await save();
+      navigate(`/admin/gallery?post=${id}`);
     }
   };
 
