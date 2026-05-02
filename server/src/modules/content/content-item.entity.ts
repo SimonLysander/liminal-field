@@ -32,7 +32,8 @@ export class ContentChangeLog {
 }
 
 export class ContentVersion {
-  @prop({ required: true, trim: true })
+  /** 创建后第一次提交前为空字符串，提交后填入真实 git commitHash */
+  @prop({ trim: true, default: '' })
   commitHash!: string;
 
   @prop({ required: true, trim: true })
