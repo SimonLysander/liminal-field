@@ -148,15 +148,22 @@ export default function GalleryEditPage() {
       {/* 滚动内容区 */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[520px] px-4 py-6 flex flex-col gap-5">
-          {/* 照片网格：仅编辑已有帖子时显示，新建帖子先创建再上传 */}
-          {id && (
-            <PhotoGrid
-              photos={photos}
-              onReorder={reorderPhotos}
-              onPhotoClick={handlePhotoClick}
-              onUpload={(files) => void uploadPhotos(files)}
-            />
-          )}
+          {/* 照片网格 */}
+          <PhotoGrid
+            photos={photos}
+            onReorder={reorderPhotos}
+            onPhotoClick={handlePhotoClick}
+            onUpload={async (files) => {
+              /* 新建场景：先创建动态拿到 ID，再上传照片 */
+              if (!id) {
+                try {
+                  const newId = await createPost();
+                  navigate(`/admin/gallery/edit/${newId}`, { replace: true });
+                } catch { return; }
+              }
+              void uploadPhotos(files);
+            }}
+          />
 
           {/* 随笔编辑器 */}
           <GalleryProseEditor
@@ -173,17 +180,15 @@ export default function GalleryEditPage() {
       </div>
 
       {/* 照片编辑弹窗 */}
-      {id && (
-        <PhotoEditModal
-          open={modalOpen}
-          photos={photos}
-          initialIndex={modalPhotoIndex}
-          onClose={() => setModalOpen(false)}
-          onCaptionChange={updateCaption}
-          onSetCover={setCover}
-          onDelete={deletePhoto}
-        />
-      )}
+      <PhotoEditModal
+        open={modalOpen}
+        photos={photos}
+        initialIndex={modalPhotoIndex}
+        onClose={() => setModalOpen(false)}
+        onCaptionChange={updateCaption}
+        onSetCover={setCover}
+        onDelete={deletePhoto}
+      />
     </div>
   );
 }
