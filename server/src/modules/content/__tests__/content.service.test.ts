@@ -172,13 +172,6 @@ describe('ContentService', () => {
       createdAt: now,
       updatedAt: now,
     } as never);
-    contentRepoService.readContentSource.mockResolvedValue({
-      bodyMarkdown: '# Title',
-      plainText: 'Title',
-      assetRefs: [],
-    });
-    contentGitService.recordCommittedContentChange.mockResolvedValue('init123');
-
     await service.createContent({
       title: 'React Hooks Intro',
       summary: 'Hooks summary',
@@ -186,21 +179,20 @@ describe('ContentService', () => {
       bodyMarkdown: '# Title',
     });
 
-    expect(contentGitService.prepareWritableWorkspace.mock.calls).toEqual([[]]);
+    /* createContent 只建 MongoDB，不碰 Git */
+    expect(contentGitService.prepareWritableWorkspace.mock.calls).toEqual([]);
     expect(
       contentGitService.recordCommittedContentChange.mock.calls,
-    ).toHaveLength(1);
-    expect(
-      contentGitService.recordCommittedContentChange.mock.calls[0]?.[1],
-    ).toBe('Initial content creation');
+    ).toHaveLength(0);
     expect(contentRepository.create.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({
         latestVersion: {
-          commitHash: 'init123',
+          commitHash: '',
           title: 'React Hooks Intro',
           summary: 'Hooks summary',
         },
         publishedVersion: null,
+        changeLogs: [],
       }),
     );
   });

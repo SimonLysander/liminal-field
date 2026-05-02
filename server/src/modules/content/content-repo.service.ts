@@ -316,9 +316,15 @@ export class ContentRepoService {
     contentId: string,
     options?: { commitHash?: string },
   ): Promise<ParsedContentSource> {
-    const bodyMarkdown = options?.commitHash
-      ? await this.readVersionedMainMarkdown(contentId, options.commitHash)
-      : await readFile(this.getMainMarkdownPath(contentId), 'utf8');
+    let bodyMarkdown: string;
+    try {
+      bodyMarkdown = options?.commitHash
+        ? await this.readVersionedMainMarkdown(contentId, options.commitHash)
+        : await readFile(this.getMainMarkdownPath(contentId), 'utf8');
+    } catch {
+      /* main.md 不存在（刚创建还没第一次提交），返回空内容 */
+      return { bodyMarkdown: '', plainText: '', assetRefs: [] };
+    }
     return {
       bodyMarkdown,
       plainText: this.extractPlainText(bodyMarkdown),

@@ -173,19 +173,27 @@ export class ContentService {
       ? ContentStatus.published
       : ContentStatus.committed;
 
-    if (
-      action === ContentSaveAction.publish &&
-      !publishCommitHash && // 指定了历史 commitHash 时跳过此校验
-      currentStatus !== ContentStatus.committed &&
-      !(
-        currentStatus === ContentStatus.published &&
-        this.resolveLatestVersion(current).commitHash !==
-          this.resolvePublishedVersion(current)?.commitHash
-      )
-    ) {
-      throw new BadRequestException(
-        'Only committed content or published content with newer committed changes can be published',
-      );
+    if (action === ContentSaveAction.publish) {
+      /* 从未提交过（commitHash 为空）→ 不能发布 */
+      const latestHash = this.resolveLatestVersion(current).commitHash;
+      if (!latestHash) {
+        throw new BadRequestException(
+          'Cannot publish: no committed version exists yet',
+        );
+      }
+      /* 已发布且无新变更 → 不能重复发布（指定历史 commitHash 除外） */
+      if (
+        !publishCommitHash &&
+        currentStatus !== ContentStatus.committed &&
+        !(
+          currentStatus === ContentStatus.published &&
+          latestHash !== this.resolvePublishedVersion(current)?.commitHash
+        )
+      ) {
+        throw new BadRequestException(
+          'Only committed content or published content with newer committed changes can be published',
+        );
+      }
     }
 
     if (
@@ -240,80 +248,33 @@ export class ContentService {
     };
   }
 
+  /**
+   * 创建内容条目：只建 MongoDB 记录，不写 Git。
+   *
+   * 第一次真正的 saveContent(action=commit) 才会写 main.md + git commit，
+   * 版本链从第一次业务提交开始，没有空的"创建"节点。
+   */
   async createContent(dto: CreateContentDto): Promise<ContentDetailDto> {
     const now = new Date();
     const id = this.buildContentId();
-    const summary = dto.summary;
-    const initialChange = this.buildChangeLog(
-      dto.title,
-      summary,
-      dto.changeNote?.trim() || 'Initial content creation',
-      dto.changeType,
-      now,
-    );
+    const summary = dto.summary || dto.title;
 
-    // Formal content writes must switch to the internal work branch before any
-    // file changes happen, otherwise runtime saves would dirty main even if
-    // only explicit Commit actions later create Git commits.
-    await this.contentGitService.prepareWritableWorkspace();
-
-    // 初始正文允许为空（管理端新建 DOC 节点时尚无内容），用零宽空格占位以满足
-    // writeMainMarkdown 的非空校验。编辑器首次保存时会覆盖该占位符。
-    const body = dto.bodyMarkdown || '\u200B';
-
-    // Write the Markdown source before persisting metadata so the database
-    // never points at a content item whose canonical file source is missing.
-    await this.contentRepoService.writeMainMarkdown(id, body);
-
-    // README 在 commit 之前写入，确保随 main.md 一起进入 Git commit
-    const preCommitSource = await this.contentRepoService.readContentSource(id);
-    const tempContent = {
-      id,
-      _id: id,
-      latestVersion: { commitHash: '', title: dto.title, summary },
-      changeLogs: [initialChange],
-      createdAt: now,
-      updatedAt: now,
-    } as ContentItem;
-    await this.contentRepoService.writeReadme(tempContent, preCommitSource.assetRefs);
-
-    const initialCommitHash =
-      await this.contentGitService.recordCommittedContentChange(
-        id,
-        initialChange.changeNote,
-      );
-
-    if (!initialCommitHash) {
-      throw new BadRequestException(
-        'Failed to create the initial formal content version',
-      );
-    }
-
-    const initialVersion = this.buildVersionSnapshot(
-      initialCommitHash,
-      dto.title,
-      summary,
-    );
     const content = await this.contentRepository.create({
       id,
-      latestVersion: initialVersion,
-      publishedVersion:
-        dto.status === ContentStatus.published ? initialVersion : null,
-      changeLogs: [
-        {
-          ...initialChange,
-          commitHash: initialCommitHash,
-        },
-      ],
+      latestVersion: { commitHash: '', title: dto.title, summary },
+      publishedVersion: null,
+      changeLogs: [],
       createdAt: now,
       updatedAt: now,
       createdBy: dto.createdBy,
       updatedBy: dto.createdBy,
     });
 
-    const source = await this.contentRepoService.readContentSource(id);
-
-    return this.toDetailDto(content, source);
+    return this.toDetailDto(content, {
+      bodyMarkdown: '',
+      plainText: '',
+      assetRefs: [],
+    });
   }
 
   async saveContent(
@@ -393,8 +354,8 @@ export class ContentService {
       const targetHash = dto.publishCommitHash ?? nextLatestVersion.commitHash;
       nextPublishedVersion = this.buildVersionSnapshot(
         targetHash,
-        dto.title,
-        dto.summary ?? '',
+        nextLatestVersion.title,
+        nextLatestVersion.summary ?? '',
       );
     }
 
