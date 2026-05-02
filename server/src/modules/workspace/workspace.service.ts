@@ -145,25 +145,14 @@ export class WorkspaceService {
       bodyMarkdown = source.bodyMarkdown;
     }
 
-    /*
-     * 业务动作：
-     *   commit（默认）— 只更新 latestVersion，不动 publishedVersion
-     *   publish — 提交并发布，同时更新 latestVersion 和 publishedVersion
-     */
-    const action = dto.action === 'publish'
-      ? ContentSaveAction.publish
-      : ContentSaveAction.commit;
-    const status = dto.action === 'publish'
-      ? ContentStatus.published
-      : ContentStatus.committed;
-
+    /* update 永远是业务提交，只更新 latestVersion，不动 publishedVersion */
     await this.contentService.saveContent(contentItemId, {
       title: newTitle,
       summary: newSummary,
-      status,
+      status: ContentStatus.committed,
       bodyMarkdown,
       changeNote: dto.changeNote,
-      action,
+      action: ContentSaveAction.commit,
     });
 
     // Navigation 节点名称与 Content 标题保持同步

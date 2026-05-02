@@ -1,5 +1,6 @@
-import { IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
+/** update 永远是业务提交（commit），发布走独立的 publish 端点。 */
 export class UpdateWorkspaceItemDto {
   @IsString()
   @IsOptional()
@@ -16,10 +17,4 @@ export class UpdateWorkspaceItemDto {
   @IsString()
   @IsNotEmpty()
   changeNote!: string;
-
-  /** 业务动作：commit（默认）= 只提交，publish = 提交并发布 */
-  @IsString()
-  @IsIn(['commit', 'publish'])
-  @IsOptional()
-  action?: 'commit' | 'publish';
 }
