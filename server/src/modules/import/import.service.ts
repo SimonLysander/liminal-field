@@ -77,6 +77,8 @@ export class ImportService {
     // LaTeX 公式 → inline code（Plate 不支持 LaTeX，$..$ 会导致 remarkMdx 解析崩溃）
     markdown = markdown.replace(/\$\$([\s\S]*?)\$\$/g, (_, tex) => '\n```\n' + tex.trim() + '\n```\n');
     markdown = markdown.replace(/\$([^\n$]+?)\$/g, '`$1`');
+    // 转义裸露的 { } ：remarkMdx 会把它们当 JSX 表达式解析，导致静默截断
+    markdown = this.escapeBracesOutsideCode(markdown);
     markdown = markdown.replace(/\n{3,}/g, '\n\n');
 
     // 扫描本地图片引用（.md 文件的图片，或 MinerU 结果中未匹配的引用）
@@ -284,6 +286,37 @@ export class ImportService {
       const newLevel = Math.max(1, hashes.length - shift);
       return '#'.repeat(newLevel) + ' ';
     });
+  }
+
+  /**
+   * 转义 fenced code block 和 inline code 之外的 { }。
+   * remarkMdx 会把裸露的 {expr} 当 JSX 表达式解析，失败时静默截断后续内容。
+   */
+  private escapeBracesOutsideCode(markdown: string): string {
+    const lines = markdown.split('\n');
+    const result: string[] = [];
+    let inCodeBlock = false;
+
+    for (const line of lines) {
+      // 检测 fenced code block 边界
+      if (/^```/.test(line)) {
+        inCodeBlock = !inCodeBlock;
+        result.push(line);
+        continue;
+      }
+      if (inCodeBlock) {
+        result.push(line);
+        continue;
+      }
+      // code block 外：转义 { } ，但跳过 inline code 内的
+      result.push(
+        line.replace(/(`[^`]*`)|([{}])/g, (match, codeSpan, brace) => {
+          if (codeSpan) return codeSpan; // inline code 内，保持原样
+          return brace === '{' ? '\\{' : '\\}';
+        }),
+      );
+    }
+    return result.join('\n');
   }
 
   /**
