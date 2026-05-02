@@ -69,13 +69,27 @@ export default function PlateReadOnly({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // 预处理：将 ./assets/ 路径改写为 API 代理 URL
   const processedMarkdown = useMemo(() => {
-    if (!contentItemId || !markdown) return markdown || '';
-    return markdown.replaceAll(
-      /\.\/assets\//g,
-      `/api/v1/spaces/notes/items/${contentItemId}/assets/`,
-    );
+    let md = markdown || '';
+
+    // 资源路径改写：./assets/ → API 代理 URL
+    if (contentItemId) {
+      md = md.replaceAll(/\.\/assets\//g, `/api/v1/spaces/notes/items/${contentItemId}/assets/`);
+    }
+
+    // 转义 fenced code block 和 inline code 之外的 { }，
+    // 防止 remarkMdx 把它们当 JSX 表达式解析导致静默截断
+    const lines = md.split('\n');
+    const escaped: string[] = [];
+    let inCodeBlock = false;
+    for (const line of lines) {
+      if (/^```/.test(line)) { inCodeBlock = !inCodeBlock; escaped.push(line); continue; }
+      if (inCodeBlock) { escaped.push(line); continue; }
+      escaped.push(line.replace(/(`[^`]*`)|([{}])/g, (_match, code, brace) =>
+        code ? code : brace === '{' ? '\\{' : '\\}',
+      ));
+    }
+    return escaped.join('\n');
   }, [markdown, contentItemId]);
 
   const editor = usePlateEditor(
