@@ -21,10 +21,15 @@ import { ListKit } from '@/components/editor/plugins/list-kit';
 import { TableKit } from '@/components/editor/plugins/table-kit';
 import { MediaKit } from '@/components/editor/plugins/media-kit';
 import { FontKit } from '@/components/editor/plugins/font-kit';
-import { MarkdownKit } from '@/components/editor/plugins/markdown-kit';
 import { Editor } from '@/components/ui/editor';
+import { MarkdownPlugin } from '@platejs/markdown';
+import remarkGfm from 'remark-gfm';
 
-/** read-only 只需渲染插件，不需要编辑交互（DnD、ExitBreak、TrailingBlock） */
+/**
+ * read-only 插件集：不含 remarkMdx。
+ * remarkMdx 会把 { }、< > 等当 JSX/表达式解析，遇到 LaTeX 残留会静默截断内容。
+ * read-only 场景不需要解析 MDX（<span style>、<mark>、<date> 等），只用 remarkGfm 即可。
+ */
 const ReadOnlyPlugins = [
   ...BasicNodesKit,
   ...CodeBlockKit,
@@ -34,7 +39,9 @@ const ReadOnlyPlugins = [
   ...TableKit,
   ...MediaKit,
   ...FontKit,
-  ...MarkdownKit,
+  MarkdownPlugin.configure({
+    options: { remarkPlugins: [remarkGfm] },
+  }),
 ];
 
 /**
@@ -71,25 +78,10 @@ export default function PlateReadOnly({
 
   const processedMarkdown = useMemo(() => {
     let md = markdown || '';
-
-    // 资源路径改写：./assets/ → API 代理 URL
     if (contentItemId) {
       md = md.replaceAll(/\.\/assets\//g, `/api/v1/spaces/notes/items/${contentItemId}/assets/`);
     }
-
-    // 转义 fenced code block 和 inline code 之外的 { }，
-    // 防止 remarkMdx 把它们当 JSX 表达式解析导致静默截断
-    const lines = md.split('\n');
-    const escaped: string[] = [];
-    let inCodeBlock = false;
-    for (const line of lines) {
-      if (/^```/.test(line)) { inCodeBlock = !inCodeBlock; escaped.push(line); continue; }
-      if (inCodeBlock) { escaped.push(line); continue; }
-      escaped.push(line.replace(/(`[^`]*`)|([{}])/g, (_match, code, brace) =>
-        code ? code : brace === '{' ? '\\{' : '\\}',
-      ));
-    }
-    return escaped.join('\n');
+    return md;
   }, [markdown, contentItemId]);
 
   const editor = usePlateEditor(
