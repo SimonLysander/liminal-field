@@ -146,6 +146,37 @@ export class WorkspaceController {
 
   // ─── 草稿资源（MinIO 临时存储）───
 
+  /** 上传画廊草稿照片到 MinIO。 */
+  @Post('gallery/items/:id/draft-assets')
+  async uploadGalleryDraftPhoto(
+    @Param('id') id: string,
+    @Req() request: MultipartRequest,
+  ) {
+    const file = await request.file();
+    if (!file) throw new BadRequestException('File is required');
+    const buffer = await file.toBuffer();
+    return this.galleryViewService.uploadDraftPhoto(id, {
+      originalFileName: file.filename,
+      contentType: file.mimetype,
+      buffer,
+    });
+  }
+
+  /** 代理返回画廊草稿照片（用户端不直连 MinIO）。 */
+  @RawResponse()
+  @Get('gallery/items/:id/draft-assets/:fileName')
+  async serveGalleryDraftPhoto(
+    @Param('id') id: string,
+    @Param('fileName') fileName: string,
+    @Res() reply: any,
+  ) {
+    const { buffer, contentType } =
+      await this.galleryViewService.getDraftPhoto(id, fileName);
+    reply.header('Content-Type', contentType);
+    reply.header('Cache-Control', 'no-cache');
+    reply.send(buffer);
+  }
+
   /** 上传草稿图片到 MinIO，返回预览 URL。 */
   @Post('notes/items/:id/draft-assets')
   async uploadDraftAsset(
