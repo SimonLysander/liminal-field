@@ -113,7 +113,7 @@ export default function GalleryEditPage() {
         <button
           className="hover-shelf shrink-0 rounded-md px-2 py-1 transition-colors duration-150"
           style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-base)' }}
-          onClick={() => navigate('/admin/gallery')}
+          onClick={() => navigate(id ? `/admin/gallery?post=${id}` : '/admin/gallery')}
           aria-label="返回画廊列表"
         >
           ←

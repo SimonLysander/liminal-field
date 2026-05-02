@@ -20,16 +20,6 @@ import { galleryApi, type GalleryPost } from '@/services/workspace';
 import { smoothBounce } from '@/lib/motion';
 import { GalleryPostListItem, GalleryPostPreview } from './components/GalleryFeedCard';
 
-// ─── 常量 ───
-
-type StatusFilter = 'all' | 'draft' | 'published';
-
-const FILTER_TABS: { key: StatusFilter; label: string }[] = [
-  { key: 'all', label: '全部' },
-  { key: 'draft', label: '草稿' },
-  { key: 'published', label: '已发布' },
-];
-
 // ─── 空状态 ───
 
 function EmptyState({ message }: { message: string }) {
@@ -50,7 +40,6 @@ export default function GalleryAdmin() {
 
   const [posts, setPosts] = useState<GalleryPost[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   /* 选中 ID 从 URL 参数 ?post=xxx 读取，保持 URL 同步 */
   const selectedId = searchParams.get('post');
@@ -62,10 +51,10 @@ export default function GalleryAdmin() {
 
   // ─── 数据加载 ───
 
-  const loadPosts = async (filter: StatusFilter = statusFilter) => {
+  const loadPosts = async () => {
     setLoading(true);
     try {
-      const data = await galleryApi.list(filter === 'all' ? undefined : filter);
+      const data = await galleryApi.list();
       setPosts(data);
       /* 如果当前选中的帖子在新列表中不存在了，清空 URL 参数 */
       const currentId = searchParams.get('post');
@@ -79,11 +68,9 @@ export default function GalleryAdmin() {
     }
   };
 
-  // filter 变化时重新加载
   useEffect(() => {
-    void loadPosts(statusFilter);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
+    void loadPosts();
+  }, []);
 
   // ─── 操作处理 ───
 
@@ -144,31 +131,9 @@ export default function GalleryAdmin() {
           </div>
         </div>
 
-        {/* Filter tabs：全部 / 草稿 / 已发布 */}
-        <div className="mt-3 px-2.5 pb-1">
-          <div className="flex gap-0.5">
-            {FILTER_TABS.map((tab) => {
-              const isActive = statusFilter === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  className="flex-1 rounded-md py-1 text-2xs font-medium transition-colors duration-150"
-                  style={{
-                    background: isActive ? 'var(--shelf)' : 'transparent',
-                    color: isActive ? 'var(--ink)' : 'var(--ink-ghost)',
-                  }}
-                  onClick={() => setStatusFilter(tab.key)}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         {/* 帖子列表 */}
-        <div className="flex-1 overflow-y-auto px-2.5 pb-4">
-          <ContentFade stateKey={loading ? 'loading' : `list-${statusFilter}`}>
+        <div className="mt-3 flex-1 overflow-y-auto px-2.5 pb-4">
+          <ContentFade stateKey={loading ? 'loading' : 'list'}>
             {loading ? (
               <LoadingState />
             ) : posts.length === 0 ? (
