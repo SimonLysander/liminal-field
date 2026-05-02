@@ -319,7 +319,7 @@ export default function GalleryAdmin() {
                         style={{ background: 'rgba(10,132,255,0.08)', border: '1px solid rgba(10,132,255,0.2)' }}
                       >
                         <span className="text-xs" style={{ color: 'var(--mark-blue)' }}>
-                          正在查看历史版本 {preview.commitHash.slice(0, 8)}
+                          正在查看历史版本 {preview.commitHash?.slice(0, 8) ?? ''}
                         </span>
                         <div className="flex items-center gap-3">
                           <button
