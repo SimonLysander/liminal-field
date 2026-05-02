@@ -38,7 +38,8 @@ export function CodeBlockElement(props: PlateElementProps<TCodeBlockElement>) {
       <div className="my-4 rounded-lg bg-muted">
         {/* 工具栏独立行，避免与代码第一行重叠 */}
         <div
-          className="flex items-center justify-end gap-0.5 px-2 pt-1.5"
+          className="flex items-center justify-end gap-0.5 border-b px-2 py-1"
+          style={{ borderColor: 'color-mix(in srgb, var(--ink) 6%, transparent)' }}
           contentEditable={false}
         >
           {!readOnly && isLangSupported(element.lang) && (
