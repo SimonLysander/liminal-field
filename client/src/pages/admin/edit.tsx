@@ -23,6 +23,7 @@ import type { ContentChangeType, ContentDetail, EditorDraft } from '@/services/w
 import { PlateMarkdownEditor } from './components/PlateEditor';
 import { parseError } from './helpers';
 import { LoadingState } from '@/components/LoadingState';
+import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
 import { DraftAssetProvider } from '@/contexts/DraftAssetContext';
 
 type EditorState = {
@@ -187,8 +188,12 @@ const DraftEditPage = () => {
     [id, state],
   );
 
+  const [committing, setCommitting] = useState(false);
+
   const commitDraft = useCallback(async () => {
     if (!id) return;
+    setCommitting(true);
+    setShowCommitDialog(false);
 
     try {
       const saved = await contentItemsApi.save(id, {
@@ -205,11 +210,11 @@ const DraftEditPage = () => {
       setContentDetail(saved);
       setIsDirty(false);
       setLastSavedAt('');
-      setShowCommitDialog(false);
       toast.success('已提交正式版本');
 
-      setTimeout(() => navigate(-1), 1200);
+      setTimeout(() => navigate(-1), 800);
     } catch (commitError) {
+      setCommitting(false);
       setError(parseError(commitError, '提交失败'));
     }
   }, [id, state, navigate]);
@@ -261,6 +266,8 @@ const DraftEditPage = () => {
 
   return (
     <div className="flex h-screen" style={{ background: 'var(--paper)' }}>
+      <ThresholdOverlay visible={committing} label="正在提交版本..." />
+
       <main className="relative z-0 flex flex-1 flex-col overflow-hidden">
         {/* 顶栏：返回 + 标题 + 工具栏 + 状态 + 操作，一行 */}
         <header
