@@ -16,7 +16,7 @@ import { toast } from 'sonner';
 
 import Topbar from '@/components/global/Topbar';
 import { LoadingState, ContentFade } from '@/components/LoadingState';
-import { galleryApi, type GalleryPost, type GalleryPostDetail } from '@/services/workspace';
+import { galleryApi, type GalleryPost, type GalleryPostDetail, type ContentHistoryEntry } from '@/services/workspace';
 import { smoothBounce } from '@/lib/motion';
 import { GalleryPostListItem, GalleryPostPreview } from './components/GalleryFeedCard';
 import { PhotoLightbox } from './components/PhotoLightbox';
@@ -83,27 +83,41 @@ export default function GalleryAdmin() {
   /* 草稿状态 */
   const [draftInfo, setDraftInfo] = useState<{ exists: boolean; savedAt?: string }>({ exists: false });
 
-  /* 选中帖子变化时加载完整详情 + 检测草稿 */
+  /* 版本历史 */
+  const [history, setHistory] = useState<ContentHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  /* 选中帖子变化时并行加载：详情 + 草稿 + 版本历史 */
   useEffect(() => {
     if (!selectedId) {
       setDetail(null);
       setDraftInfo({ exists: false });
+      setHistory([]);
       return;
     }
     let cancelled = false;
     setDetailLoading(true);
+    setHistoryLoading(true);
 
-    /* 并行加载详情和草稿 */
     Promise.all([
       galleryApi.getById(selectedId),
       galleryApi.getDraft(selectedId).catch(() => null),
-    ]).then(([d, draft]) => {
+      galleryApi.getHistory(selectedId).catch(() => []),
+    ]).then(([d, draft, hist]) => {
       if (cancelled) return;
       setDetail(d);
       setDraftInfo(draft ? { exists: true, savedAt: draft.savedAt } : { exists: false });
+      setHistory(hist);
       setDetailLoading(false);
+      setHistoryLoading(false);
     }).catch(() => {
-      if (!cancelled) { setDetail(null); setDraftInfo({ exists: false }); setDetailLoading(false); }
+      if (!cancelled) {
+        setDetail(null);
+        setDraftInfo({ exists: false });
+        setHistory([]);
+        setDetailLoading(false);
+        setHistoryLoading(false);
+      }
     });
 
     return () => { cancelled = true; };
@@ -328,6 +342,25 @@ export default function GalleryAdmin() {
                 </div>
               </div>
 
+              {/* 版本历史 */}
+              <div className="flex min-h-0 flex-1 flex-col">
+                <SectionTitle>版本</SectionTitle>
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  {historyLoading ? (
+                    <LoadingState />
+                  ) : history.length === 0 ? (
+                    <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>暂无版本</p>
+                  ) : (
+                    <VersionTimeline
+                      history={history}
+                      publishedHash={detail.status === 'published'
+                        ? (history[0]?.commitHash ?? null)
+                        : null}
+                    />
+                  )}
+                </div>
+              </div>
+
             </aside>
           )}
         </div>
@@ -364,6 +397,97 @@ function InfoRow({ label, value }: { label: string; value: string }) {
     <div>
       <div className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>{label}</div>
       <div className="mt-0.5 text-xs font-medium" style={{ color: 'var(--ink)' }}>{value}</div>
+    </div>
+  );
+}
+
+/* ─── 版本时间线（与 note 管理端 VersionTimeline 样式一致） ─── */
+
+function formatCommitTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  const time = d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  if (sameDay) return time;
+  return `${d.getMonth() + 1}/${d.getDate()} ${time}`;
+}
+
+function VersionTimeline({
+  history,
+  publishedHash,
+}: {
+  history: ContentHistoryEntry[];
+  publishedHash: string | null;
+}) {
+  return (
+    <div className="relative" style={{ paddingLeft: 16 }}>
+      {/* 纵线 */}
+      <div
+        className="absolute"
+        style={{ left: 7, top: 8, bottom: 8, width: 1, background: 'var(--box-border)' }}
+      />
+      {history.map((entry, i) => {
+        const isPublished = publishedHash === entry.commitHash;
+        const isFirst = i === 0;
+        const title = entry.message.split(' | ')[1]?.trim()
+          || (entry.action === 'commit' ? '版本提交' : '版本更新');
+
+        return (
+          <div
+            key={entry.commitHash}
+            className="relative"
+            style={{ padding: '8px 0 8px 12px' }}
+          >
+            {/* 节点圆点 */}
+            <span
+              className="absolute rounded-full"
+              style={{
+                left: -12,
+                top: 12,
+                width: 7,
+                height: 7,
+                background: isPublished
+                  ? 'var(--mark-green)'
+                  : isFirst
+                    ? 'var(--ink)'
+                    : 'var(--ink-ghost)',
+                border: '1.5px solid var(--paper-dark)',
+                boxShadow: isPublished ? '0 0 6px rgba(48,209,88,0.3)' : 'none',
+              }}
+            />
+            <div
+              className="font-medium"
+              style={{
+                color: isFirst ? 'var(--ink)' : 'var(--ink-light)',
+                fontSize: 'var(--text-xs)',
+                marginBottom: 3,
+              }}
+            >
+              {title}
+            </div>
+            <div
+              className="flex items-center gap-1.5"
+              style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)' }}
+            >
+              <span style={{ fontFamily: 'var(--font-mono)' }}>
+                {entry.commitHash.slice(0, 8)}
+              </span>
+              <span>· {formatCommitTime(entry.committedAt)}</span>
+              {isPublished && (
+                <span
+                  className="rounded px-1.5 py-[1px] font-semibold"
+                  style={{ background: 'rgba(48,209,88,0.12)', color: 'var(--mark-green)', fontSize: '0.5625rem' }}
+                >
+                  已发布
+                </span>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

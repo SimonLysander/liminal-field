@@ -132,6 +132,12 @@ export class WorkspaceController {
     return this.noteViewService.deleteDraft(id);
   }
 
+  /** 画廊帖子的版本历史（复用 NoteViewService）。 */
+  @Get('gallery/items/:id/history')
+  async getGalleryHistory(@Param('id') id: string): Promise<ContentHistoryEntryDto[]> {
+    return this.noteViewService.getHistory(id);
+  }
+
   // ─── 草稿资源（MinIO 临时存储）───
 
   /** 上传草稿图片到 MinIO，返回预览 URL。 */

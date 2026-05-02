@@ -422,5 +422,9 @@ export const galleryApi = {
   /** 删除草稿 */
   deleteDraft: (id: string) =>
     request<void>(`/spaces/gallery/items/${id}/draft`, { method: 'DELETE' }),
+
+  /** 版本历史 */
+  getHistory: (id: string) =>
+    request<ContentHistoryEntry[]>(`/spaces/gallery/items/${id}/history`),
 };
 
