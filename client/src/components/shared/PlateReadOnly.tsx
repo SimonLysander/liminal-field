@@ -22,7 +22,7 @@ import { TableKit } from '@/components/editor/plugins/table-kit';
 import { MediaKit } from '@/components/editor/plugins/media-kit';
 import { FontKit } from '@/components/editor/plugins/font-kit';
 import { MarkdownKit } from '@/components/editor/plugins/markdown-kit';
-import { EditorContainer, Editor } from '@/components/ui/editor';
+import { Editor } from '@/components/ui/editor';
 
 /** read-only 只需渲染插件，不需要编辑交互（DnD、ExitBreak、TrailingBlock） */
 const ReadOnlyPlugins = [
@@ -108,9 +108,7 @@ export default function PlateReadOnly({
   return (
     <div ref={containerRef} style={{ color: 'var(--ink-light)' }}>
       <Plate editor={editor} readOnly>
-        <EditorContainer variant="default">
-          <Editor variant="none" readOnly />
-        </EditorContainer>
+        <Editor variant="none" readOnly />
       </Plate>
     </div>
   );
