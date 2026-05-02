@@ -359,11 +359,28 @@ export class GalleryViewService {
   }
 
   /**
-   * 正式提交画廊帖子：将结构化 DTO 序列化为 main.md 后调 ContentService 写入 Git。
+   * 正式提交画廊帖子：
+   * 1. 将 MinIO 草稿照片物化到 Git assets 目录
+   * 2. 将结构化 DTO 序列化为 main.md 后调 ContentService 写入 Git
+   * 3. 提交成功后清理 MinIO 草稿照片
+   *
    * 返回更新后的画廊详情 DTO，前端不感知 frontmatter 的存在。
    */
   async commitPost(contentItemId: string, dto: SaveGalleryPostDto): Promise<GalleryPostDetailDto> {
+    // 1. 将 MinIO 草稿照片下载到 Git assets 目录
+    const assetsDir = join(
+      this.contentRepoService.getContentDirectoryPath(contentItemId),
+      'assets',
+    );
+    const materialized = await this.minioService.moveDraftAssetsToDisk(
+      contentItemId,
+      assetsDir,
+    );
+
+    // 2. 序列化 frontmatter + prose → main.md
     const bodyMarkdown = this.serializeDto(dto);
+
+    // 3. 写入 Git
     await this.contentService.saveContent(contentItemId, {
       title: dto.title,
       summary: dto.title,
@@ -372,6 +389,12 @@ export class GalleryViewService {
       status: ContentStatus.committed,
       action: ContentSaveAction.commit,
     });
+
+    // 4. 提交成功后清理 MinIO 草稿照片
+    if (materialized.length > 0) {
+      await this.minioService.deleteDraftAssets(contentItemId);
+    }
+
     return this.toPostDetailDto(contentItemId);
   }
 
@@ -426,9 +449,10 @@ export class GalleryViewService {
     };
   }
 
-  /** 删除画廊草稿（提交后清理）。 */
+  /** 删除画廊草稿（提交后清理），同步清理 MinIO 中的草稿照片。 */
   async deleteDraft(contentItemId: string): Promise<void> {
     await this.editorDraftRepository.deleteByContentItemId(contentItemId);
+    await this.minioService.deleteDraftAssets(contentItemId);
   }
 
   // ─── 草稿照片（MinIO 临时存储）───
