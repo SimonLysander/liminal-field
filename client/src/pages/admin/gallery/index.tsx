@@ -16,9 +16,10 @@ import { toast } from 'sonner';
 
 import Topbar from '@/components/global/Topbar';
 import { LoadingState, ContentFade } from '@/components/LoadingState';
-import { galleryApi, type GalleryPost } from '@/services/workspace';
+import { galleryApi, type GalleryPost, type GalleryPostDetail } from '@/services/workspace';
 import { smoothBounce } from '@/lib/motion';
 import { GalleryPostListItem, GalleryPostPreview } from './components/GalleryFeedCard';
+import { PhotoEditModal } from './components/PhotoEditModal';
 
 // ─── 空状态 ───
 
@@ -41,9 +42,16 @@ export default function GalleryAdmin() {
   const [posts, setPosts] = useState<GalleryPost[]>([]);
   const [loading, setLoading] = useState(true);
 
+  /* 选中帖子的完整详情（含所有照片） */
+  const [detail, setDetail] = useState<GalleryPostDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  /* 照片查看 Modal */
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalPhotoIndex, setModalPhotoIndex] = useState(0);
+
   /* 选中 ID 从 URL 参数 ?post=xxx 读取，保持 URL 同步 */
   const selectedId = searchParams.get('post');
-  const selectedPost = posts.find((p) => p.id === selectedId) ?? null;
 
   const setSelectedId = useCallback((id: string | null) => {
     setSearchParams(id ? { post: id } : {}, { replace: true });
@@ -71,6 +79,22 @@ export default function GalleryAdmin() {
   useEffect(() => {
     void loadPosts();
   }, []);
+
+  /* 选中帖子变化时加载完整详情 */
+  useEffect(() => {
+    if (!selectedId) {
+      setDetail(null);
+      return;
+    }
+    let cancelled = false;
+    setDetailLoading(true);
+    galleryApi.getById(selectedId).then((d) => {
+      if (!cancelled) { setDetail(d); setDetailLoading(false); }
+    }).catch(() => {
+      if (!cancelled) { setDetail(null); setDetailLoading(false); }
+    });
+    return () => { cancelled = true; };
+  }, [selectedId]);
 
   // ─── 操作处理 ───
 
@@ -195,13 +219,16 @@ export default function GalleryAdmin() {
               transition={{ duration: 0.2, ease: smoothBounce }}
               className="flex flex-1 flex-col"
             >
-              {selectedPost ? (
+              {selectedId && detailLoading ? (
+                <LoadingState />
+              ) : detail ? (
                 <GalleryPostPreview
-                  post={selectedPost}
-                  onEdit={() => navigate(`/admin/gallery/edit/${selectedPost.id}`)}
-                  onPublish={() => void handlePublish(selectedPost.id)}
-                  onUnpublish={() => void handleUnpublish(selectedPost.id)}
-                  onDelete={() => void handleDelete(selectedPost.id)}
+                  post={detail}
+                  onEdit={() => navigate(`/admin/gallery/edit/${detail.id}`)}
+                  onPublish={() => void handlePublish(detail.id)}
+                  onUnpublish={() => void handleUnpublish(detail.id)}
+                  onDelete={() => void handleDelete(detail.id)}
+                  onPhotoClick={(index) => { setModalPhotoIndex(index); setModalOpen(true); }}
                 />
               ) : (
                 <EmptyState message="选择一条动态，或点击新建" />
@@ -210,6 +237,19 @@ export default function GalleryAdmin() {
           </AnimatePresence>
         </div>
       </main>
+
+      {/* 照片查看 Modal（预览模式，只读） */}
+      {detail && (
+        <PhotoEditModal
+          open={modalOpen}
+          photos={detail.photos}
+          initialIndex={modalPhotoIndex}
+          onClose={() => setModalOpen(false)}
+          onCaptionChange={() => {}}
+          onSetCover={() => {}}
+          onDelete={() => {}}
+        />
+      )}
     </>
   );
 }

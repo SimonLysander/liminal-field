@@ -54,33 +54,20 @@ function StatusBadge({ status }: { status: 'draft' | 'published' }) {
   );
 }
 
-// ─── 照片预览网格（右侧预览区用）───
-// 1 张：全宽 16:9；2 张：2 列 1:1；3+ 张：3 列 1:1，最多显示 9 张
+// ─── 可点击照片网格（5 列，与编辑页 PhotoGrid 一致）───
 
-function PhotoPreviewGrid({ urls }: { urls: string[] }) {
+function ClickablePhotoGrid({ urls, onPhotoClick }: { urls: string[]; onPhotoClick?: (index: number) => void }) {
   if (urls.length === 0) return null;
 
-  const count = urls.length;
-
-  if (count === 1) {
-    return (
-      <div className="overflow-hidden rounded-lg" style={{ aspectRatio: '16/9' }}>
-        <img src={urls[0]} alt="" className="h-full w-full object-cover" />
-      </div>
-    );
-  }
-
-  const cols = count === 2 ? 2 : 3;
-  const displayUrls = urls.slice(0, 9);
-
   return (
-    <div
-      className="grid gap-1 overflow-hidden rounded-lg"
-      style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
-    >
-      {displayUrls.map((url, index) => (
-        <div key={index} style={{ aspectRatio: '1' }} className="overflow-hidden">
-          <img src={url} alt="" className="h-full w-full object-cover" />
+    <div className="grid grid-cols-5 gap-1.5">
+      {urls.map((url, index) => (
+        <div
+          key={index}
+          className="aspect-square cursor-pointer overflow-hidden rounded-md transition-opacity hover:opacity-80"
+          onClick={() => onPhotoClick?.(index)}
+        >
+          <img src={url} alt="" className="h-full w-full object-cover" draggable={false} />
         </div>
       ))}
     </div>
@@ -145,11 +132,12 @@ export function GalleryPostListItem({ post, isSelected, onClick }: GalleryPostLi
 // 完整预览：大标题 + 照片网格 + 描述 + 地点标签 + 状态 + 操作按钮
 
 interface GalleryPostPreviewProps {
-  post: GalleryPost;
+  post: GalleryPost & { photos?: Array<{ id: string; url: string; fileName: string; caption: string }> };
   onEdit: () => void;
   onPublish: () => void;
   onUnpublish: () => void;
   onDelete: () => void;
+  onPhotoClick?: (index: number) => void;
 }
 
 export function GalleryPostPreview({
@@ -158,8 +146,11 @@ export function GalleryPostPreview({
   onPublish,
   onUnpublish,
   onDelete,
+  onPhotoClick,
 }: GalleryPostPreviewProps) {
   const locationTag = post.tags?.location;
+  /* 优先用完整 photos 数组（详情），否则回退 previewPhotoUrls（列表） */
+  const photoUrls = post.photos?.map((p) => p.url) ?? post.previewPhotoUrls ?? [];
 
   return (
     <div className="mx-auto max-w-[680px]">
@@ -218,10 +209,10 @@ export function GalleryPostPreview({
         </span>
       </div>
 
-      {/* 照片预览网格 */}
-      {(post.previewPhotoUrls?.length ?? 0) > 0 && (
+      {/* 照片网格（可点击查看大图） */}
+      {photoUrls.length > 0 && (
         <div className="mb-5">
-          <PhotoPreviewGrid urls={post.previewPhotoUrls} />
+          <ClickablePhotoGrid urls={photoUrls} onPhotoClick={onPhotoClick} />
         </div>
       )}
 
