@@ -89,10 +89,10 @@ function CodeBlockCombobox() {
   );
 
   if (readOnly) {
-    // read-only 模式只显示语言标签，不显示下拉选择器
+    // read-only 模式只显示语言标签，样式与编辑器的 Button 对齐
     const label = languages.find((l) => l.value === value)?.label ?? (value !== 'plaintext' ? value : '');
     return label ? (
-      <span className="select-none px-2 text-muted-foreground text-xs">{label}</span>
+      <span className="flex h-6 select-none items-center gap-1 px-2 text-muted-foreground text-xs">{label}</span>
     ) : null;
   }
 
