@@ -1,4 +1,5 @@
-import { Controller, Post, Get, Param, Req, Body, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Param, Req, Res, Body, BadRequestException } from '@nestjs/common';
+import { RawResponse } from '../../common/raw-response.decorator';
 import { ImportService } from './import.service';
 import { ConfirmImportDto } from './dto/confirm-import.dto';
 import type { MultipartFile } from '@fastify/multipart';
@@ -27,6 +28,17 @@ export class ImportController {
   @Get('parse/:parseId')
   async getParse(@Param('parseId') parseId: string) {
     return this.importService.getParse(parseId);
+  }
+
+  /** 预览阶段提供图片访问（从 MinIO 临时目录读取） */
+  @RawResponse()
+  @Get('parse/:parseId/assets/:fileName')
+  async servePreviewAsset(
+    @Param('parseId') parseId: string,
+    @Param('fileName') fileName: string,
+    @Res() reply: any,
+  ) {
+    return this.importService.getPreviewAsset(parseId, fileName, reply);
   }
 
   /** 用户上传文件夹内容，按文件名匹配缺失资源 */

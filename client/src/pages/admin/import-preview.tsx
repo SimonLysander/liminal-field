@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Check, X, FolderOpen } from 'lucide-react';
+import { ArrowLeft, Check, X, FolderOpen, ChevronDown } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import MarkdownBody from '@/components/shared/MarkdownBody';
@@ -246,76 +246,15 @@ export default function ImportPreviewPage() {
               </section>
             )}
 
-            {/* 资源引用（移到下面） */}
-            <section>
-              <h3
-                className="mb-2 font-semibold"
-                style={{ color: 'var(--ink)', fontSize: 'var(--text-sm)' }}
-              >
-                资源引用
-              </h3>
-              {assets.length === 0 ? (
-                <p style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-ghost)' }}>
-                  无外部资源引用
-                </p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {assets.map((asset) => (
-                    <li
-                      key={asset.ref}
-                      className="flex items-center gap-2"
-                      style={{ fontSize: 'var(--text-xs)' }}
-                    >
-                      {asset.status === 'resolved' ? (
-                        <Check size={12} style={{ color: 'var(--mark-green)' }} />
-                      ) : (
-                        <X size={12} style={{ color: 'var(--mark-red)' }} />
-                      )}
-                      <span
-                        className="truncate"
-                        style={{ color: asset.status === 'resolved' ? 'var(--ink-faded)' : 'var(--mark-red)' }}
-                      >
-                        {asset.filename}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            {/* 补传区域：仅当存在缺失资源时显示 */}
-            {missingCount > 0 && (
-              <section>
-                <input
-                  ref={folderInputRef}
-                  type="file"
-                  // @ts-expect-error webkitdirectory is non-standard but widely supported
-                  webkitdirectory=""
-                  multiple
-                  className="hidden"
-                  onChange={handleResolveAssets}
-                />
-                <button
-                  onClick={() => folderInputRef.current?.click()}
-                  disabled={resolving}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg py-2.5 font-medium transition-opacity disabled:opacity-50"
-                  style={{
-                    background: 'var(--shelf)',
-                    color: 'var(--ink-faded)',
-                    fontSize: 'var(--text-sm)',
-                    border: '1px dashed var(--separator)',
-                  }}
-                >
-                  <FolderOpen size={14} strokeWidth={1.5} />
-                  {resolving ? '匹配中...' : '上传文件夹补全资源'}
-                </button>
-                <p
-                  className="mt-1.5"
-                  style={{ fontSize: 'var(--text-2xs)', color: 'var(--ink-ghost)' }}
-                >
-                  选择包含图片的文件夹，将按文件名自动匹配
-                </p>
-              </section>
+            {/* 资源引用：统计摘要 + 可展开详情 */}
+            {assets.length > 0 && (
+              <AssetSummary
+                assets={assets}
+                missingCount={missingCount}
+                resolving={resolving}
+                folderInputRef={folderInputRef}
+                onResolve={handleResolveAssets}
+              />
             )}
           </div>
 
@@ -343,5 +282,111 @@ export default function ImportPreviewPage() {
         </aside>
       </div>
     </div>
+  );
+}
+
+/** 资源引用摘要组件：已加载/未加载统计 + 展开详情 + 补传入口 */
+function AssetSummary({
+  assets,
+  missingCount,
+  resolving,
+  folderInputRef,
+  onResolve,
+}: {
+  assets: AssetRef[];
+  missingCount: number;
+  resolving: boolean;
+  folderInputRef: React.RefObject<HTMLInputElement | null>;
+  onResolve: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const resolvedCount = assets.length - missingCount;
+
+  return (
+    <section>
+      <h3
+        className="mb-2 font-semibold"
+        style={{ color: 'var(--ink)', fontSize: 'var(--text-sm)' }}
+      >
+        资源引用
+      </h3>
+
+      {/* 统计摘要 */}
+      <div className="flex items-center gap-3" style={{ fontSize: 'var(--text-xs)' }}>
+        <span style={{ color: 'var(--ink-faded)' }}>
+          <span style={{ color: 'var(--mark-green)' }}>{resolvedCount}</span> 已加载
+          {missingCount > 0 && (
+            <> · <span style={{ color: 'var(--mark-red)' }}>{missingCount}</span> 未加载</>
+          )}
+          <span style={{ color: 'var(--ink-ghost)' }}> / {assets.length} 总计</span>
+        </span>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-0.5 transition-colors hover:opacity-70"
+          style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)' }}
+        >
+          详情
+          <ChevronDown
+            size={10}
+            strokeWidth={2}
+            style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}
+          />
+        </button>
+      </div>
+
+      {/* 展开的详情列表 */}
+      {expanded && (
+        <ul className="mt-2 max-h-[20vh] space-y-1 overflow-y-auto">
+          {assets.map((asset) => (
+            <li
+              key={asset.ref}
+              className="flex items-center gap-2"
+              style={{ fontSize: 'var(--text-2xs)' }}
+            >
+              {asset.status === 'resolved' ? (
+                <Check size={10} style={{ color: 'var(--mark-green)' }} />
+              ) : (
+                <X size={10} style={{ color: 'var(--mark-red)' }} />
+              )}
+              <span
+                className="truncate"
+                style={{ color: asset.status === 'resolved' ? 'var(--ink-ghost)' : 'var(--mark-red)' }}
+              >
+                {asset.filename}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* 补传入口 */}
+      {missingCount > 0 && (
+        <div className="mt-2">
+          <input
+            ref={folderInputRef}
+            type="file"
+            // @ts-expect-error webkitdirectory is non-standard but widely supported
+            webkitdirectory=""
+            multiple
+            className="hidden"
+            onChange={onResolve}
+          />
+          <button
+            onClick={() => folderInputRef.current?.click()}
+            disabled={resolving}
+            className="flex w-full items-center justify-center gap-2 rounded-lg py-2 font-medium transition-opacity disabled:opacity-50"
+            style={{
+              background: 'var(--shelf)',
+              color: 'var(--ink-faded)',
+              fontSize: 'var(--text-xs)',
+              border: '1px dashed var(--separator)',
+            }}
+          >
+            <FolderOpen size={12} strokeWidth={1.5} />
+            {resolving ? '匹配中...' : '补全缺失资源'}
+          </button>
+        </div>
+      )}
+    </section>
   );
 }

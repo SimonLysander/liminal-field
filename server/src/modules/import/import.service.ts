@@ -110,12 +110,34 @@ export class ImportService {
     if (!session) throw new NotFoundException('导入会话不存在或已过期');
 
     const mdBuffer = await this.minioService.getObject(`${IMPORT_PREFIX}/${parseId}/content.md`);
-    return {
-      parseId,
-      title: session.title,
-      markdown: mdBuffer.toString('utf-8'),
-      assets: session.assets,
-    };
+    let markdown = mdBuffer.toString('utf-8');
+
+    // 将已 resolved 的图片路径改写为预览 API URL
+    for (const asset of session.assets) {
+      if (asset.status === 'resolved') {
+        markdown = markdown.split(asset.ref).join(
+          `/api/v1/spaces/notes/import/parse/${parseId}/assets/${asset.filename}`,
+        );
+      }
+    }
+
+    return { parseId, title: session.title, markdown, assets: session.assets };
+  }
+
+  /** 预览阶段提供图片访问 */
+  async getPreviewAsset(parseId: string, fileName: string, reply: any): Promise<void> {
+    try {
+      const buffer = await this.minioService.getObject(
+        `${IMPORT_PREFIX}/${parseId}/assets/${fileName}`,
+      );
+      const ext = parsePath(fileName).ext.toLowerCase();
+      const contentType = this.guessMimeType(fileName);
+      reply.header('Content-Type', contentType);
+      reply.header('Cache-Control', 'max-age=300');
+      reply.send(buffer);
+    } catch {
+      reply.status(404).send({ message: 'Asset not found' });
+    }
   }
 
   /** 在 markdown 中查找引用某个图片文件名的路径 */
