@@ -12,6 +12,7 @@ import { MineruService } from './mineru.service';
 import { ImportSessionRepository } from './import-session.repository';
 import { AssetRefDto, ParseResultDto } from './dto/parse-result.dto';
 import { ConfirmImportDto } from './dto/confirm-import.dto';
+import { processMarkdown } from './markdown-post-processor';
 
 /** 需要通过 MinerU 转换的文件扩展名 */
 const MINERU_EXTENSIONS = new Set(['.docx', '.doc', '.pdf', '.pptx', '.ppt']);
@@ -71,22 +72,8 @@ export class ImportService {
       markdown = buffer.toString('utf-8');
     }
 
-    // 通用后处理
-    markdown = this.normalizeHeadingLevels(markdown);
-    markdown = markdown.replace(/==((?:[^=]|=[^=])+)==/g, '<mark>$1</mark>');
-    // LaTeX 公式 → inline code（Plate 不支持 LaTeX，$..$ 会导致 remarkMdx 解析崩溃）
-    markdown = markdown.replace(/\$\$([\s\S]*?)\$\$/g, (_, tex) => '\n```\n' + tex.trim() + '\n```\n');
-    markdown = markdown.replace(/\$([^\n$]+?)\$/g, '`$1`');
-    // HTML <img> → markdown 图片语法（MinerU 有时输出 HTML 而非标准 md）
-    markdown = markdown.replace(
-      /<img[^>]+src=["']([^"']+)["'][^>]*\/?>/gi,
-      (_, src) => `![](${src})`,
-    );
-    // 清理包裹图片的 HTML 容器 div（MinerU 输出的 <div style="..."><div>...<img>...</div></div>）
-    markdown = markdown.replace(/<\/?div[^>]*>/gi, '');
-    // 转义裸露的 { } ：remarkMdx 会把它们当 JSX 表达式解析，导致静默截断
-    markdown = this.escapeBracesOutsideCode(markdown);
-    markdown = markdown.replace(/\n{3,}/g, '\n\n');
+    // 通用后处理：标题归一化、HTML→md、LaTeX→code、花括号转义、空行收窄
+    markdown = processMarkdown(markdown);
 
     // 扫描本地图片引用（.md 文件的图片，或 MinerU 结果中未匹配的引用）
     const localImageRegex = /!\[([^\]]*)\]\(((?!https?:\/\/)[^)]+)\)/g;
@@ -292,60 +279,6 @@ export class ImportService {
     this.logger.log(`Import confirmed: ${contentId} (${title})`);
 
     return { nodeId: node.id, contentItemId: contentId };
-  }
-
-  /**
-   * 标题层级归一化：找到文档中最小的标题级别，整体前移使其从 h1 开始。
-   * 例如文档最高是 ####(h4)，则 h4→h1, h5→h2, h6→h3。
-   */
-  private normalizeHeadingLevels(markdown: string): string {
-    const headingRegex = /^(#{1,6})\s/gm;
-    let minLevel = 7;
-    let match: RegExpExecArray | null;
-
-    while ((match = headingRegex.exec(markdown)) !== null) {
-      minLevel = Math.min(minLevel, match[1].length);
-    }
-
-    // 已经从 h1 开始，或没有标题
-    if (minLevel <= 1 || minLevel > 6) return markdown;
-
-    const shift = minLevel - 1;
-    return markdown.replace(/^(#{1,6})\s/gm, (_, hashes: string) => {
-      const newLevel = Math.max(1, hashes.length - shift);
-      return '#'.repeat(newLevel) + ' ';
-    });
-  }
-
-  /**
-   * 转义 fenced code block 和 inline code 之外的 { }。
-   * remarkMdx 会把裸露的 {expr} 当 JSX 表达式解析，失败时静默截断后续内容。
-   */
-  private escapeBracesOutsideCode(markdown: string): string {
-    const lines = markdown.split('\n');
-    const result: string[] = [];
-    let inCodeBlock = false;
-
-    for (const line of lines) {
-      // 检测 fenced code block 边界
-      if (/^```/.test(line)) {
-        inCodeBlock = !inCodeBlock;
-        result.push(line);
-        continue;
-      }
-      if (inCodeBlock) {
-        result.push(line);
-        continue;
-      }
-      // code block 外：转义 { } ，但跳过 inline code 内的
-      result.push(
-        line.replace(/(`[^`]*`)|([{}])/g, (match, codeSpan, brace) => {
-          if (codeSpan) return codeSpan; // inline code 内，保持原样
-          return brace === '{' ? '\\{' : '\\}';
-        }),
-      );
-    }
-    return result.join('\n');
   }
 
   /**
