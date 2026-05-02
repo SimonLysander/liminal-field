@@ -187,7 +187,11 @@ function NoteReader({ id }: { id: string }) {
   const readMin = Math.max(1, Math.ceil(wordCount / 400));
 
   if (loading) {
-    return <LoadingState variant="full" />;
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <LoadingState />
+      </div>
+    );
   }
 
   if (error || !content) {
@@ -254,13 +258,13 @@ function NoteReader({ id }: { id: string }) {
        </div>
       </div>
 
-      {/* Right — TOC panel */}
-      {toc.length > 0 && (
-        <div
-          ref={tocPanelRef}
-          className="flex w-[200px] shrink-0 flex-col gap-7 overflow-y-auto px-4 py-10"
-          style={{ borderLeft: '0.5px solid var(--separator)' }}
-        >
+      {/* Right — TOC panel（始终预留宽度，避免内容加载后布局抖动） */}
+      <div
+        ref={tocPanelRef}
+        className="flex w-[200px] shrink-0 flex-col gap-7 overflow-y-auto px-4 py-10"
+        style={{ borderLeft: '0.5px solid var(--separator)' }}
+      >
+        {toc.length > 0 && (
           <div>
             <div
               className="mb-3 text-2xs font-semibold uppercase tracking-label"
@@ -287,8 +291,8 @@ function NoteReader({ id }: { id: string }) {
               </motion.div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* AI floating action button */}
       <div className="absolute bottom-6 right-6 z-10 flex flex-col items-end gap-3">
