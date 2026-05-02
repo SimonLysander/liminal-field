@@ -37,6 +37,8 @@ import { CreateWorkspaceItemDto } from './dto/create-workspace-item.dto';
 import { UpdateWorkspaceItemDto } from './dto/update-workspace-item.dto';
 import { EditorDraftDto } from './dto/editor-draft.dto';
 import { SaveDraftDto } from './dto/save-draft.dto';
+import { UpdateGalleryMetaDto } from './dto/update-gallery-meta.dto';
+import { GalleryPostDetailDto } from './dto/gallery-view.dto';
 
 type MultipartRequest = {
   file: () => Promise<MultipartFile | undefined>;
@@ -90,6 +92,44 @@ export class WorkspaceController {
     @Param('commitHash') commitHash: string,
   ): Promise<ContentDetailDto> {
     return this.noteViewService.getByVersion(id, commitHash);
+  }
+
+  // ─── Gallery 特有路由（必须在通用 :scope 路由之前注册）───
+
+  /** 获取画廊帖子的元数据（照片顺序、描述、封面、标签）。 */
+  @Get('gallery/items/:id/meta')
+  async getGalleryMeta(@Param('id') id: string): Promise<GalleryPostDetailDto> {
+    return this.galleryViewService.toPostDetailDto(id);
+  }
+
+  /** 更新画廊帖子的 MongoDB 侧元数据，返回更新后的 detail。 */
+  @Put('gallery/items/:id/meta')
+  async updateGalleryMeta(
+    @Param('id') id: string,
+    @Body() dto: UpdateGalleryMetaDto,
+  ): Promise<GalleryPostDetailDto> {
+    return this.galleryViewService.updateMeta(id, dto);
+  }
+
+  /** 获取画廊帖子的编辑器草稿（复用 NoteViewService，草稿以 contentItemId 为键）。 */
+  @Get('gallery/items/:id/draft')
+  async getGalleryDraft(@Param('id') id: string): Promise<EditorDraftDto> {
+    return this.noteViewService.getDraft(id);
+  }
+
+  /** 保存画廊帖子的编辑器草稿。 */
+  @Put('gallery/items/:id/draft')
+  async saveGalleryDraft(
+    @Param('id') id: string,
+    @Body() dto: SaveDraftDto,
+  ): Promise<EditorDraftDto> {
+    return this.noteViewService.saveDraft(id, dto);
+  }
+
+  /** 删除画廊帖子的编辑器草稿。 */
+  @Delete('gallery/items/:id/draft')
+  async deleteGalleryDraft(@Param('id') id: string): Promise<void> {
+    return this.noteViewService.deleteDraft(id);
   }
 
   // ─── 草稿资源（MinIO 临时存储）───
