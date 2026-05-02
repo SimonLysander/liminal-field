@@ -171,6 +171,24 @@ export default function GalleryAdmin() {
     setHistory(hist);
   };
 
+  /** 发布指定历史版本：先写入该版本内容为最新，再发布 */
+  const handlePublishVersion = async (id: string, commitHash: string) => {
+    try {
+      const versionContent = await galleryApi.getByVersion(id, commitHash);
+      await galleryApi.update(id, {
+        title: versionContent.title,
+        description: versionContent.bodyMarkdown === '\u200B' ? '' : versionContent.bodyMarkdown,
+      });
+      await galleryApi.publish(id);
+      toast.success('已发布此版本');
+      setPreview(null);
+      void loadPosts();
+      void reloadDetail(id);
+    } catch {
+      toast.error('发布失败');
+    }
+  };
+
   const handlePublish = async (id: string) => {
     try {
       await galleryApi.publish(id);
@@ -309,13 +327,22 @@ export default function GalleryAdmin() {
                         <span className="text-xs" style={{ color: 'var(--mark-blue)' }}>
                           正在查看历史版本 {preview.commitHash.slice(0, 8)}
                         </span>
-                        <button
-                          className="text-xs font-medium"
-                          style={{ color: 'var(--mark-blue)' }}
-                          onClick={() => setPreview(null)}
-                        >
-                          返回最新 →
-                        </button>
+                        <div className="flex items-center gap-3">
+                          <button
+                            className="text-xs font-medium"
+                            style={{ color: 'var(--mark-blue)' }}
+                            onClick={() => void handlePublishVersion(detail.id, preview.commitHash)}
+                          >
+                            发布此版本
+                          </button>
+                          <button
+                            className="text-xs font-medium"
+                            style={{ color: 'var(--mark-blue)' }}
+                            onClick={() => setPreview(null)}
+                          >
+                            返回最新 →
+                          </button>
+                        </div>
                       </div>
                     )}
                     <GalleryPostPreview
