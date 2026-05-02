@@ -88,7 +88,12 @@ export default function GalleryAdmin() {
   const [historyLoading, setHistoryLoading] = useState(false);
 
   /* 版本预览：点击历史版本时加载该版本的内容 */
-  const [preview, setPreview] = useState<{ commitHash: string; title: string; description: string } | null>(null);
+  const [preview, setPreview] = useState<{
+    commitHash: string;
+    title: string;
+    description: string;
+    photos: Array<{ file: string; caption: string; tags: Record<string, string> }>;
+  } | null>(null);
 
   /* 选中帖子变化时并行加载：详情 + 草稿 + 版本历史 */
   useEffect(() => {
@@ -143,6 +148,7 @@ export default function GalleryAdmin() {
         commitHash: ver.commitHash,
         title: ver.title,
         description: ver.prose,
+        photos: ver.photos,
       });
     } catch {
       toast.error('加载版本失败');
@@ -340,7 +346,25 @@ export default function GalleryAdmin() {
                       </div>
                     )}
                     <GalleryPostPreview
-                      post={preview ? { ...detail, title: preview.title, description: preview.description } : detail}
+                      post={preview ? {
+                        ...detail,
+                        title: preview.title,
+                        description: preview.description,
+                        /* 历史版本照片：用 frontmatter 的 file 列表构建，URL 基于 assets 端点 */
+                        photos: preview.photos.map((p, i) => {
+                          const existing = detail.photos.find((dp) => dp.fileName === p.file);
+                          return {
+                            id: p.file,
+                            fileName: p.file,
+                            url: existing?.url ?? `/api/v1/spaces/gallery/items/${detail.id}/assets/${p.file}`,
+                            size: existing?.size ?? 0,
+                            order: i,
+                            caption: p.caption,
+                            tags: p.tags,
+                          };
+                        }),
+                        photoCount: preview.photos.length,
+                      } : detail}
                       onPhotoClick={preview ? undefined : (index) => { setModalPhotoIndex(index); setModalOpen(true); }}
                       onPublish={preview ? undefined : () => void handlePublish(detail.id)}
                       onUnpublish={preview ? undefined : () => void handleUnpublish(detail.id)}
