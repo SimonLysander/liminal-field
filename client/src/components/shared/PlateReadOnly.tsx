@@ -105,7 +105,7 @@ export default function PlateReadOnly({
   }, [processedMarkdown]);
 
   return (
-    <div ref={containerRef}>
+    <div ref={containerRef} style={{ color: 'var(--ink-light)' }}>
       <Plate editor={editor} readOnly>
         <EditorContainer variant="default">
           <Editor variant="none" readOnly />
