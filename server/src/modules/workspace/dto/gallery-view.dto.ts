@@ -9,6 +9,8 @@ export class GalleryPhotoDto {
   fileName: string;
   size: number;
   order: number;
+  /** MongoDB 侧保存的照片描述，默认空串。 */
+  caption: string;
 }
 
 export class GalleryPostDto {
@@ -20,6 +22,12 @@ export class GalleryPostDto {
   photoCount: number;
   createdAt: string;
   updatedAt: string;
+  /** 自定义标签，key-value 格式。 */
+  tags: Record<string, string>;
+  /** 手动指定的封面图文件名，null 表示退化为首图。 */
+  coverPhotoFileName: string | null;
+  /** 前 9 张图片的访问 URL，用于列表页缩略图预览。 */
+  previewPhotoUrls: string[];
 }
 
 export class GalleryPostDetailDto extends GalleryPostDto {
