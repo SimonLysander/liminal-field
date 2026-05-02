@@ -31,6 +31,7 @@ import { cn } from '@/lib/utils';
 
 export function CodeBlockElement(props: PlateElementProps<TCodeBlockElement>) {
   const { editor, element } = props;
+  const readOnly = useReadOnly();
 
   return (
     <PlateElement {...props}>
@@ -43,7 +44,7 @@ export function CodeBlockElement(props: PlateElementProps<TCodeBlockElement>) {
           className="absolute top-2 right-2 z-10 flex select-none gap-0.5"
           contentEditable={false}
         >
-          {isLangSupported(element.lang) && (
+          {!readOnly && isLangSupported(element.lang) && (
             <Button
               size="icon"
               variant="ghost"
@@ -87,7 +88,13 @@ function CodeBlockCombobox() {
     [searchValue]
   );
 
-  if (readOnly) return null;
+  if (readOnly) {
+    // read-only 模式只显示语言标签，不显示下拉选择器
+    const label = languages.find((l) => l.value === value)?.label ?? (value !== 'plaintext' ? value : '');
+    return label ? (
+      <span className="select-none px-2 text-muted-foreground text-xs">{label}</span>
+    ) : null;
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
