@@ -213,7 +213,7 @@ export class ImportService {
       summary: title,
       changeNote,
       changeType: ContentChangeType.major,
-      changedAt: now,
+      createdAt: now,
     };
     await this.contentRepoService.writeReadme(
       { id: contentId, _id: contentId, latestVersion: { commitHash: '', title, summary: title }, changeLogs: [changeLog], createdAt: now, updatedAt: now } as ContentItem,

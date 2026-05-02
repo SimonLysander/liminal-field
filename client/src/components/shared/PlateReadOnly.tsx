@@ -85,7 +85,8 @@ export default function PlateReadOnly({
         try {
           const nodes = deserializeMd(editor, processedMarkdown);
           return fixCodeBlockLines(nodes);
-        } catch {
+        } catch (err) {
+          console.error('[PlateReadOnly] deserializeMd failed, falling back to plain text:', err);
           return [{ type: 'p', children: [{ text: processedMarkdown }] }];
         }
       },
