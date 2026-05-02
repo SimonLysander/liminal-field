@@ -353,9 +353,7 @@ export default function GalleryAdmin() {
                   ) : (
                     <VersionTimeline
                       history={history}
-                      publishedHash={detail.status === 'published'
-                        ? (history[0]?.commitHash ?? null)
-                        : null}
+                      publishedHash={detail.publishedCommitHash ?? null}
                     />
                   )}
                 </div>

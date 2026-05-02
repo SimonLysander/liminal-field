@@ -145,14 +145,14 @@ export class WorkspaceService {
       bodyMarkdown = source.bodyMarkdown;
     }
 
-    const currentStatus = content.publishedVersion
-      ? ContentStatus.published
-      : ContentStatus.committed;
-
+    /*
+     * 提交始终用 committed 状态——只更新 latestVersion，不动 publishedVersion。
+     * 发布是独立操作（publish 方法），遵循"编辑不自动发布"的业务语义。
+     */
     await this.contentService.saveContent(contentItemId, {
       title: newTitle,
       summary: newSummary,
-      status: currentStatus,
+      status: ContentStatus.committed,
       bodyMarkdown,
       changeNote: dto.changeNote,
       action: ContentSaveAction.commit,

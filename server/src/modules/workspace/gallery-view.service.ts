@@ -96,6 +96,10 @@ export class GalleryViewService {
       tags: meta?.tags ?? {},
       coverPhotoFileName: meta?.coverPhotoFileName ?? null,
       previewPhotoUrls,
+      publishedCommitHash: content.publishedVersion?.commitHash ?? null,
+      hasUnpublishedChanges: content.publishedVersion
+        ? content.latestVersion?.commitHash !== content.publishedVersion?.commitHash
+        : false,
     };
   }
 

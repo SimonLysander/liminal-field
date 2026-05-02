@@ -154,6 +154,10 @@ export interface GalleryPost {
   coverPhotoFileName: string | null;
   /** 预览图 URL 列表（前 N 张缩略图，由后端返回） */
   previewPhotoUrls: string[];
+  /** 已发布版本的 commitHash，null 表示未发布 */
+  publishedCommitHash: string | null;
+  /** latestVersion 与 publishedVersion 不一致时为 true */
+  hasUnpublishedChanges: boolean;
 }
 
 export interface GalleryPhoto {

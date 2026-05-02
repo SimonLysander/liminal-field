@@ -28,6 +28,10 @@ export class GalleryPostDto {
   coverPhotoFileName: string | null;
   /** 前 9 张图片的访问 URL，用于列表页缩略图预览。 */
   previewPhotoUrls: string[];
+  /** 已发布版本的 commitHash，null 表示未发布。 */
+  publishedCommitHash: string | null;
+  /** 是否有未发布的变更（latestVersion !== publishedVersion）。 */
+  hasUnpublishedChanges: boolean;
 }
 
 export class GalleryPostDetailDto extends GalleryPostDto {
