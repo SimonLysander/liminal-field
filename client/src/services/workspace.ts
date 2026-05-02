@@ -182,6 +182,8 @@ export interface CreateGalleryPostDto {
 export interface UpdateGalleryPostDto {
   title?: string;
   description?: string;
+  /** 业务动作：commit（默认）= 只提交，publish = 提交并发布 */
+  action?: 'commit' | 'publish';
 }
 
 /** 单张照片的元数据，用于批量更新 meta 接口 */
@@ -368,7 +370,8 @@ export const galleryApi = {
         bodyMarkdown: dto.description !== undefined
           ? (dto.description || '\u200B')
           : undefined,
-        changeNote: '更新画廊动态',
+        changeNote: dto.action === 'publish' ? '发布' : '更新画廊动态',
+        action: dto.action,
       }),
     }),
 

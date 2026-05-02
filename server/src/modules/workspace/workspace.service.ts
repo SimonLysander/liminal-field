@@ -146,16 +146,24 @@ export class WorkspaceService {
     }
 
     /*
-     * 提交始终用 committed 状态——只更新 latestVersion，不动 publishedVersion。
-     * 发布是独立操作（publish 方法），遵循"编辑不自动发布"的业务语义。
+     * 业务动作：
+     *   commit（默认）— 只更新 latestVersion，不动 publishedVersion
+     *   publish — 提交并发布，同时更新 latestVersion 和 publishedVersion
      */
+    const action = dto.action === 'publish'
+      ? ContentSaveAction.publish
+      : ContentSaveAction.commit;
+    const status = dto.action === 'publish'
+      ? ContentStatus.published
+      : ContentStatus.committed;
+
     await this.contentService.saveContent(contentItemId, {
       title: newTitle,
       summary: newSummary,
-      status: ContentStatus.committed,
+      status,
       bodyMarkdown,
       changeNote: dto.changeNote,
-      action: ContentSaveAction.commit,
+      action,
     });
 
     // Navigation 节点名称与 Content 标题保持同步

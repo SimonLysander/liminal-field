@@ -171,16 +171,16 @@ export default function GalleryAdmin() {
     setHistory(hist);
   };
 
-  /** 发布指定历史版本：先写入该版本内容为最新，再发布 */
+  /** 发布指定历史版本：一步完成（action: 'publish'），跟 note 的 publishPreview 一致 */
   const handlePublishVersion = async (id: string, commitHash: string) => {
     try {
       const versionContent = await galleryApi.getByVersion(id, commitHash);
       await galleryApi.update(id, {
         title: versionContent.title,
         description: versionContent.bodyMarkdown === '\u200B' ? '' : versionContent.bodyMarkdown,
+        action: 'publish',
       });
-      await galleryApi.publish(id);
-      toast.success('已发布此版本');
+      toast.success(`版本 ${commitHash.slice(0, 8)} 已发布`);
       setPreview(null);
       void loadPosts();
       void reloadDetail(id);
@@ -191,7 +191,13 @@ export default function GalleryAdmin() {
 
   const handlePublish = async (id: string) => {
     try {
-      await galleryApi.publish(id);
+      /* 读取最新内容，以 action: 'publish' 一步完成发布 */
+      const latest = await galleryApi.getById(id);
+      await galleryApi.update(id, {
+        title: latest.title,
+        description: latest.description,
+        action: 'publish',
+      });
       toast.success('已发布');
       void loadPosts();
       void reloadDetail(id);
