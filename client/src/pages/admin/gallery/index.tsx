@@ -191,13 +191,7 @@ export default function GalleryAdmin() {
 
   const handlePublish = async (id: string) => {
     try {
-      /* 读取最新内容，以 action: 'publish' 一步完成发布 */
-      const latest = await galleryApi.getById(id);
-      await galleryApi.update(id, {
-        title: latest.title,
-        description: latest.description,
-        action: 'publish',
-      });
+      await galleryApi.publish(id);
       toast.success('已发布');
       void loadPosts();
       void reloadDetail(id);
