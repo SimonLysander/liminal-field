@@ -16,6 +16,11 @@ import { toast } from 'sonner';
 
 import Topbar from '@/components/global/Topbar';
 import { LoadingState, ContentFade } from '@/components/LoadingState';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { galleryApi, type GalleryPost, type GalleryPostDetail } from '@/services/workspace';
 import { smoothBounce } from '@/lib/motion';
 import { GalleryPostListItem, GalleryPostPreview } from './components/GalleryFeedCard';
@@ -203,40 +208,113 @@ export default function GalleryAdmin() {
         </div>
       </aside>
 
-      {/* ── 右侧内容区：预览 ── */}
-      <main
-        className="relative z-0 flex flex-1 flex-col overflow-hidden"
-        style={{ background: 'var(--paper)' }}
-      >
+      {/* ── 右侧：Topbar + 内容预览 + 信息侧栏 ── */}
+      <div className="flex flex-1 flex-col overflow-hidden">
         <Topbar />
-        <div className="flex-1 overflow-y-auto px-10 py-9">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={selectedId ?? 'empty'}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -2 }}
-              transition={{ duration: 0.2, ease: smoothBounce }}
-              className="flex flex-1 flex-col"
+        <div className="flex flex-1 overflow-hidden">
+          {/* 中间：内容预览 */}
+          <main
+            className="relative z-0 flex-1 overflow-y-auto px-10 py-9"
+            style={{ background: 'var(--paper)' }}
+          >
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={selectedId ?? 'empty'}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -2 }}
+                transition={{ duration: 0.2, ease: smoothBounce }}
+                className="flex flex-1 flex-col"
+              >
+                {selectedId && detailLoading ? (
+                  <LoadingState />
+                ) : detail ? (
+                  <GalleryPostPreview
+                    post={detail}
+                    onPhotoClick={(index) => { setModalPhotoIndex(index); setModalOpen(true); }}
+                  />
+                ) : (
+                  <EmptyState message="选择一条动态，或点击新建" />
+                )}
+              </motion.div>
+            </AnimatePresence>
+          </main>
+
+          {/* 右侧信息栏（与 note 管理端右栏对齐） */}
+          {detail && (
+            <aside
+              className="flex w-[280px] shrink-0 flex-col overflow-y-auto px-5 py-7"
+              style={{ borderLeft: '0.5px solid var(--separator)' }}
             >
-              {selectedId && detailLoading ? (
-                <LoadingState />
-              ) : detail ? (
-                <GalleryPostPreview
-                  post={detail}
-                  onEdit={() => navigate(`/admin/gallery/edit/${detail.id}`)}
-                  onPublish={() => void handlePublish(detail.id)}
-                  onUnpublish={() => void handleUnpublish(detail.id)}
-                  onDelete={() => void handleDelete(detail.id)}
-                  onPhotoClick={(index) => { setModalPhotoIndex(index); setModalOpen(true); }}
-                />
-              ) : (
-                <EmptyState message="选择一条动态，或点击新建" />
-              )}
-            </motion.div>
-          </AnimatePresence>
+              {/* 信息 */}
+              <div className="mb-5">
+                <SectionTitle>信息</SectionTitle>
+                <div className="space-y-2.5">
+                  <InfoRow label="状态" value={detail.status === 'published' ? '已发布' : '草稿'} />
+                  <InfoRow label="照片" value={`${detail.photos.length} 张`} />
+                  {detail.tags?.location && <InfoRow label="地点" value={detail.tags.location} />}
+                  <InfoRow label="创建" value={new Date(detail.createdAt).toLocaleDateString('zh-CN')} />
+                  <InfoRow label="更新" value={new Date(detail.updatedAt).toLocaleString('zh-CN')} />
+                </div>
+              </div>
+
+              {/* 编辑（跟 note 一样的入口卡片） */}
+              <div className="mb-5">
+                <SectionTitle>编辑</SectionTitle>
+                <div
+                  className="rounded-[10px] p-4"
+                  style={{ border: '1px solid var(--box-border)', background: 'var(--shelf)' }}
+                >
+                  <p className="mb-3.5 text-xs leading-relaxed" style={{ color: 'var(--ink-ghost)' }}>
+                    进入编辑器修改照片和随笔
+                  </p>
+                  <button
+                    className="text-xs font-medium transition-colors"
+                    style={{ color: 'var(--ink)' }}
+                    onClick={() => navigate(`/admin/gallery/edit/${detail.id}`)}
+                  >
+                    开始编辑 →
+                  </button>
+                </div>
+              </div>
+
+              {/* 操作 */}
+              <div>
+                <SectionTitle>操作</SectionTitle>
+                <div className="space-y-2">
+                  <button
+                    className="w-full rounded-lg py-2 text-xs font-medium transition-colors"
+                    style={{ background: 'var(--shelf)', color: 'var(--ink)', border: '0.5px solid var(--separator)' }}
+                    onClick={() => detail.status === 'draft' ? void handlePublish(detail.id) : void handleUnpublish(detail.id)}
+                  >
+                    {detail.status === 'draft' ? '发布' : '取消发布'}
+                  </button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <button
+                        className="w-full rounded-lg py-2 text-xs font-medium transition-colors"
+                        style={{ color: 'var(--mark-red)', border: '0.5px solid var(--separator)' }}
+                      >
+                        删除
+                      </button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>确认删除？</AlertDialogTitle>
+                        <AlertDialogDescription>删除后无法恢复。</AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>取消</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => void handleDelete(detail.id)}>删除</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </div>
+            </aside>
+          )}
         </div>
-      </main>
+      </div>
 
       {/* 照片大图预览 */}
       {detail && (
@@ -248,5 +326,27 @@ export default function GalleryAdmin() {
         />
       )}
     </>
+  );
+}
+
+/* ─── 右栏辅助组件 ─── */
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="mb-2.5 text-2xs font-semibold uppercase"
+      style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>{label}</div>
+      <div className="mt-0.5 text-xs font-medium" style={{ color: 'var(--ink)' }}>{value}</div>
+    </div>
   );
 }

@@ -8,17 +8,6 @@
 // 历史引用仍能编译，但推荐从 index.tsx 直接使用上述两者。
 
 import { MapPin } from 'lucide-react';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
 import type { GalleryPost } from '@/services/workspace';
 
 // ─── 工具：相对时间（不依赖外部库）───
@@ -133,81 +122,25 @@ export function GalleryPostListItem({ post, isSelected, onClick }: GalleryPostLi
 
 interface GalleryPostPreviewProps {
   post: GalleryPost & { photos?: Array<{ id: string; url: string; fileName: string; caption: string }> };
-  onEdit: () => void;
-  onPublish: () => void;
-  onUnpublish: () => void;
-  onDelete: () => void;
   onPhotoClick?: (index: number) => void;
 }
 
 export function GalleryPostPreview({
   post,
-  onEdit,
-  onPublish,
-  onUnpublish,
-  onDelete,
   onPhotoClick,
 }: GalleryPostPreviewProps) {
   const locationTag = post.tags?.location;
-  /* 优先用完整 photos 数组（详情），否则回退 previewPhotoUrls（列表） */
   const photoUrls = post.photos?.map((p) => p.url) ?? post.previewPhotoUrls ?? [];
 
   return (
-    <div className="mx-auto max-w-[680px]">
-      {/* 标题 + 操作按钮（同一行） */}
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <h1
-          className="min-w-0 flex-1 text-2xl font-semibold leading-tight"
-          style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}
-        >
-          {post.title}
-        </h1>
-
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            className="rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors duration-150"
-            style={{ background: 'var(--ink)', color: 'var(--paper)' }}
-            onClick={onEdit}
-          >
-            编辑
-          </button>
-          <button
-            className="rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors duration-150"
-            style={{ background: 'var(--shelf)', color: 'var(--ink)', border: '0.5px solid var(--separator)' }}
-            onClick={post.status === 'draft' ? onPublish : onUnpublish}
-          >
-            {post.status === 'draft' ? '发布' : '取消发布'}
-          </button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <button
-                className="rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors duration-150"
-                style={{ color: 'var(--mark-red)', border: '0.5px solid var(--separator)' }}
-              >
-                删除
-              </button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>确认删除？</AlertDialogTitle>
-                <AlertDialogDescription>删除后无法恢复。将同时删除该动态下的所有照片。</AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>取消</AlertDialogCancel>
-                <AlertDialogAction className="bg-red-500 hover:bg-red-600" onClick={onDelete}>删除</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-      </div>
-
-      {/* 状态 + 时间 */}
-      <div className="mb-5 flex items-center gap-3">
-        <StatusBadge status={post.status} />
-        <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
-          {post.photoCount} 张 · 更新于 {formatRelativeTime(post.updatedAt)}
-        </span>
-      </div>
+    <div className="mx-auto max-w-[740px]">
+      {/* 标题 */}
+      <h1
+        className="mb-5 text-2xl font-semibold leading-tight"
+        style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}
+      >
+        {post.title}
+      </h1>
 
       {/* 照片网格（可点击查看大图） */}
       {photoUrls.length > 0 && (
@@ -239,33 +172,3 @@ export function GalleryPostPreview({
   );
 }
 
-// ─── GalleryFeedCard（保留，已废弃）───
-// 旧版 Feed 布局使用的卡片，保留以防外部仍有引用。
-// 新布局请使用 GalleryPostListItem + GalleryPostPreview。
-
-interface GalleryFeedCardProps {
-  post: GalleryPost;
-  onEdit: () => void;
-  onPublish: () => void;
-  onUnpublish: () => void;
-  onDelete: () => void;
-}
-
-/** @deprecated 请改用 GalleryPostListItem + GalleryPostPreview */
-export function GalleryFeedCard({
-  post,
-  onEdit,
-  onPublish,
-  onUnpublish,
-  onDelete,
-}: GalleryFeedCardProps) {
-  return (
-    <GalleryPostPreview
-      post={post}
-      onEdit={onEdit}
-      onPublish={onPublish}
-      onUnpublish={onUnpublish}
-      onDelete={onDelete}
-    />
-  );
-}
