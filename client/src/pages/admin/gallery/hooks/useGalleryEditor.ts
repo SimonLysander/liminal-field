@@ -292,7 +292,7 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     [photos, coverPhotoFileName, savePhotoMeta],
   );
 
-  // ─── 手动保存（Git commit + 删除草稿） ───
+  // ─── 手动保存草稿（不做 Git commit，只存草稿） ───
 
   const save = useCallback(async () => {
     const id = effectiveIdRef.current;
@@ -300,21 +300,19 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
 
     setSaveStatus('saving');
     try {
-      await galleryApi.update(id, {
-        title,
-        description: prose || '\u200B',
+      await galleryApi.saveDraft(id, {
+        title: titleRef.current,
+        summary: titleRef.current,
+        bodyMarkdown: proseRef.current || '\u200B',
+        changeNote: '手动保存草稿',
       });
-      // commit 成功后删草稿
-      try {
-        await galleryApi.deleteDraft(id);
-      } catch { /* 草稿可能不存在，静默处理 */ }
       setSaveStatus('saved');
-      toast.success('已保存');
+      toast.success('草稿已保存');
     } catch {
       setSaveStatus('dirty');
       toast.error('保存失败');
     }
-  }, [title, prose]);
+  }, []);
 
   // ─── 新建帖子 ───
 
