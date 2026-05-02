@@ -161,11 +161,22 @@ export default function GalleryAdmin() {
     }
   };
 
+  /** 刷新选中帖子的详情 + 历史（发布/取消发布/提交后调用） */
+  const reloadDetail = async (id: string) => {
+    const [d, hist] = await Promise.all([
+      galleryApi.getById(id),
+      galleryApi.getHistory(id).catch(() => []),
+    ]);
+    setDetail(d);
+    setHistory(hist);
+  };
+
   const handlePublish = async (id: string) => {
     try {
       await galleryApi.publish(id);
       toast.success('已发布');
       void loadPosts();
+      void reloadDetail(id);
     } catch {
       toast.error('发布失败');
     }
@@ -176,6 +187,7 @@ export default function GalleryAdmin() {
       await galleryApi.unpublish(id);
       toast.success('已取消发布');
       void loadPosts();
+      void reloadDetail(id);
     } catch {
       toast.error('取消发布失败');
     }

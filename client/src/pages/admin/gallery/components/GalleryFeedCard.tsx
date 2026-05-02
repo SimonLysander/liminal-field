@@ -27,21 +27,6 @@ function formatRelativeTime(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
 }
 
-// ─── 状态徽章 ───
-
-function StatusBadge({ status }: { status: 'draft' | 'published' }) {
-  return (
-    <span
-      className="shrink-0 rounded px-1.5 py-0.5 text-2xs font-medium"
-      style={{
-        background: status === 'published' ? 'rgba(52,199,89,0.1)' : 'var(--shelf)',
-        color: status === 'published' ? 'var(--mark-green)' : 'var(--ink-ghost)',
-      }}
-    >
-      {status === 'published' ? '已发布' : '草稿'}
-    </span>
-  );
-}
 
 // ─── 可点击照片网格（5 列，与编辑页 PhotoGrid 一致）───
 
@@ -100,14 +85,11 @@ export function GalleryPostListItem({ post, isSelected, onClick }: GalleryPostLi
 
       {/* 文字内容：标题 + 徽章 + 日期 */}
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <span
-            className="min-w-0 flex-1 truncate text-base"
-            style={{ fontWeight: isSelected ? 500 : 400 }}
-          >
-            {post.title}
-          </span>
-          <StatusBadge status={post.status} />
+        <div
+          className="truncate text-base"
+          style={{ fontWeight: isSelected ? 500 : 400 }}
+        >
+          {post.title}
         </div>
         <div className="mt-0.5 text-2xs" style={{ color: 'var(--ink-ghost)' }}>
           {formatRelativeTime(post.updatedAt)}
