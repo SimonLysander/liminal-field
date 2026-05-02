@@ -9,6 +9,7 @@ import { ContentRepository } from '../content/content.repository';
 import { ContentItem, ContentChangeType } from '../content/content-item.entity';
 import { NavigationNodeService } from '../navigation/navigation.service';
 import { MineruService } from './mineru.service';
+import { ImportSessionRepository } from './import-session.repository';
 import { AssetRefDto, ParseResultDto } from './dto/parse-result.dto';
 import { ConfirmImportDto } from './dto/confirm-import.dto';
 
@@ -18,12 +19,6 @@ const MINERU_EXTENSIONS = new Set(['.docx', '.doc', '.pdf', '.pptx', '.ppt']);
 /** MinIO 中 import 临时文件的前缀 */
 const IMPORT_PREFIX = 'import-temp';
 
-interface ImportMeta {
-  title: string;
-  markdown: string;
-  assets: AssetRefDto[];
-}
-
 @Injectable()
 export class ImportService {
   private readonly logger = new Logger(ImportService.name);
@@ -31,6 +26,7 @@ export class ImportService {
   constructor(
     private readonly minioService: MinioService,
     private readonly mineruService: MineruService,
+    private readonly importSessionRepo: ImportSessionRepository,
     private readonly contentRepoService: ContentRepoService,
     private readonly contentGitService: ContentGitService,
     private readonly contentRepository: ContentRepository,
@@ -95,15 +91,29 @@ export class ImportService {
       assets.push({ ref, filename, status: 'missing' });
     }
 
-    // 存 meta.json 到 MinIO
-    const meta: ImportMeta = { title, markdown, assets };
+    // MongoDB 存会话元数据，MinIO 存 markdown 文本
+    await this.importSessionRepo.create({ id: parseId, title, assets });
     await this.minioService.putObject(
-      `${IMPORT_PREFIX}/${parseId}/meta.json`,
-      Buffer.from(JSON.stringify(meta), 'utf-8'),
-      'application/json',
+      `${IMPORT_PREFIX}/${parseId}/content.md`,
+      Buffer.from(markdown, 'utf-8'),
+      'text/markdown',
     );
 
     return { parseId, title, markdown, assets };
+  }
+
+  /** 根据 parseId 获取解析结果（MongoDB 元数据 + MinIO markdown） */
+  async getParse(parseId: string): Promise<ParseResultDto> {
+    const session = await this.importSessionRepo.findById(parseId);
+    if (!session) throw new NotFoundException('导入会话不存在或已过期');
+
+    const mdBuffer = await this.minioService.getObject(`${IMPORT_PREFIX}/${parseId}/content.md`);
+    return {
+      parseId,
+      title: session.title,
+      markdown: mdBuffer.toString('utf-8'),
+      assets: session.assets,
+    };
   }
 
   /** 在 markdown 中查找引用某个图片文件名的路径 */
@@ -134,37 +144,32 @@ export class ImportService {
     parseId: string,
     files: { filename: string; buffer: Buffer; mimetype: string }[],
   ): Promise<AssetRefDto[]> {
-    const meta = await this.getMeta(parseId);
+    const session = await this.importSessionRepo.findById(parseId);
+    if (!session) throw new NotFoundException('导入会话不存在或已过期');
 
-    // 构建待匹配 map：filename → asset index
+    const assets = [...session.assets];
     const missingMap = new Map<string, number>();
-    meta.assets.forEach((asset, i) => {
+    assets.forEach((asset, i) => {
       if (asset.status === 'missing') missingMap.set(asset.filename.toLowerCase(), i);
     });
 
-    // 遍历上传文件，按 basename 匹配
     for (const file of files) {
       const basename = parsePath(file.filename).base.toLowerCase();
       const idx = missingMap.get(basename);
       if (idx !== undefined) {
         await this.minioService.putObject(
-          `${IMPORT_PREFIX}/${parseId}/assets/${meta.assets[idx].filename}`,
+          `${IMPORT_PREFIX}/${parseId}/assets/${assets[idx].filename}`,
           file.buffer,
           file.mimetype,
         );
-        meta.assets[idx].status = 'resolved';
+        assets[idx].status = 'resolved';
         missingMap.delete(basename);
       }
     }
 
-    // 更新 meta.json
-    await this.minioService.putObject(
-      `${IMPORT_PREFIX}/${parseId}/meta.json`,
-      Buffer.from(JSON.stringify(meta), 'utf-8'),
-      'application/json',
-    );
-
-    return meta.assets;
+    // 更新 MongoDB 资源状态
+    await this.importSessionRepo.updateAssets(parseId, assets);
+    return assets;
   }
 
   /**
@@ -172,8 +177,12 @@ export class ImportService {
    * 直接使用底层服务，避免 createContent+saveContent 产生两次提交。
    */
   async confirm(dto: ConfirmImportDto): Promise<{ nodeId: string; contentItemId: string }> {
-    const meta = await this.getMeta(dto.parseId);
-    const title = dto.title || meta.title;
+    const session = await this.importSessionRepo.findById(dto.parseId);
+    if (!session) throw new NotFoundException('导入会话不存在或已过期');
+
+    const mdBuffer = await this.minioService.getObject(`${IMPORT_PREFIX}/${dto.parseId}/content.md`);
+    const rawMarkdown = mdBuffer.toString('utf-8');
+    const title = dto.title || session.title;
     const now = new Date();
     const contentId = `ci_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
 
@@ -181,7 +190,7 @@ export class ImportService {
 
     // 存储已匹配的资源到 git 仓库，收集路径映射
     const pathMap = new Map<string, string>();
-    for (const asset of meta.assets) {
+    for (const asset of session.assets) {
       if (asset.status === 'resolved') {
         const buf = await this.minioService.getObject(
           `${IMPORT_PREFIX}/${dto.parseId}/assets/${asset.filename}`,
@@ -196,8 +205,8 @@ export class ImportService {
     }
 
     // 重写 markdown 中的图片路径
-    let body = meta.markdown;
-    for (const asset of meta.assets) {
+    let body = rawMarkdown;
+    for (const asset of session.assets) {
       if (asset.status === 'resolved') {
         const newPath = pathMap.get(asset.filename);
         if (newPath) {
@@ -246,7 +255,8 @@ export class ImportService {
       contentItemId: contentId,
     });
 
-    // 清理 MinIO 临时数据
+    // 清理临时数据（MongoDB + MinIO）
+    await this.importSessionRepo.deleteById(dto.parseId);
     await this.minioService.removeByPrefix(`${IMPORT_PREFIX}/${dto.parseId}/`);
     this.logger.log(`Import confirmed: ${contentId} (${title})`);
 
@@ -276,37 +286,32 @@ export class ImportService {
     });
   }
 
-  /** 每小时清理超时的 import 临时数据（兜底，正常流程在 confirm/cancel 时清理） */
+  /**
+   * 兜底清理：MongoDB TTL index 自动删 session 记录，
+   * 这里清理可能残留的 MinIO 孤立文件。
+   */
   @Cron(CronExpression.EVERY_HOUR)
-  async cleanupExpiredImports() {
+  async cleanupOrphanedFiles() {
     try {
       const keys = await this.minioService.listByPrefix(`${IMPORT_PREFIX}/`);
       if (keys.length === 0) return;
 
-      // 按 parseId 分组
       const parseIds = new Set<string>();
       for (const key of keys) {
         const parts = key.split('/');
         if (parts.length >= 2) parseIds.add(parts[1]);
       }
 
-      if (parseIds.size > 0) {
-        this.logger.log(`Import cleanup check: ${parseIds.size} active sessions`);
+      // 检查 MongoDB 中是否还有对应 session，没有则清理 MinIO
+      for (const parseId of parseIds) {
+        const session = await this.importSessionRepo.findById(parseId);
+        if (!session) {
+          await this.minioService.removeByPrefix(`${IMPORT_PREFIX}/${parseId}/`);
+          this.logger.log(`Cleaned orphaned import files: ${parseId}`);
+        }
       }
     } catch {
       // MinIO 不可用时静默忽略
-    }
-  }
-
-  /** 从 MinIO 读取 import meta */
-  private async getMeta(parseId: string): Promise<ImportMeta> {
-    try {
-      const buf = await this.minioService.getObject(
-        `${IMPORT_PREFIX}/${parseId}/meta.json`,
-      );
-      return JSON.parse(buf.toString('utf-8')) as ImportMeta;
-    } catch {
-      throw new NotFoundException('导入会话不存在或已过期');
     }
   }
 }

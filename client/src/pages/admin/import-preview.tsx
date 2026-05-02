@@ -15,8 +15,8 @@ import { parseError } from './helpers';
  * 用户可补传缺失资源（上传文件夹），确认后正式创建 content item。
  *
  * 数据流：
- *   1. NodeFormModal 解析 .md 文件 → 存 sessionStorage → 跳转至此页
- *   2. 此页从 sessionStorage 读取 ParseResult（避免重复请求）
+ *   1. NodeFormModal 解析文件 → 跳转至此页（带 parseId）
+ *   2. 此页通过 GET API 从后端加载 ParseResult（MongoDB + MinIO）
  *   3. 用户可上传文件夹补全缺失图片资源
  *   4. 确认后调用 confirm API，跳转到编辑页
  */
@@ -37,22 +37,26 @@ export default function ImportPreviewPage() {
   const tocContainerRef = useRef<HTMLDivElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
     if (!parseId) {
       toast.info('导入会话无效');
       navigate('/admin/content');
       return;
     }
-    const cached = sessionStorage.getItem(`import-${parseId}`);
-    if (cached) {
-      const parsed = JSON.parse(cached) as ParseResult;
-      setData(parsed);
-      setTitle(parsed.title);
-      setAssets(parsed.assets);
-    } else {
-      toast.info('导入会话已过期，请重新上传');
-      navigate('/admin/content');
-    }
+    setLoading(true);
+    importApi.getParse(parseId)
+      .then((parsed) => {
+        setData(parsed);
+        setTitle(parsed.title);
+        setAssets(parsed.assets);
+      })
+      .catch(() => {
+        toast.info('导入会话已过期，请重新上传');
+        navigate('/admin/content');
+      })
+      .finally(() => setLoading(false));
   }, [parseId, navigate]);
 
   // TOC：从渲染后的 DOM 提取标题
@@ -127,7 +131,6 @@ export default function ImportPreviewPage() {
     setConfirming(true);
     try {
       const result = await importApi.confirm(parseId, parentId, title);
-      sessionStorage.removeItem(`import-${parseId}`);
       toast.success('导入成功');
       // 跳转到管理预览页
       const params = new URLSearchParams();
@@ -142,13 +145,12 @@ export default function ImportPreviewPage() {
   };
 
   const handleCancel = () => {
-    if (parseId) sessionStorage.removeItem(`import-${parseId}`);
     navigate('/admin/content');
   };
 
   const missingCount = assets.filter((a) => a.status === 'missing').length;
 
-  if (!data) return null;
+  if (loading || !data) return <ThresholdOverlay visible label="正在加载预览..." />;
 
   return (
     <div className="flex h-screen flex-col" style={{ background: 'var(--paper)' }}>

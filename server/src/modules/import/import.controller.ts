@@ -1,4 +1,4 @@
-import { Controller, Post, Req, Body, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Param, Req, Body, BadRequestException } from '@nestjs/common';
 import { ImportService } from './import.service';
 import { ConfirmImportDto } from './dto/confirm-import.dto';
 import type { MultipartFile } from '@fastify/multipart';
@@ -21,6 +21,12 @@ export class ImportController {
 
     const buffer = await file.toBuffer();
     return this.importService.parse(file.filename, buffer);
+  }
+
+  /** 获取解析结果（预览页加载 / 页面刷新时从 MinIO 读取） */
+  @Get('parse/:parseId')
+  async getParse(@Param('parseId') parseId: string) {
+    return this.importService.getParse(parseId);
   }
 
   /** 用户上传文件夹内容，按文件名匹配缺失资源 */

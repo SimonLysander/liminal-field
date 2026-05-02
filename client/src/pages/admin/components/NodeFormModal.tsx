@@ -82,8 +82,6 @@ export const NodeFormModal = ({
     setError('');
     try {
       const result = await importApi.parse(file);
-      // 存储 parse 结果到 sessionStorage，预览页使用
-      sessionStorage.setItem(`import-${result.parseId}`, JSON.stringify(result));
       onClose();
       const params = new URLSearchParams({ parseId: result.parseId });
       if (modal.parentId) params.set('parentId', modal.parentId);

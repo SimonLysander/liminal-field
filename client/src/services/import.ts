@@ -29,6 +29,10 @@ export const importApi = {
     });
   },
 
+  /** 根据 parseId 获取解析结果（从 MinIO 读取） */
+  getParse: (parseId: string) =>
+    request<ParseResult>(`/spaces/notes/import/parse/${parseId}`),
+
   /** 上传文件夹内容，按文件名匹配缺失资源 */
   resolveAssets: (parseId: string, files: FileList) => {
     const form = new FormData();
