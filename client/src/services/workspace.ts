@@ -377,9 +377,11 @@ export const galleryApi = {
       method: 'DELETE',
     }),
 
-  publish: (id: string) =>
+  /** 发布。可选传 commitHash 发布指定历史版本，不传则发布 latestVersion。 */
+  publish: (id: string, commitHash?: string) =>
     request<GalleryPost>(`/spaces/gallery/items/${id}/publish`, {
       method: 'PUT',
+      body: commitHash ? JSON.stringify({ commitHash }) : undefined,
     }),
 
   unpublish: (id: string) =>

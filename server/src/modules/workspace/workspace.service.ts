@@ -178,10 +178,14 @@ export class WorkspaceService {
     }
   }
 
-  /** 发布：将 latestVersion 指针复制到 publishedVersion，使内容对外可见。 */
+  /**
+   * 发布：publishedVersion 指向指定版本（纯指针操作）。
+   * @param commitHash 可选，指定发布哪个历史版本。不传则发布 latestVersion。
+   */
   async publish(
     _scope: string,
     contentItemId: string,
+    commitHash?: string,
   ): Promise<WorkspaceItemDetailDto> {
     const content = await this.contentRepository.findById(contentItemId);
     if (!content) throw new NotFoundException(`Item ${contentItemId} not found`);
@@ -195,8 +199,11 @@ export class WorkspaceService {
       summary: version.summary,
       status: ContentStatus.committed,
       bodyMarkdown: source.bodyMarkdown,
-      changeNote: 'Published',
+      changeNote: commitHash
+        ? `发布版本 ${commitHash.slice(0, 8)}`
+        : 'Published',
       action: ContentSaveAction.publish,
+      publishCommitHash: commitHash,
     });
 
     return this.getById(_scope, contentItemId);

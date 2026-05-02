@@ -37,7 +37,6 @@ import { CreateWorkspaceItemDto } from './dto/create-workspace-item.dto';
 import { UpdateWorkspaceItemDto } from './dto/update-workspace-item.dto';
 import { EditorDraftDto } from './dto/editor-draft.dto';
 import { SaveDraftDto } from './dto/save-draft.dto';
-import { UpdateGalleryMetaDto } from './dto/update-gallery-meta.dto';
 import { GalleryPostDetailDto } from './dto/gallery-view.dto';
 
 type MultipartRequest = {
@@ -95,21 +94,6 @@ export class WorkspaceController {
   }
 
   // ─── Gallery 特有路由（必须在通用 :scope 路由之前注册）───
-
-  /** 获取画廊帖子的元数据（照片顺序、描述、封面、标签）。 */
-  @Get('gallery/items/:id/meta')
-  async getGalleryMeta(@Param('id') id: string): Promise<GalleryPostDetailDto> {
-    return this.galleryViewService.toPostDetailDto(id);
-  }
-
-  /** 更新画廊帖子的 MongoDB 侧元数据，返回更新后的 detail。 */
-  @Put('gallery/items/:id/meta')
-  async updateGalleryMeta(
-    @Param('id') id: string,
-    @Body() dto: UpdateGalleryMetaDto,
-  ): Promise<GalleryPostDetailDto> {
-    return this.galleryViewService.updateMeta(id, dto);
-  }
 
   /** 获取画廊帖子的编辑器草稿（复用 NoteViewService，草稿以 contentItemId 为键）。 */
   @Get('gallery/items/:id/draft')
@@ -271,8 +255,12 @@ export class WorkspaceController {
   // ─── 发布/取消 ───
 
   @Put(':scope/items/:id/publish')
-  async publish(@Param('scope') scope: string, @Param('id') id: string) {
-    await this.workspaceService.publish(scope, id);
+  async publish(
+    @Param('scope') scope: string,
+    @Param('id') id: string,
+    @Body() body?: { commitHash?: string },
+  ) {
+    await this.workspaceService.publish(scope, id, body?.commitHash);
     // notes scope 前端依赖含 latestVersion/publishedVersion 的完整格式
     if (scope === 'notes') return this.noteViewService.getById(id, 'all');
     return this.workspaceService.getById(scope, id);

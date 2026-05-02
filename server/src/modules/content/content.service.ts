@@ -163,6 +163,7 @@ export class ContentService {
   private enforceActionStateTransition(
     current: ContentItem,
     action: ContentSaveAction | undefined,
+    publishCommitHash?: string,
   ): void {
     if (!action) {
       return;
@@ -174,6 +175,7 @@ export class ContentService {
 
     if (
       action === ContentSaveAction.publish &&
+      !publishCommitHash && // 指定了历史 commitHash 时跳过此校验
       currentStatus !== ContentStatus.committed &&
       !(
         currentStatus === ContentStatus.published &&
@@ -324,7 +326,7 @@ export class ContentService {
     }
 
     const now = new Date();
-    this.enforceActionStateTransition(current, dto.action);
+    this.enforceActionStateTransition(current, dto.action, dto.publishCommitHash);
     await this.contentGitService.prepareWritableWorkspace();
 
     if (dto.action === ContentSaveAction.commit || !dto.action) {
@@ -383,12 +385,16 @@ export class ContentService {
     }
 
     if (dto.action === ContentSaveAction.publish) {
-      // 不能 spread Mongoose 子文档（typegoose 通过 getter 存数据，spread 出来是 {}），
-      // 必须用 buildVersionSnapshot 构造纯 JS 对象
+      /*
+       * 发布指定版本：dto.publishCommitHash 指定历史 commitHash，
+       * 直接把 publishedVersion 指向该版本，不产生新提交。
+       * 未指定时默认发布 latestVersion（兼容原行为）。
+       */
+      const targetHash = dto.publishCommitHash ?? nextLatestVersion.commitHash;
       nextPublishedVersion = this.buildVersionSnapshot(
-        nextLatestVersion.commitHash,
-        nextLatestVersion.title,
-        nextLatestVersion.summary ?? '',
+        targetHash,
+        dto.title,
+        dto.summary ?? '',
       );
     }
 

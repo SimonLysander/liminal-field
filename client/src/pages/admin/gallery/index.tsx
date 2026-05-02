@@ -171,18 +171,10 @@ export default function GalleryAdmin() {
     setHistory(hist);
   };
 
-  /** 发布指定历史版本：先提交该版本内容为新 latestVersion，再把 publishedVersion 指向它 */
+  /** 发布指定历史版本：纯指针操作，publishedVersion 直接指向该 commitHash */
   const handlePublishVersion = async (id: string, commitHash: string) => {
     try {
-      const versionContent = await galleryApi.getByVersion(id, commitHash);
-      /* 第一步：提交（把历史内容写为新 latestVersion） */
-      await galleryApi.update(id, {
-        title: versionContent.title,
-        description: versionContent.bodyMarkdown === '\u200B' ? '' : versionContent.bodyMarkdown,
-        changeNote: `恢复版本 ${commitHash.slice(0, 8)}`,
-      });
-      /* 第二步：发布（publishedVersion 指向新的 latestVersion） */
-      await galleryApi.publish(id);
+      await galleryApi.publish(id, commitHash);
       toast.success(`版本 ${commitHash.slice(0, 8)} 已发布`);
       setPreview(null);
       void loadPosts();
