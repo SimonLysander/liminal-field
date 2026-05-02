@@ -197,7 +197,7 @@ export function GalleryFeedCard({
       </div>
 
       {/* 照片预览网格 */}
-      <PhotoPreviewGrid urls={post.previewPhotoUrls} />
+      <PhotoPreviewGrid urls={post.previewPhotoUrls ?? []} />
 
       {/* 简介文字（最多两行） */}
       {post.description && (
