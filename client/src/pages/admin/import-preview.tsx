@@ -145,7 +145,8 @@ export default function ImportPreviewPage() {
   };
 
   const handleCancel = () => {
-    navigate('/admin/content');
+    const backUrl = parentId ? `/admin/content?topic=${parentId}` : '/admin/content';
+    navigate(backUrl);
   };
 
   const missingCount = assets.filter((a) => a.status === 'missing').length;
