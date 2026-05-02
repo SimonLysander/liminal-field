@@ -78,6 +78,9 @@ export class ImportService {
     // 通用后处理
     markdown = this.normalizeHeadingLevels(markdown);
     markdown = markdown.replace(/==((?:[^=]|=[^=])+)==/g, '<mark>$1</mark>');
+    // LaTeX 公式 → inline code（Plate 不支持 LaTeX，$..$ 会导致 remarkMdx 解析崩溃）
+    markdown = markdown.replace(/\$\$([\s\S]*?)\$\$/g, (_, tex) => '\n```\n' + tex.trim() + '\n```\n');
+    markdown = markdown.replace(/\$([^\n$]+?)\$/g, '`$1`');
     markdown = markdown.replace(/\n{3,}/g, '\n\n');
 
     // 扫描本地图片引用（.md 文件的图片，或 MinerU 结果中未匹配的引用）
