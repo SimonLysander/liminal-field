@@ -85,19 +85,32 @@ export default function GalleryAdmin() {
     void loadPosts();
   }, []);
 
-  /* 选中帖子变化时加载完整详情 */
+  /* 草稿状态 */
+  const [draftInfo, setDraftInfo] = useState<{ exists: boolean; savedAt?: string }>({ exists: false });
+
+  /* 选中帖子变化时加载完整详情 + 检测草稿 */
   useEffect(() => {
     if (!selectedId) {
       setDetail(null);
+      setDraftInfo({ exists: false });
       return;
     }
     let cancelled = false;
     setDetailLoading(true);
-    galleryApi.getById(selectedId).then((d) => {
-      if (!cancelled) { setDetail(d); setDetailLoading(false); }
+
+    /* 并行加载详情和草稿 */
+    Promise.all([
+      galleryApi.getById(selectedId),
+      galleryApi.getDraft(selectedId).catch(() => null),
+    ]).then(([d, draft]) => {
+      if (cancelled) return;
+      setDetail(d);
+      setDraftInfo(draft ? { exists: true, savedAt: draft.savedAt } : { exists: false });
+      setDetailLoading(false);
     }).catch(() => {
-      if (!cancelled) { setDetail(null); setDetailLoading(false); }
+      if (!cancelled) { setDetail(null); setDraftInfo({ exists: false }); setDetailLoading(false); }
     });
+
     return () => { cancelled = true; };
   }, [selectedId]);
 
@@ -258,23 +271,44 @@ export default function GalleryAdmin() {
                 </div>
               </div>
 
-              {/* 编辑（跟 note 一样的入口卡片） */}
+              {/* 编辑（跟 note 一样的草稿入口卡片） */}
               <div className="mb-5">
                 <SectionTitle>编辑</SectionTitle>
                 <div
                   className="rounded-[10px] p-4"
                   style={{ border: '1px solid var(--box-border)', background: 'var(--shelf)' }}
                 >
-                  <p className="mb-3.5 text-xs leading-relaxed" style={{ color: 'var(--ink-ghost)' }}>
-                    进入编辑器修改照片和随笔
-                  </p>
-                  <button
-                    className="text-xs font-medium transition-colors"
-                    style={{ color: 'var(--ink)' }}
-                    onClick={() => navigate(`/admin/gallery/edit/${detail.id}`)}
-                  >
-                    开始编辑 →
-                  </button>
+                  {draftInfo.exists ? (
+                    <div className="space-y-2">
+                      <InfoRow label="已有草稿" value="是" />
+                      <InfoRow
+                        label="上次保存"
+                        value={draftInfo.savedAt ? new Date(draftInfo.savedAt).toLocaleString('zh-CN') : '--'}
+                      />
+                      <div className="flex gap-4 pt-2">
+                        <button
+                          className="text-xs font-medium"
+                          style={{ color: 'var(--ink)' }}
+                          onClick={() => navigate(`/admin/gallery/edit/${detail.id}`)}
+                        >
+                          继续编辑 →
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="mb-3.5 text-xs leading-relaxed" style={{ color: 'var(--ink-ghost)' }}>
+                        进入编辑器修改照片和随笔
+                      </p>
+                      <button
+                        className="text-xs font-medium"
+                        style={{ color: 'var(--ink)' }}
+                        onClick={() => navigate(`/admin/gallery/edit/${detail.id}`)}
+                      >
+                        开始编辑 →
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 
