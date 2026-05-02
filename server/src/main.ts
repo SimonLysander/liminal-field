@@ -58,8 +58,8 @@ async function bootstrap() {
   // Cookie 解析——JwtAuthGuard 从 auth_token cookie 读取 JWT。
   await app.register(cookie);
 
-  // 附件上传按 multipart/form-data 接入，单文件请求已经足够覆盖当前编辑器链路。
-  await app.register(multipart);
+  // 附件上传：fileSize 200MB 覆盖 MinerU 精准 API 的文件上限。
+  await app.register(multipart, { limits: { fileSize: 200 * 1024 * 1024 } });
 
   // 2. 服务和路由
   app.setGlobalPrefix('api/v1');
