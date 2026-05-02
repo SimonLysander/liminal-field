@@ -36,6 +36,7 @@ import NotFoundPage from './pages/not-found';
 const AdminShell = lazy(() => import('./pages/admin'));
 const ContentAdmin = lazy(() => import('./pages/admin/content'));
 const GalleryAdmin = lazy(() => import('./pages/admin/gallery'));
+const GalleryEditPage = lazy(() => import('./pages/admin/gallery/edit'));
 const DraftEditPage = lazy(() => import('./pages/admin/edit'));
 const ImportPreviewPage = lazy(() => import('./pages/admin/import-preview'));
 const LoginPage = lazy(() => import('./pages/login'));
@@ -154,6 +155,8 @@ function App() {
           <Route index element={<Navigate to="/admin/content" replace />} />
           <Route path="content" element={<Suspense fallback={<LoadingState variant="full" />}><ContentAdmin /></Suspense>} />
           <Route path="gallery" element={<Suspense fallback={<LoadingState variant="full" />}><GalleryAdmin /></Suspense>} />
+          <Route path="gallery/edit/:id" element={<Suspense fallback={<LoadingState variant="full" />}><GalleryEditPage /></Suspense>} />
+          <Route path="gallery/new" element={<Suspense fallback={<LoadingState variant="full" />}><GalleryEditPage /></Suspense>} />
         </Route>
         <Route
           path="/admin/edit/:id"
