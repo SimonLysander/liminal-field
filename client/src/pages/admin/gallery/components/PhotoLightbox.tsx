@@ -1,8 +1,8 @@
 /**
  * PhotoLightbox — 图片预览弹窗（只读查看大图）。
  *
- * 基于 yet-another-react-lightbox，提供暗色遮罩 + 大图 + 左右切换 + 键盘导航。
- * 用于画廊管理预览页点击照片时查看大图。
+ * 基于 yet-another-react-lightbox，提供遮罩 + 大图 + 左右切换 + 键盘导航。
+ * 通过 CSS 变量覆盖默认纯黑背景，使其跟随主题。
  */
 
 import Lightbox from 'yet-another-react-lightbox';
@@ -22,6 +22,9 @@ export function PhotoLightbox({ open, urls, initialIndex, onClose }: PhotoLightb
       close={onClose}
       index={initialIndex}
       slides={urls.map((src) => ({ src }))}
+      styles={{
+        container: { backgroundColor: 'rgba(0, 0, 0, 0.6)', backdropFilter: 'blur(12px)' },
+      }}
     />
   );
 }
