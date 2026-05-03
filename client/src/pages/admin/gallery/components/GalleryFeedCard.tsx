@@ -9,6 +9,7 @@
 
 import { MapPin } from 'lucide-react';
 import type { GalleryPost } from '@/services/workspace';
+import MarkdownBody from '@/components/shared/MarkdownBody';
 
 // ─── 工具：相对时间（不依赖外部库）───
 
@@ -172,11 +173,11 @@ export function GalleryPostPreview({
         </div>
       )}
 
-      {/* 描述文字 */}
+      {/* 描述文字（markdown 渲染） */}
       {post.description && (
-        <p className="mb-4 text-sm leading-relaxed" style={{ color: 'var(--ink-light)' }}>
-          {post.description}
-        </p>
+        <div className="mb-4 text-sm leading-relaxed" style={{ color: 'var(--ink-light)' }}>
+          <MarkdownBody markdown={post.description} />
+        </div>
       )}
 
       {/* 地点标签 */}

@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { useNavigate } from 'react-router-dom';
+// 编辑页跳转统一用 window.location.href（Plate inputRules 在 SPA 导航后不生效）
 import { smoothBounce } from '@/lib/motion';
 import { notesApi as contentItemsApi } from '@/services/workspace';
 import { extractHeadings, type TocEntry } from '@/lib/markdown';
@@ -25,7 +25,6 @@ import { LoadingState, ContentFade } from '@/components/LoadingState';
 
 const ContentAdmin = () => {
   const workspace = useAdminWorkspace();
-  const navigate = useNavigate();
   /* 选中节点的恢复由 useAdminWorkspace 的 URL 同步处理 */
 
   /* ---- TOC ----
@@ -82,7 +81,7 @@ const ContentAdmin = () => {
   }, [getHeadingEls]);
 
   const editUrl = workspace.selectedNode?.contentItemId
-    ? `/admin/edit/${workspace.selectedNode.contentItemId}`
+    ? `/admin/notes/${workspace.selectedNode.contentItemId}/edit`
     : null;
 
   const handleOverwriteDraft = async () => {
@@ -90,7 +89,7 @@ const ContentAdmin = () => {
     const confirmed = window.confirm('是否覆盖已有草稿？将从正式版本重新创建。');
     if (!confirmed) return;
     await contentItemsApi.deleteDraft(workspace.selectedNode.contentItemId);
-    navigate(`/admin/edit/${workspace.selectedNode.contentItemId}`);
+    window.location.href = `/admin/notes/${workspace.selectedNode.contentItemId}/edit`;
   };
 
   return (
@@ -175,7 +174,9 @@ const ContentAdmin = () => {
                 historyLoading={workspace.historyLoading}
                 publishedHash={workspace.formalContent.publishedVersion?.commitHash ?? null}
                 activePreviewHash={workspace.preview?.commitHash ?? null}
-                onEditDraft={() => editUrl && navigate(editUrl)}
+                onEditDraft={() => {
+                  if (editUrl) window.location.href = editUrl;
+                }}
                 onOverwriteDraft={handleOverwriteDraft}
                 onSelectVersion={workspace.previewVersion}
               />

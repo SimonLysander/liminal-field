@@ -428,15 +428,12 @@ export class GalleryViewService {
 
   /**
    * 获取画廊草稿：将存储的 bodyMarkdown 反序列化为结构化字段返回给前端。
-   * 无草稿时抛 NotFoundException（与 NoteViewService.getDraft 的 null 返回不同，
-   * 因为画廊草稿由 GalleryViewService 独立管理，统一用异常表达"不存在"）。
+   * 无草稿时返回 null（200），与 NoteViewService.getDraft 行为一致，避免 404 污染浏览器 console。
    */
-  async getDraft(contentItemId: string): Promise<GalleryDraftDto> {
+  async getDraft(contentItemId: string): Promise<GalleryDraftDto | null> {
     await this.contentService.assertContentItemExists(contentItemId);
     const draft = await this.editorDraftRepository.findByContentItemId(contentItemId);
-    if (!draft) {
-      throw new NotFoundException(`Gallery draft for ${contentItemId} not found`);
-    }
+    if (!draft) return null;
 
     const parsed = parseGalleryContent(draft.bodyMarkdown);
     return {

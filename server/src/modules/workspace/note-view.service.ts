@@ -90,17 +90,20 @@ export class NoteViewService {
       assetsDir,
     );
 
-    // 2. 改写 markdown 中的草稿预览 URL 为 git 相对路径
+    // 2. 改写 markdown 中的 API URL 为 git 相对路径（draft-assets 和 assets 两种都要处理）
     let { bodyMarkdown } = dto;
-    if (materialized.length > 0 && bodyMarkdown) {
+    if (bodyMarkdown) {
       const draftUrlPattern = new RegExp(
         `/api/v1/spaces/notes/items/${id}/draft-assets/([^)\\s"]+)`,
         'g',
       );
-      bodyMarkdown = bodyMarkdown.replace(
-        draftUrlPattern,
-        (_match, fileName) => `./assets/${fileName}`,
+      const assetUrlPattern = new RegExp(
+        `/api/v1/spaces/notes/items/${id}/assets/([^)\\s"]+)`,
+        'g',
       );
+      bodyMarkdown = bodyMarkdown
+        .replace(draftUrlPattern, (_match, fileName) => `./assets/${fileName}`)
+        .replace(assetUrlPattern, (_match, fileName) => `./assets/${fileName}`);
       dto = { ...dto, bodyMarkdown };
     }
 

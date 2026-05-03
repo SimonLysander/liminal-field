@@ -108,9 +108,9 @@ export class WorkspaceController {
     return this.galleryViewService.commitPost(id, dto);
   }
 
-  /** 获取画廊帖子的结构化草稿（后端反序列化 frontmatter，前端只收 JSON）。 */
+  /** 获取画廊帖子的结构化草稿。无草稿时返回 null（200），避免 404 噪音。 */
   @Get('gallery/items/:id/draft')
-  async getGalleryDraft(@Param('id') id: string): Promise<GalleryDraftDto> {
+  async getGalleryDraft(@Param('id') id: string): Promise<GalleryDraftDto | null> {
     return this.galleryViewService.getDraft(id);
   }
 

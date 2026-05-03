@@ -12,7 +12,6 @@ import { ExitBreakPlugin, TrailingBlockPlugin } from 'platejs';
 import { BasicNodesKit } from './plugins/basic-nodes-kit';
 import { CodeBlockKit } from './plugins/code-block-kit';
 import { DateKit } from './plugins/date-kit';
-import { DndKit } from './plugins/dnd-kit';
 import { LinkKit } from './plugins/link-kit';
 import { ListKit } from './plugins/list-kit';
 import { TableKit } from './plugins/table-kit';
@@ -24,7 +23,9 @@ export const EditorKit = [
   ...BasicNodesKit,
   ...CodeBlockKit,
   ...DateKit,
-  ...DndKit,
+  /* DndKit 移除：react-dnd HTML5Backend 会劫持浏览器原生 paste 事件，
+     导致 Plate inputRules（列表快捷输入）和 autolink（粘贴链接自动识别）失效。
+     块级拖拽排序是低频操作，inputRules 和 autolink 是高频操作，取舍明确。 */
   ...LinkKit,
   ...ListKit,
   ...TableKit,

@@ -1,5 +1,5 @@
 /*
- * DraftEditPage — 沉浸式草稿编辑器 (/admin/edit/:id)
+ * DraftEditPage — 沉浸式草稿编辑器 (/admin/notes/:id/edit)
  *
  * 布局：全屏沉浸式，无卡片浮起效果。顶栏单行：
  *   ← / 标题 | 工具栏(Portal) | 状态 + 操作按钮
@@ -333,7 +333,7 @@ const DraftEditPage = () => {
             <div className="mx-auto w-[85%] min-w-[600px] max-w-[960px] pb-40 pt-10">
               <DraftAssetProvider contentItemId={id!}>
                 <PlateMarkdownEditor
-                  key={resetKey}
+                  key={`${id}-${resetKey}`}
                   initialMarkdown={state.bodyMarkdown}
                   onChange={(md) => handleChange('bodyMarkdown', md)}
                   toolbarContainer={toolbarPortal}

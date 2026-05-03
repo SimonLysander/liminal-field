@@ -201,6 +201,7 @@ export function ToolbarSplitButtonPrimary({
   className,
   size = 'sm',
   variant,
+  onClick,
   ...props
 }: ToolbarSplitButtonPrimaryProps) {
   return (
@@ -214,6 +215,12 @@ export function ToolbarSplitButtonPrimary({
         'group-data-[pressed=true]:bg-accent group-data-[pressed=true]:text-accent-foreground',
         className
       )}
+      data-plate-focus
+      onMouseDown={(e) => {
+        e.preventDefault();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onClick?.(e as any);
+      }}
       {...props}
     >
       {children}

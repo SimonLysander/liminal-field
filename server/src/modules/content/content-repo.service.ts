@@ -325,8 +325,13 @@ export class ContentRepoService {
       /* main.md 不存在（刚创建还没第一次提交），返回空内容 */
       return { bodyMarkdown: '', plainText: '', assetRefs: [] };
     }
+    /* 将 ./assets/ 相对路径改写为 API 绝对路径，前端不需要自行处理 */
+    const resolvedMarkdown = bodyMarkdown.replaceAll(
+      /\.\/assets\//g,
+      `/api/v1/spaces/notes/items/${contentId}/assets/`,
+    );
     return {
-      bodyMarkdown,
+      bodyMarkdown: resolvedMarkdown,
       plainText: this.extractPlainText(bodyMarkdown),
       assetRefs: this.extractAssetRefs(bodyMarkdown),
     };

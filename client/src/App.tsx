@@ -152,14 +152,13 @@ function App() {
             </AuthGuard>
           }
         >
-          <Route index element={<Navigate to="/admin/content" replace />} />
-          <Route path="content" element={<Suspense fallback={<LoadingState variant="full" />}><ContentAdmin /></Suspense>} />
+          <Route index element={<Navigate to="/admin/notes" replace />} />
+          <Route path="notes" element={<Suspense fallback={<LoadingState variant="full" />}><ContentAdmin /></Suspense>} />
           <Route path="gallery" element={<Suspense fallback={<LoadingState variant="full" />}><GalleryAdmin /></Suspense>} />
-          <Route path="gallery/edit/:id" element={<Suspense fallback={<LoadingState variant="full" />}><GalleryEditPage /></Suspense>} />
-          <Route path="gallery/new" element={<Suspense fallback={<LoadingState variant="full" />}><GalleryEditPage /></Suspense>} />
+          <Route path="gallery/:id/edit" element={<Suspense fallback={<LoadingState variant="full" />}><GalleryEditPage /></Suspense>} />
         </Route>
         <Route
-          path="/admin/edit/:id"
+          path="/admin/notes/:id/edit"
           element={
             <AuthGuard>
               <Suspense fallback={<LoadingState variant="full" />}>
@@ -169,7 +168,7 @@ function App() {
           }
         />
         <Route
-          path="/admin/content/import-preview"
+          path="/admin/notes/import-preview"
           element={
             <AuthGuard>
               <Suspense fallback={<LoadingState variant="full" />}>

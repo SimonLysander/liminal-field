@@ -20,6 +20,7 @@ import { galleryApi, type GalleryPost, type GalleryPostDetail, type ContentHisto
 import { smoothBounce } from '@/lib/motion';
 import { GalleryPostListItem, GalleryPostPreview } from './components/GalleryFeedCard';
 import { PhotoLightbox } from './components/PhotoLightbox';
+import { CreateGalleryModal } from './components/CreateGalleryModal';
 
 // ─── 空状态 ───
 
@@ -41,6 +42,9 @@ export default function GalleryAdmin() {
 
   const [posts, setPosts] = useState<GalleryPost[]>([]);
   const [loading, setLoading] = useState(true);
+
+  /* 新建 Modal */
+  const [createModalOpen, setCreateModalOpen] = useState(false);
 
   /* 选中帖子的完整详情（含所有照片） */
   const [detail, setDetail] = useState<GalleryPostDetail | null>(null);
@@ -223,6 +227,21 @@ export default function GalleryAdmin() {
     }
   };
 
+  /** 新建：Modal 输入标题 → 创建 content item（仅 MongoDB）→ 进入编辑器 */
+  const handleCreate = async (title: string) => {
+    const post = await galleryApi.create({ title, description: '' });
+    navigate(`/admin/gallery/${post.id}/edit`);
+  };
+
+  /**
+   * 跳转编辑页：先卸载预览区（清理 PlateReadOnly 实例），再导航。
+   * PlateReadOnly 的全局状态会干扰编辑器的 Plate 实例，导致 inputRules 失效。
+   * 通过先置空 detail 触发 React 卸载 PlateReadOnly，下一帧再 navigate。
+   */
+  const navigateToEdit = useCallback((id: string) => {
+    window.location.href = `/admin/gallery/${id}/edit`;
+  }, []);
+
   // ─── 渲染 ───
 
   return (
@@ -288,7 +307,7 @@ export default function GalleryAdmin() {
           <button
             className="hover-shelf flex items-center gap-1 rounded px-1.5 py-0.5 text-base font-medium transition-colors duration-150"
             style={{ color: 'var(--ink)' }}
-            onClick={() => navigate('/admin/gallery/new')}
+            onClick={() => setCreateModalOpen(true)}
           >
             <Plus size={10} strokeWidth={2} />
             新建
@@ -364,7 +383,10 @@ export default function GalleryAdmin() {
                           };
                         }),
                         photoCount: preview.photos.length,
-                      } : detail}
+                      } : history.length === 0
+                        /* 从未提交：只展示标题，不展示未提交的照片和描述 */
+                        ? { ...detail, photos: [], description: '', photoCount: 0, previewPhotoUrls: [] }
+                        : detail}
                       onPhotoClick={preview ? undefined : (index) => { setModalPhotoIndex(index); setModalOpen(true); }}
                       onPublish={preview ? undefined : () => void handlePublish(detail.id)}
                       onUnpublish={preview ? undefined : () => void handleUnpublish(detail.id)}
@@ -414,7 +436,7 @@ export default function GalleryAdmin() {
                         <button
                           className="text-xs font-medium"
                           style={{ color: 'var(--ink)' }}
-                          onClick={() => navigate(`/admin/gallery/edit/${detail.id}`)}
+                          onClick={() => navigateToEdit(detail.id)}
                         >
                           继续编辑 →
                         </button>
@@ -435,7 +457,7 @@ export default function GalleryAdmin() {
                       <button
                         className="text-xs font-medium"
                         style={{ color: 'var(--ink)' }}
-                        onClick={() => navigate(`/admin/gallery/edit/${detail.id}`)}
+                        onClick={() => navigateToEdit(detail.id)}
                       >
                         开始编辑 →
                       </button>
@@ -477,6 +499,13 @@ export default function GalleryAdmin() {
           onClose={() => setModalOpen(false)}
         />
       )}
+
+      {/* 新建 Modal */}
+      <CreateGalleryModal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onSubmit={handleCreate}
+      />
     </>
   );
 }

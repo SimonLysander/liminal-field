@@ -1,14 +1,14 @@
 /*
- * GalleryEditPage — 画廊动态编辑页 (/admin/gallery/edit/:id | /admin/gallery/new)
+ * GalleryEditPage — 画廊动态编辑页 (/admin/gallery/:id/edit)
  *
  * 布局：
  *   Topbar（主题切换）
- *   顶部导航栏：← 返回 | 标题输入 | 保存状态 | 保存/创建按钮
- *   滚动内容区（max-w-[520px] 居中）：PhotoGrid + GalleryProseEditor + LocationSelect
+ *   顶部导航栏：← 返回 | 标题输入 | 保存状态 | 保存/提交按钮
+ *   滚动内容区（max-w-[740px] 居中）：PhotoGrid + GalleryProseEditor + LocationSelect
  *   PhotoEditModal（照片详情弹窗）
  *
- * 新建场景：id 为 undefined（路由 /admin/gallery/new），
- * 点击"创建"时调用 createPost()，创建成功后 replace 导航到编辑页。
+ * 进入此页面时 id 必定存在（从列表页 Modal 创建后跳转而来）。
+ * 所有编辑通过 draft 自动保存，"提交"触发首次/新版本 Git commit。
  */
 
 import { useState } from 'react';
@@ -19,6 +19,7 @@ import { PhotoGrid } from './components/PhotoGrid';
 import { PhotoEditModal } from './components/PhotoEditModal';
 import { GalleryProseEditor } from './components/GalleryProseEditor';
 import { LocationSelect } from './components/LocationSelect';
+import { CommitModal } from './components/CommitModal';
 import { useGalleryEditor } from './hooks/useGalleryEditor';
 
 // ─── 保存状态展示 ───
@@ -69,29 +70,22 @@ export default function GalleryEditPage() {
     updateLocation,
     save,
     commit,
-    createPost,
   } = useGalleryEditor(id);
 
   // 照片编辑弹窗状态
   const [modalOpen, setModalOpen] = useState(false);
   const [modalPhotoIndex, setModalPhotoIndex] = useState(0);
+  // 提交 Modal 状态
+  const [commitModalOpen, setCommitModalOpen] = useState(false);
 
   const handlePhotoClick = (index: number) => {
     setModalPhotoIndex(index);
     setModalOpen(true);
   };
 
-  // 新建：创建帖子
-  const handleCreate = async () => {
-    try {
-      const newId = await createPost();
-      navigate(`/admin/gallery/edit/${newId}`, { replace: true });
-    } catch { /* createPost 内部已 toast */ }
-  };
-
-  // 提交：业务提交 → 跳回管理页
-  const handleCommit = async () => {
-    await commit();
+  // 提交：Modal 输入变更说明 → Git commit → 跳回列表页
+  const handleCommit = async (changeNote: string) => {
+    await commit(changeNote);
     navigate(`/admin/gallery?post=${id}`);
   };
 
@@ -109,11 +103,11 @@ export default function GalleryEditPage() {
         className="flex shrink-0 items-center gap-3 px-4"
         style={{ height: 48, borderBottom: '0.5px solid var(--separator)' }}
       >
-        {/* 左侧：← / 标题（与 note 编辑器导航一致） */}
+        {/* 左侧：← 返回列表 */}
         <button
           className="hover-shelf shrink-0 rounded-md px-2 py-1 transition-colors duration-150"
           style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-base)' }}
-          onClick={() => navigate(id ? `/admin/gallery?post=${id}` : '/admin/gallery')}
+          onClick={() => navigate(`/admin/gallery?post=${id}`)}
           aria-label="返回画廊列表"
         >
           ←
@@ -133,34 +127,21 @@ export default function GalleryEditPage() {
 
         {/* 右侧：保存状态 + 操作按钮 */}
         <div className="flex shrink-0 items-center gap-3">
-          {id && <SaveStatusBadge status={saveStatus} />}
-
-          {id ? (
-            <>
-              <button
-                className="rounded-md px-3 py-1.5 text-sm transition-colors duration-150"
-                style={{ color: 'var(--ink-faded)', border: '0.5px solid var(--separator)' }}
-                onClick={() => void save()}
-              >
-                保存草稿
-              </button>
-              <button
-                className="rounded-md px-3 py-1.5 text-sm font-medium transition-colors duration-150"
-                style={{ background: 'var(--ink)', color: 'var(--paper)' }}
-                onClick={() => void handleCommit()}
-              >
-                提交
-              </button>
-            </>
-          ) : (
-            <button
-              className="rounded-md px-3 py-1.5 text-sm font-medium transition-colors duration-150"
-              style={{ background: 'var(--ink)', color: 'var(--paper)' }}
-              onClick={() => void handleCreate()}
-            >
-              创建
-            </button>
-          )}
+          <SaveStatusBadge status={saveStatus} />
+          <button
+            className="rounded-md px-3 py-1.5 text-sm transition-colors duration-150"
+            style={{ color: 'var(--ink-faded)', border: '0.5px solid var(--separator)' }}
+            onClick={() => void save()}
+          >
+            保存草稿
+          </button>
+          <button
+            className="rounded-md px-3 py-1.5 text-sm font-medium transition-colors duration-150"
+            style={{ background: 'var(--ink)', color: 'var(--paper)' }}
+            onClick={() => setCommitModalOpen(true)}
+          >
+            提交
+          </button>
         </div>
       </div>
 
@@ -172,16 +153,7 @@ export default function GalleryEditPage() {
             photos={photos}
             onReorder={reorderPhotos}
             onPhotoClick={handlePhotoClick}
-            onUpload={async (files) => {
-              /* 新建场景：先创建动态拿到 ID，再上传照片 */
-              if (!id) {
-                try {
-                  const newId = await createPost();
-                  navigate(`/admin/gallery/edit/${newId}`, { replace: true });
-                } catch { return; }
-              }
-              void uploadPhotos(files);
-            }}
+            onUpload={(files) => void uploadPhotos(files)}
           />
 
           {/* 随笔编辑器 */}
@@ -207,6 +179,13 @@ export default function GalleryEditPage() {
         onCaptionChange={updateCaption}
         onSetCover={setCover}
         onDelete={deletePhoto}
+      />
+
+      {/* 提交 Modal */}
+      <CommitModal
+        open={commitModalOpen}
+        onClose={() => setCommitModalOpen(false)}
+        onSubmit={handleCommit}
       />
     </div>
   );

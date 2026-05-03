@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import MarkdownBody from '@/components/shared/MarkdownBody';
 import { smoothBounce } from '@/lib/motion';
 import { galleryApi } from '@/services/workspace';
 import type { GalleryPostDetail } from '@/services/workspace';
@@ -211,7 +212,7 @@ export default function GalleryPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: 0.1 }}
               >
-                {post.description}
+                <MarkdownBody markdown={post.description} />
               </motion.div>
             )}
           </motion.div>

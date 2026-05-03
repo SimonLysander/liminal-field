@@ -56,7 +56,7 @@ export interface GalleryEditorActions {
   setCover: (photoId: string) => void;
   updateLocation: (location: string | undefined) => void;
   save: () => Promise<void>;
-  commit: () => Promise<void>;
+  commit: (changeNote?: string) => Promise<void>;
 }
 
 // ─── Hook ───
@@ -112,12 +112,13 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
           setCoverPhotoFileName(draft.cover);
 
           // 合并 draft.photos（顺序/元数据来源）与 detail.photos（URL/size 来源）
+          // 已提交的照片 URL 走 Git assets，未提交的走 MinIO draft-assets 代理
           const photoMap = new Map((detail.photos ?? []).map((p) => [p.fileName, p]));
           const merged: GalleryPhoto[] = draft.photos.map((dp, i) => {
             const asset = photoMap.get(dp.file);
             return {
               id: asset?.id ?? dp.file,
-              url: asset?.url ?? '',
+              url: asset?.url ?? `/api/v1/spaces/gallery/items/${postId}/draft-assets/${dp.file}`,
               size: asset?.size ?? 0,
               fileName: dp.file,
               order: i,
@@ -306,12 +307,12 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
 
   // ─── 提交（Git commit + 删除草稿） ───
 
-  const commit = useCallback(async () => {
+  const commit = useCallback(async (changeNote?: string) => {
     const id = effectiveIdRef.current;
     if (!id) return;
     setSaveStatus('saving');
     try {
-      await galleryApi.update(id, { ...buildSavePayload(), changeNote: '提交' });
+      await galleryApi.update(id, { ...buildSavePayload(), changeNote: changeNote || '提交' });
       await galleryApi.deleteDraft(id).catch(() => {});
       setSaveStatus('saved');
       toast.success('已提交');

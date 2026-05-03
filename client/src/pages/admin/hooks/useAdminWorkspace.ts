@@ -106,7 +106,7 @@ export function useAdminWorkspace() {
     if (folderId) params.set('topic', folderId);
     if (contentItemId) params.set('doc', contentItemId);
     const qs = params.toString();
-    return qs ? `/admin/content?${qs}` : '/admin/content';
+    return qs ? `/admin/notes?${qs}` : '/admin/notes';
   }, []);
 
   const enterFolder = useCallback((node: StructureNode) => {
@@ -115,7 +115,7 @@ export function useAdminWorkspace() {
 
   const goToBreadcrumb = useCallback((index: number | null) => {
     if (index === null) {
-      navigate('/admin/content');
+      navigate('/admin/notes');
     } else {
       navigate(buildUrl(breadcrumb[index].id));
     }
@@ -154,11 +154,13 @@ export function useAdminWorkspace() {
     }
 
     const createPayload = payload.node as CreateStructureNodeDto;
-
-    // DOC 节点的 content item 由后端 createStructureNode 原子创建，
-    // 前端无需关心 contentItemId——避免两步流程的竞态与遗留业务耦合。
-    await structureApi.createNode(createPayload);
+    const created = await structureApi.createNode(createPayload);
     void loadLevel(urlFolderId);
+
+    // DOC 节点创建后直接跳转编辑页
+    if (created.type === 'DOC' && created.contentItemId) {
+      window.location.href = `/admin/notes/${created.contentItemId}/edit`;
+    }
   };
 
   const handleDelete = async () => {
@@ -607,6 +609,11 @@ export function useAdminWorkspace() {
     moveNodeToFolder,
 
     /* 内容工作区 */
+    /** 同步清空预览内容，立即卸载 PlateReadOnly。导航到编辑页前调用。 */
+    clearContent: useCallback(() => {
+      setFormalContent(EMPTY_FORMAL_CONTENT);
+      setPreview(null);
+    }, []),
     workspaceMode,
     formalContent,
     draftState,

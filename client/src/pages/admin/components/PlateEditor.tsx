@@ -9,7 +9,7 @@
  *   - 编辑时 serializeMd 将节点树序列化回 Markdown
  */
 
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Plate,
@@ -64,10 +64,11 @@ export function PlateMarkdownEditor({
   onChange: (markdown: string) => void;
   toolbarContainer?: HTMLElement | null;
 }) {
-  /* value 接受工厂函数 (editor) => Value，在 editor 完全初始化后才调用，
-     避免在 React 上下文外触发 Jotai atom 求值导致 crash */
+  const [editorId] = useState(() => `plate-${Math.random().toString(36).slice(2)}`);
+
   const editor = usePlateEditor(
     {
+      id: editorId,
       plugins: EditorKit,
       value: (editor) => {
         try {
@@ -95,7 +96,7 @@ export function PlateMarkdownEditor({
 
   return (
     <TooltipProvider>
-      <Plate editor={editor} onValueChange={handleChange}>
+      <Plate key={editorId} editor={editor} onValueChange={handleChange}>
         {toolbarContainer && createPortal(
           <FixedToolbar>
             <FixedToolbarButtons />

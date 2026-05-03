@@ -8,7 +8,7 @@
  *   - 最小高度 100px，适合画廊随笔输入场景
  */
 
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import {
   BoldIcon,
   ItalicIcon,
@@ -27,7 +27,7 @@ import { GalleryEditorKit } from '@/components/editor/gallery-editor-kit';
 import { Editor, EditorContainer } from '@/components/ui/editor';
 import { LinkToolbarButton } from '@/components/ui/link-toolbar-button';
 import { MarkToolbarButton } from '@/components/ui/mark-toolbar-button';
-import { Toolbar, ToolbarGroup } from '@/components/ui/toolbar';
+import { Toolbar, ToolbarButton, ToolbarGroup } from '@/components/ui/toolbar';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 const CHAR_LIMIT = 300;
@@ -47,8 +47,11 @@ export function GalleryProseEditor({
   initialMarkdown: string;
   onChange: (markdown: string) => void;
 }) {
+  const [editorId] = useState(() => `plate-gallery-${Math.random().toString(36).slice(2)}`);
+
   const editor = usePlateEditor(
     {
+      id: editorId,
       plugins: GalleryEditorKit,
       value: (editor) => {
         try {
@@ -76,7 +79,7 @@ export function GalleryProseEditor({
 
   return (
     <TooltipProvider>
-      <Plate editor={editor} onValueChange={handleChange}>
+      <Plate key={editorId} editor={editor} onValueChange={handleChange}>
         <GalleryProseEditorInner />
       </Plate>
     </TooltipProvider>
@@ -150,7 +153,7 @@ function GalleryProseEditorInner() {
   );
 }
 
-/* 无序列表按钮：直接切换 Disc 样式，不展开子菜单（Gallery 场景用不到） */
+/* 无序列表按钮：用 ToolbarButton（不是 MarkToolbarButton）避免 mark toggle 干扰 */
 function BulletedListButton() {
   const editor = useEditorRef();
   const pressed = useEditorSelector(
@@ -159,21 +162,20 @@ function BulletedListButton() {
   );
 
   return (
-    <MarkToolbarButton
-      nodeType="ul"
+    <ToolbarButton
       tooltip="无序列表"
       pressed={pressed}
-      onClick={(e) => {
+      onMouseDown={(e) => {
         e.preventDefault();
         toggleList(editor, { listStyleType: ListStyleType.Disc });
       }}
     >
       <ListIcon />
-    </MarkToolbarButton>
+    </ToolbarButton>
   );
 }
 
-/* 有序列表按钮：直接切换 Decimal 样式 */
+/* 有序列表按钮 */
 function NumberedListButton() {
   const editor = useEditorRef();
   const pressed = useEditorSelector(
@@ -182,16 +184,15 @@ function NumberedListButton() {
   );
 
   return (
-    <MarkToolbarButton
-      nodeType="ol"
+    <ToolbarButton
       tooltip="有序列表"
       pressed={pressed}
-      onClick={(e) => {
+      onMouseDown={(e) => {
         e.preventDefault();
         toggleList(editor, { listStyleType: ListStyleType.Decimal });
       }}
     >
       <ListOrderedIcon />
-    </MarkToolbarButton>
+    </ToolbarButton>
   );
 }

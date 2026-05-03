@@ -453,7 +453,10 @@ body {
   scroll-margin-top: 80px;
 }
 
-/* Plate editor: suppress focus outline on the contentEditable surface */
+/* Plate editor: 文字颜色跟随主题 + suppress focus outline */
+[data-slate-editor] {
+  color: var(--ink);
+}
 [data-slate-editor]:focus-visible,
 [data-slate-editor]:focus {
   outline: none !important;
@@ -649,6 +652,29 @@ button:active:not(:disabled):not(.nav-item),
 }
 [data-theme="midnight"] .ai-chat-input-row input {
   background: rgba(255,255,255,0.06);
+}
+
+/* ─── View Transitions（跨页面过渡动画，Chrome 126+） ─── */
+
+@view-transition {
+  navigation: auto;
+}
+
+/* 快速淡入淡出，不拖泥带水 */
+::view-transition-old(root) {
+  animation: 120ms ease-out both fade-out;
+}
+::view-transition-new(root) {
+  animation: 120ms ease-in 60ms both fade-in;
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* midnight 主题 highlight 色覆盖 */

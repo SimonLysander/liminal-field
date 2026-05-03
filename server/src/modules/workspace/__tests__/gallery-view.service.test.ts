@@ -1,14 +1,22 @@
+/**
+ * GalleryViewService 单元测试。
+ *
+ * 测试重点：
+ * - frontmatter 解析：cover、tags、photos（含 photo 级 tags）从 main.md 正确读取
+ * - 旧数据兼容：无 frontmatter 时正常降级
+ * - 封面图优先级：frontmatter.cover > assets 首图 > null
+ * - toPostDetailDto：frontmatter 顺序 + assets 追加逻辑
+ * - readPhotoBuffer：委托 contentRepoService
+ */
 import { NotFoundException } from '@nestjs/common';
 import { GalleryViewService } from '../gallery-view.service';
 import { ContentRepository } from '../../content/content.repository';
 import { ContentRepoService } from '../../content/content-repo.service';
-import { GalleryPostMetaRepository } from '../gallery-post-meta.repository';
 
 describe('GalleryViewService', () => {
   let service: GalleryViewService;
   let contentRepository: jest.Mocked<ContentRepository>;
   let contentRepoService: jest.Mocked<ContentRepoService>;
-  let galleryPostMetaRepository: jest.Mocked<GalleryPostMetaRepository>;
 
   // 可复用的 mock 数据
   const contentItem = {
@@ -41,23 +49,14 @@ describe('GalleryViewService', () => {
       readAssetBuffer: jest.fn(),
     } as unknown as jest.Mocked<ContentRepoService>;
 
-    galleryPostMetaRepository = {
-      findByContentItemId: jest.fn().mockResolvedValue(null),
-      upsert: jest.fn(),
-      deleteByContentItemId: jest.fn(),
-    } as unknown as jest.Mocked<GalleryPostMetaRepository>;
-
-    service = new GalleryViewService(
-      contentRepository,
-      contentRepoService,
-      galleryPostMetaRepository,
-    );
+    // 新版 GalleryViewService 不再注入 GalleryPostMetaRepository
+    service = new GalleryViewService(contentRepository, contentRepoService);
   });
 
   // ─── toPostDto ───
 
   describe('toPostDto()', () => {
-    it('封面图取第一张 image asset 的 URL（无 MongoDB 元数据时）', async () => {
+    it('无 frontmatter 时，封面取第一张 image asset，tags={}，cover=null', async () => {
       contentRepository.findById.mockResolvedValue(contentItem as any);
       contentRepoService.listAssets.mockResolvedValue(imageAssets as any);
       contentRepoService.readContentSource.mockResolvedValue({
@@ -76,21 +75,21 @@ describe('GalleryViewService', () => {
       expect(result.coverPhotoFileName).toBeNull();
     });
 
-    it('MongoDB 元数据中指定了 coverPhotoFileName 时优先使用', async () => {
+    it('frontmatter 中指定 cover 时，优先用 cover 文件作封面', async () => {
+      const mainMd = `---
+cover: b.png
+tags:
+  location: Paris
+photos: []
+---
+
+随笔正文`;
       contentRepository.findById.mockResolvedValue(contentItem as any);
       contentRepoService.listAssets.mockResolvedValue(imageAssets as any);
       contentRepoService.readContentSource.mockResolvedValue({
-        bodyMarkdown: 'desc',
-        plainText: 'desc',
+        bodyMarkdown: mainMd,
+        plainText: '随笔正文',
         assetRefs: [],
-      } as any);
-      galleryPostMetaRepository.findByContentItemId.mockResolvedValue({
-        contentItemId: 'ci_gal1',
-        photos: [],
-        coverPhotoFileName: 'b.png',
-        tags: { location: 'Paris' },
-        createdAt: new Date(),
-        updatedAt: new Date(),
       } as any);
 
       const result = await service.toPostDto('ci_gal1');
@@ -98,6 +97,26 @@ describe('GalleryViewService', () => {
       expect(result.coverUrl).toBe('/api/v1/spaces/gallery/items/ci_gal1/assets/b.png');
       expect(result.coverPhotoFileName).toBe('b.png');
       expect(result.tags).toEqual({ location: 'Paris' });
+    });
+
+    it('frontmatter cover 指定的文件不在 assets 中时，退化为首图', async () => {
+      const mainMd = `---
+cover: missing.jpg
+---
+
+prose`;
+      contentRepository.findById.mockResolvedValue(contentItem as any);
+      contentRepoService.listAssets.mockResolvedValue(imageAssets as any);
+      contentRepoService.readContentSource.mockResolvedValue({
+        bodyMarkdown: mainMd,
+        plainText: 'prose',
+        assetRefs: [],
+      } as any);
+
+      const result = await service.toPostDto('ci_gal1');
+
+      // missing.jpg 不在 assets 中，退化为首图 a.jpg
+      expect(result.coverUrl).toBe('/api/v1/spaces/gallery/items/ci_gal1/assets/a.jpg');
     });
 
     it('无 image asset 时 coverUrl 为 null', async () => {
@@ -153,18 +172,23 @@ describe('GalleryViewService', () => {
       expect(result.previewPhotoUrls).toHaveLength(9);
     });
 
-    it('零宽占位符还原为空描述', async () => {
+    it('prose 部分（frontmatter 之后的正文）作为 description', async () => {
+      const mainMd = `---
+cover: a.jpg
+---
+
+这是随笔正文内容`;
       contentRepository.findById.mockResolvedValue(contentItem as any);
       contentRepoService.listAssets.mockResolvedValue([] as any);
       contentRepoService.readContentSource.mockResolvedValue({
-        bodyMarkdown: '\u200B',
-        plainText: '',
+        bodyMarkdown: mainMd,
+        plainText: '这是随笔正文内容',
         assetRefs: [],
       } as any);
 
       const result = await service.toPostDto('ci_gal1');
 
-      expect(result.description).toBe('');
+      expect(result.description).toBe('这是随笔正文内容');
     });
 
     it('已发布的 post status 为 published', async () => {
@@ -191,22 +215,25 @@ describe('GalleryViewService', () => {
       await expect(service.toPostDto('ci_nope')).rejects.toThrow(NotFoundException);
     });
 
-    it('readContentSource 失败时 description 降级为空串', async () => {
+    it('readContentSource 失败时 description 降级为空串，其他字段正常', async () => {
       contentRepository.findById.mockResolvedValue(contentItem as any);
-      contentRepoService.listAssets.mockResolvedValue([] as any);
+      contentRepoService.listAssets.mockResolvedValue(imageAssets as any);
       contentRepoService.readContentSource.mockRejectedValue(new Error('no file'));
 
       const result = await service.toPostDto('ci_gal1');
 
       expect(result.description).toBe('');
+      expect(result.tags).toEqual({});
+      expect(result.coverPhotoFileName).toBeNull();
     });
   });
 
   // ─── toPostDetailDto ───
 
   describe('toPostDetailDto()', () => {
-    it('在列表 DTO 基础上追加完整照片列表，无元数据时 caption 为空串', async () => {
+    it('无 frontmatter photos 时，按 assets 顺序排列，caption/tags 为空', async () => {
       contentRepository.findById.mockResolvedValue(contentItem as any);
+      // listAssets 被调用两次（toPostDto 内一次 + toPostDetailDto 内一次）
       contentRepoService.listAssets.mockResolvedValue(mixedAssets as any);
       contentRepoService.readContentSource.mockResolvedValue({
         bodyMarkdown: 'desc',
@@ -225,70 +252,109 @@ describe('GalleryViewService', () => {
         size: 1000,
         order: 0,
         caption: '',
+        tags: {},
       });
       expect(result.photos[1].order).toBe(1);
       expect(result.photos[1].caption).toBe('');
+      expect(result.photos[1].tags).toEqual({});
       // 同时包含列表 DTO 的字段
       expect(result.title).toBe('Sunset');
       expect(result.photoCount).toBe(2);
     });
 
-    it('MongoDB 元数据中的 caption 和 order 正确合并', async () => {
+    it('frontmatter photos 的 caption、order（数组索引）和 photo 级 tags 正确合并', async () => {
+      // b.png 在 frontmatter 排在第 0 位，a.jpg 排在第 1 位
+      const mainMd = `---
+photos:
+  - file: b.png
+    caption: Second photo
+    tags:
+      camera: GR III
+  - file: a.jpg
+    caption: First photo
+    tags: {}
+---
+
+desc`;
       contentRepository.findById.mockResolvedValue(contentItem as any);
       contentRepoService.listAssets.mockResolvedValue(imageAssets as any);
       contentRepoService.readContentSource.mockResolvedValue({
-        bodyMarkdown: 'desc',
+        bodyMarkdown: mainMd,
         plainText: 'desc',
         assetRefs: [],
-      } as any);
-      galleryPostMetaRepository.findByContentItemId.mockResolvedValue({
-        contentItemId: 'ci_gal1',
-        photos: [
-          { fileName: 'b.png', caption: 'Second photo', order: 0 },
-          { fileName: 'a.jpg', caption: 'First photo', order: 1 },
-        ],
-        coverPhotoFileName: null,
-        tags: {},
-        createdAt: new Date(),
-        updatedAt: new Date(),
       } as any);
 
       const result = await service.toPostDetailDto('ci_gal1');
 
-      // 按 order 升序排列：b.png(0) 在前，a.jpg(1) 在后
+      // 按 frontmatter 顺序：b.png(0) 在前，a.jpg(1) 在后
       expect(result.photos[0].fileName).toBe('b.png');
       expect(result.photos[0].caption).toBe('Second photo');
       expect(result.photos[0].order).toBe(0);
+      expect(result.photos[0].tags).toEqual({ camera: 'GR III' });
       expect(result.photos[1].fileName).toBe('a.jpg');
       expect(result.photos[1].caption).toBe('First photo');
+      expect(result.photos[1].order).toBe(1);
+      expect(result.photos[1].tags).toEqual({});
     });
-  });
 
-  // ─── updateMeta ───
+    it('frontmatter 未登记的 asset 追加到末尾', async () => {
+      // frontmatter 只登记了 a.jpg，b.png 未登记
+      const mainMd = `---
+photos:
+  - file: a.jpg
+    caption: Only registered
+    tags: {}
+---
 
-  describe('updateMeta()', () => {
-    it('调用 upsert 并返回 toPostDetailDto 结果', async () => {
+prose`;
       contentRepository.findById.mockResolvedValue(contentItem as any);
       contentRepoService.listAssets.mockResolvedValue(imageAssets as any);
       contentRepoService.readContentSource.mockResolvedValue({
-        bodyMarkdown: 'desc',
-        plainText: 'desc',
+        bodyMarkdown: mainMd,
+        plainText: 'prose',
         assetRefs: [],
       } as any);
-      galleryPostMetaRepository.upsert.mockResolvedValue({
-        contentItemId: 'ci_gal1',
-        photos: [],
-        coverPhotoFileName: 'a.jpg',
-        tags: { season: 'summer' },
-        createdAt: new Date(),
-        updatedAt: new Date(),
+
+      const result = await service.toPostDetailDto('ci_gal1');
+
+      expect(result.photos).toHaveLength(2);
+      // a.jpg 在前（frontmatter 登记，order=0）
+      expect(result.photos[0].fileName).toBe('a.jpg');
+      expect(result.photos[0].caption).toBe('Only registered');
+      // b.png 追加到末尾（order=1，caption/tags 为空）
+      expect(result.photos[1].fileName).toBe('b.png');
+      expect(result.photos[1].caption).toBe('');
+      expect(result.photos[1].tags).toEqual({});
+    });
+
+    it('frontmatter 中登记但 assets 不存在的文件跳过（已删除的照片）', async () => {
+      // frontmatter 登记了 ghost.jpg，但 assets 中不存在
+      const mainMd = `---
+photos:
+  - file: ghost.jpg
+    caption: Deleted
+    tags: {}
+  - file: a.jpg
+    caption: Existing
+    tags: {}
+---
+
+prose`;
+      contentRepository.findById.mockResolvedValue(contentItem as any);
+      contentRepoService.listAssets.mockResolvedValue(imageAssets as any);
+      contentRepoService.readContentSource.mockResolvedValue({
+        bodyMarkdown: mainMd,
+        plainText: 'prose',
+        assetRefs: [],
       } as any);
 
-      const dto = { coverPhotoFileName: 'a.jpg', tags: { season: 'summer' } };
-      const result = await service.updateMeta('ci_gal1', dto);
+      const result = await service.toPostDetailDto('ci_gal1');
 
-      expect(galleryPostMetaRepository.upsert).toHaveBeenCalledWith('ci_gal1', dto);
-      expect(result.photos).toBeDefined();
+      // ghost.jpg 不在 assets 中，跳过；a.jpg 正常，b.png 追加末尾
+      const fileNames = result.photos.map((p) => p.fileName);
+      expect(fileNames).not.toContain('ghost.jpg');
+      expect(fileNames).toContain('a.jpg');
+      expect(fileNames).toContain('b.png');
     });
   });
 

@@ -151,9 +151,13 @@ export default function PlateReadOnly({
  * 内层组件：usePlateEditor 必须在 ready 之后才调用，
  * 避免在 transition pending 期间创建重量级 editor 实例。
  */
+let readOnlyCounter = 0;
+
 function PlateReadOnlyInner({ markdown }: { markdown: string }) {
+  const [editorId] = useState(() => `plate-readonly-${++readOnlyCounter}`);
   const editor = usePlateEditor(
     {
+      id: editorId,
       plugins: ReadOnlyPlugins,
       value: (editor) => {
         try {

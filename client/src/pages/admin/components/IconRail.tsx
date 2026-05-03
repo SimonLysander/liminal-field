@@ -16,7 +16,7 @@ import { SyncDialog } from './SyncDialog';
  */
 
 const NAV_ITEMS = [
-  { path: '/admin/content', icon: FileText, label: '笔记管理' },
+  { path: '/admin/notes', icon: FileText, label: '笔记管理' },
   { path: '/admin/gallery', icon: Image, label: '画廊管理' },
 ] as const;
 

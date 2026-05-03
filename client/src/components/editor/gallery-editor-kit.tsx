@@ -4,7 +4,7 @@
  * 包含：
  *   - ParagraphPlugin           基础段落块
  *   - BoldPlugin / ItalicPlugin / UnderlinePlugin / StrikethroughPlugin  行内标记
- *   - LinkPlugin                超链接（无浮动工具栏，不依赖 React 组件）
+ *   - LinkKit                   超链接（含 LinkElement + LinkFloatingToolbar）
  *   - ListPlugin                有序列表 + 无序列表（TaskList 不在 Gallery 场景中需要）
  *   - IndentPlugin              缩进（ListPlugin 依赖，注入目标仅 paragraph）
  *   - MarkdownPlugin            Markdown 序列化 / 反序列化
@@ -14,9 +14,7 @@
  *   - 标题 (H1–H6)、代码块、表格、图片/媒体
  *   - 日期组件、拖拽排序、字体颜色
  *   - 引用块 (Blockquote)、分割线 (HorizontalRule)
- *   - 浮动工具栏（LinkFloatingToolbar）等 React UI 组件
- *
- * 注意：此文件为纯 .ts，不含任何 JSX，可在非 React 上下文中安全 import。
+ *   - 浮动工具栏等 React UI 组件（LinkFloatingToolbar 已包含在 LinkKit 中）
  */
 
 import {
@@ -33,8 +31,7 @@ import {
   UnderlinePlugin,
 } from '@platejs/basic-nodes/react';
 import { IndentPlugin } from '@platejs/indent/react';
-import { LinkRules } from '@platejs/link';
-import { LinkPlugin } from '@platejs/link/react';
+import { LinkKit } from './plugins/link-kit';
 import {
   BulletedListRules,
   OrderedListRules,
@@ -73,15 +70,8 @@ export const GalleryEditorKit = [
     inputRules: [StrikethroughRules.markdown()],
   }),
 
-  /* 超链接：支持 Markdown 自动识别和粘贴自动链接，不挂载浮动工具栏 */
-  LinkPlugin.configure({
-    inputRules: [
-      LinkRules.markdown(),
-      LinkRules.autolink({ variant: 'paste' }),
-      LinkRules.autolink({ variant: 'space' }),
-      LinkRules.autolink({ variant: 'break' }),
-    ],
-  }),
+  /* 超链接：复用 LinkKit（含 LinkElement 渲染 + LinkFloatingToolbar 编辑弹窗） */
+  ...LinkKit,
 
   /* 缩进：仅注入段落节点（Gallery 场景无标题/代码块） */
   IndentPlugin.configure({

@@ -45,15 +45,12 @@ export class WorkspaceService {
     scope: string,
     dto: CreateWorkspaceItemDto,
   ): Promise<WorkspaceItemDetailDto> {
-    const body = dto.bodyMarkdown || EMPTY_BODY_PLACEHOLDER;
     const summary = dto.summary || dto.title;
 
+    // createContent 只建 MongoDB 记录（无 Git commit），内容通过后续 draft/commit 写入
     const detail = await this.contentService.createContent({
       title: dto.title,
       summary,
-      status: ContentStatus.committed,
-      bodyMarkdown: body,
-      changeNote: dto.changeNote || 'Created',
     });
 
     // 在 Navigation 中注册索引，scope 隔离到对应业务模块

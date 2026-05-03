@@ -7,6 +7,14 @@
     <title>liminal-field-web</title>
   </head>
   <body>
+    <!-- 页面加载前立即设置背景色，避免全页面刷新时闪白 -->
+    <script>
+      try {
+        var t = localStorage.getItem('liminal-theme') || 'daylight';
+        document.documentElement.setAttribute('data-theme', t);
+        document.body.style.backgroundColor = t === 'midnight' ? '#161617' : '#FFFFFF';
+      } catch(e) {}
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

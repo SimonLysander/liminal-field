@@ -85,7 +85,7 @@ export const NodeFormModal = ({
       onClose();
       const params = new URLSearchParams({ parseId: result.parseId });
       if (modal.parentId) params.set('parentId', modal.parentId);
-      navigate(`/admin/content/import-preview?${params.toString()}`);
+      navigate(`/admin/notes/import-preview?${params.toString()}`);
     } catch (err) {
       setError(parseError(err, '文件解析失败'));
     } finally {

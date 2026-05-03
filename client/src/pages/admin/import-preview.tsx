@@ -42,7 +42,7 @@ export default function ImportPreviewPage() {
   useEffect(() => {
     if (!parseId) {
       toast.info('导入会话无效');
-      navigate('/admin/content');
+      navigate('/admin/notes');
       return;
     }
     setLoading(true);
@@ -54,7 +54,7 @@ export default function ImportPreviewPage() {
       })
       .catch(() => {
         toast.info('导入会话已过期，请重新上传');
-        navigate('/admin/content');
+        navigate('/admin/notes');
       })
       .finally(() => setLoading(false));
   }, [parseId, navigate]);
@@ -136,7 +136,7 @@ export default function ImportPreviewPage() {
       const params = new URLSearchParams();
       if (parentId) params.set('topic', parentId);
       params.set('doc', result.contentItemId);
-      navigate(`/admin/content?${params.toString()}`);
+      navigate(`/admin/notes?${params.toString()}`);
     } catch (err) {
       toast.error(parseError(err, '导入失败'));
     } finally {
@@ -145,7 +145,7 @@ export default function ImportPreviewPage() {
   };
 
   const handleCancel = () => {
-    const backUrl = parentId ? `/admin/content?topic=${parentId}` : '/admin/content';
+    const backUrl = parentId ? `/admin/notes?topic=${parentId}` : '/admin/notes';
     navigate(backUrl);
   };
 

@@ -159,10 +159,11 @@ describe('NoteViewService', () => {
       });
     });
 
-    it('contentItem 存在但无草稿时抛 NotFoundException', async () => {
+    it('contentItem 存在但无草稿时返回 null', async () => {
       editorDraftRepository.findByContentItemId.mockResolvedValue(null);
 
-      await expect(service.getDraft('ci_1')).rejects.toThrow(NotFoundException);
+      const result = await service.getDraft('ci_1');
+      expect(result).toBeNull();
     });
 
     it('contentItem 不存在时由 assertContentItemExists 抛出', async () => {

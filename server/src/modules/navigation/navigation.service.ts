@@ -374,14 +374,10 @@ export class NavigationNodeService {
 
     // DOC 节点且调用方未提供 contentItemId 时，后端自动建 content item。
     // 这样前端只需发一个"新建 DOC 节点"请求，不再关心 content 的创建细节。
-    // contentService.createContent 允许空 body（内部用零宽空格占位）。
+    // createContent 只建 MongoDB 记录（无 Git commit），内容通过后续 draft/commit 写入。
     if (dto.type === 'DOC' && !contentItemId) {
       const content = await this.contentService.createContent({
         title: dto.name,
-        status: 'committed',
-        bodyMarkdown: '',
-        changeNote: '初始创建',
-        changeType: 'major',
       });
       contentItemId = content.id;
     }
