@@ -453,8 +453,14 @@ body {
   scroll-margin-top: 80px;
 }
 
-/* Plate editor: 文字颜色跟随主题 + suppress focus outline */
-[data-slate-editor] {
+/* Plate editor: 文字颜色跟随主题（含标题等子元素） + suppress focus outline */
+[data-slate-editor],
+[data-slate-editor] h1,
+[data-slate-editor] h2,
+[data-slate-editor] h3,
+[data-slate-editor] h4,
+[data-slate-editor] h5,
+[data-slate-editor] h6 {
   color: var(--ink);
 }
 [data-slate-editor]:focus-visible,
