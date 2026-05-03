@@ -391,6 +391,7 @@ export class ContentService {
   async getContentById(
     id: string,
     query?: ContentQueryDto,
+    options?: { scope?: string },
   ): Promise<ContentDetailDto> {
     const content = await this.contentRepository.findById(id);
     if (!content) {
@@ -407,6 +408,7 @@ export class ContentService {
         publicView && publishedVersion
           ? publishedVersion.commitHash
           : undefined,
+      scope: options?.scope,
     });
     return this.toDetailDto(content, source, {
       publicView,
@@ -416,6 +418,7 @@ export class ContentService {
   async getContentByVersion(
     id: string,
     commitHash: string,
+    options?: { scope?: string },
   ): Promise<ContentDetailDto> {
     const content = await this.contentRepository.findById(id);
     if (!content) {
@@ -424,6 +427,7 @@ export class ContentService {
 
     const source = await this.contentRepoService.readContentSource(id, {
       commitHash,
+      scope: options?.scope,
     });
 
     return this.toDetailDto(content, source);
@@ -450,27 +454,13 @@ export class ContentService {
         );
     }
 
-    const contents = await this.contentRepository.listAll();
-    const matched = contents.filter((content) => {
-      if (!this.isReadableInQuery(content, query)) {
-        return false;
-      }
-
-      const latestVersion = this.resolveLatestVersion(content);
-      const publishedVersion = this.resolvePublishedVersion(content);
-      const title =
-        query.visibility !== ContentVisibility.all && publishedVersion
-          ? publishedVersion.title
-          : latestVersion.title;
-      const summary =
-        query.visibility !== ContentVisibility.all && publishedVersion
-          ? publishedVersion.summary
-          : latestVersion.summary;
-      return `${title} ${summary}`.toLowerCase().includes(keyword);
+    // 标题/摘要搜索下推到 MongoDB $regex，避免全量加载到内存
+    const contents = await this.contentRepository.searchByKeyword(keyword, {
+      page,
+      pageSize,
     });
-
-    return matched
-      .slice((page - 1) * pageSize, page * pageSize)
+    return contents
+      .filter((content) => this.isReadableInQuery(content, query))
       .map((content) =>
         this.toListItemDto(content, {
           publicView: query.visibility !== ContentVisibility.all,
@@ -568,11 +558,13 @@ export class ContentService {
     }
   }
 
+  /**
+   * 校验内容存在且可编辑。
+   * 当前为单用户系统，可编辑条件 = 存在即可编。
+   * 未来如需归档/锁定等状态限制，在此方法中扩展。
+   */
   async assertContentEditable(id: string): Promise<void> {
-    const content = await this.contentRepository.findById(id);
-    if (!content) {
-      throw new NotFoundException(`Content ${id} not found`);
-    }
+    await this.assertContentItemExists(id);
   }
 
   async prepareWritableContentWorkspace(): Promise<void> {

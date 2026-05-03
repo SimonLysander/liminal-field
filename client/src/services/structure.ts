@@ -24,20 +24,7 @@ export interface UpdateStructureNodeDto {
   contentItemId?: string;
   sortOrder?: number;
 }
-import { request } from './request';
-
-function toQueryString(params: Record<string, string | undefined>) {
-  const searchParams = new URLSearchParams();
-
-  for (const [key, value] of Object.entries(params)) {
-    if (value) {
-      searchParams.set(key, value);
-    }
-  }
-
-  const queryString = searchParams.toString();
-  return queryString ? `?${queryString}` : '';
-}
+import { request, toQueryString } from './request';
 
 export interface StructureListResult {
   path: StructureNode[];

@@ -256,7 +256,7 @@ describe('WorkspaceService', () => {
       const result = await service.getById('notes', contentItemId);
 
       expect(contentRepository.findById).toHaveBeenCalledWith(contentItemId);
-      expect(contentRepoService.readContentSource).toHaveBeenCalledWith(contentItemId);
+      expect(contentRepoService.readContentSource).toHaveBeenCalledWith(contentItemId, { scope: 'notes' });
       expect(result.title).toBe('Detail Note');
       expect(result.bodyMarkdown).toBe('Hello World');
     });

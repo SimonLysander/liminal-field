@@ -25,11 +25,13 @@ describe('ContentGitService', () => {
       add: jest.fn(),
       revparse: jest.fn(),
       branch: jest.fn(),
+      branchLocal: jest.fn(),
       checkout: jest.fn(),
       checkoutBranch: jest.fn(),
       merge: jest.fn(),
       push: jest.fn(),
       env: jest.fn(),
+      deleteLocalBranch: jest.fn(),
     };
     // env() must return the same mock so git.env({...}).raw([...]) chains correctly
     mockGit.env.mockReturnValue(mockGit);
@@ -53,16 +55,12 @@ describe('ContentGitService', () => {
   });
 
   it('switches to the work branch before recording content commits', async () => {
-    // ensureWorkspaceBranchReady: current branch is main (not target)
-    mockGit.raw.mockResolvedValueOnce('main');
-    // ensureMainBranch: show-ref for main → exists (returns non-null)
-    mockGit.raw.mockResolvedValueOnce('');
-    // status: clean
-    mockGit.status.mockResolvedValueOnce({ isClean: () => true });
-    // show-ref for workspace branch → doesn't exist (tryRun catches → null)
-    mockGit.raw.mockRejectedValueOnce(new Error('not found'));
-    // checkoutBranch(targetBranch, 'main')
-    mockGit.checkoutBranch.mockResolvedValueOnce(undefined);
+    // ensureWorkspaceBranchReady: branchLocal → current = main, workspace branch 不存在
+    mockGit.branchLocal.mockResolvedValueOnce({ current: 'main', all: ['main'] });
+    // 第二次 branchLocal：确认 workspace branch 仍不在 all 中 → 走 checkout -b 新建
+    mockGit.branchLocal.mockResolvedValueOnce({ current: 'main', all: ['main'] });
+    // checkout -b 新建分支
+    mockGit.checkout.mockResolvedValueOnce(undefined);
     // add tracked path
     mockGit.add.mockResolvedValueOnce('');
     // diff --cached → has staged content
@@ -78,9 +76,8 @@ describe('ContentGitService', () => {
     );
 
     expect(commitHash).toBe('def456');
-    expect(mockGit.checkoutBranch).toHaveBeenCalledWith(
-      expectedWorkBranch,
-      'main',
+    expect(mockGit.checkout).toHaveBeenCalledWith(
+      ['-b', expectedWorkBranch, 'main'],
     );
     expect(mockGit.env).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -94,7 +91,7 @@ describe('ContentGitService', () => {
 
   it('skips git commit when the staged diff is empty', async () => {
     // Already on the correct work branch — ensureWorkspaceBranchReady returns early
-    mockGit.raw.mockResolvedValueOnce(expectedWorkBranch);
+    mockGit.branchLocal.mockResolvedValueOnce({ current: expectedWorkBranch, all: [expectedWorkBranch] });
     // add tracked path
     mockGit.add.mockResolvedValueOnce('');
     // diff --cached → empty (nothing staged)

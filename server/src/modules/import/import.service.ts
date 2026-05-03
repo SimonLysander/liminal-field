@@ -250,18 +250,35 @@ export class ImportService {
       source.assetRefs,
     );
 
-    const commitHash = await this.contentGitService.recordCommittedContentChange(contentId, changeNote);
-    if (!commitHash) {
-      throw new BadRequestException('导入提交失败');
+    // 先创建 MongoDB 记录（占位，commitHash 稍后回填），
+    // 再执行 Git commit。若 Git 失败，删除 MongoDB 记录回滚，避免产生孤立 commit。
+    const contentItem = await this.contentRepository.create({
+      id: contentId,
+      latestVersion: { commitHash: '', title, summary: title },
+      publishedVersion: null,
+      changeLogs: [{ ...changeLog, commitHash: '' }],
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    let commitHash: string | null;
+    try {
+      commitHash = await this.contentGitService.recordCommittedContentChange(contentId, changeNote);
+    } catch (error) {
+      // Git 失败 → 回滚 MongoDB 记录
+      await this.contentRepository.deleteById(contentId);
+      throw new BadRequestException('导入提交失败：Git commit error');
     }
 
-    // 创建 MongoDB 记录
-    await this.contentRepository.create({
-      id: contentId,
+    if (!commitHash) {
+      await this.contentRepository.deleteById(contentId);
+      throw new BadRequestException('导入提交失败：无变更可提交');
+    }
+
+    // 回填真实 commitHash
+    await this.contentRepository.update(contentId, {
       latestVersion: { commitHash, title, summary: title },
-      publishedVersion: null,
       changeLogs: [{ ...changeLog, commitHash }],
-      createdAt: now,
       updatedAt: now,
     });
 

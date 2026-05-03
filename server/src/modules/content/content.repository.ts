@@ -86,4 +86,30 @@ export class ContentRepository {
     return this.contentItemModel.find({}).sort({ updatedAt: -1, _id: 1 });
   }
 
+  /** 按标题/摘要关键字搜索（MongoDB $regex 下推，避免全量加载到内存） */
+  async searchByKeyword(
+    keyword: string,
+    options?: { page?: number; pageSize?: number },
+  ): Promise<ContentItem[]> {
+    const page = options?.page ?? 1;
+    const pageSize = options?.pageSize ?? 20;
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escaped, 'i');
+    return this.contentItemModel
+      .find({
+        $or: [
+          { 'latestVersion.title': regex },
+          { 'latestVersion.summary': regex },
+          { 'publishedVersion.title': regex },
+          { 'publishedVersion.summary': regex },
+        ],
+      })
+      .sort({ updatedAt: -1, _id: 1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize);
+  }
+
+  async deleteById(id: string): Promise<void> {
+    await this.contentItemModel.findByIdAndDelete(id);
+  }
 }

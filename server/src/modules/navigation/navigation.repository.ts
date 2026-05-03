@@ -138,17 +138,20 @@ export class NavigationRepository {
     );
   }
 
+  /** 批量更新 order：用 bulkWrite 替代多次独立 findByIdAndUpdate，减少 DB 往返并保证原子性 */
   async bulkUpdateOrder(
     updates: Array<{ id: string; order: number }>,
   ): Promise<void> {
     if (updates.length === 0) return;
 
-    await Promise.all(
-      updates.map((update) =>
-        this.navigationModel.findByIdAndUpdate(update.id, {
-          $set: { order: update.order, updatedAt: new Date() },
-        }),
-      ),
+    const now = new Date();
+    await this.navigationModel.bulkWrite(
+      updates.map((update) => ({
+        updateOne: {
+          filter: { _id: new Types.ObjectId(update.id) },
+          update: { $set: { order: update.order, updatedAt: now } },
+        },
+      })),
     );
   }
 

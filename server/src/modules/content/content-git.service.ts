@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
+import { Mutex } from 'async-mutex';
 import { existsSync } from 'fs';
 import { mkdir } from 'fs/promises';
 import { isAbsolute, join, relative } from 'path';
@@ -22,6 +23,8 @@ export class ContentGitService implements OnModuleInit {
 
   private readonly repoRoot: string;
   private readonly git: SimpleGit;
+  /** Git 写操作互斥锁：add → diff → commit 必须原子化，防止并发请求交叉污染 staged 区域 */
+  private readonly writeLock = new Mutex();
 
   constructor(
     private readonly contentRepoService: ContentRepoService,
@@ -265,40 +268,43 @@ export class ContentGitService implements OnModuleInit {
     contentId: string,
     changeNote: string,
   ): Promise<string | null> {
-    await this.prepareWritableWorkspace();
+    // add → diff → commit 三步必须在同一个锁内完成，
+    // 否则并发请求会交叉污染 staged 区域，导致一方提交了另一方的文件
+    return this.writeLock.runExclusive(async () => {
+      await this.prepareWritableWorkspace();
 
-    const trackedPath = this.resolveTrackedContentPath(contentId);
-    if (!trackedPath) {
-      return null;
-    }
+      const trackedPath = this.resolveTrackedContentPath(contentId);
+      if (!trackedPath) {
+        return null;
+      }
 
-    await this.run(() => this.git.add(['--', trackedPath]));
+      await this.run(() => this.git.add(['--', trackedPath]));
 
-    const stagedFiles = await this.run(() =>
-      this.git.raw(['diff', '--cached', '--name-only', '--', trackedPath]),
-    );
+      const stagedFiles = await this.run(() =>
+        this.git.raw(['diff', '--cached', '--name-only', '--', trackedPath]),
+      );
 
-    if (!stagedFiles) {
-      return null;
-    }
+      if (!stagedFiles) {
+        return null;
+      }
 
-    // GIT_AUTHOR_* / GIT_COMMITTER_* 等价于 git -c user.name=... -c user.email=...
-    await this.git
-      .env({
-        GIT_AUTHOR_NAME: this.resolveAuthorName(),
-        GIT_AUTHOR_EMAIL: this.resolveAuthorEmail(),
-        GIT_COMMITTER_NAME: this.resolveAuthorName(),
-        GIT_COMMITTER_EMAIL: this.resolveAuthorEmail(),
-      })
-      .raw([
-        'commit',
-        '-m',
-        this.buildCommitMessage(contentId, changeNote),
-        '--',
-        trackedPath,
-      ]);
+      await this.git
+        .env({
+          GIT_AUTHOR_NAME: this.resolveAuthorName(),
+          GIT_AUTHOR_EMAIL: this.resolveAuthorEmail(),
+          GIT_COMMITTER_NAME: this.resolveAuthorName(),
+          GIT_COMMITTER_EMAIL: this.resolveAuthorEmail(),
+        })
+        .raw([
+          'commit',
+          '-m',
+          this.buildCommitMessage(contentId, changeNote),
+          '--',
+          trackedPath,
+        ]);
 
-    return this.run(() => this.git.revparse(['HEAD']));
+      return this.run(() => this.git.revparse(['HEAD']));
+    });
   }
 
   /** 查询当前仓库同步状态，供前端弹窗展示 */
@@ -365,13 +371,19 @@ export class ContentGitService implements OnModuleInit {
     }
   }
 
-  /** 每天凌晨 3 点自动 push + 检查月度切换 */
+  /** 每天凌晨 3 点自动 push + 检查月度切换。与写操作共享锁，避免 push 期间有 commit 进行 */
   @Cron('0 3 * * *')
   async scheduledSync(): Promise<void> {
-    this.logger.log('Scheduled sync: checking branch and pushing...');
-    await this.prepareWritableWorkspace();
-    const result = await this.pushCurrentBranch();
-    this.logger.log(`Scheduled sync result: ${result.message}`);
+    if (this.writeLock.isLocked()) {
+      this.logger.log('Scheduled sync skipped: write operation in progress');
+      return;
+    }
+    return this.writeLock.runExclusive(async () => {
+      this.logger.log('Scheduled sync: checking branch and pushing...');
+      await this.prepareWritableWorkspace();
+      const result = await this.pushCurrentBranch();
+      this.logger.log(`Scheduled sync result: ${result.message}`);
+    });
   }
 
   async listContentHistory(

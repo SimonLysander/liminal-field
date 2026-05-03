@@ -73,8 +73,7 @@ export function findParentId(nodes: TreeNode[], nodeId: string, parentId: string
     if (node.id === nodeId) return parentId;
     if (node.children) {
       const found = findParentId(node.children, nodeId, node.id);
-      if (found !== undefined && found !== null) return found;
-      if (node.children.some((c) => c.id === nodeId)) return node.id;
+      if (found !== null) return found;
     }
   }
   return null;

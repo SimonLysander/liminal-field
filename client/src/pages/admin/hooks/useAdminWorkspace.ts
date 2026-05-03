@@ -181,6 +181,9 @@ export function useAdminWorkspace() {
 
   const reorderNodes = useCallback(
     (nodeId: string, targetNodeId: string, position: 'before' | 'after') => {
+      // 乐观更新 UI，然后在外部发 API 请求（不在 setState updater 内做副作用）
+      let reorderedIds: string[] = [];
+
       setNodes((current) => {
         const sourceIndex = current.findIndex((n) => n.id === nodeId);
         const targetIndex = current.findIndex((n) => n.id === targetNodeId);
@@ -192,16 +195,15 @@ export function useAdminWorkspace() {
           ? copy.findIndex((n) => n.id === targetNodeId)
           : copy.findIndex((n) => n.id === targetNodeId) + 1;
         copy.splice(insertIndex, 0, moved);
+        reorderedIds = copy.map((n) => n.id);
         return copy;
       });
 
-      setNodes((current) => {
-        const siblingIds = current.map((n) => n.id);
-        void structureApi.reorderSiblings(urlFolderId ?? null, siblingIds).catch(() => {
+      if (reorderedIds.length > 0) {
+        void structureApi.reorderSiblings(urlFolderId ?? null, reorderedIds).catch(() => {
           void loadLevel(urlFolderId);
         });
-        return current;
-      });
+      }
     },
     [urlFolderId, loadLevel],
   );
@@ -321,14 +323,14 @@ export function useAdminWorkspace() {
    * 草稿操作
    * ================================================================ */
 
-  const handleDraftEditorChange = <K extends keyof DraftEditorState>(
+  const handleDraftEditorChange = useCallback(<K extends keyof DraftEditorState>(
     key: K,
     value: DraftEditorState[K],
   ) => {
     setDraftState((current) => ({ ...current, [key]: value }));
     setIsDirty(true);
     setAutosaveError('');
-  };
+  }, []);
 
   const createDraftFromFormalVersion = useCallback(
     async (overwrite: boolean) => {

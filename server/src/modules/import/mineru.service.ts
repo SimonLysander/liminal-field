@@ -15,10 +15,13 @@ import {
   GatewayTimeoutException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { execSync } from 'child_process';
-import { mkdtemp, readFile, readdir, rm } from 'fs/promises';
+import { execFile as execFileCb } from 'child_process';
+import { mkdtemp, mkdir, readFile, readdir, rm } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { promisify } from 'util';
+
+const execFile = promisify(execFileCb);
 
 /** MinerU 转换结果 */
 export interface MineruResult {
@@ -169,42 +172,28 @@ export class MineruService {
       const { writeFile: wf } = await import('fs/promises');
       await wf(zipPath, zipBuffer);
 
-      // 解压
+      // 解压：用 execFile 而非 execSync，避免 shell 注入且不阻塞事件循环
       const extractDir = join(tmpDir, 'extracted');
-      execSync(`mkdir -p "${extractDir}" && unzip -o "${zipPath}" -d "${extractDir}"`, {
-        stdio: 'pipe',
-      });
+      await mkdir(extractDir, { recursive: true });
+      await execFile('unzip', ['-o', zipPath, '-d', extractDir]);
 
-      // 查找 markdown 文件
-      const mdPath = execSync(`find "${extractDir}" -name "*.md" | head -1`, {
-        encoding: 'utf-8',
-      }).trim();
-
+      // 递归查找 markdown 文件（替代 shell find 命令）
+      const mdPath = await this.findFileRecursive(extractDir, (name) => name.endsWith('.md'));
       if (!mdPath) {
         throw new BadRequestException('MinerU 返回结果中未找到 markdown 文件');
       }
 
       const markdown = await readFile(mdPath, 'utf-8');
 
-      // 收集图片
+      // 递归查找 images 目录并收集图片
       const images = new Map<string, Buffer>();
-      const imagesDir = join(extractDir, 'images');
-      try {
-        // 查找所有图片目录（可能嵌套在子目录中）
-        const imgDirPath = execSync(
-          `find "${extractDir}" -type d -name "images" | head -1`,
-          { encoding: 'utf-8' },
-        ).trim();
-
-        if (imgDirPath) {
-          const imgFiles = await readdir(imgDirPath);
-          for (const imgFile of imgFiles) {
-            const imgBuffer = await readFile(join(imgDirPath, imgFile));
-            images.set(imgFile, imgBuffer);
-          }
+      const imgDirPath = await this.findDirRecursive(extractDir, 'images');
+      if (imgDirPath) {
+        const imgFiles = await readdir(imgDirPath);
+        for (const imgFile of imgFiles) {
+          const imgBuffer = await readFile(join(imgDirPath, imgFile));
+          images.set(imgFile, imgBuffer);
         }
-      } catch {
-        // 没有图片目录，正常情况
       }
 
       this.logger.log(`Extracted: ${markdown.length} chars markdown, ${images.size} images`);
@@ -245,5 +234,35 @@ export class MineruService {
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /** 递归查找第一个匹配条件的文件，替代 shell `find -name` */
+  private async findFileRecursive(
+    dir: string,
+    predicate: (name: string) => boolean,
+  ): Promise<string | null> {
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+      if (entry.isFile() && predicate(entry.name)) return fullPath;
+      if (entry.isDirectory()) {
+        const found = await this.findFileRecursive(fullPath, predicate);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  /** 递归查找第一个匹配名称的目录，替代 shell `find -type d -name` */
+  private async findDirRecursive(dir: string, targetName: string): Promise<string | null> {
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const fullPath = join(dir, entry.name);
+      if (entry.name === targetName) return fullPath;
+      const found = await this.findDirRecursive(fullPath, targetName);
+      if (found) return found;
+    }
+    return null;
   }
 }

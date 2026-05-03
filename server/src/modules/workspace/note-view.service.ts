@@ -63,7 +63,7 @@ export class NoteViewService {
   async getById(id: string, visibility?: string): Promise<ContentDetailDto> {
     const vis =
       visibility === 'all' ? ContentVisibility.all : ContentVisibility.public;
-    return this.contentService.getContentById(id, { visibility: vis });
+    return this.contentService.getContentById(id, { visibility: vis }, { scope: 'notes' });
   }
 
   /**
@@ -163,7 +163,7 @@ export class NoteViewService {
     id: string,
     commitHash: string,
   ): Promise<ContentDetailDto> {
-    return this.contentService.getContentByVersion(id, commitHash);
+    return this.contentService.getContentByVersion(id, commitHash, { scope: 'notes' });
   }
 
   /** 上传附件到内容存储目录。 */

@@ -10,7 +10,7 @@
  * 依赖关系：ContentService + ContentRepository + ContentRepoService（存储层）
  *          + NavigationRepository（业务索引层）
  */
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ContentService } from '../content/content.service';
 import { ContentRepository } from '../content/content.repository';
 import { ContentRepoService } from '../content/content-repo.service';
@@ -30,6 +30,8 @@ const EMPTY_BODY_PLACEHOLDER = '\u200B';
 
 @Injectable()
 export class WorkspaceService {
+  private readonly logger = new Logger(WorkspaceService.name);
+
   constructor(
     private readonly contentService: ContentService,
     private readonly contentRepository: ContentRepository,
@@ -85,8 +87,8 @@ export class WorkspaceService {
         if (!status || item.status === status) {
           items.push(item);
         }
-      } catch {
-        // 跳过已损坏或已删除的条目
+      } catch (error) {
+        this.logger.warn(`Skipping corrupted workspace item ${node.contentItemId}: ${error}`);
       }
     }
     return items;
@@ -94,14 +96,14 @@ export class WorkspaceService {
 
   /** 获取条目详情：读取 Content 存储层的 Markdown 源文件 + 元数据。 */
   async getById(
-    _scope: string,
+    scope: string,
     contentItemId: string,
   ): Promise<WorkspaceItemDetailDto> {
     const content = await this.contentRepository.findById(contentItemId);
     if (!content) throw new NotFoundException(`Item ${contentItemId} not found`);
 
     const source =
-      await this.contentRepoService.readContentSource(contentItemId);
+      await this.contentRepoService.readContentSource(contentItemId, { scope });
     const version = content.latestVersion!;
     const bodyMarkdown =
       source.bodyMarkdown === EMPTY_BODY_PLACEHOLDER

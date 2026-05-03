@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { mkdir, readdir, readFile, stat, unlink, writeFile } from 'fs/promises';
-import { extname, join, parse } from 'path';
+import { basename, extname, join, parse, resolve } from 'path';
 import { randomUUID } from 'crypto';
 import simpleGit, { SimpleGit } from 'simple-git';
 import { ContentItem } from './content-item.entity';
@@ -67,6 +67,23 @@ export class ContentRepoService {
 
   private getAssetsDirectory(contentId: string): string {
     return join(this.getContentDirectory(contentId), 'assets');
+  }
+
+  /**
+   * 外部传入的文件名必须经过此方法清洗，防止路径穿越（如 ../../etc/passwd）。
+   * 只保留 basename，再验证拼接后的绝对路径仍在 assets 目录内。
+   */
+  private resolveAssetPath(contentId: string, fileName: string): string {
+    const safe = basename(fileName);
+    if (!safe || safe === '.' || safe === '..') {
+      throw new BadRequestException('Invalid asset file name');
+    }
+    const assetsDir = this.getAssetsDirectory(contentId);
+    const resolved = resolve(assetsDir, safe);
+    if (!resolved.startsWith(assetsDir)) {
+      throw new BadRequestException('Invalid asset file name');
+    }
+    return resolved;
   }
 
   private resolveRepositoryRoot(): string {
@@ -314,7 +331,7 @@ export class ContentRepoService {
 
   async readContentSource(
     contentId: string,
-    options?: { commitHash?: string },
+    options?: { commitHash?: string; scope?: string },
   ): Promise<ParsedContentSource> {
     let bodyMarkdown: string;
     try {
@@ -325,10 +342,11 @@ export class ContentRepoService {
       /* main.md 不存在（刚创建还没第一次提交），返回空内容 */
       return { bodyMarkdown: '', plainText: '', assetRefs: [] };
     }
-    /* 将 ./assets/ 相对路径改写为 API 绝对路径，前端不需要自行处理 */
+    /* 将 ./assets/ 相对路径改写为 API 绝对路径，scope 由调用方传入 */
+    const scope = options?.scope ?? 'notes';
     const resolvedMarkdown = bodyMarkdown.replaceAll(
       /\.\/assets\//g,
-      `/api/v1/spaces/notes/items/${contentId}/assets/`,
+      `/api/v1/spaces/${scope}/items/${contentId}/assets/`,
     );
     return {
       bodyMarkdown: resolvedMarkdown,
@@ -350,7 +368,7 @@ export class ContentRepoService {
   }
 
   async deleteAsset(contentId: string, fileName: string): Promise<void> {
-    const filePath = join(this.getAssetsDirectory(contentId), fileName);
+    const filePath = this.resolveAssetPath(contentId, fileName);
     try {
       await unlink(filePath);
     } catch {
@@ -362,7 +380,7 @@ export class ContentRepoService {
     contentId: string,
     fileName: string,
   ): Promise<{ buffer: Buffer; contentType: string }> {
-    const filePath = join(this.getAssetsDirectory(contentId), fileName);
+    const filePath = this.resolveAssetPath(contentId, fileName);
     const buffer = await readFile(filePath);
     const ext = extname(fileName).toLowerCase();
     let contentType = 'application/octet-stream';

@@ -193,7 +193,7 @@ export class GalleryViewService {
     // 读取并解析 main.md（处理文件不存在的旧数据场景）
     let parsed: ParsedGalleryContent = { photos: [], cover: null, tags: {}, prose: '' };
     try {
-      const source = await this.contentRepoService.readContentSource(contentItemId);
+      const source = await this.contentRepoService.readContentSource(contentItemId, { scope: 'gallery' });
       parsed = parseGalleryContent(source.bodyMarkdown);
     } catch {
       // main.md 还不存在（刚创建的条目），使用默认空值
@@ -253,7 +253,7 @@ export class GalleryViewService {
     // 为避免再次读文件，直接从 main.md 重读一次——成本可接受（Detail 接口低频）
     let parsedPhotos: FrontmatterPhoto[] = [];
     try {
-      const source = await this.contentRepoService.readContentSource(contentItemId);
+      const source = await this.contentRepoService.readContentSource(contentItemId, { scope: 'gallery' });
       parsedPhotos = parseGalleryContent(source.bodyMarkdown).photos;
     } catch {
       // 文件不存在，parsedPhotos 保持空数组
@@ -313,7 +313,7 @@ export class GalleryViewService {
   ): Promise<{ commitHash: string; title: string; prose: string; photos: FrontmatterPhoto[]; cover: string | null; tags: Record<string, string> }> {
     const source = await this.contentRepoService.readContentSource(
       contentItemId,
-      { commitHash },
+      { commitHash, scope: 'gallery' },
     );
     const parsed = parseGalleryContent(source.bodyMarkdown);
 

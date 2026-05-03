@@ -65,3 +65,13 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
 
   return json.data;
 }
+
+/** 将 params 对象转为 URL query string（跳过 undefined 值） */
+export function toQueryString(params: Record<string, string | undefined>) {
+  const searchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) searchParams.set(key, value);
+  }
+  const qs = searchParams.toString();
+  return qs ? `?${qs}` : '';
+}

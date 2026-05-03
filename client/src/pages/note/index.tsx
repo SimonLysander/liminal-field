@@ -80,13 +80,15 @@ function NoteReader({ id }: { id: string }) {
   const [toc, setToc] = useState<TocEntry[]>([]);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     setError('');
     contentItemsApi
       .getById(id)
-      .then(setContent)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+      .then((data) => { if (!cancelled) setContent(data); })
+      .catch((e) => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [id]);
 
   /*

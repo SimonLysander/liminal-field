@@ -11,7 +11,7 @@
  *   - workspaceApi — 通用 CRUD，供将来新 scope 复用
  */
 
-import { request } from './request';
+import { request, toQueryString } from './request';
 
 // ─── 共用类型（原 content-items.ts 导出，保持不变供消费方使用）───
 
@@ -211,16 +211,7 @@ export interface GalleryDraft {
   savedAt: string;
 }
 
-// ─── 工具函数 ───
-
-function toQueryString(params: Record<string, string | undefined>) {
-  const searchParams = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value) searchParams.set(key, value);
-  }
-  const queryString = searchParams.toString();
-  return queryString ? `?${queryString}` : '';
-}
+// toQueryString 从 request.ts 统一导出，避免重复定义
 
 // ─── workspaceApi — 通用 CRUD，scope 作为参数传入 ───
 

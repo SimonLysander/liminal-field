@@ -310,21 +310,15 @@ export const TreePanel = ({
       e.preventDefault();
       e.stopPropagation();
 
-      console.log('[DnD] drop:', { draggedNodeId, dropTarget });
-
       if (!draggedNodeId || !dropTarget) {
-        console.log('[DnD] 取消：无拖拽节点或无目标');
         handleDragEnd();
         return;
       }
 
       if (isDescendant(tree, draggedNodeId, dropTarget.nodeId)) {
-        console.log('[DnD] 取消：不能拖入自身子节点');
         handleDragEnd();
         return;
       }
-
-      console.log('[DnD] 执行移动:', draggedNodeId, '→', dropTarget.nodeId, dropTarget.position);
       onMoveNode(draggedNodeId, dropTarget.nodeId, dropTarget.position);
       handleDragEnd();
     },
@@ -445,10 +439,10 @@ function findNodeInTree(tree: TreeNode[], id: string): TreeNode | null {
   return null;
 }
 
-/** Check if `ancestorId` is an ancestor of `descendantId` (or same node) */
+/** 判断 descendantId 是否位于 ancestorId 的子树中（含自身相等的情况） */
 function isDescendant(tree: TreeNode[], ancestorId: string, descendantId: string): boolean {
   if (ancestorId === descendantId) return true;
   const ancestor = findNodeInTree(tree, ancestorId);
   if (!ancestor?.children) return false;
-  return ancestor.children.some((child) => isDescendant([child], child.id, descendantId));
+  return ancestor.children.some((child) => isDescendant(tree, child.id, descendantId));
 }

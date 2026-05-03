@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import { LoadingState } from '@/components/LoadingState';
+import { LOCATIONS } from '@/lib/constants';
 
 /* ---------- Data ---------- */
 
@@ -57,7 +58,7 @@ const icons: Record<Space, React.ReactNode> = {
 
 /* Placeholder data for gallery & agent sub-nav */
 const tagGroups = [
-  { label: '地点', tags: ['北京', '武汉', '青岛', '东京', '大理'] },
+  { label: '地点', tags: [...LOCATIONS] },
   { label: '风格', tags: ['扁平光', '自然', '街头', '抽象'] },
   { label: '相机', tags: ['GR III', 'iPhone', 'X100V'] },
 ];

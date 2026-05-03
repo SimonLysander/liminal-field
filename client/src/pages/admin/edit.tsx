@@ -11,7 +11,7 @@
  * 自动保存：1.5s debounce；⌘S 打开提交对话框，⇧⌘S 直接保存草稿。
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Sun, Moon } from 'lucide-react';
@@ -189,6 +189,8 @@ const DraftEditPage = () => {
   );
 
   const [committing, setCommitting] = useState(false);
+  const navigateTimerRef = useRef<number | undefined>(undefined);
+  useEffect(() => () => { window.clearTimeout(navigateTimerRef.current); }, []);
 
   const commitDraft = useCallback(async () => {
     if (!id) return;
@@ -212,7 +214,7 @@ const DraftEditPage = () => {
       setLastSavedAt('');
       toast.success('已提交正式版本');
 
-      setTimeout(() => navigate(-1), 800);
+      navigateTimerRef.current = window.setTimeout(() => navigate(-1), 800);
     } catch (commitError) {
       setCommitting(false);
       setError(parseError(commitError, '提交失败'));

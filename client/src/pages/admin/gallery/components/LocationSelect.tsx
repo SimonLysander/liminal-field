@@ -1,9 +1,7 @@
 import * as React from "react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command"
-
-// 固定地点选项
-const LOCATIONS = ["北京", "武汉", "青岛", "东京", "大理"] as const
+import { LOCATIONS } from "@/lib/constants"
 
 interface LocationSelectProps {
   value: string | undefined

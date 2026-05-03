@@ -73,7 +73,7 @@ describe('NoteViewService', () => {
       const result = await service.getById('ci_1', 'all');
 
       expect(result).toBe(detail);
-      expect(contentService.getContentById).toHaveBeenCalledWith('ci_1', { visibility: 'all' });
+      expect(contentService.getContentById).toHaveBeenCalledWith('ci_1', { visibility: 'all' }, { scope: 'notes' });
     });
 
     it('visibility 为 public 时传 ContentVisibility.public', async () => {
@@ -81,7 +81,7 @@ describe('NoteViewService', () => {
 
       await service.getById('ci_1', 'public');
 
-      expect(contentService.getContentById).toHaveBeenCalledWith('ci_1', { visibility: 'public' });
+      expect(contentService.getContentById).toHaveBeenCalledWith('ci_1', { visibility: 'public' }, { scope: 'notes' });
     });
 
     it('visibility 未指定时默认 public', async () => {
@@ -89,7 +89,7 @@ describe('NoteViewService', () => {
 
       await service.getById('ci_1');
 
-      expect(contentService.getContentById).toHaveBeenCalledWith('ci_1', { visibility: 'public' });
+      expect(contentService.getContentById).toHaveBeenCalledWith('ci_1', { visibility: 'public' }, { scope: 'notes' });
     });
   });
 
@@ -241,7 +241,7 @@ describe('NoteViewService', () => {
       const result = await service.getByVersion('ci_1', 'abc123');
 
       expect(result).toBe(detail);
-      expect(contentService.getContentByVersion).toHaveBeenCalledWith('ci_1', 'abc123');
+      expect(contentService.getContentByVersion).toHaveBeenCalledWith('ci_1', 'abc123', { scope: 'notes' });
     });
   });
 

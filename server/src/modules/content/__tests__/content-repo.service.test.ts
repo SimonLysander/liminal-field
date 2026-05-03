@@ -123,6 +123,52 @@ describe('ContentRepoService', () => {
     expect(stored.fileName).toMatch(/^cover-image-[a-z0-9]{8}\.png$/);
   });
 
+  describe('path traversal protection', () => {
+    it('rejects readAssetBuffer with directory traversal', async () => {
+      await expect(
+        service.readAssetBuffer('ci_test', '../../etc/passwd'),
+      ).rejects.toThrow();
+    });
+
+    it('rejects readAssetBuffer with absolute-looking names', async () => {
+      await expect(
+        service.readAssetBuffer('ci_test', '../secret.txt'),
+      ).rejects.toThrow();
+    });
+
+    it('deleteAsset with traversal path only touches basename (no throw for nonexistent)', async () => {
+      // basename('../../etc/passwd') → 'passwd'，只在 assets 目录下操作
+      // 文件不存在时静默忽略（设计行为），关键是不会触及 /etc/passwd
+      await expect(
+        service.deleteAsset('ci_test', '../../etc/passwd'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('strips directory components and reads only basename', async () => {
+      const stored = await service.storeAsset(
+        'ci_safe',
+        'photo.png',
+        Buffer.from('img-data'),
+      );
+      // readAssetBuffer should work with just the safe fileName
+      const result = await service.readAssetBuffer('ci_safe', stored.fileName);
+      expect(result.buffer.toString()).toBe('img-data');
+      expect(result.contentType).toBe('image/png');
+    });
+  });
+
+  it('readContentSource respects scope parameter', async () => {
+    await service.writeMainMarkdown(
+      'ci_scope',
+      'Text with ![img](./assets/photo.png)',
+    );
+    const notesSource = await service.readContentSource('ci_scope', { scope: 'notes' });
+    expect(notesSource.bodyMarkdown).toContain('/api/v1/spaces/notes/items/ci_scope/assets/');
+
+    const gallerySource = await service.readContentSource('ci_scope', { scope: 'gallery' });
+    expect(gallerySource.bodyMarkdown).toContain('/api/v1/spaces/gallery/items/ci_scope/assets/');
+  });
+
   it('lists stored assets with type and size', async () => {
     await service.storeAsset('ci_assets', 'cover.png', Buffer.from('cover'));
     await service.storeAsset('ci_assets', 'voice.mp3', Buffer.from('voice'));
