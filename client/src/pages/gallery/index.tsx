@@ -1,84 +1,515 @@
 // src/pages/gallery/index.tsx
 
 /*
- * GalleryPage — Photo gallery with polaroid display
+ * GalleryPage — 沉浸式相册展示页
  *
  * 交互模型：
- *   - 左右滑 → 同一条动态内的多张照片
- *   - 上下切 → 不同动态之间切换
+ *   ← → 键  → 同一相册内切换照片（PhotoCarousel 处理）
+ *   ↑ ↓ 键  → 在相册之间切换（ArcTimeline 处理）
  *
- * 数据从 galleryApi 获取已发布动态列表，不再使用 mock 数据。
- * 保留宝丽来卡片展示风格和方向感知滑动动画。
+ * 数据流：
+ *   1. 首次加载只拉相册列表（轻量 GalleryPost[]）
+ *   2. 选中相册后按需加载详情（GalleryPostDetail）
+ *   3. useRef<Map> 缓存已加载详情，避免重复请求
+ *
+ * 组件结构（后续 Task 分别实现）：
+ *   GalleryPage
+ *   ├── BlurBackground     — 全屏高斯模糊背景（当前照片放大虚化）
+ *   ├── PhotoCarousel      — 中央宝丽来照片展示（占位）
+ *   ├── ArcTimeline        — 右侧弧形时间轴（占位）
+ *   └── BottomBar          — 底部相册信息条（占位）
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
-import MarkdownBody from '@/components/shared/MarkdownBody';
-import { smoothBounce } from '@/lib/motion';
+import { motion } from 'motion/react';
 import { galleryApi } from '@/services/workspace';
-import type { GalleryPostDetail } from '@/services/workspace';
+import type { GalleryPhoto, GalleryPost, GalleryPostDetail } from '@/services/workspace';
 import { LoadingState } from '@/components/LoadingState';
+import { appleEase } from '@/lib/motion';
 
-const slideVariantsY = {
-  enter: (dir: number) => ({ y: dir > 0 ? 40 : -40, opacity: 0 }),
-  center: { y: 0, opacity: 1 },
-  exit: (dir: number) => ({ y: dir > 0 ? -40 : 40, opacity: 0 }),
-};
+// ─── 常量：五个卡片槽位的静态布局参数 ────────────────────────────────────────────
+// offset -2 到 +2 分别映射到 farLeft / left / center / right / farRight
+// tx 是相对自身宽度的百分比偏移（基础居中由 translateX(-50%) 完成后叠加）
+const CARD_POSITIONS = {
+  center:   { tx: '0',    rotate: 0,  scale: 1,    opacity: 1,   z: 10 },
+  left:     { tx: '-48%', rotate: -3, scale: 0.82, opacity: 0.3, z: 8  },
+  right:    { tx: '48%',  rotate: 3,  scale: 0.82, opacity: 0.3, z: 8  },
+  farLeft:  { tx: '-72%', rotate: -5, scale: 0.7,  opacity: 0,   z: 6  },
+  farRight: { tx: '72%',  rotate: 5,  scale: 0.7,  opacity: 0,   z: 6  },
+} as const;
 
-const slideVariantsX = {
-  enter: (dir: number) => ({ x: dir > 0 ? 40 : -40, opacity: 0 }),
-  center: { x: 0, opacity: 1 },
-  exit: (dir: number) => ({ x: dir > 0 ? -40 : 40, opacity: 0 }),
-};
+type CardSlot = keyof typeof CARD_POSITIONS;
+
+// offset（-2 到 +2）→ slot 名称
+const OFFSET_TO_SLOT: CardSlot[] = ['farLeft', 'left', 'center', 'right', 'farRight'];
+
+// ─── PhotoFrameBar ─────────────────────────────────────────────────────────────
+
+/*
+ * 相框底部参数行（宝丽来白边下方）。
+ * 左侧：设备型号 + EXIF 分组（光圈·快门·ISO、焦距、分辨率、白平衡、格式）
+ * 右侧：照片说明文字（caption）
+ * 从 photo.tags 中取对应键，缺失的键直接跳过。
+ */
+function PhotoFrameBar({ photo }: { photo: GalleryPhoto }) {
+  const t = photo.tags;
+
+  // 光圈·快门·ISO 三个参数合并为一组，用 · 连接
+  const exposureGroup = [t.aperture, t.shutter, t.iso].filter(Boolean).join(' · ');
+
+  // 其余独立参数按顺序排列
+  const extraParams = [
+    t.focalLength,
+    t.resolution,
+    t.wb,
+    t.format,
+  ].filter(Boolean);
+
+  // 所有 EXIF 分段（非空才显示）：曝光组、其余参数各自为一段
+  const exifSegments = [exposureGroup, ...extraParams].filter(Boolean);
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0 2px',
+        fontSize: 9,
+        color: 'var(--frame-text)',
+        lineHeight: 1.4,
+        gap: 4,
+      }}
+    >
+      {/* 左侧：设备名 + EXIF 参数，用空格分隔各段 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+        {t.device && (
+          <span style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{t.device}</span>
+        )}
+        {exifSegments.map((seg, i) => (
+          <span key={i} style={{ whiteSpace: 'nowrap', opacity: 0.75 }}>{seg}</span>
+        ))}
+      </div>
+
+      {/* 右侧：照片说明 */}
+      {photo.caption && (
+        <span
+          style={{
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            flexShrink: 1,
+            opacity: 0.75,
+          }}
+        >
+          {photo.caption}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ─── PhotoCarousel ─────────────────────────────────────────────────────────────
+
+/*
+ * 三张（含远端共五张）宝丽来照片叠叠乐 carousel。
+ * 渲染时始终保持五个卡片 DOM 节点，通过 animate 做位移/旋转/缩放/透明度过渡。
+ * 居中策略：absolute 定位 + left/top 50% + translateX/Y(-50%) 作为"零点"，
+ * 再通过 animate.x 叠加 tx 偏移，避免 left 值参与动画造成跳帧。
+ */
+function PhotoCarousel({
+  photos,
+  photoIdx,
+  onNavigate,
+}: {
+  photos: GalleryPhoto[];
+  photoIdx: number;
+  onNavigate: (dir: number) => void;
+}) {
+  if (photos.length === 0) return null;
+
+  const total = photos.length;
+
+  // offset -2 到 +2 对应五个卡片槽位，当前 photoIdx 为 center（offset 0）
+  return (
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+      }}
+    >
+      {OFFSET_TO_SLOT.map((slot, slotIndex) => {
+        const offset = slotIndex - 2; // -2, -1, 0, 1, 2
+        // 循环取模，保证索引始终合法
+        const photoIndex = ((photoIdx + offset) % total + total) % total;
+        const photo = photos[photoIndex];
+        const pos = CARD_POSITIONS[slot];
+        const isCenter = slot === 'center';
+
+        return (
+          <motion.div
+            key={slot}
+            // 基础居中：left/top 50% + translateX/Y(-50%) 锚定到中心，
+            // 再叠加 animate.x 做水平偏移（motion 会把 x 合并进 transform）
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              translateX: '-50%',
+              translateY: '-50%',
+              zIndex: pos.z,
+              // 相框外层：宝丽来白边样式
+              border: '1px solid var(--frame-border)',
+              background: 'var(--frame-bg)',
+              backdropFilter: 'blur(20px)',
+              padding: '5px 5px 28px 5px',
+              // 固定宽高比，不随窗口拉伸
+              width: 280,
+              height: 360,
+              display: 'flex',
+              flexDirection: 'column',
+              cursor: isCenter ? 'default' : offset < 0 ? 'w-resize' : 'e-resize',
+            }}
+            animate={{
+              x: pos.tx,
+              rotate: pos.rotate,
+              scale: pos.scale,
+              opacity: pos.opacity,
+            }}
+            transition={{ duration: 0.45, ease: appleEase }}
+            // 点击左侧卡片向前，右侧卡片向后
+            onClick={isCenter ? undefined : () => onNavigate(offset < 0 ? -1 : 1)}
+          >
+            {/* 内层：图片区域，撑满相框内空间 */}
+            <div style={{ flex: 1, borderRadius: 3, overflow: 'hidden' }}>
+              <img
+                src={photo.url}
+                alt={photo.caption || photo.fileName}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              />
+            </div>
+
+            {/* 只有 center 卡片显示底部参数行 */}
+            {isCenter && (
+              <div style={{ paddingTop: 4 }}>
+                <PhotoFrameBar photo={photo} />
+              </div>
+            )}
+          </motion.div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── BottomBar ────────────────────────────────────────────────────────────────
+
+/** 底部：照片 caption（italic）+ 圆点指示器。相册标题已在右侧时间线展示。 */
+function BottomBar({
+  caption,
+  photoCount,
+  photoIdx,
+}: {
+  caption: string;
+  photoCount: number;
+  photoIdx: number;
+}) {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', gap: 6,
+      flexShrink: 0, padding: '8px 40px 18px',
+    }}>
+      {caption && (
+        <span style={{
+          fontSize: 13, color: 'var(--caption-color)',
+          textAlign: 'center', maxWidth: 500,
+          lineHeight: 1.6, fontStyle: 'italic',
+        }}>
+          {caption}
+        </span>
+      )}
+      {photoCount > 1 && (
+        <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+          {Array.from({ length: photoCount }, (_, i) => (
+            <div
+              key={i}
+              style={{
+                width: i === photoIdx ? 16 : 5,
+                height: 5,
+                borderRadius: i === photoIdx ? 3 : '50%',
+                background: i === photoIdx ? 'var(--ink)' : 'var(--ink-ghost)',
+                transition: 'all 0.25s',
+              }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ArcTimeline ──────────────────────────────────────────────────────────────
+
+/*
+ * 右侧浮动相册时间线，选中项永远垂直居中，其他条目弧形向右推开。
+ *
+ * 布局策略：
+ *   - 外层容器 fixed 覆盖右侧区域，overflow: hidden，pointerEvents: none（不拦截底层交互）
+ *   - 内层列表 pointerEvents: auto 恢复点击；用 motion.div 的 animate.y 做整体滑动动画
+ *   - 选中项居中计算：列表 top:50% + translateY(-(currentIdx * 48 + 24))
+ *     即把第 currentIdx 格的中心点（index*48 + 半格24）对齐到容器 50% 处
+ *
+ * 弧形偏移公式（每个条目的 CSS transform）：
+ *   dist = |i - currentIdx|
+ *   translateX = dist² × 1.2px（越远越向右缩进）
+ *   opacity = max(0.12, 1 - dist × 0.2)
+ *
+ * 每条目内部 transform/opacity 走 CSS transition，不用 motion，减少节点开销。
+ */
+interface ArcTimelineProps {
+  albums: GalleryPost[];
+  currentIdx: number;
+  onSelect: (idx: number) => void;
+}
+
+function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
+  // 整个列表向上平移，使选中项中心对齐容器 50%
+  const listY = -(currentIdx * 48 + 24);
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        right: 0,
+        top: 0,
+        bottom: 0,
+        width: 140,
+        zIndex: 20,
+        overflow: 'hidden',
+        pointerEvents: 'none', // 容器透传鼠标事件，不遮挡底层
+      }}
+    >
+      {/* 内层列表：恢复点击；motion.div 驱动整体 y 轴滑动 */}
+      <motion.div
+        animate={{ y: listY }}
+        transition={{ duration: 0.4, ease: appleEase }}
+        style={{
+          position: 'absolute',
+          top: '50%',
+          left: 0,
+          right: 0,
+          pointerEvents: 'auto',
+        }}
+      >
+        {albums.map((album, i) => {
+          const dist = Math.abs(i - currentIdx);
+          const isSelected = i === currentIdx;
+
+          // 弧形水平偏移：dist² × 1.2，越远越向右（视觉上"拱起"）
+          const arcX = dist * dist * 1.2;
+          // 透明度：距离越远越淡，最低保留 0.12 保证可见性
+          const opacity = Math.max(0.12, 1 - dist * 0.2);
+
+          // 从 createdAt 提取 MM.DD 格式日期
+          const date = new Date(album.createdAt);
+          const mm = String(date.getMonth() + 1).padStart(2, '0');
+          const dd = String(date.getDate()).padStart(2, '0');
+          const dateStr = `${mm}.${dd}`;
+
+          // 地点标签（可能不存在）
+          const location = album.tags?.location ?? '';
+
+          return (
+            <div
+              key={album.id}
+              onClick={() => onSelect(i)}
+              style={{
+                height: 48,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                paddingLeft: 16,
+                cursor: 'pointer',
+                // CSS transition 处理弧形偏移和透明度，比 motion 更轻量
+                transform: `translateX(${arcX}px)`,
+                opacity,
+                transition: 'transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+              }}
+            >
+              {/* 指示点：选中 7px 深色实心，未选 4px 淡色 */}
+              <div
+                style={{
+                  flexShrink: 0,
+                  width: isSelected ? 7 : 4,
+                  height: isSelected ? 7 : 4,
+                  borderRadius: '50%',
+                  backgroundColor: isSelected ? 'var(--ink)' : 'var(--ink-ghost)',
+                  transition: 'width 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94), height 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94), background-color 0.3s',
+                }}
+              />
+
+              {/* 文字区：标题 + 日期·地点 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                {/* 标题：选中 12px/600，未选 11px/400 */}
+                <span
+                  style={{
+                    fontSize: isSelected ? 12 : 11,
+                    fontWeight: isSelected ? 600 : 400,
+                    color: isSelected ? 'var(--ink)' : 'var(--ink-ghost)',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    transition: 'font-size 0.3s, font-weight 0.3s, color 0.3s',
+                  }}
+                >
+                  {album.title}
+                </span>
+
+                {/* 日期 · 地点：选中 ink-faded，未选 ink-ghost 半透明 */}
+                <span
+                  style={{
+                    fontSize: 9,
+                    color: isSelected ? 'var(--ink-faded)' : 'var(--ink-ghost)',
+                    opacity: isSelected ? 1 : 0.5,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    transition: 'color 0.3s, opacity 0.3s',
+                  }}
+                >
+                  {location ? `${dateStr} · ${location}` : dateStr}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </motion.div>
+    </div>
+  );
+}
+
+// ─── BlurBackground ───────────────────────────────────────────────────────────
+
+/*
+ * 全屏模糊背景：将当前照片放大 160% 并大幅高斯模糊，营造沉浸式氛围。
+ * 亮度由 --blur-brightness CSS 变量控制，日间 0.85、午夜 0.2。
+ * key={photoUrl} 驱动 motion.img 的 enter 动画，每次照片切换淡入新背景。
+ */
+function BlurBackground({ photoUrl }: { photoUrl: string | null }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden' }}>
+      {photoUrl && (
+        <motion.img
+          key={photoUrl}
+          src={photoUrl}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.6, ease: appleEase }}
+          style={{
+            width: '160%',
+            height: '160%',
+            position: 'absolute',
+            top: '-30%',
+            left: '-30%',
+            objectFit: 'cover',
+            filter: 'blur(100px) saturate(1.6) brightness(var(--blur-brightness, 0.85))',
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── GalleryPage ──────────────────────────────────────────────────────────────
 
 export default function GalleryPage() {
-  const [posts, setPosts] = useState<GalleryPostDetail[]>([]);
+  // 相册列表（轻量，首次加载）
+  const [posts, setPosts] = useState<GalleryPost[]>([]);
+  // 当前展示的相册详情（含照片数组）
+  const [currentDetail, setCurrentDetail] = useState<GalleryPostDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [postIdx, setPostIdx] = useState(0);
-  const [photoIdx, setPhotoIdx] = useState(0);
-  const [postDir, setPostDir] = useState(0);
-  const [photoDir, setPhotoDir] = useState(0);
 
+  // 当前选中的相册索引（控制 ArcTimeline 高亮和 ↑↓ 键导航）
+  const [postIdx, setPostIdx] = useState(0);
+  // 当前展示的照片索引（控制 PhotoCarousel 和 ← → 键导航）
+  const [photoIdx, setPhotoIdx] = useState(0);
+  // 详情加载状态（PhotoCarousel、BottomBar 等子组件实现后消费）
+  const [_detailLoading, setDetailLoading] = useState(false);
+
+  // 已加载的详情缓存，避免重复请求（key: post id）
+  const detailCache = useRef<Map<string, GalleryPostDetail>>(new Map());
+
+  // ── 初始加载相册列表 ─────────────────────────────────────────────────────────
   useEffect(() => {
-    galleryApi.list('published').then(async (listed) => {
-      const details = await Promise.all(listed.map((p) => galleryApi.getById(p.id)));
-      setPosts(details);
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    galleryApi.list('published')
+      .then((listed) => {
+        setPosts(listed);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
   }, []);
 
-  const post = posts[postIdx];
-  const photo = post?.photos[photoIdx];
+  // ── 选中相册后加载详情 ────────────────────────────────────────────────────────
+  // posts 列表加载完成后触发首次详情加载；postIdx 变化时也触发
+  useEffect(() => {
+    if (posts.length === 0) return;
 
-  /* 上下：切换动态 */
+    const post = posts[postIdx];
+    if (!post) return;
+
+    // 命中缓存：直接更新，无需网络请求
+    const cached = detailCache.current.get(post.id);
+    if (cached) {
+      setCurrentDetail(cached);
+      return;
+    }
+
+    // 未命中：加载并写入缓存
+    setDetailLoading(true);
+    galleryApi.getById(post.id)
+      .then((detail) => {
+        detailCache.current.set(post.id, detail);
+        setCurrentDetail(detail);
+        setDetailLoading(false);
+      })
+      .catch(() => setDetailLoading(false));
+  }, [posts, postIdx]);
+
+  // 当前相册切换时，照片索引归零
+  useEffect(() => {
+    setPhotoIdx(0);
+  }, [postIdx]);
+
+  // 派生当前照片（currentDetail 未就绪时为 null）
+  const currentPhoto: GalleryPhoto | null = currentDetail?.photos[photoIdx] ?? null;
+
+  // ── 导航：←→ 切换照片 ─────────────────────────────────────────────────────────
+  const navigatePhoto = useCallback((dir: number) => {
+    if (!currentDetail) return;
+    const total = currentDetail.photos.length;
+    if (total <= 1) return;
+    setPhotoIdx((prev) => {
+      const next = prev + dir;
+      if (next < 0) return total - 1;
+      if (next >= total) return 0;
+      return next;
+    });
+  }, [currentDetail]);
+
+  // ── 导航：↑↓ 切换相册 ─────────────────────────────────────────────────────────
   const navigatePost = useCallback((dir: number) => {
-    setPostDir(dir);
+    if (posts.length <= 1) return;
     setPostIdx((prev) => {
       const next = prev + dir;
       if (next < 0) return posts.length - 1;
       if (next >= posts.length) return 0;
       return next;
     });
-    setPhotoIdx(0);
   }, [posts.length]);
 
-  /* 左右：切换照片 */
-  const navigatePhoto = useCallback((dir: number) => {
-    if (!post) return;
-    setPhotoDir(dir);
-    setPhotoIdx((prev) => {
-      const next = prev + dir;
-      if (next < 0) return post.photos.length - 1;
-      if (next >= post.photos.length) return 0;
-      return next;
-    });
-  }, [post]);
-
-  const tickRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  useEffect(() => {
-    tickRefs.current[postIdx]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }, [postIdx]);
-
+  // ── 键盘导航 ────────────────────────────────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       switch (e.key) {
@@ -92,211 +523,66 @@ export default function GalleryPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [navigatePhoto, navigatePost]);
 
+  // ── 渲染 ──────────────────────────────────────────────────────────────────────
+
   if (loading) {
     return <LoadingState variant="full" />;
   }
 
   if (posts.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center">
+      <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center' }}>
         <span style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-base)' }}>暂无画廊内容</span>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-1 items-stretch overflow-hidden">
-      {/* Center — polaroid display */}
-      <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-10 py-8">
-        <AnimatePresence mode="wait" custom={postDir}>
-          <motion.div
-            key={postIdx}
-            custom={postDir}
-            variants={slideVariantsY}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={{ duration: 0.3, ease: smoothBounce }}
-            className="flex flex-col items-center"
-          >
-            {/* Polaroid frame */}
-            <div
-              className="polaroid-frame relative transition-all duration-400"
-              style={{
-                background: 'var(--paper-white)',
-                padding: '8px 8px 32px',
-                borderRadius: 'var(--radius-md)',
-                boxShadow: 'var(--shadow-md)',
-              }}
-            >
-              <div
-                className="relative flex w-full items-center justify-center overflow-hidden"
-                style={{
-                  borderRadius: 'var(--radius-md)',
-                  height: '62vh',
-                  aspectRatio: '4/3',
-                  background: 'var(--paper-dark)',
-                }}
-              >
-                {photo ? (
-                  <AnimatePresence mode="wait" custom={photoDir}>
-                    <motion.img
-                      key={`${postIdx}-${photoIdx}`}
-                      src={photo.url}
-                      alt={photo.fileName}
-                      className="h-full w-full object-cover"
-                      custom={photoDir}
-                      variants={slideVariantsX}
-                      initial="enter"
-                      animate="center"
-                      exit="exit"
-                      transition={{ duration: 0.25, ease: smoothBounce }}
-                    />
-                  </AnimatePresence>
-                ) : (
-                  <span style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-sm)' }}>
-                    暂无照片
-                  </span>
-                )}
+    <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden' }}>
+      {/* 全屏模糊背景 — zIndex: 0，其他内容叠在上方 */}
+      <BlurBackground photoUrl={currentPhoto?.url ?? null} />
 
-                {/* Left/right arrows (photo navigation) */}
-                {post.photos.length > 1 && (
-                  <>
-                    <div
-                      className="absolute left-3 top-1/2 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full text-2xs opacity-40 transition-all duration-250 hover:opacity-100"
-                      style={{ background: 'rgba(0,0,0,0.3)', color: '#fff' }}
-                      onClick={() => navigatePhoto(-1)}
-                    >
-                      ‹
-                    </div>
-                    <div
-                      className="absolute right-3 top-1/2 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full text-2xs opacity-40 transition-all duration-250 hover:opacity-100"
-                      style={{ background: 'rgba(0,0,0,0.3)', color: '#fff' }}
-                      onClick={() => navigatePhoto(1)}
-                    >
-                      ›
-                    </div>
-                  </>
-                )}
-
-                {/* Photo indicator */}
-                {post.photos.length > 1 && (
-                  <div className="absolute bottom-2 left-1/2 flex -translate-x-1/2 gap-1">
-                    {post.photos.map((_, i) => (
-                      <span
-                        key={i}
-                        className="rounded-full transition-all duration-200"
-                        style={{
-                          width: i === photoIdx ? 12 : 4,
-                          height: 4,
-                          background: i === photoIdx ? '#fff' : 'rgba(255,255,255,0.4)',
-                        }}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Caption */}
-              <div className="px-1 pt-2.5 text-center" style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-md)' }}>
-                {post.title}
-              </div>
-            </div>
-
-            {/* Description */}
-            {post.description && (
-              <motion.div
-                className="mt-6 text-center leading-relaxed"
-                style={{ color: 'var(--ink-light)', fontSize: 'var(--text-md)', letterSpacing: '-0.01em' }}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.1 }}
-              >
-                <MarkdownBody markdown={post.description} />
-              </motion.div>
-            )}
-          </motion.div>
-        </AnimatePresence>
-
-        {/* Up/down arrows (post navigation) */}
-        {posts.length > 1 && (
-          <>
-            <div
-              className="absolute left-1/2 top-3 flex h-6 w-6 -translate-x-1/2 cursor-pointer items-center justify-center rounded-full text-4xs opacity-0 transition-all duration-250 hover:opacity-60"
-              style={{ color: 'var(--ink-ghost)' }}
-              onClick={() => navigatePost(-1)}
-            >
-              &#x25B3;
-            </div>
-            <div
-              className="absolute bottom-3 left-1/2 flex h-6 w-6 -translate-x-1/2 cursor-pointer items-center justify-center rounded-full text-4xs opacity-0 transition-all duration-250 hover:opacity-60"
-              style={{ color: 'var(--ink-ghost)' }}
-              onClick={() => navigatePost(1)}
-            >
-              &#x25BD;
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Right — timeline axis */}
+      {/* 主内容层 */}
       <div
-        className="relative flex w-[72px] shrink-0 flex-col"
-        style={{ borderLeft: '0.5px solid var(--separator)' }}
+        style={{
+          position: 'relative',
+          zIndex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+        }}
       >
-        {/* Axis line */}
+        {/* 照片展示区 — PhotoCarousel */}
         <div
-          className="absolute left-[20px]"
-          style={{ top: 0, bottom: 0, width: 1, background: 'var(--separator)' }}
-        />
-
-        {/* Scrollable tick area — selected tick auto-centers */}
-        <div className="flex flex-1 flex-col items-start overflow-y-auto py-6">
-          {/* Top spacer so first item can center */}
-          <div className="shrink-0" style={{ minHeight: '40vh' }} />
-
-          {posts.map((p, i) => {
-            const active = i === postIdx;
-            const date = new Date(p.createdAt);
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            return (
-              <button
-                key={p.id}
-                ref={(el) => { tickRefs.current[i] = el; }}
-                className="relative flex shrink-0 items-center"
-                style={{ height: 28, paddingLeft: 16 }}
-                onClick={() => { setPostDir(i > postIdx ? 1 : -1); setPostIdx(i); setPhotoIdx(0); }}
-              >
-                {/* Dot */}
-                <div
-                  className="rounded-full transition-all duration-200"
-                  style={{
-                    width: active ? 9 : 5,
-                    height: active ? 9 : 5,
-                    background: active ? 'var(--ink)' : 'var(--ink-ghost)',
-                  }}
-                />
-                {/* Date label */}
-                <span
-                  className="ml-2 whitespace-nowrap transition-all duration-150"
-                  style={{
-                    fontSize: 'var(--text-2xs)',
-                    color: active ? 'var(--ink)' : 'var(--ink-ghost)',
-                    fontWeight: active ? 600 : 400,
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  {month}.{day}
-                </span>
-              </button>
-            );
-          })}
-
-          {/* Bottom spacer so last item can center */}
-          <div className="shrink-0" style={{ minHeight: '40vh' }} />
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px 12px',
+          }}
+        >
+          <PhotoCarousel
+            photos={currentDetail?.photos ?? []}
+            photoIdx={photoIdx}
+            onNavigate={navigatePhoto}
+          />
         </div>
+
+        {/* 底部：caption + 照片圆点 */}
+        <BottomBar
+          caption={currentPhoto?.caption ?? ''}
+          photoCount={currentDetail?.photos.length ?? 0}
+          photoIdx={photoIdx}
+        />
       </div>
+
+      {/* 右侧时间轴 — ArcTimeline，fixed 脱离文档流 */}
+      <ArcTimeline
+        albums={posts}
+        currentIdx={postIdx}
+        onSelect={(i) => { setPostIdx(i); setPhotoIdx(0); }}
+      />
     </div>
   );
 }

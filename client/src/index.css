@@ -251,6 +251,13 @@
   --pip-a: hsl(210 20% 60%);   /* 雾蓝  */
   --pip-b: hsl(150 15% 55%);   /* 苔绿  */
   --pip-c: hsl(280 12% 60%);   /* 淡紫  */
+
+  /* ── Gallery 沉浸式背景（daylight） ── */
+  --blur-brightness: 0.85;
+  --frame-bg: rgba(255,255,255,0.08);
+  --frame-border: rgba(255,255,255,0.12);
+  --frame-text: rgba(0,0,0,0.3);
+  --caption-color: rgba(0,0,0,0.45);
 }
 
 /* Midnight — dark theme with white accent */
@@ -340,6 +347,13 @@
   --pip-a: hsl(210 22% 68%);
   --pip-b: hsl(150 16% 62%);
   --pip-c: hsl(280 14% 67%);
+
+  /* ── Gallery 沉浸式背景（midnight） ── */
+  --blur-brightness: 0.2;
+  --frame-bg: rgba(255,255,255,0.04);
+  --frame-border: rgba(255,255,255,0.06);
+  --frame-text: rgba(255,255,255,0.25);
+  --caption-color: rgba(255,255,255,0.5);
 }
 
 /* ========== Editor Caret ========== */
