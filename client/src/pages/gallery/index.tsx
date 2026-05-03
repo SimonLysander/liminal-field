@@ -285,7 +285,7 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
   return (
     <div
       style={{
-        position: 'fixed',
+        position: 'absolute',
         right: 0,
         top: 0,
         bottom: 0,
@@ -403,7 +403,7 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
  */
 function BlurBackground({ photoUrl }: { photoUrl: string | null }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}>
       {photoUrl && (
         <motion.img
           key={photoUrl}
@@ -542,7 +542,7 @@ export default function GalleryPage() {
   }
 
   return (
-    <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
       {/* 全屏模糊背景 — zIndex: 0，其他内容叠在上方 */}
       <BlurBackground photoUrl={currentPhoto?.url ?? null} />
 

@@ -253,7 +253,7 @@
   --pip-c: hsl(280 12% 60%);   /* 淡紫  */
 
   /* ── Gallery 沉浸式背景（daylight） ── */
-  --blur-brightness: 0.85;
+  --blur-brightness: 0.55;
   --frame-bg: rgba(255,255,255,0.08);
   --frame-border: rgba(255,255,255,0.12);
   --frame-text: rgba(0,0,0,0.3);
@@ -349,7 +349,7 @@
   --pip-c: hsl(280 14% 67%);
 
   /* ── Gallery 沉浸式背景（midnight） ── */
-  --blur-brightness: 0.2;
+  --blur-brightness: 0.35;
   --frame-bg: rgba(255,255,255,0.04);
   --frame-border: rgba(255,255,255,0.06);
   --frame-text: rgba(255,255,255,0.25);
