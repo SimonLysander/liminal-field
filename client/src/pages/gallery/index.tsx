@@ -31,17 +31,15 @@ import { appleEase } from '@/lib/motion';
 // offset -2 到 +2 分别映射到 farLeft / left / center / right / farRight
 // tx 是相对自身宽度的百分比偏移（基础居中由 translateX(-50%) 完成后叠加）
 const CARD_POSITIONS = {
-  center:   { tx: '0',    rotate: 0,  scale: 1,    opacity: 1,    z: 10 },
-  left:     { tx: '-30%', rotate: -3, scale: 0.82, opacity: 0.15, z: 8  },
-  right:    { tx: '30%',  rotate: 3,  scale: 0.82, opacity: 0.15, z: 8  },
-  farLeft:  { tx: '-50%', rotate: -5, scale: 0.7,  opacity: 0,    z: 6  },
-  farRight: { tx: '50%',  rotate: 5,  scale: 0.7,  opacity: 0,    z: 6  },
+  center: { tx: '0',    rotate: 0,  scale: 1,    opacity: 1,    z: 10 },
+  left:   { tx: '-30%', rotate: -3, scale: 0.82, opacity: 0.15, z: 8  },
+  right:  { tx: '30%',  rotate: 3,  scale: 0.82, opacity: 0.15, z: 8  },
 } as const;
 
 type CardSlot = keyof typeof CARD_POSITIONS;
 
-// offset（-2 到 +2）→ slot 名称
-const OFFSET_TO_SLOT: CardSlot[] = ['farLeft', 'left', 'center', 'right', 'farRight'];
+// offset（-1, 0, +1）→ slot 名称，只渲染 3 张卡片
+const OFFSET_TO_SLOT: CardSlot[] = ['left', 'center', 'right'];
 
 // ─── PhotoFrameBar ─────────────────────────────────────────────────────────────
 
@@ -146,7 +144,7 @@ function PhotoCarousel({
       }}
     >
       {OFFSET_TO_SLOT.map((slot, slotIndex) => {
-        const offset = slotIndex - 2; // -2, -1, 0, 1, 2
+        const offset = slotIndex - 1; // -1, 0, 1
         // 循环取模，保证索引始终合法
         const photoIndex = ((photoIdx + offset) % total + total) % total;
         const photo = photos[photoIndex];
@@ -169,7 +167,7 @@ function PhotoCarousel({
               border: '1px solid var(--frame-border)',
               background: 'var(--frame-bg)',
               backdropFilter: 'blur(20px)',
-              padding: '5px 5px 28px 5px',
+              padding: '3px 3px 20px 3px',
               width: '85%',
               height: '90%',
               maxHeight: 560,
