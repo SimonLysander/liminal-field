@@ -74,7 +74,7 @@ function PhotoFrameBar({ photo }: { photo: GalleryPhoto }) {
         justifyContent: 'space-between',
         padding: '0 2px',
         fontSize: 9,
-        color: 'var(--frame-text)',
+        color: 'rgba(255,255,255,0.6)',
         lineHeight: 1.4,
         gap: 4,
       }}
@@ -163,17 +163,13 @@ function PhotoCarousel({
               translateX: '-50%',
               translateY: '-50%',
               zIndex: pos.z,
-              // 相框外层：宝丽来白边样式
-              border: '1px solid var(--frame-border)',
-              background: 'var(--frame-bg)',
-              backdropFilter: 'blur(20px)',
-              padding: '3px 3px 20px 3px',
+              /* 相框：用 border 做视觉边缘，不用 padding，照片占满全部空间 */
+              border: '2px solid var(--frame-border)',
+              borderRadius: 8,
+              overflow: 'hidden',
               width: '85%',
               height: '90%',
               maxHeight: 560,
-              borderRadius: 6,
-              display: 'flex',
-              flexDirection: 'column',
               cursor: isCenter ? 'default' : offset < 0 ? 'w-resize' : 'e-resize',
             }}
             animate={{
@@ -183,21 +179,23 @@ function PhotoCarousel({
               opacity: pos.opacity,
             }}
             transition={{ duration: 0.45, ease: appleEase }}
-            // 点击左侧卡片向前，右侧卡片向后
             onClick={isCenter ? undefined : () => onNavigate(offset < 0 ? -1 : 1)}
           >
-            {/* 内层：图片区域，撑满相框内空间 */}
-            <div style={{ flex: 1, borderRadius: 3, overflow: 'hidden' }}>
-              <img
-                src={photo.url}
-                alt={photo.caption || photo.fileName}
-                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-              />
-            </div>
+            {/* 照片占满全部卡片空间 */}
+            <img
+              src={photo.url}
+              alt={photo.caption || photo.fileName}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            />
 
-            {/* 只有 center 卡片显示底部参数行 */}
+            {/* 参数行叠在照片底部，带渐变遮罩，不占空间 */}
             {isCenter && (
-              <div style={{ paddingTop: 4 }}>
+              <div style={{
+                position: 'absolute',
+                bottom: 0, left: 0, right: 0,
+                padding: '20px 8px 6px',
+                background: 'linear-gradient(transparent, rgba(0,0,0,0.45))',
+              }}>
                 <PhotoFrameBar photo={photo} />
               </div>
             )}
