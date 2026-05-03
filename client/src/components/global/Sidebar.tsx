@@ -36,9 +36,7 @@ import { LoadingState } from '@/components/LoadingState';
 /* ---------- Data ---------- */
 
 type Space = 'home' | 'notes' | 'gallery' | 'agent';
-const spaces: Space[] = ['notes'];
-// TODO: 暂时隐藏 home / gallery / agent
-// const spaces = ['home', 'notes', 'gallery', 'agent'] as const;
+const spaces: Space[] = ['notes', 'gallery'];
 
 const labels: Record<Space, string> = {
   home: '首页',
