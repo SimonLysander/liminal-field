@@ -164,9 +164,10 @@ function PhotoCarousel({
               background: 'var(--frame-bg)',
               backdropFilter: 'blur(20px)',
               padding: '5px 5px 28px 5px',
-              // 固定宽高比，不随窗口拉伸
-              width: 280,
-              height: 360,
+              width: '85%',
+              height: '90%',
+              maxHeight: 560,
+              borderRadius: 6,
               display: 'flex',
               flexDirection: 'column',
               cursor: isCenter ? 'default' : offset < 0 ? 'w-resize' : 'e-resize',

@@ -32,7 +32,6 @@ import {
 } from 'lucide-react';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import { LoadingState } from '@/components/LoadingState';
-import { LOCATIONS } from '@/lib/constants';
 
 /* ---------- Data ---------- */
 
@@ -56,12 +55,7 @@ const icons: Record<Space, React.ReactNode> = {
   agent: <Sparkles {...NAV_ICON} />,
 };
 
-/* Placeholder data for gallery & agent sub-nav */
-const tagGroups = [
-  { label: '地点', tags: [...LOCATIONS] },
-  { label: '风格', tags: ['扁平光', '自然', '街头', '抽象'] },
-  { label: '相机', tags: ['GR III', 'iPhone', 'X100V'] },
-];
+/* Placeholder data for agent sub-nav */
 
 const agentSessions = [
   { title: '写作模式分析', date: '今天', status: 'active' },
@@ -134,7 +128,6 @@ export default function Sidebar() {
   const activeTopicId = searchParams.get('topic');
   const activeNoteId = searchParams.get('doc');
 
-  const [activeTags, setActiveTags] = useState<Record<string, boolean>>({ '北京': true });
 
   /* 笔记树导航状态
    *
@@ -431,41 +424,7 @@ export default function Sidebar() {
         </div>
       )}
 
-      {/* Sub-nav: Gallery — tag filters (placeholder) */}
-      {active === 'gallery' && (
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <div className="mx-3 my-2.5 h-px" style={{ background: 'var(--separator)' }} />
-          <div
-            className="px-3 pb-2 pt-1.5 text-2xs font-medium uppercase"
-            style={{ color: 'var(--ink-ghost)', letterSpacing: '0.04em' }}
-          >
-            标签筛选
-          </div>
-          {tagGroups.map((g, i) => (
-            <div key={i} className="mb-2.5 px-3">
-              <div className="mb-1.5 text-xs font-medium" style={{ color: 'var(--ink-ghost)' }}>
-                {g.label}
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {g.tags.map((t) => (
-                  <span
-                    key={t}
-                    className="cursor-pointer rounded-full px-2.5 py-[3px] text-xs transition-all duration-200"
-                    style={
-                      activeTags[t]
-                        ? { background: 'var(--ink)', color: 'var(--accent-contrast)', fontWeight: 500 }
-                        : { background: 'transparent', color: 'var(--ink-faded)', border: '1px solid var(--box-border)' }
-                    }
-                    onClick={() => setActiveTags((prev) => ({ ...prev, [t]: !prev[t] }))}
-                  >
-                    {t}
-                  </span>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Gallery 页面是全屏沉浸式，侧边栏不需要额外内容 */}
 
       {/* Sub-nav: Agent — sessions (placeholder) */}
       {active === 'agent' && (
