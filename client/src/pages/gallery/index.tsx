@@ -31,11 +31,11 @@ import { appleEase } from '@/lib/motion';
 // offset -2 到 +2 分别映射到 farLeft / left / center / right / farRight
 // tx 是相对自身宽度的百分比偏移（基础居中由 translateX(-50%) 完成后叠加）
 const CARD_POSITIONS = {
-  center:   { tx: '0',    rotate: 0,  scale: 1,    opacity: 1,   z: 10 },
-  left:     { tx: '-48%', rotate: -3, scale: 0.82, opacity: 0.3, z: 8  },
-  right:    { tx: '48%',  rotate: 3,  scale: 0.82, opacity: 0.3, z: 8  },
-  farLeft:  { tx: '-72%', rotate: -5, scale: 0.7,  opacity: 0,   z: 6  },
-  farRight: { tx: '72%',  rotate: 5,  scale: 0.7,  opacity: 0,   z: 6  },
+  center:   { tx: '0',    rotate: 0,  scale: 1,    opacity: 1,    z: 10 },
+  left:     { tx: '-30%', rotate: -3, scale: 0.82, opacity: 0.15, z: 8  },
+  right:    { tx: '30%',  rotate: 3,  scale: 0.82, opacity: 0.15, z: 8  },
+  farLeft:  { tx: '-50%', rotate: -5, scale: 0.7,  opacity: 0,    z: 6  },
+  farRight: { tx: '50%',  rotate: 5,  scale: 0.7,  opacity: 0,    z: 6  },
 } as const;
 
 type CardSlot = keyof typeof CARD_POSITIONS;
@@ -48,7 +48,7 @@ const OFFSET_TO_SLOT: CardSlot[] = ['farLeft', 'left', 'center', 'right', 'farRi
 /*
  * 相框底部参数行（宝丽来白边下方）。
  * 左侧：设备型号 + EXIF 分组（光圈·快门·ISO、焦距、分辨率、白平衡、格式）
- * 右侧：照片说明文字（caption）
+ * 右侧：拍摄时间 + 照片名
  * 从 photo.tags 中取对应键，缺失的键直接跳过。
  */
 function PhotoFrameBar({ photo }: { photo: GalleryPhoto }) {
@@ -91,20 +91,26 @@ function PhotoFrameBar({ photo }: { photo: GalleryPhoto }) {
         ))}
       </div>
 
-      {/* 右侧：照片说明 */}
-      {photo.caption && (
-        <span
-          style={{
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            flexShrink: 1,
-            opacity: 0.75,
-          }}
-        >
-          {photo.caption}
-        </span>
-      )}
+      {/* 右侧：拍摄时间 + 照片名 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        {t.shotAt && (
+          <span style={{ whiteSpace: 'nowrap', opacity: 0.6, fontVariantNumeric: 'tabular-nums' }}>
+            {t.shotAt}
+          </span>
+        )}
+        {photo.caption && (
+          <span
+            style={{
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              maxWidth: 120,
+            }}
+          >
+            {photo.caption}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -553,14 +559,15 @@ export default function GalleryPage() {
           height: '100%',
         }}
       >
-        {/* 照片展示区 — PhotoCarousel */}
+        {/* 照片展示区 — 右侧 padding 给时间线留空间，center 卡片不重叠 */}
         <div
           style={{
             flex: 1,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '16px 12px',
+            padding: '16px 12px 16px 12px',
+            paddingRight: 150, /* 时间线 140px + 10px 间距 */
           }}
         >
           <PhotoCarousel
