@@ -167,6 +167,7 @@ function PhotoCarousel({
               border: '2px solid var(--frame-border)',
               borderRadius: 8,
               overflow: 'hidden',
+              background: '#0a0a0a',
               width: '85%',
               height: '90%',
               maxHeight: 560,
@@ -185,7 +186,7 @@ function PhotoCarousel({
             <img
               src={photo.url}
               alt={photo.caption || photo.fileName}
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
             />
 
             {/* 参数行叠在照片底部，带渐变遮罩，不占空间 */}
