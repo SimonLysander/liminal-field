@@ -373,7 +373,7 @@ const DraftEditPage = () => {
           {/* Right — outline */}
           <div
             className="flex w-[200px] shrink-0 flex-col overflow-y-auto px-4 py-10"
-            style={{ background: 'var(--shelf)' }}
+            style={{}}
           >
             <div
               className="mb-3 font-semibold uppercase"
