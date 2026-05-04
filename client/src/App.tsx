@@ -90,7 +90,7 @@ function MainLayout() {
   const location = useLocation();
 
   return (
-    <div className="flex h-screen" style={{ background: 'var(--paper)' }}>
+    <div className="relative z-[1] flex h-screen" style={{ background: 'var(--paper)' }}>
       {/* Sidebar — floating grey card; see Sidebar.tsx for styling details */}
       <Sidebar />
 
