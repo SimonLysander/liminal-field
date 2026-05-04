@@ -26,6 +26,7 @@ import {
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { X } from 'lucide-react';
 import type { GalleryPhoto } from '@/services/workspace';
 
 // ---------- Props ----------
@@ -34,6 +35,7 @@ interface PhotoGridProps {
   photos: GalleryPhoto[];
   onReorder: (fromIndex: number, toIndex: number) => void;
   onPhotoClick: (index: number) => void;
+  onDelete: (photoId: string) => void;
   onUpload: (files: File[]) => void;
 }
 
@@ -50,10 +52,12 @@ function SortablePhoto({
   photo,
   index,
   onClick,
+  onDelete,
 }: {
   photo: GalleryPhoto;
   index: number;
   onClick: (index: number) => void;
+  onDelete: (photoId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: photo.id,
@@ -72,16 +76,25 @@ function SortablePhoto({
       style={style}
       {...attributes}
       {...listeners}
-      className="relative aspect-square overflow-hidden rounded-md"
+      className="group relative aspect-square overflow-hidden rounded-md"
       onClick={() => onClick(index)}
     >
       <img
         src={photo.url}
         alt={photo.fileName}
         className="h-full w-full object-cover"
-        /* 阻止图片自带的拖拽行为干扰 dnd-kit */
         draggable={false}
       />
+
+      {/* 删除按钮 — hover 时右上角出现（Apple Photos 风格） */}
+      <button
+        className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+        style={{ background: 'rgba(0,0,0,0.6)', color: '#fff' }}
+        onClick={(e) => { e.stopPropagation(); onDelete(photo.id); }}
+        aria-label="删除照片"
+      >
+        <X size={11} strokeWidth={2.5} />
+      </button>
 
       {/* 说明 badge — 有 caption 时显示 */}
       {photo.caption && (
@@ -98,7 +111,7 @@ function SortablePhoto({
 
 // ---------- PhotoGrid ----------
 
-export function PhotoGrid({ photos, onReorder, onPhotoClick, onUpload }: PhotoGridProps) {
+export function PhotoGrid({ photos, onReorder, onPhotoClick, onDelete, onUpload }: PhotoGridProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   /* 5px 移动距离才激活拖拽，防止干扰点击事件 */
@@ -149,6 +162,7 @@ export function PhotoGrid({ photos, onReorder, onPhotoClick, onUpload }: PhotoGr
                 photo={photo}
                 index={index}
                 onClick={onPhotoClick}
+                onDelete={onDelete}
               />
             ))}
 

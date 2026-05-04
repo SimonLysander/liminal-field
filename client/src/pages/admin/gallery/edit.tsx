@@ -182,6 +182,7 @@ export default function GalleryEditPage() {
             photos={photos}
             onReorder={reorderPhotos}
             onPhotoClick={handlePhotoClick}
+            onDelete={deletePhoto}
             onUpload={(files) => void uploadPhotos(files)}
           />
 
