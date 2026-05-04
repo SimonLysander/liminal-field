@@ -22,7 +22,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, X, Camera, Aperture, CalendarDays } from 'lucide-react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { PhotoMetadataFields } from './LocationSelect';
 
 // ---------- Props ----------
@@ -227,6 +227,7 @@ export function PhotoEditModal({
        * - 使用 [&>button:last-child]:hidden 隐藏 DialogPrimitive.Close
        */}
       <DialogContent
+        aria-describedby={undefined}
         className={`flex overflow-hidden p-0 [&>button:last-child]:hidden ${isLandscape ? 'flex-col' : 'flex-row'}`}
         style={{
           maxWidth: '760px',
@@ -235,6 +236,9 @@ export function PhotoEditModal({
           border: 'none',
         }}
       >
+        {/* 无障碍：隐藏的 DialogTitle，消除 Radix 警告 */}
+        <DialogTitle className="sr-only">照片编辑</DialogTitle>
+
         {/* ── 照片预览区：横幅在上方（全宽），竖幅在左侧（固定宽） ── */}
         <div
           className={`relative flex shrink-0 items-center justify-center ${isLandscape ? 'w-full' : 'w-[320px]'}`}
