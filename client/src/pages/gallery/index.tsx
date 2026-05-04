@@ -168,9 +168,8 @@ function PhotoCarousel({
               borderRadius: 8,
               overflow: 'hidden',
               background: '#0a0a0a',
-              width: '85%',
-              height: '90%',
-              maxHeight: 560,
+              width: '92%',
+              height: '94%',
               cursor: isCenter ? 'default' : offset < 0 ? 'w-resize' : 'e-resize',
             }}
             animate={{
@@ -413,7 +412,7 @@ function BlurBackground({ photoUrl }: { photoUrl: string | null }) {
             backgroundImage: `url(${photoUrl})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
-            filter: 'blur(30px) saturate(1.3) brightness(var(--blur-brightness, 0.55))',
+            filter: 'blur(18px) saturate(1.2) brightness(var(--blur-brightness, 0.55))',
           }}
         />
       )}
