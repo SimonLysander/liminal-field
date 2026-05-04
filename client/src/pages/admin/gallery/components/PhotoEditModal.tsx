@@ -66,6 +66,8 @@ export function PhotoEditModal({
   onDelete,
 }: PhotoEditModalProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  // 图片方向：横幅上下布局，竖幅左右布局
+  const [isLandscape, setIsLandscape] = useState(true);
 
   /*
    * 当 initialIndex 或 open 变化时同步内部索引。
@@ -76,6 +78,14 @@ export function PhotoEditModal({
   }, [initialIndex, open]);
 
   const photo = photos[currentIndex];
+
+  /* 检测图片方向：加载后比较 naturalWidth / naturalHeight */
+  useEffect(() => {
+    if (!photo) return;
+    const img = new Image();
+    img.onload = () => setIsLandscape(img.naturalWidth >= img.naturalHeight);
+    img.src = photo.url;
+  }, [photo?.url]);
 
   /*
    * captionDraft：本地草稿，避免每次按键都触发父级回调。
@@ -141,7 +151,7 @@ export function PhotoEditModal({
        * - 使用 [&>button:last-child]:hidden 隐藏 DialogPrimitive.Close
        */}
       <DialogContent
-        className="flex overflow-hidden p-0 [&>button:last-child]:hidden"
+        className={`flex overflow-hidden p-0 [&>button:last-child]:hidden ${isLandscape ? 'flex-col' : 'flex-row'}`}
         style={{
           maxWidth: '760px',
           width: '760px',
@@ -149,17 +159,20 @@ export function PhotoEditModal({
           border: 'none',
         }}
       >
-        {/* ── 左侧：照片预览区 ── */}
+        {/* 照片预览区：横幅在上方（全宽），竖幅在左侧（固定宽） */}
         <div
-          className="relative flex w-[320px] shrink-0 items-center justify-center"
-          style={{ background: 'var(--shelf)', minHeight: '480px' }}
+          className={`relative flex shrink-0 items-center justify-center ${isLandscape ? 'w-full' : 'w-[320px]'}`}
+          style={{
+            background: 'var(--shelf)',
+            ...(isLandscape ? { height: '340px' } : { minHeight: '480px' }),
+          }}
         >
           {/* 大图预览 */}
           <img
             src={photo.url}
             alt={photo.fileName}
             className="h-full w-full object-contain"
-            style={{ maxHeight: '420px' }}
+            style={isLandscape ? { maxHeight: '320px' } : { maxHeight: '420px' }}
             draggable={false}
           />
 
