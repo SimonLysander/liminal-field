@@ -7,7 +7,7 @@ export default function Topbar() {
   return (
     <header
       className="relative z-[1] flex shrink-0 items-center px-4"
-      style={{ height: 48, borderBottom: '0.5px solid var(--separator)' }}
+      style={{ height: 48, borderBottom: '0.5px solid var(--separator)', background: 'var(--paper)' }}
     >
       <div className="flex-1" />
 

@@ -202,6 +202,8 @@ export default function Sidebar() {
         margin: '12px 0 12px 12px',
         borderRadius: 'var(--radius-lg)',
         boxShadow: 'var(--shadow-sm)',
+        position: 'relative',
+        zIndex: 1,
       }}
     >
       {/* Header */}
