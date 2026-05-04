@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
+import { useConfirm } from '@/contexts/ConfirmContext';
 import { notesApi as contentItemsApi } from '@/services/workspace';
 import type {
   CreateStructureNodeDto,
@@ -41,6 +42,7 @@ import type { BreadcrumbItem } from '../components/AdminStructurePanel';
 export function useAdminWorkspace() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const confirm = useConfirm();
   const urlFolderId = searchParams.get('topic') ?? undefined;
   const urlContentItemId = searchParams.get('doc') ?? undefined;
 
@@ -63,8 +65,8 @@ export function useAdminWorkspace() {
     setError('');
     try {
       const result = parentId
-        ? await structureApi.getChildren(parentId, { visibility: 'all' })
-        : await structureApi.getRootNodes({ visibility: 'all' });
+        ? await structureApi.getChildren(parentId, { visibility: 'all', scope: 'notes' })
+        : await structureApi.getRootNodes({ visibility: 'all', scope: 'notes' });
       setNodes(result.children);
       setBreadcrumb(
         result.path
@@ -279,6 +281,13 @@ export function useAdminWorkspace() {
         setLastDraftSavedAt(existingDraft?.savedAt ?? '');
         setAutosaveError('');
       } catch (workspaceError) {
+        // 404（scope 不匹配或不存在）→ 清掉 URL 参数，toast 提示
+        const { isApiError } = await import('@/services/request');
+        if (isApiError(workspaceError, 404)) {
+          toast.error('该内容不属于当前模块');
+          navigate('/admin/notes', { replace: true });
+          return;
+        }
         setContentError(parseError(workspaceError, '加载正式内容失败'));
         setFormalContent(EMPTY_FORMAL_CONTENT);
         setDraftState(EMPTY_DRAFT_EDITOR_STATE);
@@ -337,8 +346,8 @@ export function useAdminWorkspace() {
       if (!activeContentItemId || !formalContent.id) return;
 
       if (overwrite && draftPresence.exists) {
-        const confirmed = window.confirm('是否覆盖已有草稿？');
-        if (!confirmed) return;
+        const ok = await confirm({ title: '覆盖草稿', message: '是否覆盖已有草稿？', danger: true });
+        if (!ok) return;
       }
 
       const draft = await contentItemsApi.saveDraft(activeContentItemId, {
@@ -473,8 +482,7 @@ export function useAdminWorkspace() {
       publishedVersion: formalContent.publishedVersion,
       hasUnpublishedChanges: formalContent.hasUnpublishedChanges,
       bodyMarkdown: formalContent.bodyMarkdown,
-      plainText: '',
-      assetRefs: [],
+      headings: formalContent.headings,
       changeLogs: [],
       createdAt: '',
       updatedAt: formalContent.updatedAt,
@@ -525,6 +533,7 @@ export function useAdminWorkspace() {
           commitHash,
           title: detail.title,
           bodyMarkdown: detail.bodyMarkdown,
+          headings: detail.headings,
           committedAt: detail.updatedAt,
         });
       } catch (previewError) {
@@ -541,24 +550,17 @@ export function useAdminWorkspace() {
   const publishPreview = useCallback(async () => {
     if (!activeContentItemId || !preview) return;
 
-    const confirmed = window.confirm(`发布版本 ${preview.commitHash.slice(0, 8)} ？`);
-    if (!confirmed) return;
+    const ok = await confirm({ title: '发布版本', message: `发布版本 ${preview.commitHash.slice(0, 8)} ？`, confirmLabel: '发布' });
+    if (!ok) return;
 
-    const saved = await contentItemsApi.save(activeContentItemId, {
-      title: preview.title,
-      summary: formalContent.latestVersion.summary,
-      status: 'published',
-      bodyMarkdown: preview.bodyMarkdown,
-      changeNote: `发布版本 ${preview.commitHash.slice(0, 8)}`,
-      changeType: 'patch',
-      action: 'publish',
-    });
+    // 发布指定历史版本，只传 commitHash，不传 bodyMarkdown
+    const saved = await contentItemsApi.publish(activeContentItemId, preview.commitHash);
 
     setFormalContent(toFormalContentState(saved));
-    setPreview(null);
+    // 不清除 preview，保持停留在当前版本，让用户看到"已发布"标记
     toast.success(`版本 ${preview.commitHash.slice(0, 8)} 已发布`);
     setHistory(await contentItemsApi.getHistory(activeContentItemId));
-  }, [activeContentItemId, preview, formalContent.latestVersion.summary]);
+  }, [activeContentItemId, preview]);
 
   /* ================================================================
    * 自动保存

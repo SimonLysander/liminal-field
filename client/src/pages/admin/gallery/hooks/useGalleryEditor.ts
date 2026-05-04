@@ -24,8 +24,6 @@ import { arrayMove } from '@dnd-kit/sortable';
 import { toast } from 'sonner';
 import {
   galleryApi,
-  type GalleryPhoto,
-  type GalleryPostDetail,
   type UpdateGalleryPostDto,
 } from '@/services/workspace';
 
@@ -33,18 +31,29 @@ import {
 
 type SaveStatus = 'saved' | 'dirty' | 'saving';
 
+/** 编辑器本地照片状态（比 GalleryPhoto 多 size，用于 UI 展示文件大小） */
+interface LocalEditorPhoto {
+  id: string;
+  url: string;
+  fileName: string;
+  size: number;
+  caption: string;
+  tags: Record<string, string>;
+}
+
 export interface GalleryEditorState {
   loading: boolean;
   title: string;
   prose: string;
-  /** 照片列表，复用 GalleryPhoto 类型（含 id/url/fileName/size/order/caption/tags） */
-  photos: GalleryPhoto[];
+  /** 照片列表（含 size 供 UI 展示，来源 /editor 端点） */
+  photos: LocalEditorPhoto[];
   /** 帖子级 key-value 标签 */
   tags: Record<string, string>;
   /** 封面照片文件名，null 表示未设置 */
   coverPhotoFileName: string | null;
   saveStatus: SaveStatus;
 }
+
 
 export interface GalleryEditorActions {
   updateTitle: (value: string) => void;
@@ -65,7 +74,7 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
   const [loading, setLoading] = useState(true);
   const [title, setTitle] = useState('');
   const [prose, setProse] = useState('');
-  const [photos, setPhotos] = useState<GalleryPhoto[]>([]);
+  const [photos, setPhotos] = useState<LocalEditorPhoto[]>([]);
   /** 帖子级标签 */
   const [tags, setTags] = useState<Record<string, string>>({});
   /** 封面文件名 */
@@ -88,6 +97,7 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
   useEffect(() => { coverRef.current = coverPhotoFileName; }, [coverPhotoFileName]);
 
   // ─── 初始化加载 ───
+  // 使用 /editor 端点：后端已合并草稿+正式版，前端直接消费，无需手动 photoMap 合并
 
   useEffect(() => {
     if (!postId) {
@@ -98,53 +108,21 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     const init = async () => {
       setLoading(true);
       try {
-        // 并行请求：草稿（可能不存在，404 → null）+ 正式详情
-        const [draft, detail] = await Promise.all([
-          galleryApi.getDraft(postId).catch(() => null),
-          galleryApi.getById(postId),
-        ]) as [Awaited<ReturnType<typeof galleryApi.getDraft>> | null, GalleryPostDetail];
+        const editorState = await galleryApi.getEditorState(postId);
 
-        if (draft) {
-          // 草稿返回的是后端已反序列化的结构化字段，直接使用
-          setTitle(draft.title);
-          setProse(draft.prose);
-          setTags(draft.tags);
-          setCoverPhotoFileName(draft.cover);
-
-          // 合并 draft.photos（顺序/元数据来源）与 detail.photos（URL/size 来源）
-          // 已提交的照片 URL 走 Git assets，未提交的走 MinIO draft-assets 代理
-          const photoMap = new Map((detail.photos ?? []).map((p) => [p.fileName, p]));
-          const merged: GalleryPhoto[] = draft.photos.map((dp, i) => {
-            const asset = photoMap.get(dp.file);
-            return {
-              id: asset?.id ?? dp.file,
-              url: asset?.url ?? `/api/v1/spaces/gallery/items/${postId}/draft-assets/${dp.file}`,
-              size: asset?.size ?? 0,
-              fileName: dp.file,
-              order: i,
-              caption: dp.caption,
-              tags: dp.tags,
-            };
-          });
-          // 追加 draft 未记录但 detail 中存在的照片（上传后未及时写入草稿的情况）
-          const draftFileSet = new Set(draft.photos.map((p) => p.file));
-          for (const asset of detail.photos ?? []) {
-            if (!draftFileSet.has(asset.fileName)) {
-              merged.push({ ...asset, tags: asset.tags ?? {}, order: merged.length });
-            }
-          }
-          setPhotos(merged);
-        } else {
-          // 无草稿时，从正式版本 detail 初始化
-          setTitle(detail.title);
-          setProse(detail.description);
-          setTags(detail.tags);
-          setCoverPhotoFileName(detail.coverPhotoFileName);
-          setPhotos(
-            (detail.photos ?? []).map((p) => ({ ...p, tags: p.tags ?? {} })),
-          );
-        }
-
+        setTitle(editorState.title);
+        setProse(editorState.prose);
+        setTags(editorState.tags);
+        setCoverPhotoFileName(editorState.cover);
+        // id 用 file（文件名）作为本地唯一键，与 buildSavePayload 中的 p.fileName 对齐
+        setPhotos(editorState.photos.map((p) => ({
+          id: p.file,
+          url: p.url,
+          fileName: p.file,
+          size: p.size,
+          caption: p.caption,
+          tags: p.tags,
+        })));
         setSaveStatus('saved');
       } catch {
         toast.error('加载画廊动态失败');
@@ -258,12 +236,12 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
         files.map((file) => galleryApi.uploadPhoto(id, file)),
       );
       setPhotos((prev) => {
-        const appended: GalleryPhoto[] = results.map((r, i) => ({
+        // id 用 fileName 作为本地唯一键，与 buildSavePayload 保持一致
+        const appended: LocalEditorPhoto[] = results.map((r) => ({
           id: r.fileName,
           url: r.url,
           fileName: r.fileName,
           size: r.size,
-          order: prev.length + i,
           caption: '',
           tags: {},
         }));

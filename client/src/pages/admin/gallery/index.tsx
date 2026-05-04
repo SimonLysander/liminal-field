@@ -16,7 +16,8 @@ import { toast } from 'sonner';
 
 import Topbar from '@/components/global/Topbar';
 import { LoadingState, ContentFade } from '@/components/LoadingState';
-import { galleryApi, type GalleryPost, type GalleryPostDetail, type ContentHistoryEntry } from '@/services/workspace';
+import { useConfirm } from '@/contexts/ConfirmContext';
+import { galleryApi, type GalleryAdminListItem, type GalleryAdminDetail, type ContentHistoryEntry } from '@/services/workspace';
 import { smoothBounce } from '@/lib/motion';
 import { GalleryPostListItem, GalleryPostPreview } from './components/GalleryFeedCard';
 import { PhotoLightbox } from './components/PhotoLightbox';
@@ -39,15 +40,16 @@ function EmptyState({ message }: { message: string }) {
 export default function GalleryAdmin() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const confirm = useConfirm();
 
-  const [posts, setPosts] = useState<GalleryPost[]>([]);
+  const [posts, setPosts] = useState<GalleryAdminListItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   /* 新建 Modal */
   const [createModalOpen, setCreateModalOpen] = useState(false);
 
   /* 选中帖子的完整详情（含所有照片） */
-  const [detail, setDetail] = useState<GalleryPostDetail | null>(null);
+  const [detail, setDetail] = useState<GalleryAdminDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
   /* 照片查看 Modal */
@@ -95,7 +97,7 @@ export default function GalleryAdmin() {
   const [preview, setPreview] = useState<{
     commitHash: string;
     title: string;
-    description: string;
+    prose: string;
     photos: Array<{ file: string; caption: string; tags: Record<string, string> }>;
   } | null>(null);
 
@@ -151,7 +153,7 @@ export default function GalleryAdmin() {
       setPreview({
         commitHash: ver.commitHash,
         title: ver.title,
-        description: ver.prose,
+        prose: ver.prose,
         photos: ver.photos,
       });
     } catch {
@@ -180,23 +182,16 @@ export default function GalleryAdmin() {
     setHistory(hist);
   };
 
-  /** 发布指定历史版本：纯指针操作，publishedVersion 直接指向该 commitHash */
-  const handlePublishVersion = async (id: string, commitHash: string) => {
+  /** 发布当前展示的版本：preview 模式发布历史版本，否则发布最新版 */
+  const handlePublish = async (id: string) => {
+    const commitHash = preview?.commitHash;
+    const label = commitHash ? `版本 ${commitHash.slice(0, 8)}` : '最新版本';
+    const ok = await confirm({ title: '发布', message: `立即发布${label}？`, confirmLabel: '发布' });
+    if (!ok) return;
     try {
       await galleryApi.publish(id, commitHash);
-      toast.success(`版本 ${commitHash.slice(0, 8)} 已发布`);
-      setPreview(null);
-      void loadPosts();
-      void reloadDetail(id);
-    } catch {
-      toast.error('发布失败');
-    }
-  };
-
-  const handlePublish = async (id: string) => {
-    try {
-      await galleryApi.publish(id);
-      toast.success('已发布');
+      toast.success(`${label}已发布`);
+      // 不清除 preview，保持停留在当前版本
       void loadPosts();
       void reloadDetail(id);
     } catch {
@@ -205,6 +200,8 @@ export default function GalleryAdmin() {
   };
 
   const handleUnpublish = async (id: string) => {
+    const ok = await confirm({ title: '取消发布', message: '立即取消发布？', danger: true, confirmLabel: '取消发布' });
+    if (!ok) return;
     try {
       await galleryApi.unpublish(id);
       toast.success('已取消发布');
@@ -216,10 +213,11 @@ export default function GalleryAdmin() {
   };
 
   const handleDelete = async (id: string) => {
+    const ok = await confirm({ title: '删除', message: '确认删除此动态？此操作不可撤销。', danger: true, confirmLabel: '删除' });
+    if (!ok) return;
     try {
       await galleryApi.remove(id);
       toast.success('已删除');
-      // 删除后清除选中状态，再刷新列表
       if (selectedId === id) setSelectedId(null);
       void loadPosts();
     } catch {
@@ -335,65 +333,53 @@ export default function GalleryAdmin() {
               >
                 {selectedId && detailLoading ? (
                   <LoadingState />
-                ) : detail ? (
-                  <>
-                    {/* 版本预览横幅 */}
-                    {preview && (
-                      <div
-                        className="mb-4 flex items-center justify-between rounded-lg px-4 py-2.5"
-                        style={{ background: 'rgba(10,132,255,0.08)', border: '1px solid rgba(10,132,255,0.2)' }}
-                      >
-                        <span className="text-xs" style={{ color: 'var(--mark-blue)' }}>
-                          正在查看历史版本 {preview.commitHash?.slice(0, 8) ?? ''}
-                        </span>
-                        <div className="flex items-center gap-3">
-                          <button
-                            className="text-xs font-medium"
-                            style={{ color: 'var(--mark-blue)' }}
-                            onClick={() => void handlePublishVersion(detail.id, preview.commitHash)}
-                          >
-                            发布此版本
-                          </button>
-                          <button
-                            className="text-xs font-medium"
-                            style={{ color: 'var(--mark-blue)' }}
-                            onClick={() => setPreview(null)}
-                          >
-                            返回最新 →
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                ) : detail ? (() => {
+                  /*
+                   * 判断当前展示的版本是否为已发布版：
+                   * - 无 preview（默认视图）→ 用 detail 自身字段判断，不依赖 history 加载状态
+                   * - 有 preview → 用 commitHash 对比
+                   */
+                  const isViewingHistory = !!preview;
+                  const viewingHash = preview?.commitHash ?? history[0]?.commitHash ?? '';
+                  const isViewingPublished = preview
+                    ? preview.commitHash === detail.publishedCommitHash
+                    : detail.status === 'published' && !detail.hasUnpublishedChanges;
+
+                  /* 构建当前展示的帖子数据 */
+                  const displayPost = preview ? {
+                    ...detail,
+                    title: preview.title,
+                    prose: preview.prose,
+                    photos: preview.photos.map((p) => {
+                      const existing = detail.photos.find((dp) => dp.fileName === p.file);
+                      return {
+                        id: p.file,
+                        fileName: p.file,
+                        // 历史版本照片带 ?v=commitHash，确保从正确的 git commit 读取
+                        url: existing?.url ?? `/api/v1/spaces/gallery/items/${detail.id}/assets/${p.file}?v=${preview.commitHash}`,
+                        caption: p.caption,
+                        tags: p.tags,
+                      };
+                    }),
+                    photoCount: preview.photos.length,
+                  } : history.length === 0
+                    ? { ...detail, photos: [], prose: '', photoCount: 0 }
+                    : detail;
+
+                  return (
                     <GalleryPostPreview
-                      post={preview ? {
-                        ...detail,
-                        title: preview.title,
-                        description: preview.description,
-                        /* 历史版本照片：用 frontmatter 的 file 列表构建，URL 基于 assets 端点 */
-                        photos: preview.photos.map((p, i) => {
-                          const existing = detail.photos.find((dp) => dp.fileName === p.file);
-                          return {
-                            id: p.file,
-                            fileName: p.file,
-                            url: existing?.url ?? `/api/v1/spaces/gallery/items/${detail.id}/assets/${p.file}`,
-                            size: existing?.size ?? 0,
-                            order: i,
-                            caption: p.caption,
-                            tags: p.tags,
-                          };
-                        }),
-                        photoCount: preview.photos.length,
-                      } : history.length === 0
-                        /* 从未提交：只展示标题，不展示未提交的照片和描述 */
-                        ? { ...detail, photos: [], description: '', photoCount: 0, previewPhotoUrls: [] }
-                        : detail}
+                      post={displayPost}
+                      isViewingHistory={isViewingHistory}
+                      isViewingPublished={isViewingPublished}
+                      viewingHash={viewingHash ?? ''}
+                      onExitPreview={() => setPreview(null)}
                       onPhotoClick={preview ? undefined : (index) => { setModalPhotoIndex(index); setModalOpen(true); }}
-                      onPublish={preview ? undefined : () => void handlePublish(detail.id)}
-                      onUnpublish={preview ? undefined : () => void handleUnpublish(detail.id)}
+                      onPublish={() => void handlePublish(detail.id)}
+                      onUnpublish={() => void handleUnpublish(detail.id)}
                       onDelete={preview ? undefined : () => void handleDelete(detail.id)}
                     />
-                  </>
-                ) : (
+                  );
+                })() : (
                   <EmptyState message="选择一条动态，或点击新建" />
                 )}
               </motion.div>
@@ -410,7 +396,7 @@ export default function GalleryAdmin() {
               <div className="mb-5">
                 <SectionTitle>信息</SectionTitle>
                 <div className="space-y-2.5">
-                  <InfoRow label="状态" value={detail.status === 'published' ? '已发布' : '草稿'} />
+                  <InfoRow label="状态" value={detail.status === 'published' ? '已发布' : '待发布'} />
                   <InfoRow label="照片" value={`${detail.photos.length} 张`} />
                   {detail.tags?.location && <InfoRow label="地点" value={detail.tags.location} />}
                   <InfoRow label="创建" value={new Date(detail.createdAt).toLocaleDateString('zh-CN')} />
@@ -421,49 +407,44 @@ export default function GalleryAdmin() {
               {/* 编辑（跟 note 一样的草稿入口卡片） */}
               <div className="mb-5">
                 <SectionTitle>编辑</SectionTitle>
-                <div
-                  className="rounded-[10px] p-4"
-                  style={{ border: '1px solid var(--box-border)', background: 'var(--shelf)' }}
-                >
-                  {draftInfo.exists ? (
-                    <div className="space-y-2">
-                      <InfoRow label="未保存的编辑" value="是" />
-                      <InfoRow
-                        label="上次编辑"
-                        value={draftInfo.savedAt ? new Date(draftInfo.savedAt).toLocaleString('zh-CN') : '--'}
-                      />
-                      <div className="flex gap-4 pt-2">
-                        <button
-                          className="text-xs font-medium"
-                          style={{ color: 'var(--ink)' }}
-                          onClick={() => navigateToEdit(detail.id)}
-                        >
-                          继续编辑 →
-                        </button>
-                        <button
-                          className="text-xs font-medium"
-                          style={{ color: 'var(--mark-red)' }}
-                          onClick={() => void handleDiscardDraft(detail.id)}
-                        >
-                          丢弃
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <p className="mb-3.5 text-xs leading-relaxed" style={{ color: 'var(--ink-ghost)' }}>
-                        进入编辑器修改照片和随笔
-                      </p>
+                {draftInfo.exists ? (
+                  <div className="space-y-2">
+                    <InfoRow label="未保存的编辑" value="是" />
+                    <InfoRow
+                      label="上次编辑"
+                      value={draftInfo.savedAt ? new Date(draftInfo.savedAt).toLocaleString('zh-CN') : '--'}
+                    />
+                    <div className="flex gap-4 pt-2">
                       <button
                         className="text-xs font-medium"
                         style={{ color: 'var(--ink)' }}
                         onClick={() => navigateToEdit(detail.id)}
                       >
-                        开始编辑 →
+                        继续编辑 →
                       </button>
-                    </>
-                  )}
-                </div>
+                      <button
+                        className="text-xs font-medium"
+                        style={{ color: 'var(--mark-red)' }}
+                        onClick={() => void handleDiscardDraft(detail.id)}
+                      >
+                        丢弃
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="mb-3.5 text-xs leading-relaxed" style={{ color: 'var(--ink-ghost)' }}>
+                      进入编辑器修改照片和随笔
+                    </p>
+                    <button
+                      className="text-xs font-medium"
+                      style={{ color: 'var(--ink)' }}
+                      onClick={() => navigateToEdit(detail.id)}
+                    >
+                      开始编辑 →
+                    </button>
+                  </>
+                )}
               </div>
 
               {/* 版本历史 */}

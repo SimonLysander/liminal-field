@@ -8,7 +8,7 @@
 // 历史引用仍能编译，但推荐从 index.tsx 直接使用上述两者。
 
 import { MapPin } from 'lucide-react';
-import type { GalleryPost } from '@/services/workspace';
+import type { GalleryAdminListItem, GalleryAdminDetail } from '@/services/workspace';
 import MarkdownBody from '@/components/shared/MarkdownBody';
 
 // ─── 工具：相对时间（不依赖外部库）───
@@ -53,13 +53,13 @@ function ClickablePhotoGrid({ urls, onPhotoClick }: { urls: string[]; onPhotoCli
 // 缩略图 (38×38) + 标题 + 状态徽章 + 更新日期，点击选中
 
 interface GalleryPostListItemProps {
-  post: GalleryPost;
+  post: GalleryAdminListItem;
   isSelected: boolean;
   onClick: () => void;
 }
 
 export function GalleryPostListItem({ post, isSelected, onClick }: GalleryPostListItemProps) {
-  const thumbnail = post.previewPhotoUrls?.[0] ?? post.coverUrl ?? null;
+  const thumbnail = post.coverUrl ?? null;
 
   return (
     <div
@@ -101,10 +101,22 @@ export function GalleryPostListItem({ post, isSelected, onClick }: GalleryPostLi
 }
 
 // ─── GalleryPostPreview — 右侧预览区 ───
-// 完整预览：大标题 + 照片网格 + 描述 + 地点标签 + 状态 + 操作按钮
+// 统一模型：始终展示某个版本，操作按钮跟着当前展示的版本走。
+// isViewingHistory=true 时显示"返回最新"，isViewingPublished 决定发布/取消发布按钮。
 
 interface GalleryPostPreviewProps {
-  post: GalleryPost & { photos?: Array<{ id: string; url: string; fileName: string; caption: string }> };
+  post: GalleryAdminDetail & {
+    photos?: Array<{ id: string; url: string; fileName: string; caption: string; tags: Record<string, string> }>;
+    photoCount?: number;
+    prose?: string;
+  };
+  /** 是否正在查看历史版本 */
+  isViewingHistory?: boolean;
+  /** 当前展示的版本是否为已发布版 */
+  isViewingPublished?: boolean;
+  /** 当前展示的版本 commitHash */
+  viewingHash?: string;
+  onExitPreview?: () => void;
   onPhotoClick?: (index: number) => void;
   onPublish?: () => void;
   onUnpublish?: () => void;
@@ -113,57 +125,62 @@ interface GalleryPostPreviewProps {
 
 export function GalleryPostPreview({
   post,
+  isViewingHistory,
+  isViewingPublished,
+  viewingHash,
+  onExitPreview,
   onPhotoClick,
   onPublish,
   onUnpublish,
   onDelete,
 }: GalleryPostPreviewProps) {
   const locationTag = post.tags?.location;
-  const photoUrls = post.photos?.map((p) => p.url) ?? post.previewPhotoUrls ?? [];
+  const photoUrls = (post.photos ?? []).map((p) => p.url);
+  const prose = post.prose;
 
   return (
-    <div className="mx-auto max-w-[740px]">
-      {/* 标题 + 操作按钮 */}
+    <div className="mx-auto w-full max-w-[740px]">
+      {/* 标题 + 版本状态 + 操作按钮 */}
       <div className="mb-5 flex items-start justify-between gap-4">
-        <h1
-          className="min-w-0 flex-1 text-2xl font-semibold leading-tight"
-          style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}
-        >
-          {post.title}
-        </h1>
-        {(onPublish || onUnpublish || onDelete) && (
-          <div className="flex shrink-0 items-center gap-2">
-            {/* 未发布 或 有未发布变更 → 显示"发布" */}
-            {(post.status === 'draft' || post.hasUnpublishedChanges) && onPublish && (
-              <button
-                className="rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors"
-                style={{ background: 'var(--shelf)', color: 'var(--ink)', border: '0.5px solid var(--separator)' }}
-                onClick={onPublish}
-              >
-                发布
-              </button>
-            )}
-            {/* 已发布且无新变更 → 显示"取消发布" */}
-            {post.status === 'published' && !post.hasUnpublishedChanges && onUnpublish && (
-              <button
-                className="rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors"
-                style={{ background: 'var(--shelf)', color: 'var(--ink)', border: '0.5px solid var(--separator)' }}
-                onClick={onUnpublish}
-              >
-                取消发布
-              </button>
-            )}
-            {onDelete && (
-              <button
-                className="rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors"
-                style={{ color: 'var(--mark-red)', border: '0.5px solid var(--separator)' }}
-                onClick={onDelete}
-              >
-                删除
-              </button>
-            )}
+        <div className="min-w-0 flex-1">
+          <h1
+            className="text-2xl font-semibold leading-tight"
+            style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}
+          >
+            {post.title}
+          </h1>
+          {/* 版本状态标签 */}
+          <div className="mt-2 flex items-center gap-2">
+            <span
+              className="inline-flex items-center gap-[5px] rounded-full px-2.5 py-[3px] font-medium"
+              style={{
+                fontSize: 'var(--text-2xs)',
+                background: isViewingPublished ? 'rgba(52,199,89,0.1)' : 'var(--accent-soft)',
+                color: isViewingPublished ? 'var(--mark-green)' : 'var(--ink-faded)',
+              }}
+            >
+              <span className="h-[5px] w-[5px] rounded-full" style={{ background: 'currentColor' }} />
+              {isViewingPublished ? '已发布' : '已提交'}
+              {viewingHash && (
+                <span style={{ fontFamily: 'var(--font-mono)', opacity: 0.7 }}>
+                  {viewingHash.slice(0, 8)}
+                </span>
+              )}
+            </span>
           </div>
-        )}
+        </div>
+
+        {/* 操作按钮 — TextLink 风格，跟 notes 管理端一致 */}
+        <div className="flex shrink-0 items-center gap-4 pt-1">
+          {isViewingHistory && onExitPreview && (
+            <TextLink label="返回最新" onClick={onExitPreview} />
+          )}
+          {isViewingPublished
+            ? onUnpublish && <TextLink label="取消发布" danger onClick={onUnpublish} />
+            : onPublish && <TextLink label="发布" onClick={onPublish} />
+          }
+          {onDelete && <TextLink label="删除" danger onClick={onDelete} />}
+        </div>
       </div>
 
       {/* 照片网格（可点击查看大图） */}
@@ -173,10 +190,10 @@ export function GalleryPostPreview({
         </div>
       )}
 
-      {/* 描述文字（markdown 渲染） */}
-      {post.description && (
+      {/* 随笔（markdown 渲染） */}
+      {prose && (
         <div className="mb-4 text-sm leading-relaxed" style={{ color: 'var(--ink-light)' }}>
-          <MarkdownBody markdown={post.description} />
+          <MarkdownBody markdown={prose} />
         </div>
       )}
 
@@ -193,6 +210,33 @@ export function GalleryPostPreview({
         </div>
       )}
     </div>
+  );
+}
+
+/* TextLink — 与 notes ContentVersionView 中的 TextLink 一致 */
+function TextLink({ label, danger, onClick }: { label: string; danger?: boolean; onClick: () => void }) {
+  return (
+    <button
+      className="transition-colors duration-150"
+      style={{
+        color: danger ? 'var(--mark-red)' : 'var(--ink-faded)',
+        fontSize: 'var(--text-xs)',
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        fontFamily: 'inherit',
+        padding: '4px 0',
+      }}
+      onMouseEnter={(e) => {
+        if (!danger) e.currentTarget.style.color = 'var(--ink)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.color = danger ? 'var(--mark-red)' : 'var(--ink-faded)';
+      }}
+      onClick={onClick}
+    >
+      {label}
+    </button>
   );
 }
 

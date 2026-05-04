@@ -16,13 +16,21 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import type { GalleryPhoto } from '@/services/workspace';
-
 // ---------- Props ----------
+
+/** 照片编辑弹窗所需的照片数据（需要 size 用于文件信息展示） */
+interface PhotoForEdit {
+  id: string;
+  url: string;
+  fileName: string;
+  size: number;
+  caption: string;
+  tags: Record<string, string>;
+}
 
 interface PhotoEditModalProps {
   open: boolean;
-  photos: GalleryPhoto[];
+  photos: PhotoForEdit[];
   initialIndex: number;
   onClose: () => void;
   onCaptionChange: (photoId: string, caption: string) => void;

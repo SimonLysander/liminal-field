@@ -1,17 +1,11 @@
 import { ChangeLogDto } from './change-log.dto';
 import { ContentStatus } from '../content-item.entity';
-
-export type ContentAssetType = 'image' | 'audio' | 'video' | 'file';
+import { HeadingDto } from '../../../common/extract-headings';
 
 export class ContentVersionDto {
   commitHash!: string;
   title!: string;
   summary!: string;
-}
-
-export class ContentAssetRefDto {
-  path!: string;
-  type!: ContentAssetType;
 }
 
 export class ContentDetailDto {
@@ -21,12 +15,10 @@ export class ContentDetailDto {
   status!: ContentStatus;
   latestVersion!: ContentVersionDto;
   publishedVersion?: ContentVersionDto | null;
-  latestCommitHash?: string;
-  publishedCommitHash?: string;
   hasUnpublishedChanges!: boolean;
   bodyMarkdown!: string;
-  plainText!: string;
-  assetRefs!: ContentAssetRefDto[];
+  /** 后端提取的标题树，前端直接消费渲染 TOC，不再自行解析 markdown */
+  headings!: HeadingDto[];
   changeLogs!: ChangeLogDto[];
   createdAt!: string;
   updatedAt!: string;

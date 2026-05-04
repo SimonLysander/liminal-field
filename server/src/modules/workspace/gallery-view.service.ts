@@ -22,7 +22,7 @@
  *
  * 不包含 CRUD 逻辑 — 那由 WorkspaceService 统一处理。
  */
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { join, parse, extname } from 'path';
 import * as yaml from 'js-yaml';
@@ -33,16 +33,18 @@ import { ContentStatus } from '../content/content-item.entity';
 import { ContentSaveAction } from '../content/dto/save-content.dto';
 import {
   GalleryPhotoDto,
-  GalleryPostDto,
-  GalleryPostDetailDto,
+  GalleryPublicListItemDto,
+  GalleryPublicDetailDto,
+  GalleryAdminListItemDto,
+  GalleryAdminDetailDto,
+  GalleryEditorPhotoDto,
+  GalleryEditorDto,
+  GalleryVersionDto,
   GalleryDraftDto,
 } from './dto/gallery-view.dto';
 import { EditorDraftRepository } from './editor-draft.repository';
 import { SaveGalleryPostDto } from './dto/save-gallery-post.dto';
 import { MinioService } from '../minio/minio.service';
-
-// 列表页最多显示的预览图数量。
-const PREVIEW_PHOTO_LIMIT = 9;
 
 /** main.md frontmatter 中单张照片的结构。 */
 interface FrontmatterPhoto {
@@ -57,6 +59,8 @@ interface ParsedGalleryContent {
   cover: string | null;
   tags: Record<string, string>;
   prose: string;
+  /** 原始内容是否包含 frontmatter。无 frontmatter 的旧数据需要从 assets 推断照片列表。 */
+  hasFrontmatter: boolean;
 }
 
 /**
@@ -66,18 +70,20 @@ interface ParsedGalleryContent {
  * - 无 frontmatter（旧数据兼容）→ photos=[], tags={}, cover=null，整体内容当 prose
  * - frontmatter 中 photos 字段缺失或为空 → 默认 []
  * - frontmatter 中 cover 字段缺失 → null
+ *
+ * export 供单元测试直接调用，不影响运行时封装。
  */
-function parseGalleryContent(raw: string): ParsedGalleryContent {
+export function parseGalleryContent(raw: string): ParsedGalleryContent {
   // frontmatter 必须以 "---\n" 开头，否则视为无 frontmatter
   if (!raw.startsWith('---')) {
-    return { photos: [], cover: null, tags: {}, prose: raw };
+    return { photos: [], cover: null, tags: {}, prose: raw, hasFrontmatter: false };
   }
 
   // 找到第二个 "---" 分隔符的位置（跳过开头的 "---"）
   const closingMarkerIndex = raw.indexOf('\n---', 3);
   if (closingMarkerIndex === -1) {
     // 只有开头的 "---"，没有关闭标记，视为无 frontmatter
-    return { photos: [], cover: null, tags: {}, prose: raw };
+    return { photos: [], cover: null, tags: {}, prose: raw, hasFrontmatter: false };
   }
 
   const yamlContent = raw.slice(4, closingMarkerIndex); // "---\n" 之后到关闭 "---" 之前
@@ -88,7 +94,7 @@ function parseGalleryContent(raw: string): ParsedGalleryContent {
     parsed = (yaml.load(yamlContent) as Record<string, unknown>) ?? {};
   } catch {
     // YAML 解析失败，降级为无 frontmatter
-    return { photos: [], cover: null, tags: {}, prose: raw };
+    return { photos: [], cover: null, tags: {}, prose: raw, hasFrontmatter: false };
   }
 
   // 提取 cover（字符串或 null）
@@ -108,7 +114,7 @@ function parseGalleryContent(raw: string): ParsedGalleryContent {
     }))
     .filter((p) => p.file !== ''); // 过滤掉 file 字段缺失的条目
 
-  return { photos, cover, tags, prose };
+  return { photos, cover, tags, prose, hasFrontmatter: true };
 }
 
 /**
@@ -128,7 +134,9 @@ function parseTags(raw: unknown): Record<string, string> {
 
 /**
  * 将解析后的内容序列化为 main.md 字符串（frontmatter + prose）。
- * 当 photos 为空且 cover 为 null 且 tags 为空时，不生成 frontmatter，直接输出 prose。
+ * 始终生成 frontmatter（即使 photos 为空），确保 parseGalleryContent 能识别 hasFrontmatter=true。
+ * 这对于"用户显式清空照片"的场景至关重要——没有 frontmatter 会触发旧数据兼容逻辑，
+ * 从 assets 目录推断照片列表，导致已删除的照片重新出现。
  */
 export function serializeGalleryContent(data: {
   photos: FrontmatterPhoto[];
@@ -136,25 +144,15 @@ export function serializeGalleryContent(data: {
   tags: Record<string, string>;
   prose: string;
 }): string {
-  const hasFrontmatter =
-    data.photos.length > 0 ||
-    data.cover !== null ||
-    Object.keys(data.tags).length > 0;
-
-  if (!hasFrontmatter) {
-    return data.prose;
-  }
-
   const frontmatterObj: Record<string, unknown> = {};
   if (data.cover !== null) frontmatterObj.cover = data.cover;
   if (Object.keys(data.tags).length > 0) frontmatterObj.tags = data.tags;
-  if (data.photos.length > 0) {
-    frontmatterObj.photos = data.photos.map((p) => ({
-      file: p.file,
-      caption: p.caption,
-      ...(Object.keys(p.tags).length > 0 ? { tags: p.tags } : { tags: {} }),
-    }));
-  }
+  // 始终写入 photos 字段（空数组也写），确保 frontmatter 存在
+  frontmatterObj.photos = data.photos.map((p) => ({
+    file: p.file,
+    caption: p.caption,
+    ...(Object.keys(p.tags).length > 0 ? { tags: p.tags } : { tags: {} }),
+  }));
 
   const yamlStr = yaml.dump(frontmatterObj, { indent: 2, lineWidth: -1 });
   return `---\n${yamlStr}---\n\n${data.prose}`;
@@ -176,28 +174,125 @@ export class GalleryViewService {
   }
 
   /**
-   * 将 Content 存储层数据转换为画廊列表 DTO。
-   *
-   * 元数据来源：main.md YAML frontmatter（cover、tags、photos）。
-   * 文件列表来源：Git assets 目录（type=image 过滤）。
-   * 封面优先级：frontmatter.cover > assets 首图。
+   * 发布前校验：目标版本的 frontmatter 中必须有照片才能发布。
+   * @param commitHash 要发布的版本，不传则检查最新版本（工作目录）。
    */
-  async toPostDto(contentItemId: string): Promise<GalleryPostDto> {
+  async assertPublishable(contentItemId: string, commitHash?: string): Promise<void> {
+    let parsed: ParsedGalleryContent;
+    if (commitHash) {
+      // 读取指定版本的 main.md
+      const source = await this.contentRepoService.readContentSource(contentItemId, { commitHash, scope: 'gallery' });
+      parsed = parseGalleryContent(source.bodyMarkdown);
+    } else {
+      ({ parsed } = await this.loadParsedContent(contentItemId));
+    }
+
+    if (parsed.hasFrontmatter && parsed.photos.length === 0) {
+      throw new BadRequestException('无法发布：相册中没有照片');
+    }
+    if (!parsed.hasFrontmatter) {
+      const assets = await this.contentRepoService.listAssets(contentItemId);
+      if (!assets.some((a) => a.type === 'image')) {
+        throw new BadRequestException('无法发布：相册中没有照片');
+      }
+    }
+  }
+
+  /** 构建草稿照片的 MinIO 代理 URL。 */
+  private buildDraftPhotoUrl(contentItemId: string, fileName: string): string {
+    return `/api/v1/spaces/gallery/items/${contentItemId}/draft-assets/${fileName}`;
+  }
+
+  /**
+   * 从 main.md 加载并解析 frontmatter，同时返回 Git assets 中的图片列表。
+   * 两个调用方（公开/管理详情）复用此私有方法，避免重复读文件。
+   */
+  private async loadParsedContent(contentItemId: string): Promise<{
+    parsed: ParsedGalleryContent;
+    imageAssets: Awaited<ReturnType<ContentRepoService['listAssets']>>;
+  }> {
+    const [source, assets] = await Promise.all([
+      this.contentRepoService.readContentSource(contentItemId, { scope: 'gallery' }).catch(() => null),
+      this.contentRepoService.listAssets(contentItemId),
+    ]);
+    const parsed = source ? parseGalleryContent(source.bodyMarkdown) : { photos: [], cover: null, tags: {}, prose: '', hasFrontmatter: false };
+    const imageAssets = assets.filter((a) => a.type === 'image');
+    return { parsed, imageAssets };
+  }
+
+  /**
+   * 将 frontmatter photos 与 Git assets 合并为 GalleryPhotoDto[]。
+   *
+   * 有 frontmatter 时：frontmatter 是照片列表的唯一权威来源，不追加 assets 里的未登记照片。
+   * 无 frontmatter 时（旧数据兼容）：从 assets 目录推断照片列表。
+   */
+  private buildPhotoList(
+    contentItemId: string,
+    parsedPhotos: FrontmatterPhoto[],
+    imageAssets: { fileName: string; size: number }[],
+    hasFrontmatter: boolean,
+  ): GalleryPhotoDto[] {
+    // frontmatter 中登记的照片（按 frontmatter 顺序）
+    const registeredPhotos: GalleryPhotoDto[] = parsedPhotos
+      .map((p) => {
+        const asset = imageAssets.find((a) => a.fileName === p.file);
+        // frontmatter 登记但 assets 目录不存在（已被删除），跳过
+        if (!asset) return null;
+        return {
+          id: p.file,
+          url: this.buildPhotoUrl(contentItemId, p.file),
+          fileName: p.file,
+          caption: p.caption,
+          tags: p.tags,
+        } satisfies GalleryPhotoDto;
+      })
+      .filter((p): p is GalleryPhotoDto => p !== null);
+
+    // 有 frontmatter → frontmatter 是权威来源，不追加未登记照片
+    if (hasFrontmatter) {
+      return registeredPhotos;
+    }
+
+    // 无 frontmatter（旧数据）→ 从 assets 目录推断完整列表
+    return imageAssets.map((asset) => ({
+      id: asset.fileName,
+      url: this.buildPhotoUrl(contentItemId, asset.fileName),
+      fileName: asset.fileName,
+      caption: '',
+      tags: {},
+    }));
+  }
+
+  /**
+   * 展示端列表 DTO：只含前端展示所需的最小字段。
+   */
+  async toPublicListItemDto(contentItemId: string): Promise<GalleryPublicListItemDto> {
     const content = await this.contentRepository.findById(contentItemId);
     if (!content)
       throw new NotFoundException(`Gallery post ${contentItemId} not found`);
 
-    const assets = await this.contentRepoService.listAssets(contentItemId);
-    const imageAssets = assets.filter((a) => a.type === 'image');
+    const { parsed } = await this.loadParsedContent(contentItemId);
+    const version = content.latestVersion!;
 
-    // 读取并解析 main.md（处理文件不存在的旧数据场景）
-    let parsed: ParsedGalleryContent = { photos: [], cover: null, tags: {}, prose: '' };
-    try {
-      const source = await this.contentRepoService.readContentSource(contentItemId, { scope: 'gallery' });
-      parsed = parseGalleryContent(source.bodyMarkdown);
-    } catch {
-      // main.md 还不存在（刚创建的条目），使用默认空值
-    }
+    return {
+      id: contentItemId,
+      title: version.title,
+      tags: parsed.tags,
+      createdAt: content.createdAt.toISOString(),
+    };
+  }
+
+  /**
+   * 管理端列表 DTO：含封面图、照片计数、发布状态等管理所需字段。
+   * 元数据来源：main.md YAML frontmatter（cover、tags、photos）。
+   * 封面优先级：frontmatter.cover > assets 首图。
+   */
+  async toAdminListItemDto(contentItemId: string): Promise<GalleryAdminListItemDto> {
+    const content = await this.contentRepository.findById(contentItemId);
+    if (!content)
+      throw new NotFoundException(`Gallery post ${contentItemId} not found`);
+
+    const { parsed, imageAssets } = await this.loadParsedContent(contentItemId);
 
     // 封面图：frontmatter.cover 指定的文件必须存在于 assets，否则退化为首图
     const coverFileName = parsed.cover ?? null;
@@ -207,110 +302,166 @@ export class GalleryViewService {
 
     const version = content.latestVersion!;
 
-    // 前 N 张图片 URL，用于列表页缩略图预览
-    const previewPhotoUrls = imageAssets
-      .slice(0, PREVIEW_PHOTO_LIMIT)
-      .map((a) => this.buildPhotoUrl(contentItemId, a.fileName));
-
     return {
       id: contentItemId,
       title: version.title,
-      description: parsed.prose,
-      status: content.publishedVersion ? 'published' : 'draft',
-      coverUrl: coverAsset
-        ? this.buildPhotoUrl(contentItemId, coverAsset.fileName)
-        : null,
+      status: content.publishedVersion ? 'published' : 'committed',
+      coverUrl: coverAsset ? this.buildPhotoUrl(contentItemId, coverAsset.fileName) : null,
       photoCount: imageAssets.length,
-      tags: parsed.tags,
-      coverPhotoFileName: coverFileName,
-      previewPhotoUrls,
-      publishedCommitHash: content.publishedVersion?.commitHash ?? null,
       hasUnpublishedChanges: content.publishedVersion
         ? content.latestVersion?.commitHash !== content.publishedVersion?.commitHash
         : false,
+      tags: parsed.tags,
       createdAt: content.createdAt.toISOString(),
       updatedAt: content.updatedAt.toISOString(),
     };
   }
 
   /**
-   * 画廊详情 DTO：在列表 DTO 基础上追加完整照片列表。
-   *
-   * 照片排序规则：以 frontmatter photos 数组顺序为准（order = 数组索引）。
-   * Git assets 中存在但 frontmatter 未登记的照片，追加到末尾（按 assets 原始顺序）。
-   * caption 和 photo 级 tags 从 frontmatter 合并，未登记时默认空值。
+   * 展示端详情 DTO：含完整照片列表，不含管理字段（封面文件名、publishedCommitHash 等）。
    */
-  async toPostDetailDto(contentItemId: string): Promise<GalleryPostDetailDto> {
-    // 读取文件一次，避免 toPostDto 内部再读一遍（assets 和 source 各读一次）
-    const [postDto, assets] = await Promise.all([
-      this.toPostDto(contentItemId),
-      this.contentRepoService.listAssets(contentItemId),
-    ]);
+  async toPublicDetailDto(contentItemId: string): Promise<GalleryPublicDetailDto> {
+    const content = await this.contentRepository.findById(contentItemId);
+    if (!content)
+      throw new NotFoundException(`Gallery post ${contentItemId} not found`);
 
-    const imageAssets = assets.filter((a) => a.type === 'image');
+    const { parsed, imageAssets } = await this.loadParsedContent(contentItemId);
+    const photos = this.buildPhotoList(contentItemId, parsed.photos, imageAssets, parsed.hasFrontmatter);
+    const version = content.latestVersion!;
 
-    // 重新解析 frontmatter 以获取 photos 顺序信息（toPostDto 已解析，但未暴露）
-    // 为避免再次读文件，直接从 main.md 重读一次——成本可接受（Detail 接口低频）
-    let parsedPhotos: FrontmatterPhoto[] = [];
-    try {
-      const source = await this.contentRepoService.readContentSource(contentItemId, { scope: 'gallery' });
-      parsedPhotos = parseGalleryContent(source.bodyMarkdown).photos;
-    } catch {
-      // 文件不存在，parsedPhotos 保持空数组
-    }
-
-    // 构建 fileName -> frontmatterPhoto 查找表（保留 order = frontmatter 中的数组索引）
-    const frontmatterByFileName = new Map(
-      parsedPhotos.map((p, index) => [p.file, { ...p, order: index }]),
-    );
-
-    // 已在 frontmatter 中登记的图片集合，用于识别"新上传但未登记"的照片
-    const registeredFileNames = new Set(parsedPhotos.map((p) => p.file));
-
-    // frontmatter 中登记的照片（按 frontmatter 顺序）
-    const registeredPhotos: GalleryPhotoDto[] = parsedPhotos
-      .map((p, index) => {
-        const asset = imageAssets.find((a) => a.fileName === p.file);
-        // frontmatter 中登记但 assets 目录中不存在的文件（已被删除），跳过
-        if (!asset) return null;
-        return {
-          id: p.file,
-          url: this.buildPhotoUrl(contentItemId, p.file),
-          fileName: p.file,
-          size: asset.size,
-          order: index,
-          caption: p.caption,
-          tags: p.tags,
-        } satisfies GalleryPhotoDto;
-      })
-      .filter((p): p is GalleryPhotoDto => p !== null);
-
-    // assets 中存在但 frontmatter 未登记的照片，追加到末尾
-    const unregisteredPhotos: GalleryPhotoDto[] = imageAssets
-      .filter((a) => !registeredFileNames.has(a.fileName))
-      .map((asset, fallbackIndex) => ({
-        id: asset.fileName,
-        url: this.buildPhotoUrl(contentItemId, asset.fileName),
-        fileName: asset.fileName,
-        size: asset.size,
-        order: parsedPhotos.length + fallbackIndex,
-        caption: '',
-        tags: {},
-      }));
-
-    const photos = [...registeredPhotos, ...unregisteredPhotos];
-
-    return { ...postDto, photos };
+    return {
+      id: contentItemId,
+      title: version.title,
+      prose: parsed.prose,
+      photos,
+      tags: parsed.tags,
+      createdAt: content.createdAt.toISOString(),
+    };
   }
 
   /**
-   * 读取指定历史版本的画廊内容，返回结构化数据（解析 frontmatter）。
+   * 管理端详情 DTO：含封面文件名、publishedCommitHash 等管理所需字段。
+   */
+  async toAdminDetailDto(contentItemId: string): Promise<GalleryAdminDetailDto> {
+    const content = await this.contentRepository.findById(contentItemId);
+    if (!content)
+      throw new NotFoundException(`Gallery post ${contentItemId} not found`);
+
+    const { parsed, imageAssets } = await this.loadParsedContent(contentItemId);
+    const photos = this.buildPhotoList(contentItemId, parsed.photos, imageAssets, parsed.hasFrontmatter);
+    const version = content.latestVersion!;
+
+    return {
+      id: contentItemId,
+      title: version.title,
+      prose: parsed.prose,
+      status: content.publishedVersion ? 'published' : 'committed',
+      photos,
+      coverPhotoFileName: parsed.cover,
+      hasUnpublishedChanges: content.publishedVersion
+        ? content.latestVersion?.commitHash !== content.publishedVersion?.commitHash
+        : false,
+      publishedCommitHash: content.publishedVersion?.commitHash ?? null,
+      tags: parsed.tags,
+      createdAt: content.createdAt.toISOString(),
+      updatedAt: content.updatedAt.toISOString(),
+    };
+  }
+
+  /**
+   * 编辑器加载 DTO：后端合并草稿和正式版照片列表，前端不需要感知 MinIO vs Git 存储细节。
+   *
+   * 照片合并逻辑（迁移自前端 useGalleryEditor.ts）：
+   * - 有草稿 → 用草稿的 title/prose/cover/tags + 草稿 photos 数组决定顺序和元数据
+   * - 每张照片的 URL：
+   *   - 存在于 Git assets → 用 Git URL（已提交的照片）
+   *   - 否则（刚上传的草稿照片）→ 用 MinIO 代理 URL
+   * - size：从 Git assets 获取，不存在则为 0
+   * - 没草稿 → 直接用正式版数据
+   */
+  async getEditorState(contentItemId: string): Promise<GalleryEditorDto> {
+    const content = await this.contentRepository.findById(contentItemId);
+    if (!content)
+      throw new NotFoundException(`Gallery post ${contentItemId} not found`);
+
+    const [draft, assets] = await Promise.all([
+      this.editorDraftRepository.findByContentItemId(contentItemId),
+      this.contentRepoService.listAssets(contentItemId),
+    ]);
+    const imageAssets = assets.filter((a) => a.type === 'image');
+    // Git assets 查找表：fileName → size
+    const gitAssetMap = new Map(imageAssets.map((a) => [a.fileName, a.size]));
+
+    if (draft) {
+      // 有草稿：用草稿的元数据，并按草稿照片顺序合并 URL
+      const parsed = parseGalleryContent(draft.bodyMarkdown);
+
+      const photos: GalleryEditorPhotoDto[] = parsed.photos.map((p) => {
+        const gitSize = gitAssetMap.get(p.file);
+        // 已提交到 Git 的照片用 Git URL，刚上传的草稿照片用 MinIO 代理 URL
+        const url = gitSize !== undefined
+          ? this.buildPhotoUrl(contentItemId, p.file)
+          : this.buildDraftPhotoUrl(contentItemId, p.file);
+        return {
+          file: p.file,
+          url,
+          size: gitSize ?? 0,
+          caption: p.caption,
+          tags: p.tags,
+        };
+      });
+
+      return {
+        id: contentItemId,
+        title: draft.title,
+        prose: parsed.prose,
+        photos,
+        cover: parsed.cover,
+        tags: parsed.tags,
+        hasDraft: true,
+        draftSavedAt: draft.savedAt.toISOString(),
+      };
+    }
+
+    // 无草稿：用正式版数据
+    let parsed: ParsedGalleryContent = { photos: [], cover: null, tags: {}, prose: '' };
+    try {
+      const source = await this.contentRepoService.readContentSource(contentItemId, { scope: 'gallery' });
+      parsed = parseGalleryContent(source.bodyMarkdown);
+    } catch {
+      // main.md 还不存在（刚创建的条目），使用默认空值
+    }
+
+    const photos: GalleryEditorPhotoDto[] = parsed.photos
+      .filter((p) => gitAssetMap.has(p.file)) // 过滤掉 assets 中不存在的条目
+      .map((p) => ({
+        file: p.file,
+        url: this.buildPhotoUrl(contentItemId, p.file),
+        size: gitAssetMap.get(p.file) ?? 0,
+        caption: p.caption,
+        tags: p.tags,
+      }));
+
+    return {
+      id: contentItemId,
+      title: content.latestVersion?.title ?? '',
+      prose: parsed.prose,
+      photos,
+      cover: parsed.cover,
+      tags: parsed.tags,
+      hasDraft: false,
+      draftSavedAt: null,
+    };
+  }
+
+  /**
+   * 读取指定历史版本的画廊内容，返回结构化 GalleryVersionDto（解析 frontmatter）。
    * 用于版本预览——前端不需要知道 frontmatter 格式。
    */
   async getByVersion(
     contentItemId: string,
     commitHash: string,
-  ): Promise<{ commitHash: string; title: string; prose: string; photos: FrontmatterPhoto[]; cover: string | null; tags: Record<string, string> }> {
+  ): Promise<GalleryVersionDto> {
     const source = await this.contentRepoService.readContentSource(
       contentItemId,
       { commitHash, scope: 'gallery' },
@@ -332,12 +483,13 @@ export class GalleryViewService {
     };
   }
 
-  /** 直接读取照片文件 buffer，用于文件直出端点。 */
+  /** 直接读取照片文件 buffer，用于文件直出端点。支持 commitHash 读取历史版本资源。 */
   async readPhotoBuffer(
     contentItemId: string,
     fileName: string,
+    commitHash?: string,
   ): Promise<{ buffer: Buffer; contentType: string }> {
-    return this.contentRepoService.readAssetBuffer(contentItemId, fileName);
+    return this.contentRepoService.readAssetBuffer(contentItemId, fileName, commitHash);
   }
 
   /**
@@ -366,7 +518,7 @@ export class GalleryViewService {
    *
    * 返回更新后的画廊详情 DTO，前端不感知 frontmatter 的存在。
    */
-  async commitPost(contentItemId: string, dto: SaveGalleryPostDto): Promise<GalleryPostDetailDto> {
+  async commitPost(contentItemId: string, dto: SaveGalleryPostDto): Promise<GalleryAdminDetailDto> {
     // 1. 将 MinIO 草稿照片下载到 Git assets 目录
     const assetsDir = join(
       this.contentRepoService.getContentDirectoryPath(contentItemId),
@@ -395,7 +547,7 @@ export class GalleryViewService {
       await this.minioService.deleteDraftAssets(contentItemId);
     }
 
-    return this.toPostDetailDto(contentItemId);
+    return this.toAdminDetailDto(contentItemId);
   }
 
   /**

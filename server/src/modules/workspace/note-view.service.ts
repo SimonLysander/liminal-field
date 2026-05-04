@@ -181,7 +181,8 @@ export class NoteViewService {
     );
 
     return {
-      path: storedAsset.path,
+      // storedAsset.path 是 git 相对路径，uploadAsset 走 git 存储，不需要代理 URL
+      url: storedAsset.path,
       fileName: storedAsset.fileName,
       contentType: input.contentType,
       size: input.buffer.byteLength,
@@ -226,7 +227,8 @@ export class NoteViewService {
     );
 
     return {
-      path: `/api/v1/spaces/notes/items/${id}/draft-assets/${fileName}`,
+      // 草稿资源走 MinIO 代理 URL，前端编辑器中直接可访问
+      url: `/api/v1/spaces/notes/items/${id}/draft-assets/${fileName}`,
       fileName,
       contentType: input.contentType,
       size: input.buffer.byteLength,

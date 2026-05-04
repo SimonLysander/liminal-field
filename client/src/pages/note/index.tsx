@@ -18,9 +18,10 @@
  *   ai-fab / ai-chat-panel CSS classes for midnight theme overrides.
  */
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
+import { toast } from 'sonner';
 import { smoothBounce } from '@/lib/motion';
 import { notesApi as contentItemsApi } from '@/services/workspace';
 import type { ContentDetail } from '@/services/workspace';
@@ -70,57 +71,41 @@ function NoteReader({ id }: { id: string }) {
   const navigate = useNavigate();
   const [content, setContent] = useState<ContentDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [activeToc, setActiveToc] = useState('');
   const [aiOpen, setAiOpen] = useState(false);
   const centerRef = useRef<HTMLDivElement>(null);
   const tocPanelRef = useRef<HTMLDivElement>(null);
   const aiInputRef = useRef<HTMLInputElement>(null);
 
-  const [toc, setToc] = useState<TocEntry[]>([]);
-
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    setError('');
     contentItemsApi
       .getById(id)
       .then((data) => { if (!cancelled) setContent(data); })
-      .catch((e) => { if (!cancelled) setError(e.message); })
+      .catch(() => {
+        if (cancelled) return;
+        // 404（不存在或 scope 不匹配）→ toast 提示并跳回笔记根
+        toast.error('文章不存在');
+        navigate('/note', { replace: true });
+      })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [id]);
 
   /*
-   * TOC 从渲染后的 DOM 中提取，而不是用正则解析原始 markdown。
-   * 原因：正则解析和 react-markdown 对标题的识别存在差异
-   * （如 blockquote 内标题、setext 风格标题等），导致 TOC 条目
-   * 与 DOM 中的 heading 元素错位。从 DOM 提取保证两侧 100% 同源。
-   *
-   * ��赖包含 loading：setContent 和 setLoading 在 Promise 链中可能分属
-   * 不同微任务，若未 batch 则 content 变化时 MarkdownBody 尚未渲染
-   * （loading spinner 仍在），此时读 DOM 得到空列表。加入 loading 确保
-   * spinner 切走后（MarkdownBody 已渲染）再读一次 DOM。
+   * TOC 从 API 返回的 headings 字段派生，不再查询 DOM。
+   * id 格式 "heading-N" 与 MarkdownBody 注入的 data-heading-id 一致，
+   * scroll spy / scrollToHeading 直接按此 id 定位 DOM 元素。
    */
-  useLayoutEffect(() => {
-    const container = centerRef.current;
-    if (!container || !content || loading) {
-      setToc([]);
-      return;
-    }
-    const els = container.querySelectorAll<HTMLElement>('[data-heading-id]');
-    const entries: TocEntry[] = [];
-    els.forEach((el) => {
-      const tag = el.tagName.toLowerCase();
-      const level = tag === 'h1' ? 1 : tag === 'h2' ? 2 : 3;
-      entries.push({
-        level,
-        text: el.textContent || '',
-        id: el.getAttribute('data-heading-id') || '',
-      });
-    });
-    setToc(entries);
-  }, [content, loading]);
+  const toc = useMemo<TocEntry[]>(() => {
+    if (!content?.headings) return [];
+    return content.headings.map((h, i) => ({
+      level: h.level,
+      text: h.text,
+      id: `heading-${i}`,
+    }));
+  }, [content]);
 
   /*
    * Scroll spy — 监听滚动确定当前 TOC 高亮位置。
@@ -196,13 +181,10 @@ function NoteReader({ id }: { id: string }) {
     );
   }
 
-  if (error || !content) {
+  if (!content) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3">
-        <span className="text-md" style={{ color: 'var(--mark-red)' }}>{error || '文章不存在'}</span>
-        <button className="text-md" style={{ color: 'var(--ink-faded)' }} onClick={() => navigate('/note')}>
-          ← 返回列表
-        </button>
+      <div className="flex flex-1 items-center justify-center">
+        <LoadingState />
       </div>
     );
   }

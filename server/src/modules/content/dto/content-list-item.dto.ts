@@ -9,8 +9,6 @@ export class ContentListItemDto {
   status!: ContentStatus;
   latestVersion!: ContentVersionDto;
   publishedVersion?: ContentVersionDto | null;
-  latestCommitHash?: string;
-  publishedCommitHash?: string;
   hasUnpublishedChanges!: boolean;
   latestChange?: ChangeLogDto;
   createdAt!: string;

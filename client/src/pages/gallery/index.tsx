@@ -24,7 +24,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { galleryApi } from '@/services/workspace';
-import type { GalleryPhoto, GalleryPost, GalleryPostDetail } from '@/services/workspace';
+import type { GalleryPhoto, GalleryPublicListItem, GalleryPublicDetail } from '@/services/workspace';
 import { LoadingState } from '@/components/LoadingState';
 import { appleEase } from '@/lib/motion';
 
@@ -287,7 +287,7 @@ function BottomBar({
  * 每条目内部 transform/opacity 走 CSS transition，不用 motion，减少节点开销。
  */
 interface ArcTimelineProps {
-  albums: GalleryPost[];
+  albums: GalleryPublicListItem[];
   currentIdx: number;
   onSelect: (idx: number) => void;
 }
@@ -325,7 +325,7 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
   };
 
   /** 渲染相册条目 */
-  const renderAlbum = (album: GalleryPost, i: number) => {
+  const renderAlbum = (album: GalleryPublicListItem, i: number) => {
     const dist = Math.abs(i - currentIdx);
     const arcX = dist * dist * ARC_K;
     const opacity = Math.max(0.1, 1 - dist * 0.15);
@@ -449,9 +449,9 @@ export default function GalleryPage() {
   }, []);
 
   // 相册列表（轻量，首次加载）
-  const [posts, setPosts] = useState<GalleryPost[]>([]);
+  const [posts, setPosts] = useState<GalleryPublicListItem[]>([]);
   // 当前展示的相册详情（含照片数组）
-  const [currentDetail, setCurrentDetail] = useState<GalleryPostDetail | null>(null);
+  const [currentDetail, setCurrentDetail] = useState<GalleryPublicDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
   // 当前选中的相册索引（控制 ArcTimeline 高亮和 ↑↓ 键导航）
@@ -463,11 +463,11 @@ export default function GalleryPage() {
   const [_detailLoading, setDetailLoading] = useState(false);
 
   // 已加载的详情缓存，避免重复请求（key: post id）
-  const detailCache = useRef<Map<string, GalleryPostDetail>>(new Map());
+  const detailCache = useRef<Map<string, GalleryPublicDetail>>(new Map());
 
   // ── 初始加载相册列表 ─────────────────────────────────────────────────────────
   useEffect(() => {
-    galleryApi.list('published')
+    galleryApi.listPublished()
       .then((listed) => {
         setPosts(listed);
         setLoading(false);
@@ -490,9 +490,9 @@ export default function GalleryPage() {
       return;
     }
 
-    // 未命中：加载并写入缓存
+    // 未命中：加载并写入缓存（展示端用 getPublicDetail）
     setDetailLoading(true);
-    galleryApi.getById(post.id)
+    galleryApi.getPublicDetail(post.id)
       .then((detail) => {
         detailCache.current.set(post.id, detail);
         setCurrentDetail(detail);

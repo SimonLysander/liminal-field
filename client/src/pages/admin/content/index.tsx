@@ -9,8 +9,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 // 编辑页跳转统一用 window.location.href（Plate inputRules 在 SPA 导航后不生效）
 import { smoothBounce } from '@/lib/motion';
+import { useConfirm } from '@/contexts/ConfirmContext';
 import { notesApi as contentItemsApi } from '@/services/workspace';
-import { extractHeadings, type TocEntry } from '@/lib/markdown';
 import Topbar from '@/components/global/Topbar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ContentVersionView } from '../components/ContentVersionView';
@@ -25,17 +25,22 @@ import { LoadingState, ContentFade } from '@/components/LoadingState';
 
 const ContentAdmin = () => {
   const workspace = useAdminWorkspace();
+  const confirm = useConfirm();
   /* 选中节点的恢复由 useAdminWorkspace 的 URL 同步处理 */
 
   /* ---- TOC ----
-   * 数据：useMemo 从 bodyMarkdown 纯函数提取（不碰 DOM，无时序问题）
+   * 数据：来自 API 返回的 headings（formalContent 或 preview），不再解析 markdown
    * 交互：scroll spy + 点击跳转用 DOM ref（按索引定位，不匹配 ID）
    */
   const previewRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(-1);
 
-  const bodyMarkdown = workspace.preview?.bodyMarkdown ?? workspace.formalContent.bodyMarkdown;
-  const toc = useMemo(() => extractHeadings(bodyMarkdown), [bodyMarkdown]);
+  type TocEntry = { level: number; text: string; index: number };
+  const headings = workspace.preview?.headings ?? workspace.formalContent.headings;
+  const toc = useMemo<TocEntry[]>(
+    () => headings.map((h, i) => ({ level: h.level, text: h.text, index: i })),
+    [headings],
+  );
 
   /** 获取预览区内所有 heading DOM 元素 */
   const getHeadingEls = useCallback(
@@ -86,8 +91,8 @@ const ContentAdmin = () => {
 
   const handleOverwriteDraft = async () => {
     if (!workspace.selectedNode?.contentItemId) return;
-    const confirmed = window.confirm('是否覆盖已有草稿？将从正式版本重新创建。');
-    if (!confirmed) return;
+    const ok = await confirm({ title: '覆盖草稿', message: '是否覆盖已有草稿？将从正式版本重新创建。', danger: true });
+    if (!ok) return;
     await contentItemsApi.deleteDraft(workspace.selectedNode.contentItemId);
     window.location.href = `/admin/notes/${workspace.selectedNode.contentItemId}/edit`;
   };
@@ -234,7 +239,7 @@ function FormalSidePanel({
   onOverwriteDraft,
   onSelectVersion,
 }: {
-  toc: TocEntry[];
+  toc: Array<{ level: number; text: string; index: number }>;
   activeIndex: number;
   onScrollToHeading: (index: number) => void;
   draftPresence: DraftPresence;
@@ -248,17 +253,17 @@ function FormalSidePanel({
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* 大纲 — flex-1，内部滚动 */}
-      {toc.length > 0 && (
-        <div className="mb-5 flex min-h-0 flex-1 flex-col">
-          <div
-            className="mb-2.5 shrink-0 font-semibold uppercase"
-            style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)', letterSpacing: '0.06em' }}
-          >
-            大纲
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {toc.map((item, i) => {
+      {/* 大纲 — flex-1，内部滚动；无标题时占位，避免布局跳动 */}
+      <div className="mb-5 flex min-h-0 flex-1 flex-col">
+        <div
+          className="mb-2.5 shrink-0 font-semibold uppercase"
+          style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)', letterSpacing: '0.06em' }}
+        >
+          大纲
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {toc.length > 0 ? (
+            toc.map((item, i) => {
               const isActive = activeIndex === i;
               return (
                 <motion.div
@@ -278,10 +283,12 @@ function FormalSidePanel({
                   {item.text}
                 </motion.div>
               );
-            })}
-          </div>
+            })
+          ) : (
+            <p style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)' }}>暂无标题</p>
+          )}
         </div>
-      )}
+      </div>
 
       {/* 编辑 — shrink-0，固定高度 */}
       <div className="mb-5 shrink-0">
@@ -291,31 +298,26 @@ function FormalSidePanel({
         >
           编辑
         </div>
-        <div
-          className="rounded-[10px] p-4"
-          style={{ border: '1px solid var(--box-border)', background: 'var(--shelf)' }}
-        >
-          {draftPresence.exists ? (
-            <div className="space-y-2">
-              <InfoRow label="已有草稿" value="是" />
-              <InfoRow
-                label="上次保存"
-                value={draftPresence.savedAt ? new Date(draftPresence.savedAt).toLocaleString('zh-CN') : '--'}
-              />
-              <div className="flex gap-4 pt-2">
-                <SideLink label="继续编辑 →" primary onClick={onEditDraft} />
-                <SideLink label="覆盖重建" danger onClick={() => void onOverwriteDraft()} />
-              </div>
+        {draftPresence.exists ? (
+          <div className="space-y-2">
+            <InfoRow label="已有草稿" value="是" />
+            <InfoRow
+              label="上次保存"
+              value={draftPresence.savedAt ? new Date(draftPresence.savedAt).toLocaleString('zh-CN') : '--'}
+            />
+            <div className="flex gap-4 pt-2">
+              <SideLink label="继续编辑 →" primary onClick={onEditDraft} />
+              <SideLink label="覆盖重建" danger onClick={() => void onOverwriteDraft()} />
             </div>
-          ) : (
-            <>
-              <p className="mb-3.5 leading-relaxed" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)' }}>
-                进入编辑器创建草稿
-              </p>
-              <SideLink label="开始编辑 →" primary onClick={onEditDraft} />
-            </>
-          )}
-        </div>
+          </div>
+        ) : (
+          <>
+            <p className="mb-3.5 leading-relaxed" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)' }}>
+              进入编辑器创建草稿
+            </p>
+            <SideLink label="开始编辑 →" primary onClick={onEditDraft} />
+          </>
+        )}
       </div>
 
       {/* 版本 — flex-1，内部滚动 */}

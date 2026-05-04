@@ -1,5 +1,6 @@
 export class UploadedAssetDto {
-  path!: string;
+  /** 前端可直接访问的资源 URL（API 路径）。 */
+  url!: string;
   fileName!: string;
   contentType!: string;
   size!: number;

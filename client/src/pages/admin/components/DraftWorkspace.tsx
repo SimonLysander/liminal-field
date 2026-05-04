@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useConfirm } from '@/contexts/ConfirmContext';
 import { PlateMarkdownEditor } from './PlateEditor';
 import type { DraftWorkspaceProps } from '../types';
 import { LoadingState, ContentFade } from '@/components/LoadingState';
@@ -26,6 +27,7 @@ export const DraftWorkspace = ({
    * resetKey: incremented when draft content is reloaded from the server,
    * forcing PlateMarkdownEditor to unmount/remount with fresh markdown.
    */
+  const confirm = useConfirm();
   const [resetKey, setResetKey] = useState(0);
 
   /* Keyboard shortcuts: Cmd+S → commit, Cmd+Shift+S → save draft */
@@ -55,10 +57,8 @@ export const DraftWorkspace = ({
   };
 
   const handleDiscardDraft = async () => {
-    const confirmed = window.confirm(
-      '确认丢弃当前草稿并返回正式内容视图？',
-    );
-    if (!confirmed) return;
+    const ok = await confirm({ title: '丢弃草稿', message: '确认丢弃当前草稿并返回正式内容视图？', danger: true, confirmLabel: '丢弃' });
+    if (!ok) return;
     await onDiscardDraft();
   };
 
