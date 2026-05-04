@@ -398,7 +398,7 @@ export default function GalleryAdmin() {
                 <div className="space-y-2.5">
                   <InfoRow label="状态" value={detail.status === 'published' ? '已发布' : '待发布'} />
                   <InfoRow label="照片" value={`${detail.photos.length} 张`} />
-                  {detail.tags?.location && <InfoRow label="地点" value={detail.tags.location} />}
+                  {detail.location && <InfoRow label="地点" value={detail.location} />}
                   <InfoRow label="创建" value={new Date(detail.createdAt).toLocaleDateString('zh-CN')} />
                   <InfoRow label="更新" value={new Date(detail.updatedAt).toLocaleString('zh-CN')} />
                 </div>

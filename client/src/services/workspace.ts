@@ -133,7 +133,10 @@ export interface ContentHistoryEntry {
 export interface GalleryPublicListItem {
   id: string;
   title: string;
-  tags: Record<string, string>;
+  /** 帖子拍摄/发生日期（ISO 8601），null 表示未设置。 */
+  date: string | null;
+  /** 帖子地点，null 表示未设置。 */
+  location: string | null;
   createdAt: string;
 }
 
@@ -143,7 +146,8 @@ export interface GalleryPublicDetail {
   title: string;
   prose: string;
   photos: GalleryPhoto[];
-  tags: Record<string, string>;
+  date: string | null;
+  location: string | null;
   createdAt: string;
 }
 
@@ -155,7 +159,8 @@ export interface GalleryAdminListItem {
   coverUrl: string | null;
   photoCount: number;
   hasUnpublishedChanges: boolean;
-  tags: Record<string, string>;
+  date: string | null;
+  location: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -172,7 +177,8 @@ export interface GalleryAdminDetail {
   hasUnpublishedChanges: boolean;
   /** 已发布版本 commitHash，null 表示未发布 */
   publishedCommitHash: string | null;
-  tags: Record<string, string>;
+  date: string | null;
+  location: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -193,7 +199,8 @@ export interface GalleryEditorState {
   prose: string;
   photos: GalleryEditorPhoto[];
   cover: string | null;
-  tags: Record<string, string>;
+  date: string | null;
+  location: string | null;
   hasDraft: boolean;
   draftSavedAt: string | null;
 }
@@ -220,7 +227,8 @@ export interface UpdateGalleryPostDto {
   prose: string;
   photos?: Array<{ file: string; caption: string; tags?: Record<string, string> }>;
   cover?: string | null;
-  tags?: Record<string, string>;
+  date?: string | null;
+  location?: string | null;
   changeNote?: string;
 }
 
@@ -231,7 +239,8 @@ export interface GalleryVersionContent {
   prose: string;
   photos: Array<{ file: string; caption: string; tags: Record<string, string> }>;
   cover: string | null;
-  tags: Record<string, string>;
+  date: string | null;
+  location: string | null;
 }
 
 /** 画廊草稿的结构化响应（后端反序列化 frontmatter 后返回，前端不接触 bodyMarkdown）。 */
@@ -240,7 +249,8 @@ export interface GalleryDraft {
   prose: string;
   photos: Array<{ file: string; caption: string; tags: Record<string, string> }>;
   cover: string | null;
-  tags: Record<string, string>;
+  date: string | null;
+  location: string | null;
   savedAt: string;
 }
 

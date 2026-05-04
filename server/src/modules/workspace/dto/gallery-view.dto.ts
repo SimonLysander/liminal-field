@@ -2,6 +2,8 @@
  * Gallery scope 的专用 DTO，按消费场景拆分。
  * 展示端（visibility=public）和管理端（visibility=all）各自使用独立 DTO，
  * 避免单一 DTO 混入不同场景的字段。
+ *
+ * frontmatter 协议变更：帖子级标签从 tags: { location } 拆为独立一级字段 date + location。
  */
 
 // ── 共用 ──
@@ -22,8 +24,10 @@ export class GalleryPhotoDto {
 export class GalleryPublicListItemDto {
   id: string;
   title: string;
-  /** 帖子级自定义标签。 */
-  tags: Record<string, string>;
+  /** 帖子拍摄/发生日期（ISO 8601 日期字符串），null 表示未设置。 */
+  date: string | null;
+  /** 帖子地点，null 表示未设置。 */
+  location: string | null;
   createdAt: string;
 }
 
@@ -35,7 +39,8 @@ export class GalleryPublicDetailDto {
   /** frontmatter 后的随笔正文。 */
   prose: string;
   photos: GalleryPhotoDto[];
-  tags: Record<string, string>;
+  date: string | null;
+  location: string | null;
   createdAt: string;
 }
 
@@ -49,7 +54,8 @@ export class GalleryAdminListItemDto {
   photoCount: number;
   /** 是否有已提交但未发布的变更。 */
   hasUnpublishedChanges: boolean;
-  tags: Record<string, string>;
+  date: string | null;
+  location: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -67,7 +73,8 @@ export class GalleryAdminDetailDto {
   hasUnpublishedChanges: boolean;
   /** 已发布版本的 commitHash，null 表示未发布。 */
   publishedCommitHash: string | null;
-  tags: Record<string, string>;
+  date: string | null;
+  location: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -91,7 +98,8 @@ export class GalleryEditorDto {
   prose: string;
   photos: GalleryEditorPhotoDto[];
   cover: string | null;
-  tags: Record<string, string>;
+  date: string | null;
+  location: string | null;
   /** 是否存在未提交的草稿。 */
   hasDraft: boolean;
   /** 草稿最后保存时间（ISO 8601），无草稿时为 null。 */
@@ -106,7 +114,8 @@ export class GalleryVersionDto {
   prose: string;
   photos: { file: string; caption: string; tags: Record<string, string> }[];
   cover: string | null;
-  tags: Record<string, string>;
+  date: string | null;
+  location: string | null;
 }
 
 // ── 草稿（内部序列化使用，前端直接消费解析后的结构化字段）──
@@ -117,6 +126,7 @@ export class GalleryDraftDto {
   prose!: string;
   photos!: Array<{ file: string; caption: string; tags: Record<string, string> }>;
   cover!: string | null;
-  tags!: Record<string, string>;
+  date!: string | null;
+  location!: string | null;
   savedAt!: string;
 }

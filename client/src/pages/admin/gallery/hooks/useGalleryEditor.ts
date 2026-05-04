@@ -47,8 +47,10 @@ export interface GalleryEditorState {
   prose: string;
   /** 照片列表（含 size 供 UI 展示，来源 /editor 端点） */
   photos: LocalEditorPhoto[];
-  /** 帖子级 key-value 标签 */
-  tags: Record<string, string>;
+  /** 帖子拍摄/发生日期（ISO 8601），null 表示未设置 */
+  date: string | null;
+  /** 帖子地点，null 表示未设置 */
+  location: string | null;
   /** 封面照片文件名，null 表示未设置 */
   coverPhotoFileName: string | null;
   saveStatus: SaveStatus;
@@ -63,7 +65,8 @@ export interface GalleryEditorActions {
   uploadPhotos: (files: File[]) => Promise<void>;
   deletePhoto: (photoId: string) => void;
   setCover: (photoId: string) => void;
-  updateLocation: (location: string | undefined) => void;
+  updateDate: (date: string | null) => void;
+  updateLocation: (location: string | null) => void;
   save: () => Promise<void>;
   commit: (changeNote?: string) => Promise<void>;
 }
@@ -75,8 +78,10 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
   const [title, setTitle] = useState('');
   const [prose, setProse] = useState('');
   const [photos, setPhotos] = useState<LocalEditorPhoto[]>([]);
-  /** 帖子级标签 */
-  const [tags, setTags] = useState<Record<string, string>>({});
+  /** 帖子拍摄/发生日期 */
+  const [date, setDate] = useState<string | null>(null);
+  /** 帖子地点 */
+  const [location, setLocation] = useState<string | null>(null);
   /** 封面文件名 */
   const [coverPhotoFileName, setCoverPhotoFileName] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
@@ -87,13 +92,15 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
   const titleRef = useRef(title);
   const proseRef = useRef(prose);
   const photosRef = useRef(photos);
-  const tagsRef = useRef(tags);
+  const dateRef = useRef(date);
+  const locationRef = useRef(location);
   const coverRef = useRef(coverPhotoFileName);
 
   useEffect(() => { titleRef.current = title; }, [title]);
   useEffect(() => { proseRef.current = prose; }, [prose]);
   useEffect(() => { photosRef.current = photos; }, [photos]);
-  useEffect(() => { tagsRef.current = tags; }, [tags]);
+  useEffect(() => { dateRef.current = date; }, [date]);
+  useEffect(() => { locationRef.current = location; }, [location]);
   useEffect(() => { coverRef.current = coverPhotoFileName; }, [coverPhotoFileName]);
 
   // ─── 初始化加载 ───
@@ -112,7 +119,8 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
 
         setTitle(editorState.title);
         setProse(editorState.prose);
-        setTags(editorState.tags);
+        setDate(editorState.date);
+        setLocation(editorState.location);
         setCoverPhotoFileName(editorState.cover);
         // id 用 file（文件名）作为本地唯一键，与 buildSavePayload 中的 p.fileName 对齐
         setPhotos(editorState.photos.map((p) => ({
@@ -145,7 +153,8 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
       tags: p.tags,
     })),
     cover: coverRef.current,
-    tags: tagsRef.current,
+    date: dateRef.current,
+    location: locationRef.current,
   }), []);
 
   // ─── 自动保存草稿（1500ms debounce）───
@@ -171,7 +180,7 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     const timer = window.setTimeout(() => void saveDraft(), 1500);
     return () => window.clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [saveStatus, postId, title, prose, photos, tags, coverPhotoFileName]);
+  }, [saveStatus, postId, title, prose, photos, date, location, coverPhotoFileName]);
 
   // ─── 文本更新（标记 dirty，触发 debounce） ───
 
@@ -212,17 +221,15 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     setSaveStatus('dirty');
   }, []);
 
-  /** 更新帖子级 location 标签，标记 dirty */
-  const updateLocation = useCallback((location: string | undefined) => {
-    setTags((prev) => {
-      const next = { ...prev };
-      if (location) {
-        next['location'] = location;
-      } else {
-        delete next['location'];
-      }
-      return next;
-    });
+  /** 更新帖子拍摄/发生日期，标记 dirty */
+  const updateDate = useCallback((newDate: string | null) => {
+    setDate(newDate);
+    setSaveStatus('dirty');
+  }, []);
+
+  /** 更新帖子地点，标记 dirty */
+  const updateLocation = useCallback((newLocation: string | null) => {
+    setLocation(newLocation);
     setSaveStatus('dirty');
   }, []);
 
@@ -305,7 +312,8 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     title,
     prose,
     photos,
-    tags,
+    date,
+    location,
     coverPhotoFileName,
     saveStatus,
     updateTitle,
@@ -315,6 +323,7 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     uploadPhotos,
     deletePhoto,
     setCover,
+    updateDate,
     updateLocation,
     save,
     commit,

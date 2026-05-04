@@ -3,12 +3,12 @@ import { parseGalleryContent, serializeGalleryContent } from './gallery-view.ser
 // ─── parseGalleryContent ────────────────────────────────────────────────────
 
 describe('parseGalleryContent', () => {
-  it('完整 frontmatter（cover + tags + photos）→ 正确解析，hasFrontmatter: true', () => {
+  it('完整 frontmatter（date + location + cover + photos）→ 正确解析，hasFrontmatter: true', () => {
     const raw = [
       '---',
+      'date: "2024-03-15"',
+      'location: 北京',
       'cover: photo-abc.jpg',
-      'tags:',
-      '  location: 北京',
       'photos:',
       '  - file: photo-abc.jpg',
       '    caption: 老胡同里的光影',
@@ -23,7 +23,8 @@ describe('parseGalleryContent', () => {
 
     expect(result.hasFrontmatter).toBe(true);
     expect(result.cover).toBe('photo-abc.jpg');
-    expect(result.tags).toEqual({ location: '北京' });
+    expect(result.date).toBe('2024-03-15');
+    expect(result.location).toBe('北京');
     expect(result.photos).toHaveLength(1);
     expect(result.photos[0]).toEqual({
       file: 'photo-abc.jpg',
@@ -31,6 +32,25 @@ describe('parseGalleryContent', () => {
       tags: { camera: 'GR III' },
     });
     expect(result.prose).toBe('这是正文。');
+  });
+
+  it('旧数据兼容：tags.location 自动迁移为一级 location', () => {
+    const raw = [
+      '---',
+      'cover: photo-abc.jpg',
+      'tags:',
+      '  location: 上海',
+      'photos: []',
+      '---',
+      '',
+      '旧格式正文。',
+    ].join('\n');
+
+    const result = parseGalleryContent(raw);
+
+    expect(result.hasFrontmatter).toBe(true);
+    expect(result.location).toBe('上海');
+    expect(result.date).toBeNull();
   });
 
   it('无 frontmatter（纯 prose）→ photos: [], hasFrontmatter: false', () => {
@@ -41,7 +61,8 @@ describe('parseGalleryContent', () => {
     expect(result.hasFrontmatter).toBe(false);
     expect(result.photos).toEqual([]);
     expect(result.cover).toBeNull();
-    expect(result.tags).toEqual({});
+    expect(result.date).toBeNull();
+    expect(result.location).toBeNull();
     expect(result.prose).toBe(raw);
   });
 
@@ -108,27 +129,30 @@ describe('parseGalleryContent', () => {
 // ─── serializeGalleryContent ────────────────────────────────────────────────
 
 describe('serializeGalleryContent', () => {
-  it('有 photos + cover + tags → 生成完整 frontmatter', () => {
+  it('有 photos + cover + date + location → 生成完整 frontmatter', () => {
     const result = serializeGalleryContent({
       photos: [{ file: 'photo-1.jpg', caption: '第一张', tags: { camera: 'GR III' } }],
       cover: 'photo-1.jpg',
-      tags: { location: '上海' },
+      date: '2024-03-15',
+      location: '上海',
       prose: '一些正文。',
     });
 
     expect(result).toMatch(/^---\n/);
     expect(result).toContain('cover: photo-1.jpg');
     expect(result).toContain('location: 上海');
+    expect(result).toContain('2024-03-15');
     expect(result).toContain('photo-1.jpg');
     expect(result).toContain('一些正文。');
     expect(result).toMatch(/---\n\n一些正文。$/);
   });
 
-  it('无 photos 无 cover 无 tags → 只输出 prose，无 frontmatter', () => {
+  it('无 photos 无 cover 无 date 无 location → 始终生成 frontmatter（空 photos 字段）', () => {
     const result = serializeGalleryContent({
       photos: [],
       cover: null,
-      tags: {},
+      date: null,
+      location: null,
       prose: '纯正文，没有元数据。',
     });
 
@@ -142,7 +166,8 @@ describe('serializeGalleryContent', () => {
     const result = serializeGalleryContent({
       photos: [],
       cover: 'cover.jpg',
-      tags: {},
+      date: null,
+      location: null,
       prose: '正文',
     });
 
@@ -161,7 +186,8 @@ describe('serializeGalleryContent → parseGalleryContent round-trip', () => {
         { file: 'b.jpg', caption: '照片 B', tags: {} },
       ],
       cover: 'a.jpg',
-      tags: { location: '广州' },
+      date: '2024-06-01',
+      location: '广州',
       prose: '游记正文。',
     };
 
@@ -170,7 +196,8 @@ describe('serializeGalleryContent → parseGalleryContent round-trip', () => {
 
     expect(parsed.hasFrontmatter).toBe(true);
     expect(parsed.cover).toBe(original.cover);
-    expect(parsed.tags).toEqual(original.tags);
+    expect(parsed.date).toBe(original.date);
+    expect(parsed.location).toBe(original.location);
     expect(parsed.prose).toBe(original.prose);
     expect(parsed.photos).toHaveLength(2);
     expect(parsed.photos[0]).toEqual(original.photos[0]);

@@ -134,7 +134,7 @@ export function GalleryPostPreview({
   onUnpublish,
   onDelete,
 }: GalleryPostPreviewProps) {
-  const locationTag = post.tags?.location;
+  const locationTag = post.location;
   const photoUrls = (post.photos ?? []).map((p) => p.url);
   const prose = post.prose;
 

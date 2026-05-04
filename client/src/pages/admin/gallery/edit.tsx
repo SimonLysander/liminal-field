@@ -18,7 +18,7 @@ import { LoadingState } from '@/components/LoadingState';
 import { PhotoGrid } from './components/PhotoGrid';
 import { PhotoEditModal } from './components/PhotoEditModal';
 import { GalleryProseEditor } from './components/GalleryProseEditor';
-import { LocationSelect } from './components/LocationSelect';
+import { DateInput, LocationInput } from './components/LocationSelect';
 import { CommitModal } from './components/CommitModal';
 import { useGalleryEditor } from './hooks/useGalleryEditor';
 
@@ -59,7 +59,8 @@ export default function GalleryEditPage() {
     title,
     prose,
     photos,
-    tags,
+    date,
+    location,
     saveStatus,
     updateTitle,
     updateProse,
@@ -68,6 +69,7 @@ export default function GalleryEditPage() {
     uploadPhotos,
     deletePhoto,
     setCover,
+    updateDate,
     updateLocation,
     save,
     commit,
@@ -188,11 +190,11 @@ export default function GalleryEditPage() {
             onChange={updateProse}
           />
 
-          {/* 地点选择 */}
-          <LocationSelect
-            value={tags['location']}
-            onChange={updateLocation}
-          />
+          {/* 日期 + 地点输入，并排展示 */}
+          <div className="flex items-center gap-2">
+            <DateInput value={date} onChange={updateDate} />
+            <LocationInput value={location} onChange={updateLocation} />
+          </div>
         </div>
       </div>
 

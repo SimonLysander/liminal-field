@@ -13,7 +13,10 @@ export class GalleryPhotoEntryDto {
   tags?: Record<string, string>;
 }
 
-/** 画廊专属的保存 DTO（提交和草稿共用）。前端只发 JSON，不知道 frontmatter 的存在。 */
+/**
+ * 画廊专属的保存 DTO（提交和草稿共用）。前端只发 JSON，不知道 frontmatter 的存在。
+ * frontmatter 协议变更：帖子级 tags 拆为独立的 date + location 一级字段。
+ */
 export class SaveGalleryPostDto {
   @IsString()
   title!: string;
@@ -31,9 +34,15 @@ export class SaveGalleryPostDto {
   @IsOptional()
   cover?: string | null;
 
-  @IsObject()
+  /** 帖子拍摄/发生日期（ISO 8601 日期字符串，如 "2024-03-15"），可选。 */
+  @IsString()
   @IsOptional()
-  tags?: Record<string, string>;
+  date?: string | null;
+
+  /** 帖子地点，自由文本，可选。 */
+  @IsString()
+  @IsOptional()
+  location?: string | null;
 
   @IsString()
   @IsOptional()

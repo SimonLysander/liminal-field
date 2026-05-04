@@ -3,15 +3,17 @@
  *
  * 架构变更（frontmatter 协议迁移）：
  * 元数据存储从 MongoDB gallery_post_meta 集合迁移至 main.md 的 YAML frontmatter。
- * frontmatter 格式：
+ * frontmatter 格式（新）：
+ *   date: "2024-03-15"             # 拍摄/发生日期（可选，一级字段）
+ *   location: 北京                  # 地点（可选，一级字段）
  *   cover: photo-xxx.jpg          # 封面图文件名（可选）
- *   tags:                          # 帖子级标签（可选）
- *     location: 北京
  *   photos:                        # 照片顺序/描述列表（可选）
  *     - file: photo-xxx.jpg
  *       caption: 老胡同里的光影
  *       tags:
  *         camera: GR III
+ *
+ * 旧数据兼容：如果有 tags.location 但没有一级 location，自动从 tags 迁移。
  *
  * 处理画廊模块独有的视图转换：
  * - 解析 / 序列化 main.md frontmatter（使用项目已有的 js-yaml）
@@ -57,7 +59,10 @@ interface FrontmatterPhoto {
 interface ParsedGalleryContent {
   photos: FrontmatterPhoto[];
   cover: string | null;
-  tags: Record<string, string>;
+  /** 帖子拍摄/发生日期（ISO 8601），null 表示未设置。 */
+  date: string | null;
+  /** 帖子地点，null 表示未设置。 */
+  location: string | null;
   prose: string;
   /** 原始内容是否包含 frontmatter。无 frontmatter 的旧数据需要从 assets 推断照片列表。 */
   hasFrontmatter: boolean;
@@ -67,23 +72,24 @@ interface ParsedGalleryContent {
  * 解析 main.md 原始字符串，提取 YAML frontmatter 和随笔正文。
  *
  * 边界情况：
- * - 无 frontmatter（旧数据兼容）→ photos=[], tags={}, cover=null，整体内容当 prose
+ * - 无 frontmatter（旧数据兼容）→ photos=[], date=null, location=null, cover=null，整体内容当 prose
  * - frontmatter 中 photos 字段缺失或为空 → 默认 []
  * - frontmatter 中 cover 字段缺失 → null
+ * - 旧数据兼容：如果有 tags.location 但没有一级 location，自动从 tags 迁移
  *
  * export 供单元测试直接调用，不影响运行时封装。
  */
 export function parseGalleryContent(raw: string): ParsedGalleryContent {
   // frontmatter 必须以 "---\n" 开头，否则视为无 frontmatter
   if (!raw.startsWith('---')) {
-    return { photos: [], cover: null, tags: {}, prose: raw, hasFrontmatter: false };
+    return { photos: [], cover: null, date: null, location: null, prose: raw, hasFrontmatter: false };
   }
 
   // 找到第二个 "---" 分隔符的位置（跳过开头的 "---"）
   const closingMarkerIndex = raw.indexOf('\n---', 3);
   if (closingMarkerIndex === -1) {
     // 只有开头的 "---"，没有关闭标记，视为无 frontmatter
-    return { photos: [], cover: null, tags: {}, prose: raw, hasFrontmatter: false };
+    return { photos: [], cover: null, date: null, location: null, prose: raw, hasFrontmatter: false };
   }
 
   const yamlContent = raw.slice(4, closingMarkerIndex); // "---\n" 之后到关闭 "---" 之前
@@ -94,14 +100,23 @@ export function parseGalleryContent(raw: string): ParsedGalleryContent {
     parsed = (yaml.load(yamlContent) as Record<string, unknown>) ?? {};
   } catch {
     // YAML 解析失败，降级为无 frontmatter
-    return { photos: [], cover: null, tags: {}, prose: raw, hasFrontmatter: false };
+    return { photos: [], cover: null, date: null, location: null, prose: raw, hasFrontmatter: false };
   }
 
   // 提取 cover（字符串或 null）
   const cover = typeof parsed.cover === 'string' ? parsed.cover : null;
 
-  // 提取帖子级 tags（key-value 映射，值强制转 string）
-  const tags = parseTags(parsed.tags);
+  // 提取 date（字符串或 null）
+  const date = typeof parsed.date === 'string' ? parsed.date : null;
+
+  // 提取 location：优先读一级字段，旧数据兼容从 tags.location 迁移
+  let location: string | null = typeof parsed.location === 'string' ? parsed.location : null;
+  if (location === null && parsed.tags !== null && typeof parsed.tags === 'object' && !Array.isArray(parsed.tags)) {
+    const tagsObj = parsed.tags as Record<string, unknown>;
+    if (typeof tagsObj.location === 'string') {
+      location = tagsObj.location;
+    }
+  }
 
   // 提取 photos 数组，逐项规范化
   const rawPhotos = Array.isArray(parsed.photos) ? parsed.photos : [];
@@ -114,7 +129,7 @@ export function parseGalleryContent(raw: string): ParsedGalleryContent {
     }))
     .filter((p) => p.file !== ''); // 过滤掉 file 字段缺失的条目
 
-  return { photos, cover, tags, prose, hasFrontmatter: true };
+  return { photos, cover, date, location, prose, hasFrontmatter: true };
 }
 
 /**
@@ -137,16 +152,20 @@ function parseTags(raw: unknown): Record<string, string> {
  * 始终生成 frontmatter（即使 photos 为空），确保 parseGalleryContent 能识别 hasFrontmatter=true。
  * 这对于"用户显式清空照片"的场景至关重要——没有 frontmatter 会触发旧数据兼容逻辑，
  * 从 assets 目录推断照片列表，导致已删除的照片重新出现。
+ *
+ * frontmatter 字段顺序：date → location → cover → photos。
  */
 export function serializeGalleryContent(data: {
   photos: FrontmatterPhoto[];
   cover: string | null;
-  tags: Record<string, string>;
+  date: string | null;
+  location: string | null;
   prose: string;
 }): string {
   const frontmatterObj: Record<string, unknown> = {};
+  if (data.date) frontmatterObj.date = data.date;
+  if (data.location) frontmatterObj.location = data.location;
   if (data.cover !== null) frontmatterObj.cover = data.cover;
-  if (Object.keys(data.tags).length > 0) frontmatterObj.tags = data.tags;
   // 始终写入 photos 字段（空数组也写），确保 frontmatter 存在
   frontmatterObj.photos = data.photos.map((p) => ({
     file: p.file,
@@ -215,7 +234,7 @@ export class GalleryViewService {
       this.contentRepoService.readContentSource(contentItemId, { scope: 'gallery', commitHash }).catch(() => null),
       this.contentRepoService.listAssets(contentItemId),
     ]);
-    const parsed = source ? parseGalleryContent(source.bodyMarkdown) : { photos: [], cover: null, tags: {}, prose: '', hasFrontmatter: false };
+    const parsed = source ? parseGalleryContent(source.bodyMarkdown) : { photos: [], cover: null, date: null, location: null, prose: '', hasFrontmatter: false };
     const imageAssets = assets.filter((a) => a.type === 'image');
     return { parsed, imageAssets };
   }
@@ -280,7 +299,8 @@ export class GalleryViewService {
     return {
       id: contentItemId,
       title: version.title,
-      tags: parsed.tags,
+      date: parsed.date,
+      location: parsed.location,
       createdAt: content.createdAt.toISOString(),
     };
   }
@@ -314,7 +334,8 @@ export class GalleryViewService {
       hasUnpublishedChanges: content.publishedVersion
         ? content.latestVersion?.commitHash !== content.publishedVersion?.commitHash
         : false,
-      tags: parsed.tags,
+      date: parsed.date,
+      location: parsed.location,
       createdAt: content.createdAt.toISOString(),
       updatedAt: content.updatedAt.toISOString(),
     };
@@ -347,7 +368,8 @@ export class GalleryViewService {
       title: content.publishedVersion.title,
       prose: parsed.prose,
       photos: versionedPhotos,
-      tags: parsed.tags,
+      date: parsed.date,
+      location: parsed.location,
       createdAt: content.createdAt.toISOString(),
     };
   }
@@ -375,7 +397,8 @@ export class GalleryViewService {
         ? content.latestVersion?.commitHash !== content.publishedVersion?.commitHash
         : false,
       publishedCommitHash: content.publishedVersion?.commitHash ?? null,
-      tags: parsed.tags,
+      date: parsed.date,
+      location: parsed.location,
       createdAt: content.createdAt.toISOString(),
       updatedAt: content.updatedAt.toISOString(),
     };
@@ -430,14 +453,15 @@ export class GalleryViewService {
         prose: parsed.prose,
         photos,
         cover: parsed.cover,
-        tags: parsed.tags,
+        date: parsed.date,
+        location: parsed.location,
         hasDraft: true,
         draftSavedAt: draft.savedAt.toISOString(),
       };
     }
 
     // 无草稿：用正式版数据
-    let parsed: ParsedGalleryContent = { photos: [], cover: null, tags: {}, prose: '', hasFrontmatter: false };
+    let parsed: ParsedGalleryContent = { photos: [], cover: null, date: null, location: null, prose: '', hasFrontmatter: false };
     try {
       const source = await this.contentRepoService.readContentSource(contentItemId, { scope: 'gallery' });
       parsed = parseGalleryContent(source.bodyMarkdown);
@@ -461,7 +485,8 @@ export class GalleryViewService {
       prose: parsed.prose,
       photos,
       cover: parsed.cover,
-      tags: parsed.tags,
+      date: parsed.date,
+      location: parsed.location,
       hasDraft: false,
       draftSavedAt: null,
     };
@@ -492,7 +517,8 @@ export class GalleryViewService {
       prose: parsed.prose,
       photos: parsed.photos,
       cover: parsed.cover,
-      tags: parsed.tags,
+      date: parsed.date,
+      location: parsed.location,
     };
   }
 
@@ -518,7 +544,8 @@ export class GalleryViewService {
     return serializeGalleryContent({
       photos,
       cover: dto.cover ?? null,
-      tags: dto.tags ?? {},
+      date: dto.date ?? null,
+      location: dto.location ?? null,
       prose: dto.prose,
     });
   }
@@ -586,7 +613,8 @@ export class GalleryViewService {
       prose: parsed.prose,
       photos: parsed.photos,
       cover: parsed.cover,
-      tags: parsed.tags,
+      date: parsed.date,
+      location: parsed.location,
       savedAt: draft.savedAt.toISOString(),
     };
   }
@@ -606,7 +634,8 @@ export class GalleryViewService {
       prose: parsed.prose,
       photos: parsed.photos,
       cover: parsed.cover,
-      tags: parsed.tags,
+      date: parsed.date,
+      location: parsed.location,
       savedAt: draft.savedAt.toISOString(),
     };
   }

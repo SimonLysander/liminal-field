@@ -331,9 +331,10 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
     const arcX = dist * dist * ARC_K;
     const opacity = Math.max(0.1, 1 - dist * 0.15);
     const isSelected = i === currentIdx;
-    const date = new Date(album.createdAt);
+    // 优先用 frontmatter date（拍摄/发生日期），没有则退化为内容创建时间
+    const date = new Date(album.date ?? album.createdAt);
     const dateStr = `${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
-    const location = album.tags?.location ?? '';
+    const location = album.location ?? '';
 
     return (
       <div
