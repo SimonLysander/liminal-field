@@ -198,14 +198,10 @@ export default function Sidebar() {
       className="flex shrink-0 flex-col overflow-y-auto"
       style={{
         width: 200,
-        background: 'color-mix(in srgb, var(--sidebar-bg) 75%, transparent)',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
+        background: 'var(--sidebar-bg)',
         margin: '12px 0 12px 12px',
         borderRadius: 'var(--radius-lg)',
         boxShadow: 'var(--shadow-sm)',
-        position: 'relative',
-        zIndex: 2,
       }}
     >
       {/* Header */}

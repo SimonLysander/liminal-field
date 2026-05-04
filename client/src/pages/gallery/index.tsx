@@ -164,7 +164,7 @@ function PhotoCarousel({
               translateY: '-50%',
               zIndex: pos.z,
               /* 相框：用 border 做视觉边缘，不用 padding，照片占满全部空间 */
-              border: '2px solid var(--frame-border)',
+              border: '2px solid rgba(255,255,255,0.1)',
               borderRadius: 8,
               overflow: 'hidden',
               background: '#0a0a0a',
@@ -529,13 +529,13 @@ export default function GalleryPage() {
   if (posts.length === 0) {
     return (
       <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-base)' }}>暂无画廊内容</span>
+        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>暂无画廊内容</span>
       </div>
     );
   }
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: '#0a0a0a' }}>
       {/* 全屏模糊背景 — zIndex: 0，其他内容叠在上方 */}
       <BlurBackground photoUrl={currentPhoto?.url ?? null} />
 
