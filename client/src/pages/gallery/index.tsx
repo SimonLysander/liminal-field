@@ -284,15 +284,77 @@ const SLOT_H = 48;
 const ARC_K = 1.2;
 
 function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
-  // 构建 13 个槽位：slotOffset = -6 到 +6，0 = 选中项
-  const slots: Array<{ offset: number; albumIdx: number | null }> = [];
-  for (let offset = -SLOTS_ABOVE; offset <= SLOTS_BELOW; offset++) {
-    const albumIdx = currentIdx + offset;
-    slots.push({
-      offset,
-      albumIdx: albumIdx >= 0 && albumIdx < albums.length ? albumIdx : null,
-    });
-  }
+  // 上方补齐占位点：让第一个相册上面也有 6 个点
+  const paddingAbove = Math.max(0, SLOTS_ABOVE - currentIdx);
+  // 下方补齐占位点：让最后一个相册下面也有 6 个点
+  const paddingBelow = Math.max(0, SLOTS_BELOW - (albums.length - 1 - currentIdx));
+
+  // 整个列表通过 translateY 滑动，让选中项居中
+  const totalPaddingTop = paddingAbove * SLOT_H;
+  const selectedY = totalPaddingTop + currentIdx * SLOT_H + SLOT_H / 2;
+  const listY = -selectedY;
+
+  /** 渲染单个占位圆点 */
+  const renderPlaceholder = (key: string, distFromCenter: number) => {
+    const arcX = distFromCenter * distFromCenter * ARC_K;
+    const opacity = Math.max(0.08, 0.3 - distFromCenter * 0.04);
+    return (
+      <div key={key} style={{
+        height: SLOT_H, display: 'flex', alignItems: 'center', paddingLeft: 16,
+        transform: `translateX(${arcX}px)`, opacity,
+        transition: 'transform 0.4s ease, opacity 0.4s ease',
+      }}>
+        <div style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--ink-ghost)' }} />
+      </div>
+    );
+  };
+
+  /** 渲染相册条目 */
+  const renderAlbum = (album: GalleryPost, i: number) => {
+    const dist = Math.abs(i - currentIdx);
+    const arcX = dist * dist * ARC_K;
+    const opacity = Math.max(0.1, 1 - dist * 0.15);
+    const isSelected = i === currentIdx;
+    const date = new Date(album.createdAt);
+    const dateStr = `${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
+    const location = album.tags?.location ?? '';
+
+    return (
+      <div
+        key={album.id}
+        onClick={() => onSelect(i)}
+        style={{
+          height: SLOT_H, display: 'flex', alignItems: 'center',
+          gap: 8, paddingLeft: 16, cursor: 'pointer',
+          transform: `translateX(${arcX}px)`, opacity,
+          transition: 'transform 0.4s ease, opacity 0.4s ease',
+        }}
+      >
+        <div style={{
+          flexShrink: 0,
+          width: isSelected ? 7 : 4, height: isSelected ? 7 : 4,
+          borderRadius: '50%',
+          backgroundColor: isSelected ? 'var(--ink)' : 'var(--ink-ghost)',
+          transition: 'all 0.3s',
+        }} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+          <span style={{
+            fontSize: isSelected ? 12 : 11, fontWeight: isSelected ? 600 : 400,
+            color: isSelected ? 'var(--ink)' : 'var(--ink-ghost)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            transition: 'all 0.3s',
+          }}>{album.title}</span>
+          <span style={{
+            fontSize: 9,
+            color: isSelected ? 'var(--ink-faded)' : 'var(--ink-ghost)',
+            opacity: isSelected ? 1 : 0.5,
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            transition: 'all 0.3s',
+          }}>{location ? `${dateStr} · ${location}` : dateStr}</span>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div
@@ -300,89 +362,25 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
         position: 'absolute',
         right: 0, top: 0, bottom: 0,
         width: 140, zIndex: 20, overflow: 'hidden',
-        display: 'flex', alignItems: 'center',
       }}
     >
-      <div style={{ width: '100%' }}>
-        {slots.map(({ offset, albumIdx }) => {
-          const dist = Math.abs(offset);
-          const arcX = dist * dist * ARC_K;
-          const opacity = Math.max(0.1, 1 - dist * 0.15);
-          const isSelected = offset === 0;
-          const album = albumIdx !== null ? albums[albumIdx] : null;
-
-          // 空槽位：只显示小圆点占位
-          if (!album) {
-            return (
-              <div
-                key={`placeholder-${offset}`}
-                style={{
-                  height: SLOT_H,
-                  display: 'flex', alignItems: 'center',
-                  paddingLeft: 16,
-                  transform: `translateX(${arcX}px)`,
-                  opacity: opacity * 0.3,
-                  transition: 'transform 0.4s ease, opacity 0.4s ease',
-                }}
-              >
-                <div style={{
-                  width: 4, height: 4, borderRadius: '50%',
-                  background: 'var(--ink-ghost)',
-                }} />
-              </div>
-            );
-          }
-
-          const date = new Date(album.createdAt);
-          const dateStr = `${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
-          const location = album.tags?.location ?? '';
-
-          return (
-            <div
-              key={album.id}
-              onClick={() => onSelect(albumIdx!)}
-              style={{
-                height: SLOT_H,
-                display: 'flex', alignItems: 'center',
-                gap: 8, paddingLeft: 16,
-                cursor: 'pointer',
-                transform: `translateX(${arcX}px)`,
-                opacity,
-                transition: 'transform 0.4s ease, opacity 0.4s ease',
-              }}
-            >
-              <div style={{
-                flexShrink: 0,
-                width: isSelected ? 7 : 4,
-                height: isSelected ? 7 : 4,
-                borderRadius: '50%',
-                backgroundColor: isSelected ? 'var(--ink)' : 'var(--ink-ghost)',
-                transition: 'all 0.3s',
-              }} />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-                <span style={{
-                  fontSize: isSelected ? 12 : 11,
-                  fontWeight: isSelected ? 600 : 400,
-                  color: isSelected ? 'var(--ink)' : 'var(--ink-ghost)',
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                  transition: 'all 0.3s',
-                }}>
-                  {album.title}
-                </span>
-                <span style={{
-                  fontSize: 9,
-                  color: isSelected ? 'var(--ink-faded)' : 'var(--ink-ghost)',
-                  opacity: isSelected ? 1 : 0.5,
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                  transition: 'all 0.3s',
-                }}>
-                  {location ? `${dateStr} · ${location}` : dateStr}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {/* motion.div 驱动整体滑动，选中项永远在垂直中心 */}
+      <motion.div
+        animate={{ y: listY }}
+        transition={{ duration: 0.4, ease: appleEase }}
+        style={{ position: 'absolute', top: '50%', left: 0, right: 0 }}
+      >
+        {/* 上方占位点 */}
+        {Array.from({ length: paddingAbove }, (_, i) =>
+          renderPlaceholder(`pad-top-${i}`, paddingAbove - i + currentIdx)
+        )}
+        {/* 全部相册 */}
+        {albums.map((album, i) => renderAlbum(album, i))}
+        {/* 下方占位点 */}
+        {Array.from({ length: paddingBelow }, (_, i) =>
+          renderPlaceholder(`pad-bot-${i}`, (albums.length - 1 - currentIdx) + i + 1)
+        )}
+      </motion.div>
     </div>
   );
 }
