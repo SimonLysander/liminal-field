@@ -96,11 +96,21 @@ function MainLayout() {
     document.body.classList.toggle('gallery-immersive', isGallery);
   }, [isGallery]);
 
+  // overlay 只在过渡瞬间可见：渐入遮住白→透明闪帧，然后消失露出模糊背景
+  const [showOverlay, setShowOverlay] = useState(false);
+  useEffect(() => {
+    if (isGallery) {
+      setShowOverlay(true);
+      const timer = setTimeout(() => setShowOverlay(false), 600);
+      return () => clearTimeout(timer);
+    }
+  }, [isGallery]);
+
   return (
     <div data-layout-root className="relative z-[1] flex h-screen" style={{ background: 'var(--paper)' }}>
-      {/* Gallery 暗色渐入层：白天/黑夜统一渐入到 gallery 的深灰底色 */}
+      {/* Gallery 过渡遮罩：渐入盖住闪帧，0.6s 后消失露出高斯模糊 */}
       <motion.div
-        animate={{ opacity: isGallery ? 1 : 0 }}
+        animate={{ opacity: showOverlay ? 1 : 0 }}
         transition={{ duration: 0.4 }}
         style={{
           position: 'absolute', inset: 0, zIndex: 0,

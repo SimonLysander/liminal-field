@@ -838,7 +838,10 @@ button:active:not(:disabled):not(.nav-item),
 /* ── Gallery 沉浸模式 ──
  * gallery 页挂载时给 body 加 .gallery-immersive，
  * 让模糊层（portal 到 body）透过 layout 背景。 */
-/* body/layout-root 背景不动——暗化由 MainLayout overlay 渐入处理，避免瞬切闪帧 */
+/* layout-root 透明让 BlurBackground portal 透出来，overlay 在上层渐入遮住瞬切 */
+body.gallery-immersive [data-layout-root] {
+  background: transparent !important;
+}
 /* gallery 边缘悬停箭头：默认隐藏，hover 淡入 */
 .gallery-edge-arrow {
   opacity: 0;

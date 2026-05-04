@@ -45,27 +45,23 @@ type CardSlot = keyof typeof CARD_POSITIONS;
 // ─── PhotoFrameBar ─────────────────────────────────────────────────────────────
 
 /*
- * 相框底部参数行（宝丽来白边下方）。
- * 左侧：设备型号 + EXIF 分组（光圈·快门·ISO、焦距、分辨率、白平衡、格式）
- * 右侧：拍摄时间 + 照片名
- * 从 photo.tags 中取对应键，缺失的键直接跳过。
+ * 宝丽来白条 — 照片底部的奶白色 EXIF 参数条。
+ * 左侧：设备型号 + 曝光参数（光圈·快门·ISO）+ 焦距
+ * 右侧：拍摄时间
+ * 等宽字体 (SF Mono / Menlo) 让数字对齐，宝丽来质感。
  */
+const FRAME_FONT = '"SF Mono", SFMono-Regular, Menlo, Consolas, monospace';
+
 function PhotoFrameBar({ photo }: { photo: GalleryPhoto }) {
   const t = photo.tags;
 
-  // 光圈·快门·ISO 三个参数合并为一组，用 · 连接
-  const exposureGroup = [t.aperture, t.shutter, t.iso].filter(Boolean).join(' · ');
-
-  // 其余独立参数按顺序排列
-  const extraParams = [
+  const segments = [
+    t.device,
+    [t.aperture, t.shutter, t.iso].filter(Boolean).join(' · '),
     t.focalLength,
-    t.resolution,
-    t.wb,
-    t.format,
   ].filter(Boolean);
 
-  // 所有 EXIF 分段（非空才显示）：曝光组、其余参数各自为一段
-  const exifSegments = [exposureGroup, ...extraParams].filter(Boolean);
+  if (segments.length === 0 && !t.shotAt) return null;
 
   return (
     <div
@@ -73,43 +69,27 @@ function PhotoFrameBar({ photo }: { photo: GalleryPhoto }) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '0 2px',
-        fontSize: 9,
-        color: 'rgba(255,255,255,0.6)',
-        lineHeight: 1.4,
-        gap: 4,
+        padding: '6px 12px',
+        fontFamily: FRAME_FONT,
+        fontSize: 10,
+        letterSpacing: '0.02em',
+        color: 'rgba(60,60,60,0.7)',
+        lineHeight: 1,
       }}
     >
-      {/* 左侧：设备名 + EXIF 参数，用空格分隔各段 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
-        {t.device && (
-          <span style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{t.device}</span>
-        )}
-        {exifSegments.map((seg, i) => (
-          <span key={i} style={{ whiteSpace: 'nowrap', opacity: 0.75 }}>{seg}</span>
+      {/* 左侧：设备 + 曝光参数 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
+        {segments.map((seg, i) => (
+          <span key={i} style={{ whiteSpace: 'nowrap' }}>{seg}</span>
         ))}
       </div>
 
-      {/* 右侧：拍摄时间 + 照片名（从 tags.title 取，不是 caption） */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-        {t.shotAt && (
-          <span style={{ whiteSpace: 'nowrap', opacity: 0.6, fontVariantNumeric: 'tabular-nums' }}>
-            {t.shotAt}
-          </span>
-        )}
-        {t.title && (
-          <span
-            style={{
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              maxWidth: 120,
-            }}
-          >
-            {t.title}
-          </span>
-        )}
-      </div>
+      {/* 右侧：拍摄时间 */}
+      {t.shotAt && (
+        <span style={{ whiteSpace: 'nowrap', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+          {t.shotAt}
+        </span>
+      )}
     </div>
   );
 }
@@ -125,12 +105,10 @@ function PhotoFrameBar({ photo }: { photo: GalleryPhoto }) {
 function PhotoCarousel({
   photos,
   photoIdx,
-  direction,
   onNavigate,
 }: {
   photos: GalleryPhoto[];
   photoIdx: number;
-  direction: number;
   onNavigate: (dir: number) => void;
 }) {
   if (photos.length === 0) return null;
@@ -181,39 +159,36 @@ function PhotoCarousel({
               scale: pos.scale,
               opacity: pos.opacity,
             }}
-            transition={{ duration: 0.6, ease: appleEase }}
+            transition={{ duration: 0.8, ease: appleEase }}
             onClick={isCenter ? undefined : () => onNavigate(slot === 'left' ? -1 : 1)}
           >
             {/* 滑动 + 交叉淡入：新图从移动方向滑入，旧图反向滑出 */}
-            <AnimatePresence mode="popLayout" initial={false}>
+            <AnimatePresence initial={false}>
               <motion.img
                 key={photo.id}
                 src={photo.url}
                 alt={photo.caption || photo.fileName}
-                initial={{
-                  opacity: 0,
-                  x: direction === 0 ? 0 : direction > 0 ? 80 : -80,
-                }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{
-                  opacity: 0,
-                  x: direction === 0 ? 0 : direction > 0 ? -80 : 80,
-                }}
-                transition={{ duration: 0.7, ease: appleEase }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.8, ease: appleEase }}
                 style={{
                   position: 'absolute', inset: 0,
                   width: '100%', height: '100%',
-                  objectFit: 'contain', display: 'block',
+                  objectFit: isCenter ? 'cover' : 'contain',
+                  display: 'block',
                 }}
               />
             </AnimatePresence>
             {isCenter && (
               <>
-                {/* EXIF 参数行——无渐变，text-shadow 保证可读 */}
+                {/* 宝丽来白条——叠在照片底部 5%，奶白色 overlay */}
                 <div style={{
                   position: 'absolute',
-                  bottom: 6, left: 8, right: 8,
-                  textShadow: '0 1px 4px rgba(0,0,0,0.8)',
+                  bottom: 0, left: 0, right: 0,
+                  height: '5%', minHeight: 24,
+                  display: 'flex', alignItems: 'center',
+                  background: 'rgba(255,255,250,0.92)',
                 }}>
                   <PhotoFrameBar photo={photo} />
                 </div>
@@ -384,14 +359,13 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
   /** 渲染单个占位圆点 */
   const renderPlaceholder = (key: string, distFromCenter: number) => {
     const arcX = distFromCenter * distFromCenter * ARC_K;
-    const opacity = Math.max(0.08, 0.3 - distFromCenter * 0.04);
     return (
       <div key={key} style={{
         height: SLOT_H, display: 'flex', alignItems: 'center', paddingLeft: 16,
-        transform: `translateX(${arcX}px)`, opacity,
-        transition: 'transform 0.4s ease, opacity 0.4s ease',
+        transform: `translateX(${arcX}px)`,
+        transition: 'transform 0.4s ease',
       }}>
-        <div style={{ width: 4, height: 4, borderRadius: '50%', background: 'rgba(255,255,255,0.25)' }} />
+        <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'rgba(255,255,255,0.25)' }} />
       </div>
     );
   };
@@ -400,7 +374,7 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
   const renderAlbum = (album: GalleryPublicListItem, i: number) => {
     const dist = Math.abs(i - currentIdx);
     const arcX = dist * dist * ARC_K;
-    const opacity = Math.max(0.1, 1 - dist * 0.15);
+    const opacity = 1;
     const isSelected = i === currentIdx;
     // 优先用 frontmatter date（拍摄/发生日期），没有则退化为内容创建时间
     const date = new Date(album.date ?? album.createdAt);
@@ -420,10 +394,10 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
       >
         <div style={{
           flexShrink: 0,
-          width: isSelected ? 7 : 4, height: isSelected ? 7 : 4,
+          width: 5, height: 5,
           borderRadius: '50%',
-          backgroundColor: isSelected ? '#fff' : 'rgba(255,255,255,0.3)',
-          transition: 'all 0.3s',
+          backgroundColor: isSelected ? '#fff' : 'rgba(255,255,255,0.35)',
+          transition: 'background-color 0.3s',
         }} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
           <span style={{
@@ -455,6 +429,7 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
     >
       {/* motion.div 驱动整体滑动，选中项永远在垂直中心 */}
       <motion.div
+        initial={false}
         animate={{ y: listY }}
         transition={{ duration: 0.6, ease: appleEase }}
         style={{ position: 'absolute', top: '50%', left: 0, right: 0 }}
@@ -535,7 +510,6 @@ export default function GalleryPage() {
 
   // 当前展示的照片索引（控制 PhotoCarousel 和 ← → 键导航）
   const [photoIdx, setPhotoIdx] = useState(0);
-  const [photoDir, setPhotoDir] = useState(0);
 
   // 已加载的详情缓存，避免重复请求（key: post id）
   const detailCache = useRef<Map<string, GalleryPublicDetail>>(new Map());
@@ -588,7 +562,6 @@ export default function GalleryPage() {
   // 当前相册切换时，照片索引和方向归零
   useEffect(() => {
     setPhotoIdx(0);
-    setPhotoDir(0);
   }, [postIdx]);
 
   // 派生当前照片（currentDetail 未就绪时为 null）
@@ -599,7 +572,6 @@ export default function GalleryPage() {
     if (!currentDetail) return;
     const total = currentDetail.photos.length;
     if (total <= 1) return;
-    setPhotoDir(dir);
     setPhotoIdx((prev) => {
       const next = prev + dir;
       /* 到头就停，不循环 */
@@ -678,7 +650,6 @@ export default function GalleryPage() {
           <PhotoCarousel
             photos={currentDetail?.photos ?? []}
             photoIdx={photoIdx}
-            direction={photoDir}
             onNavigate={navigatePhoto}
           />
 
@@ -692,7 +663,7 @@ export default function GalleryPage() {
         </div>
       </div>
 
-      {/* 右侧时间轴 — ArcTimeline，fixed 脱离文档流 */}
+      {/* 右侧时间轴 */}
       <ArcTimeline
         albums={posts}
         currentIdx={postIdx}
