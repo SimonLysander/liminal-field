@@ -81,9 +81,8 @@ export function MetadataFields({ date, location, onDateChange, onLocationChange 
 
 /* ─── 照片级：EXIF 拍摄参数 ─── */
 
-const PHOTO_FIELDS: { key: string; label: string; placeholder: string }[] = [
+const TEXT_FIELDS: { key: string; label: string; placeholder: string }[] = [
   { key: 'device', label: '设备', placeholder: 'GR III' },
-  { key: 'shotAt', label: '拍摄时间', placeholder: '2024-03-15 14:30' },
   { key: 'aperture', label: '光圈', placeholder: 'f/2.8' },
   { key: 'shutter', label: '快门', placeholder: '1/250s' },
   { key: 'iso', label: 'ISO', placeholder: '400' },
@@ -96,6 +95,8 @@ interface PhotoMetadataFieldsProps {
 }
 
 export function PhotoMetadataFields({ tags, onChange }: PhotoMetadataFieldsProps) {
+  const [shotAtCalOpen, setShotAtCalOpen] = useState(false);
+
   const handleChange = (key: string, value: string) => {
     const next = { ...tags };
     if (value) {
@@ -106,9 +107,45 @@ export function PhotoMetadataFields({ tags, onChange }: PhotoMetadataFieldsProps
     onChange(next);
   };
 
+  const shotAtDate = tags.shotAt ? new Date(tags.shotAt + 'T00:00:00') : undefined;
+
   return (
     <div className="grid grid-cols-3 gap-x-3 gap-y-0.5">
-      {PHOTO_FIELDS.map(({ key, label, placeholder }) => (
+      {/* 拍摄时间：Calendar 选择器 */}
+      <FieldGroup label="拍摄时间">
+        <Popover open={shotAtCalOpen} onOpenChange={setShotAtCalOpen}>
+          <PopoverTrigger asChild>
+            <button
+              className="metadata-input flex w-full items-center gap-1.5 text-left"
+              style={{ color: tags.shotAt ? 'var(--ink)' : 'var(--ink-ghost)', fontSize: 'var(--text-sm)' }}
+            >
+              <CalendarDays size={12} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)', flexShrink: 0 }} />
+              {tags.shotAt ?? '选择'}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={shotAtDate}
+              onSelect={(day) => {
+                if (day) {
+                  const yyyy = day.getFullYear();
+                  const mm = String(day.getMonth() + 1).padStart(2, '0');
+                  const dd = String(day.getDate()).padStart(2, '0');
+                  handleChange('shotAt', `${yyyy}-${mm}-${dd}`);
+                } else {
+                  handleChange('shotAt', '');
+                }
+                setShotAtCalOpen(false);
+              }}
+              defaultMonth={shotAtDate}
+            />
+          </PopoverContent>
+        </Popover>
+      </FieldGroup>
+
+      {/* 其余文本字段 */}
+      {TEXT_FIELDS.map(({ key, label, placeholder }) => (
         <FieldGroup key={key} label={label}>
           <Input
             type="text"

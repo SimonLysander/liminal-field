@@ -219,14 +219,8 @@ export function PhotoEditModal({
           className="flex flex-1 flex-col"
           style={{ background: 'var(--paper)' }}
         >
-          {/* Header */}
-          <div className="flex items-center justify-between px-5 pt-5 pb-3">
-            <span
-              className="text-sm font-semibold"
-              style={{ color: 'var(--ink)' }}
-            >
-              照片详情
-            </span>
+          {/* Header — 只保留关闭按钮，不要标题 */}
+          <div className="flex items-center justify-end px-5 pt-4 pb-2">
             <button
               className="flex h-6 w-6 items-center justify-center rounded-md transition-colors duration-150"
               style={{ color: 'var(--ink-ghost)' }}
