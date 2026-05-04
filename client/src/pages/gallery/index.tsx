@@ -413,7 +413,7 @@ function BlurBackground({ photoUrl }: { photoUrl: string | null }) {
             backgroundImage: `url(${photoUrl})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
-            filter: 'blur(60px) saturate(1.4) brightness(var(--blur-brightness, 0.55))',
+            filter: 'blur(30px) saturate(1.3) brightness(var(--blur-brightness, 0.55))',
           }}
         />
       )}
