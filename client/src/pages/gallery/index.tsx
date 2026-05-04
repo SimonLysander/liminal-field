@@ -406,7 +406,7 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
  */
 function BlurBackground({ photoUrl }: { photoUrl: string | null }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none' }}>
+    <div style={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none' }}>
       {photoUrl && (
         <motion.div
           key={photoUrl}
