@@ -278,118 +278,114 @@ interface ArcTimelineProps {
   onSelect: (idx: number) => void;
 }
 
+/** 固定 6+1+6 = 13 个槽位，不够的用空心圆点补齐 */
+const SLOTS_ABOVE = 6;
+const SLOTS_BELOW = 6;
+const SLOT_H = 48;
+const ARC_K = 1.2;
+
 function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
-  // 整个列表向上平移，使选中项中心对齐容器 50%
-  const listY = -(currentIdx * 48 + 24);
+  // 构建 13 个槽位：slotOffset = -6 到 +6，0 = 选中项
+  const slots: Array<{ offset: number; albumIdx: number | null }> = [];
+  for (let offset = -SLOTS_ABOVE; offset <= SLOTS_BELOW; offset++) {
+    const albumIdx = currentIdx + offset;
+    slots.push({
+      offset,
+      albumIdx: albumIdx >= 0 && albumIdx < albums.length ? albumIdx : null,
+    });
+  }
 
   return (
     <div
       style={{
         position: 'absolute',
-        right: 0,
-        top: 0,
-        bottom: 0,
-        width: 140,
-        zIndex: 20,
-        overflow: 'hidden',
-        pointerEvents: 'none', // 容器透传鼠标事件，不遮挡底层
+        right: 0, top: 0, bottom: 0,
+        width: 140, zIndex: 20, overflow: 'hidden',
+        pointerEvents: 'none',
+        display: 'flex', alignItems: 'center',
       }}
     >
-      {/* 内层列表：恢复点击；motion.div 驱动整体 y 轴滑动 */}
-      <motion.div
-        animate={{ y: listY }}
-        transition={{ duration: 0.4, ease: appleEase }}
-        style={{
-          position: 'absolute',
-          top: '50%',
-          left: 0,
-          right: 0,
-          pointerEvents: 'auto',
-        }}
-      >
-        {albums.map((album, i) => {
-          const dist = Math.abs(i - currentIdx);
-          const isSelected = i === currentIdx;
+      {/* 固定高度列表，选中项永远在正中间 */}
+      <div style={{ pointerEvents: 'auto', width: '100%' }}>
+        {slots.map(({ offset, albumIdx }) => {
+          const dist = Math.abs(offset);
+          const arcX = dist * dist * ARC_K;
+          const opacity = Math.max(0.1, 1 - dist * 0.15);
+          const isSelected = offset === 0;
+          const album = albumIdx !== null ? albums[albumIdx] : null;
 
-          // 弧形水平偏移：dist² × 1.2，越远越向右（视觉上"拱起"）
-          const arcX = dist * dist * 1.2;
-          // 透明度：距离越远越淡，最低保留 0.12 保证可见性
-          const opacity = Math.max(0.12, 1 - dist * 0.2);
+          // 空槽位：只显示小圆点占位
+          if (!album) {
+            return (
+              <div
+                key={`placeholder-${offset}`}
+                style={{
+                  height: SLOT_H,
+                  display: 'flex', alignItems: 'center',
+                  paddingLeft: 16,
+                  transform: `translateX(${arcX}px)`,
+                  opacity: opacity * 0.3,
+                  transition: 'transform 0.4s ease, opacity 0.4s ease',
+                }}
+              >
+                <div style={{
+                  width: 3, height: 3, borderRadius: '50%',
+                  background: 'var(--ink-ghost)',
+                }} />
+              </div>
+            );
+          }
 
-          // 从 createdAt 提取 MM.DD 格式日期
           const date = new Date(album.createdAt);
-          const mm = String(date.getMonth() + 1).padStart(2, '0');
-          const dd = String(date.getDate()).padStart(2, '0');
-          const dateStr = `${mm}.${dd}`;
-
-          // 地点标签（可能不存在）
+          const dateStr = `${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
           const location = album.tags?.location ?? '';
 
           return (
             <div
               key={album.id}
-              onClick={() => onSelect(i)}
+              onClick={() => onSelect(albumIdx!)}
               style={{
-                height: 48,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                paddingLeft: 16,
+                height: SLOT_H,
+                display: 'flex', alignItems: 'center',
+                gap: 8, paddingLeft: 16,
                 cursor: 'pointer',
-                // CSS transition 处理弧形偏移和透明度，比 motion 更轻量
                 transform: `translateX(${arcX}px)`,
                 opacity,
-                transition: 'transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+                transition: 'transform 0.4s ease, opacity 0.4s ease',
               }}
             >
-              {/* 指示点：选中 7px 深色实心，未选 4px 淡色 */}
-              <div
-                style={{
-                  flexShrink: 0,
-                  width: isSelected ? 7 : 4,
-                  height: isSelected ? 7 : 4,
-                  borderRadius: '50%',
-                  backgroundColor: isSelected ? 'var(--ink)' : 'var(--ink-ghost)',
-                  transition: 'width 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94), height 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94), background-color 0.3s',
-                }}
-              />
-
-              {/* 文字区：标题 + 日期·地点 */}
+              <div style={{
+                flexShrink: 0,
+                width: isSelected ? 7 : 4,
+                height: isSelected ? 7 : 4,
+                borderRadius: '50%',
+                backgroundColor: isSelected ? 'var(--ink)' : 'var(--ink-ghost)',
+                transition: 'all 0.3s',
+              }} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-                {/* 标题：选中 12px/600，未选 11px/400 */}
-                <span
-                  style={{
-                    fontSize: isSelected ? 12 : 11,
-                    fontWeight: isSelected ? 600 : 400,
-                    color: isSelected ? 'var(--ink)' : 'var(--ink-ghost)',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    transition: 'font-size 0.3s, font-weight 0.3s, color 0.3s',
-                  }}
-                >
+                <span style={{
+                  fontSize: isSelected ? 12 : 11,
+                  fontWeight: isSelected ? 600 : 400,
+                  color: isSelected ? 'var(--ink)' : 'var(--ink-ghost)',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  transition: 'all 0.3s',
+                }}>
                   {album.title}
                 </span>
-
-                {/* 日期 · 地点：选中 ink-faded，未选 ink-ghost 半透明 */}
-                <span
-                  style={{
-                    fontSize: 9,
-                    color: isSelected ? 'var(--ink-faded)' : 'var(--ink-ghost)',
-                    opacity: isSelected ? 1 : 0.5,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    transition: 'color 0.3s, opacity 0.3s',
-                  }}
-                >
+                <span style={{
+                  fontSize: 9,
+                  color: isSelected ? 'var(--ink-faded)' : 'var(--ink-ghost)',
+                  opacity: isSelected ? 1 : 0.5,
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  transition: 'all 0.3s',
+                }}>
                   {location ? `${dateStr} · ${location}` : dateStr}
                 </span>
               </div>
             </div>
           );
         })}
-      </motion.div>
+      </div>
     </div>
   );
 }
@@ -412,11 +408,11 @@ function BlurBackground({ photoUrl }: { photoUrl: string | null }) {
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6, ease: appleEase }}
           style={{
-            width: '160%',
-            height: '160%',
+            width: '220%',
+            height: '220%',
             position: 'absolute',
-            top: '-30%',
-            left: '-30%',
+            top: '-60%',
+            left: '-60%',
             objectFit: 'cover',
             filter: 'blur(100px) saturate(1.6) brightness(var(--blur-brightness, 0.85))',
           }}
