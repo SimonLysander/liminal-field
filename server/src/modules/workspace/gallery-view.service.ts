@@ -663,23 +663,69 @@ export class GalleryViewService {
     return `${safeBaseName}-${suffix}${extension}`;
   }
 
-  /** 上传草稿照片到 MinIO，返回代理预览 URL。 */
+  /**
+   * 从图片 buffer 提取 EXIF 元数据，返回前端可直接使用的 tags 结构。
+   * JPEG/HEIC 通常包含完整 EXIF，PNG/WebP 通常没有。提取失败时返回空对象。
+   */
+  private async extractExif(buffer: Buffer): Promise<Record<string, string>> {
+    try {
+      const exifr = await import('exifr');
+      const data = await exifr.default.parse(buffer, {
+        pick: ['Make', 'Model', 'FNumber', 'ExposureTime', 'ISO', 'FocalLength', 'DateTimeOriginal', 'LensModel'],
+      });
+      if (!data) return {};
+
+      const tags: Record<string, string> = {};
+      // 设备：品牌 + 型号
+      const device = [data.Make, data.Model].filter(Boolean).join(' ').trim();
+      if (device) tags.device = device;
+      // 光圈
+      if (data.FNumber) tags.aperture = `f/${data.FNumber}`;
+      // 快门
+      if (data.ExposureTime) {
+        tags.shutter = data.ExposureTime >= 1
+          ? `${data.ExposureTime}s`
+          : `1/${Math.round(1 / data.ExposureTime)}s`;
+      }
+      // ISO
+      if (data.ISO) tags.iso = String(data.ISO);
+      // 焦距
+      if (data.FocalLength) tags.focalLength = `${Math.round(data.FocalLength)}mm`;
+      // 拍摄时间
+      if (data.DateTimeOriginal) {
+        const d = new Date(data.DateTimeOriginal);
+        if (!isNaN(d.getTime())) {
+          tags.shotAt = d.toISOString().slice(0, 10);
+        }
+      }
+      // 镜头
+      if (data.LensModel) tags.lens = data.LensModel;
+
+      return tags;
+    } catch {
+      return {};
+    }
+  }
+
+  /** 上传草稿照片到 MinIO，提取 EXIF 元数据，返回代理预览 URL + 自动提取的 tags。 */
   async uploadDraftPhoto(
     contentItemId: string,
     input: { originalFileName: string; contentType: string; buffer: Buffer },
-  ): Promise<{ url: string; fileName: string; size: number }> {
+  ): Promise<{ url: string; fileName: string; size: number; exif: Record<string, string> }> {
     await this.contentService.assertContentItemExists(contentItemId);
     const fileName = this.sanitizeFileName(input.originalFileName);
-    await this.minioService.uploadDraftAsset(
-      contentItemId,
-      fileName,
-      input.buffer,
-      input.contentType,
-    );
+
+    // 并行：上传 MinIO + 提取 EXIF
+    const [, exif] = await Promise.all([
+      this.minioService.uploadDraftAsset(contentItemId, fileName, input.buffer, input.contentType),
+      this.extractExif(input.buffer),
+    ]);
+
     return {
       url: `/api/v1/spaces/gallery/items/${contentItemId}/draft-assets/${fileName}`,
       fileName,
       size: input.buffer.byteLength,
+      exif,
     };
   }
 

@@ -438,11 +438,11 @@ export const galleryApi = {
   remove: (id: string) =>
     request<void>(`/spaces/gallery/items/${id}`, { method: 'DELETE' }),
 
-  /** 上传照片到 MinIO 草稿存储，返回代理预览 URL。 */
+  /** 上传照片到 MinIO 草稿存储，返回代理预览 URL + 自动提取的 EXIF。 */
   uploadPhoto: (id: string, file: File) => {
     const formData = new FormData();
     formData.append('file', file);
-    return request<{ url: string; fileName: string; size: number }>(
+    return request<{ url: string; fileName: string; size: number; exif: Record<string, string> }>(
       `/spaces/gallery/items/${id}/draft-assets`,
       { method: 'POST', body: formData },
     );

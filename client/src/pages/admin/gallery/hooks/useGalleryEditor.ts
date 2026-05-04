@@ -253,13 +253,14 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
       );
       setPhotos((prev) => {
         // id 用 fileName 作为本地唯一键，与 buildSavePayload 保持一致
+        // 后端返回的 exif 自动作为初始 tags，让用户上传后立即看到拍摄参数
         const appended: LocalEditorPhoto[] = results.map((r) => ({
           id: r.fileName,
           url: r.url,
           fileName: r.fileName,
           size: r.size,
           caption: '',
-          tags: {},
+          tags: r.exif,
         }));
         return [...prev, ...appended];
       });
