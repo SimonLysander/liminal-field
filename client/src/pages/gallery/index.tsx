@@ -21,6 +21,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
 import { galleryApi } from '@/services/workspace';
 import type { GalleryPhoto, GalleryPost, GalleryPostDetail } from '@/services/workspace';
@@ -405,8 +406,8 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
  * 即使纯白照片，叠加后也足够暗，白色文字始终可读。
  */
 function BlurBackground({ photoUrl }: { photoUrl: string | null }) {
-  return (
-    <div style={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none' }}>
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none' }}>
       {photoUrl && (
         <motion.div
           key={photoUrl}
@@ -425,13 +426,20 @@ function BlurBackground({ photoUrl }: { photoUrl: string | null }) {
       )}
       {/* 层 2：暗色蒙版兜底 */}
       <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)' }} />
-    </div>
+    </div>,
+    document.body,
   );
 }
 
 // ─── GalleryPage ──────────────────────────────────────────────────────────────
 
 export default function GalleryPage() {
+  // gallery 沉浸模式：给 body 和 layout root 加 class，让模糊层透出来
+  useEffect(() => {
+    document.body.classList.add('gallery-immersive');
+    return () => { document.body.classList.remove('gallery-immersive'); };
+  }, []);
+
   // 相册列表（轻量，首次加载）
   const [posts, setPosts] = useState<GalleryPost[]>([]);
   // 当前展示的相册详情（含照片数组）
@@ -545,7 +553,7 @@ export default function GalleryPage() {
   }
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: '#0a0a0a' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
       {/* 全屏模糊背景 — zIndex: 0，其他内容叠在上方 */}
       <BlurBackground photoUrl={currentPhoto?.url ?? null} />
 

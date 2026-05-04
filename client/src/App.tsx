@@ -90,14 +90,13 @@ function MainLayout() {
   const location = useLocation();
 
   return (
-    <div className="flex h-screen" style={{ background: 'var(--paper)' }}>
+    <div data-layout-root className="relative z-[1] flex h-screen" style={{ background: 'var(--paper)' }}>
       {/* Sidebar — floating grey card; see Sidebar.tsx for styling details */}
       <Sidebar />
 
       {/* Main content — flat white, no card styling (left card / right flat pattern) */}
       <main
         className="relative z-0 flex flex-1 flex-col overflow-hidden"
-        style={{ background: 'var(--paper)' }}
       >
         <Topbar />
 

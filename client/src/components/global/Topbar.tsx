@@ -2,10 +2,10 @@ import { useTheme } from '@/hooks/use-theme';
 import { Sun, Moon } from 'lucide-react';
 
 /**
- * Topbar — Apple Liquid Glass 风格胶囊
+ * Topbar — 右上角浮动胶囊按钮
  *
- * 右上角浮动，不占布局空间（pointer-events:none + auto）。
- * 参考 iOS 26 toolbar：backdrop-filter blur + 极浅白底 + 白色半透明边框。
+ * 配色跟随设计系统（--shelf / --separator / --ink-faded），
+ * 和 Sidebar 视觉一致。
  */
 export default function Topbar() {
   const { theme, setTheme } = useTheme();
@@ -19,9 +19,9 @@ export default function Topbar() {
         style={{
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
-          background: 'rgba(255,255,255,0.1)',
-          border: '0.5px solid rgba(255,255,255,0.2)',
-          boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+          background: 'var(--sidebar-bg)',
+          border: '0.5px solid var(--separator)',
+          boxShadow: 'var(--shadow-sm)',
           color: 'var(--ink-faded)',
         }}
         onClick={() =>
