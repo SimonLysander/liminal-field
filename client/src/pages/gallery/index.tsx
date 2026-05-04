@@ -222,11 +222,13 @@ function BottomBar({
     <div style={{
       display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center', gap: 6,
-      flexShrink: 0, padding: '8px 40px 18px',
+      flexShrink: 0, padding: '10px 40px 18px',
+      /* 底部局部 scrim：从下往上渐变暗色 */
+      background: 'linear-gradient(transparent, rgba(0,0,0,0.3))',
     }}>
       {caption && (
         <span style={{
-          fontSize: 13, color: 'var(--caption-color)',
+          fontSize: 13, color: 'rgba(255,255,255,0.65)',
           textAlign: 'center', maxWidth: 500,
           lineHeight: 1.6, fontStyle: 'italic',
         }}>
@@ -242,7 +244,7 @@ function BottomBar({
                 width: i === photoIdx ? 16 : 5,
                 height: 5,
                 borderRadius: i === photoIdx ? 3 : '50%',
-                background: i === photoIdx ? 'var(--ink)' : 'var(--ink-ghost)',
+                background: i === photoIdx ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.25)',
                 transition: 'all 0.25s',
               }}
             />
@@ -304,7 +306,7 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
         transform: `translateX(${arcX}px)`, opacity,
         transition: 'transform 0.4s ease, opacity 0.4s ease',
       }}>
-        <div style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--ink-ghost)' }} />
+        <div style={{ width: 4, height: 4, borderRadius: '50%', background: 'rgba(255,255,255,0.25)' }} />
       </div>
     );
   };
@@ -334,20 +336,19 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
           flexShrink: 0,
           width: isSelected ? 7 : 4, height: isSelected ? 7 : 4,
           borderRadius: '50%',
-          backgroundColor: isSelected ? 'var(--ink)' : 'var(--ink-ghost)',
+          backgroundColor: isSelected ? '#fff' : 'rgba(255,255,255,0.3)',
           transition: 'all 0.3s',
         }} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
           <span style={{
             fontSize: isSelected ? 12 : 11, fontWeight: isSelected ? 600 : 400,
-            color: isSelected ? 'var(--ink)' : 'var(--ink-ghost)',
+            color: isSelected ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)',
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             transition: 'all 0.3s',
           }}>{album.title}</span>
           <span style={{
             fontSize: 9,
-            color: isSelected ? 'var(--ink-faded)' : 'var(--ink-ghost)',
-            opacity: isSelected ? 1 : 0.5,
+            color: isSelected ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.2)',
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             transition: 'all 0.3s',
           }}>{location ? `${dateStr} · ${location}` : dateStr}</span>
@@ -361,7 +362,9 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
       style={{
         position: 'absolute',
         right: 0, top: 0, bottom: 0,
-        width: 140, zIndex: 20, overflow: 'hidden',
+        width: 160, zIndex: 20, overflow: 'hidden',
+        /* 局部 scrim：只在时间线区域加暗色渐变，不影响整体沉浸 */
+        background: 'linear-gradient(to right, transparent, rgba(0,0,0,0.35))',
       }}
     >
       {/* motion.div 驱动整体滑动，选中项永远在垂直中心 */}
@@ -408,7 +411,7 @@ function BlurBackground({ photoUrl }: { photoUrl: string | null }) {
             backgroundImage: `url(${photoUrl})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
-            filter: 'blur(18px) saturate(1.2) brightness(var(--blur-brightness, 0.55))',
+            filter: 'blur(18px) saturate(1.2)',
           }}
         />
       )}
