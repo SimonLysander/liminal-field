@@ -62,6 +62,7 @@ export interface GalleryEditorActions {
   updateProse: (value: string) => void;
   reorderPhotos: (fromIndex: number, toIndex: number) => void;
   updateCaption: (photoId: string, caption: string) => void;
+  updatePhotoTags: (photoId: string, tags: Record<string, string>) => void;
   uploadPhotos: (files: File[]) => Promise<void>;
   deletePhoto: (photoId: string) => void;
   setCover: (photoId: string) => void;
@@ -119,7 +120,8 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
 
         setTitle(editorState.title);
         setProse(editorState.prose);
-        setDate(editorState.date);
+        // date 默认今天（新建帖子或未设置日期时）
+        setDate(editorState.date ?? new Date().toISOString().slice(0, 10));
         setLocation(editorState.location);
         setCoverPhotoFileName(editorState.cover);
         // id 用 file（文件名）作为本地唯一键，与 buildSavePayload 中的 p.fileName 对齐
@@ -206,6 +208,13 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
   const updateCaption = useCallback((photoId: string, caption: string) => {
     setPhotos((prev) =>
       prev.map((p) => (p.id === photoId ? { ...p, caption } : p)),
+    );
+    setSaveStatus('dirty');
+  }, []);
+
+  const updatePhotoTags = useCallback((photoId: string, tags: Record<string, string>) => {
+    setPhotos((prev) =>
+      prev.map((p) => (p.id === photoId ? { ...p, tags } : p)),
     );
     setSaveStatus('dirty');
   }, []);
@@ -320,6 +329,7 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     updateProse,
     reorderPhotos,
     updateCaption,
+    updatePhotoTags,
     uploadPhotos,
     deletePhoto,
     setCover,

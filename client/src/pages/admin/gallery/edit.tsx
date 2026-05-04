@@ -18,7 +18,7 @@ import { LoadingState } from '@/components/LoadingState';
 import { PhotoGrid } from './components/PhotoGrid';
 import { PhotoEditModal } from './components/PhotoEditModal';
 import { GalleryProseEditor } from './components/GalleryProseEditor';
-import { DateInput, LocationInput } from './components/LocationSelect';
+import { MetadataFields } from './components/LocationSelect';
 import { CommitModal } from './components/CommitModal';
 import { useGalleryEditor } from './hooks/useGalleryEditor';
 
@@ -66,6 +66,7 @@ export default function GalleryEditPage() {
     updateProse,
     reorderPhotos,
     updateCaption,
+    updatePhotoTags,
     uploadPhotos,
     deletePhoto,
     setCover,
@@ -184,17 +185,19 @@ export default function GalleryEditPage() {
             onUpload={(files) => void uploadPhotos(files)}
           />
 
+          {/* 日期 + 地点：网格下方 */}
+          <MetadataFields
+            date={date}
+            location={location}
+            onDateChange={updateDate}
+            onLocationChange={updateLocation}
+          />
+
           {/* 随笔编辑器 */}
           <GalleryProseEditor
             initialMarkdown={prose}
             onChange={updateProse}
           />
-
-          {/* 日期 + 地点输入，并排展示 */}
-          <div className="flex items-center gap-2">
-            <DateInput value={date} onChange={updateDate} />
-            <LocationInput value={location} onChange={updateLocation} />
-          </div>
         </div>
       </div>
 
@@ -205,6 +208,7 @@ export default function GalleryEditPage() {
         initialIndex={modalPhotoIndex}
         onClose={() => setModalOpen(false)}
         onCaptionChange={updateCaption}
+        onTagsChange={updatePhotoTags}
         onSetCover={setCover}
         onDelete={deletePhoto}
       />

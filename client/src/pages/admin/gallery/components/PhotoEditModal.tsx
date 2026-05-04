@@ -16,6 +16,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { PhotoMetadataFields } from './LocationSelect';
 // ---------- Props ----------
 
 /** 照片编辑弹窗所需的照片数据（需要 size 用于文件信息展示） */
@@ -34,6 +35,7 @@ interface PhotoEditModalProps {
   initialIndex: number;
   onClose: () => void;
   onCaptionChange: (photoId: string, caption: string) => void;
+  onTagsChange: (photoId: string, tags: Record<string, string>) => void;
   onSetCover: (photoId: string) => void;
   onDelete: (photoId: string) => void;
 }
@@ -59,6 +61,7 @@ export function PhotoEditModal({
   initialIndex,
   onClose,
   onCaptionChange,
+  onTagsChange,
   onSetCover,
   onDelete,
 }: PhotoEditModalProps) {
@@ -232,6 +235,14 @@ export function PhotoEditModal({
             >
               {photo.fileName} · {formatFileSize(photo.size)}
             </span>
+          </div>
+
+          {/* 拍摄参数 — caption 上方 */}
+          <div className="px-5 pb-3">
+            <PhotoMetadataFields
+              tags={photo.tags}
+              onChange={(tags) => onTagsChange(photo.id, tags)}
+            />
           </div>
 
           {/* Caption 区域 */}

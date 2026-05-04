@@ -813,6 +813,28 @@ button:active:not(:disabled):not(.nav-item),
   .hljs-deletion { color: #e06c75; background: #3a2a2a; }
 }
 
+/* ── Metadata input — Apple Photos 信息面板风格 ──
+ * 覆盖 shadcn Input 默认样式：去掉 border/ring/shadow，
+ * 看起来像纯文本，focus 时极淡底色表示可编辑。 */
+.metadata-input {
+  height: auto !important;
+  font-size: var(--text-sm) !important;
+  color: var(--ink) !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 3px 4px !important;
+  box-shadow: none !important;
+  transition: background 0.15s;
+}
+.metadata-input:focus,
+.metadata-input:focus-visible {
+  background: var(--shelf) !important;
+  outline: none !important;
+  ring: none !important;
+  box-shadow: none !important;
+}
+
 /* ── Gallery 沉浸模式 ──
  * gallery 页挂载时给 body 加 .gallery-immersive，
  * 让模糊层（portal 到 body）透过 layout 背景。 */
