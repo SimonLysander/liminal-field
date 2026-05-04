@@ -2,42 +2,36 @@ import { useTheme } from '@/hooks/use-theme';
 import { Sun, Moon } from 'lucide-react';
 
 /**
- * Topbar — 胶囊式浮动工具栏
+ * Topbar — Apple Liquid Glass 风格胶囊
  *
- * 不再是全宽白条，改为右上角浮动的圆角胶囊，
- * 半透明背景 + backdrop-filter 毛玻璃，
- * 在 gallery 等沉浸式页面不破坏氛围。
+ * 右上角浮动，不占布局空间（pointer-events:none + auto）。
+ * 参考 iOS 26 toolbar：backdrop-filter blur + 极浅白底 + 白色半透明边框。
  */
 export default function Topbar() {
   const { theme, setTheme } = useTheme();
 
   return (
     <header
-      className="pointer-events-none relative z-[1] flex shrink-0 items-center justify-end px-4"
-      style={{ height: 48 }}
+      className="pointer-events-none absolute right-3 top-3 z-10 flex items-center justify-end"
     >
-      {/* 胶囊容器 */}
-      <div
-        className="pointer-events-auto flex items-center gap-1 rounded-full px-1 transition-all duration-200"
+      <button
+        className="pointer-events-auto flex h-8 w-8 items-center justify-center rounded-full transition-all duration-200 hover:scale-110 active:scale-95"
         style={{
-          background: 'color-mix(in srgb, var(--shelf) 80%, transparent)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
-          border: '0.5px solid var(--separator)',
+          background: 'rgba(255,255,255,0.1)',
+          border: '0.5px solid rgba(255,255,255,0.2)',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+          color: 'var(--ink-faded)',
         }}
+        onClick={() =>
+          setTheme(theme === 'daylight' ? 'midnight' : 'daylight')
+        }
+        aria-label="切换主题"
       >
-        <button
-          className="hover-shelf hover-ink flex h-7 w-7 items-center justify-center rounded-full transition-all duration-200"
-          style={{ color: 'var(--ink-faded)' }}
-          onClick={() =>
-            setTheme(theme === 'daylight' ? 'midnight' : 'daylight')
-          }
-          aria-label="切换主题"
-        >
-          <Sun size={14} strokeWidth={1.5} className="theme-icon-light" />
-          <Moon size={14} strokeWidth={1.5} className="theme-icon-dark" />
-        </button>
-      </div>
+        <Sun size={14} strokeWidth={1.5} className="theme-icon-light" />
+        <Moon size={14} strokeWidth={1.5} className="theme-icon-dark" />
+      </button>
     </header>
   );
 }
