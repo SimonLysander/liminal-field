@@ -20,7 +20,8 @@
  *   └── BottomBar          — 底部相册信息条（占位）
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { galleryApi } from '@/services/workspace';
@@ -448,35 +449,54 @@ export default function GalleryPage() {
     return () => { document.body.classList.remove('gallery-immersive'); };
   }, []);
 
+  const [searchParams, setSearchParams] = useSearchParams();
+
   // 相册列表（轻量，首次加载）
   const [posts, setPosts] = useState<GalleryPublicListItem[]>([]);
   // 当前展示的相册详情（含照片数组）
   const [currentDetail, setCurrentDetail] = useState<GalleryPublicDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // 当前选中的相册索引（控制 ArcTimeline 高亮和 ↑↓ 键导航）
-  const [postIdx, setPostIdx] = useState(0);
+  // URL 驱动的选中相册 ID，支持直链分享和刷新保留
+  const urlPostId = searchParams.get('post');
+
+  // 从 posts 列表派生当前索引
+  const postIdx = useMemo(() => {
+    if (!urlPostId || posts.length === 0) return 0;
+    const idx = posts.findIndex((p) => p.id === urlPostId);
+    return idx >= 0 ? idx : 0;
+  }, [urlPostId, posts]);
+
   // 当前展示的照片索引（控制 PhotoCarousel 和 ← → 键导航）
   const [photoIdx, setPhotoIdx] = useState(0);
   const [photoDir, setPhotoDir] = useState(0);
-  // 详情加载状态（PhotoCarousel、BottomBar 等子组件实现后消费）
-  const [_detailLoading, setDetailLoading] = useState(false);
 
   // 已加载的详情缓存，避免重复请求（key: post id）
   const detailCache = useRef<Map<string, GalleryPublicDetail>>(new Map());
+
+  /** 切换相册：更新 URL 参数 */
+  const selectPost = useCallback((idx: number) => {
+    const post = posts[idx];
+    if (post) {
+      setSearchParams({ post: post.id }, { replace: true });
+    }
+  }, [posts, setSearchParams]);
 
   // ── 初始加载相册列表 ─────────────────────────────────────────────────────────
   useEffect(() => {
     galleryApi.listPublished()
       .then((listed) => {
         setPosts(listed);
+        // 无 URL 参数时默认选中第一个
+        if (!searchParams.get('post') && listed.length > 0) {
+          setSearchParams({ post: listed[0].id }, { replace: true });
+        }
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, []);
 
   // ── 选中相册后加载详情 ────────────────────────────────────────────────────────
-  // posts 列表加载完成后触发首次详情加载；postIdx 变化时也触发
   useEffect(() => {
     if (posts.length === 0) return;
 
@@ -491,14 +511,12 @@ export default function GalleryPage() {
     }
 
     // 未命中：加载并写入缓存（展示端用 getPublicDetail）
-    setDetailLoading(true);
     galleryApi.getPublicDetail(post.id)
       .then((detail) => {
         detailCache.current.set(post.id, detail);
         setCurrentDetail(detail);
-        setDetailLoading(false);
       })
-      .catch(() => setDetailLoading(false));
+      .catch(() => {});
   }, [posts, postIdx]);
 
   // 当前相册切换时，照片索引和方向归零
@@ -527,15 +545,10 @@ export default function GalleryPage() {
   // ── 导航：↑↓ 切换相册 ─────────────────────────────────────────────────────────
   const navigatePost = useCallback((dir: number) => {
     if (posts.length <= 1) return;
-    setPhotoIdx(0);
-    setPhotoDir(0);
-    setPostIdx((prev) => {
-      const next = prev + dir;
-      if (next < 0) return posts.length - 1;
-      if (next >= posts.length) return 0;
-      return next;
-    });
-  }, [posts.length]);
+    const next = postIdx + dir;
+    const wrapped = next < 0 ? posts.length - 1 : next >= posts.length ? 0 : next;
+    selectPost(wrapped);
+  }, [posts.length, postIdx, selectPost]);
 
   // ── 键盘导航 ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -647,7 +660,7 @@ export default function GalleryPage() {
       <ArcTimeline
         albums={posts}
         currentIdx={postIdx}
-        onSelect={(i) => { setPostIdx(i); setPhotoIdx(0); setPhotoDir(0); }}
+        onSelect={(i) => { selectPost(i); }}
       />
     </div>
   );
