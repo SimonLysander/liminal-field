@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="daylight">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gallery Arc Mockup</title>
+<style>
+  /* ── Design Tokens (from Liminal Field) ── */
+  [data-theme="daylight"] {
+    --paper: #FFFFFF;
+    --paper-dark: #F5F5F7;
+    --shelf: rgba(0,0,0,0.04);
+    --paper-white: #FFFFFF;
+    --ink: #1D1D1F;
+    --ink-light: #424245;
+    --ink-faded: #6E6E73;
+    --ink-ghost: #AEAEB2;
+    --separator: rgba(0,0,0,0.08);
+    --shadow-md: 0 8px 24px rgba(0,0,0,0.12);
+    --shadow-sm: 0 2px 8px rgba(0,0,0,0.08);
+    --radius-md: 8px;
+  }
+  [data-theme="midnight"] {
+    --paper: #161617;
+    --paper-dark: #1C1C1E;
+    --shelf: rgba(255,255,255,0.06);
+    --paper-white: #232326;
+    --ink: #F5F5F7;
+    --ink-light: #D1D1D6;
+    --ink-faded: #98989D;
+    --ink-ghost: #48484A;
+    --separator: rgba(255,255,255,0.08);
+    --shadow-md: 0 8px 24px rgba(0,0,0,0.4);
+    --shadow-sm: 0 2px 8px rgba(0,0,0,0.3);
+    --radius-md: 8px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .gallery-layout {
+    display: flex;
+    height: 100vh;
+    align-items: stretch;
+  }
+
+  /* ── 主内容区 ── */
+  .gallery-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* ── 宝丽来卡片 ── */
+  .polaroid {
+    background: var(--paper-white);
+    padding: 8px 8px 36px;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    /* 3D 翻书透视 */
+    perspective: 1200px;
+    transform-style: preserve-3d;
+  }
+
+  .photo-viewport {
+    width: min(52vh, 480px);
+    aspect-ratio: 4/3;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--paper-dark);
+    position: relative;
+    transform-style: preserve-3d;
+  }
+
+  .photo-slide {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backface-visibility: hidden;
+    /* 弧形翻页的核心 transform：右侧为翻转轴 */
+    transform-origin: right center;
+    transition: transform 0.5s cubic-bezier(0.25, 0.1, 0.25, 1),
+                opacity 0.5s cubic-bezier(0.25, 0.1, 0.25, 1);
+  }
+
+  .photo-slide img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  /* 翻页状态 */
+  .photo-slide.current {
+    transform: rotateY(0deg);
+    opacity: 1;
+    z-index: 2;
+  }
+  .photo-slide.prev {
+    transform: rotateY(-35deg) scale(0.95);
+    opacity: 0;
+    z-index: 1;
+  }
+  .photo-slide.next {
+    transform: rotateY(35deg) scale(0.95);
+    opacity: 0;
+    z-index: 1;
+  }
+
+  .polaroid-caption {
+    text-align: center;
+    padding: 10px 4px 0;
+    color: var(--ink-faded);
+    font-size: 14px;
+    letter-spacing: -0.01em;
+  }
+
+  .post-description {
+    margin-top: 20px;
+    text-align: center;
+    color: var(--ink-light);
+    font-size: 14px;
+    line-height: 1.6;
+    max-width: 400px;
+    opacity: 0;
+    transform: translateY(8px);
+    animation: fadeUp 0.4s 0.15s ease forwards;
+  }
+
+  @keyframes fadeUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* 照片指示器 */
+  .photo-dots {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 4px;
+    z-index: 10;
+  }
+  .photo-dot {
+    height: 4px;
+    border-radius: 2px;
+    transition: all 0.25s ease;
+    background: rgba(255,255,255,0.4);
+    width: 4px;
+  }
+  .photo-dot.active {
+    width: 14px;
+    background: #fff;
+  }
+
+  /* 左右箭头 */
+  .nav-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.25);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 10;
+    border: none;
+    user-select: none;
+  }
+  .photo-viewport:hover .nav-arrow { opacity: 0.5; }
+  .nav-arrow:hover { opacity: 1 !important; }
+  .nav-arrow.left { left: 10px; }
+  .nav-arrow.right { right: 10px; }
+
+  /* ── 右侧弧形时间线 ── */
+  .timeline-rail {
+    width: 88px;
+    flex-shrink: 0;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .timeline-scroll {
+    flex: 1;
+    overflow-y: auto;
+    scrollbar-width: none;
+    position: relative;
+  }
+  .timeline-scroll::-webkit-scrollbar { display: none; }
+
+  .timeline-inner {
+    position: relative;
+    padding: 40vh 0;
+  }
+
+  /* SVG 弧线 — 绝对定位在背景层 */
+  .timeline-arc-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .timeline-arc-path {
+    fill: none;
+    stroke: var(--separator);
+    stroke-width: 1;
+  }
+
+  /* 时间线节点 */
+  .timeline-tick {
+    position: relative;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    border: none;
+    background: none;
+    padding: 0;
+    width: 100%;
+    transition: all 0.2s ease;
+  }
+
+  .tick-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--ink-ghost);
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    flex-shrink: 0;
+    position: relative;
+    z-index: 2;
+  }
+  .timeline-tick.active .tick-dot {
+    width: 9px;
+    height: 9px;
+    background: var(--ink);
+  }
+
+  .tick-label {
+    margin-left: 8px;
+    font-size: 10px;
+    color: var(--ink-ghost);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+    position: relative;
+    z-index: 2;
+  }
+  .timeline-tick.active .tick-label {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  /* ── 主题切换 ── */
+  .theme-toggle {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid var(--separator);
+    background: var(--paper);
+    color: var(--ink-faded);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    z-index: 100;
+    transition: all 0.2s;
+  }
+  .theme-toggle:hover { color: var(--ink); }
+
+  /* ── 方案标签 ── */
+  .variant-label {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    font-size: 11px;
+    color: var(--ink-ghost);
+    z-index: 100;
+    letter-spacing: 0.05em;
+  }
+</style>
+</head>
+<body>
+
+<div class="variant-label">GALLERY ARC — MOCKUP</div>
+<button class="theme-toggle" onclick="toggleTheme()">◑</button>
+
+<div class="gallery-layout">
+  <!-- 主内容区 -->
+  <div class="gallery-main" id="galleryMain">
+    <div class="polaroid">
+      <div class="photo-viewport" id="photoViewport">
+        <!-- 照片层（JS 动态生成） -->
+      </div>
+      <div class="polaroid-caption" id="caption">加载中…</div>
+    </div>
+    <div class="post-description" id="description"></div>
+  </div>
+
+  <!-- 右侧弧形时间线 -->
+  <div class="timeline-rail">
+    <div class="timeline-scroll" id="timelineScroll">
+      <div class="timeline-inner" id="timelineInner">
+        <svg class="timeline-arc-svg" id="arcSvg" preserveAspectRatio="none"></svg>
+        <!-- JS 动态生成 ticks -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Mock 数据 ──
+const POSTS = [
+  { id: 1, title: '胡同里的光', date: '2026-04-28', desc: '午后三点，斜光穿过老墙', photos: 3 },
+  { id: 2, title: '武汉早樱', date: '2026-04-15', desc: '东湖边的粉白交错', photos: 4 },
+  { id: 3, title: '青岛海边', date: '2026-03-22', desc: '浪花拍打老石墙', photos: 2 },
+  { id: 4, title: '京都小巷', date: '2026-03-08', desc: '', photos: 5 },
+  { id: 5, title: '大理洱海', date: '2026-02-20', desc: '风吹稻浪，远山如黛', photos: 3 },
+  { id: 6, title: '东京塔下', date: '2026-02-05', desc: '霓虹与静谧并存', photos: 4 },
+  { id: 7, title: '故宫残雪', date: '2026-01-18', desc: '', photos: 2 },
+  { id: 8, title: '上海弄堂', date: '2026-01-03', desc: '晾衣架下的光阴', photos: 3 },
+  { id: 9, title: '成都茶馆', date: '2025-12-20', desc: '竹椅上的慢时光', photos: 2 },
+  { id: 10, title: '西安城墙', date: '2025-12-05', desc: '', photos: 4 },
+];
+
+// 用 placeholder 色块模拟照片
+const COLORS = [
+  '#8B7355', '#6B8E8E', '#9B8E7E', '#7A8B6E', '#8E7B8B',
+  '#6E7B8B', '#8B8E6B', '#7B6E8E', '#8E8B6E', '#6B8B7B',
+];
+
+let currentPost = 0;
+let currentPhoto = 0;
+
+// ── 渲染弧形时间线 ──
+function renderTimeline() {
+  const inner = document.getElementById('timelineInner');
+  const existingTicks = inner.querySelectorAll('.timeline-tick');
+  existingTicks.forEach(t => t.remove());
+
+  const tickHeight = 36;
+  const totalHeight = POSTS.length * tickHeight;
+
+  // 弧线参数：曲线从左侧起，向右凸出，再回到左侧
+  // 这就是 _( 形状 — 底部平直，上半部分向右弧出
+  const arcBulge = 24; // 弧线最大向右凸出的像素
+  const startX = 24;   // 弧线左端 x 坐标（dot 的默认位置）
+
+  // 为每个 tick 计算弧线上的 x 偏移
+  const tickPositions = POSTS.map((_, i) => {
+    // 用正弦曲线制造弧度：中间凸出最大，两端回到起点
+    const t = i / (POSTS.length - 1); // 0 → 1
+    const arcX = Math.sin(t * Math.PI) * arcBulge;
+    return { x: startX + arcX, y: i * tickHeight + tickHeight / 2 };
+  });
+
+  // 绘制 SVG 弧线路径
+  const svg = document.getElementById('arcSvg');
+  svg.setAttribute('viewBox', `0 0 88 ${totalHeight}`);
+  svg.style.height = totalHeight + 'px';
+
+  // 用 smooth quadratic bezier 连接所有点
+  let pathD = `M ${tickPositions[0].x} ${tickPositions[0].y}`;
+  for (let i = 1; i < tickPositions.length; i++) {
+    const prev = tickPositions[i - 1];
+    const curr = tickPositions[i];
+    const cpX = (prev.x + curr.x) / 2;
+    const cpY = (prev.y + curr.y) / 2;
+    pathD += ` Q ${prev.x} ${(prev.y + cpY) / 1.5}, ${cpX} ${cpY}`;
+  }
+  // 最后一段连到终点
+  const last = tickPositions[tickPositions.length - 1];
+  pathD += ` T ${last.x} ${last.y}`;
+
+  // 简化：用 catmull-rom 转 bezier 画平滑曲线
+  pathD = `M ${tickPositions[0].x} ${tickPositions[0].y}`;
+  for (let i = 0; i < tickPositions.length - 1; i++) {
+    const p0 = tickPositions[Math.max(0, i - 1)];
+    const p1 = tickPositions[i];
+    const p2 = tickPositions[i + 1];
+    const p3 = tickPositions[Math.min(tickPositions.length - 1, i + 2)];
+    // Catmull-Rom → Cubic Bezier
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    pathD += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+  }
+
+  svg.innerHTML = `<path class="timeline-arc-path" d="${pathD}" />`;
+
+  // 渲染 tick 节点
+  POSTS.forEach((post, i) => {
+    const btn = document.createElement('button');
+    btn.className = `timeline-tick ${i === currentPost ? 'active' : ''}`;
+    btn.style.height = tickHeight + 'px';
+    // 用 paddingLeft 让 dot 跟随弧线的 x 偏移
+    btn.style.paddingLeft = (tickPositions[i].x - 4) + 'px';
+    btn.onclick = () => goToPost(i);
+
+    const date = new Date(post.date);
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+
+    btn.innerHTML = `
+      <div class="tick-dot"></div>
+      <span class="tick-label">${mm}.${dd}</span>
+    `;
+    btn.dataset.index = i;
+    inner.appendChild(btn);
+  });
+}
+
+// ── 渲染照片区 ──
+function renderPhotos() {
+  const viewport = document.getElementById('photoViewport');
+  const post = POSTS[currentPost];
+
+  // 清空
+  viewport.querySelectorAll('.photo-slide, .nav-arrow, .photo-dots').forEach(el => el.remove());
+
+  // 生成照片层
+  for (let i = 0; i < post.photos; i++) {
+    const slide = document.createElement('div');
+    slide.className = `photo-slide ${i === currentPhoto ? 'current' : i < currentPhoto ? 'prev' : 'next'}`;
+    // placeholder 色块
+    const colorIdx = (currentPost * 3 + i) % COLORS.length;
+    slide.innerHTML = `<div style="width:100%;height:100%;background:${COLORS[colorIdx]};display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.3);font-size:48px;">${i + 1}</div>`;
+    viewport.appendChild(slide);
+  }
+
+  // 箭头
+  if (post.photos > 1) {
+    const leftArr = document.createElement('button');
+    leftArr.className = 'nav-arrow left';
+    leftArr.textContent = '‹';
+    leftArr.onclick = () => flipPhoto(-1);
+    viewport.appendChild(leftArr);
+
+    const rightArr = document.createElement('button');
+    rightArr.className = 'nav-arrow right';
+    rightArr.textContent = '›';
+    rightArr.onclick = () => flipPhoto(1);
+    viewport.appendChild(rightArr);
+
+    // 圆点指示器
+    const dots = document.createElement('div');
+    dots.className = 'photo-dots';
+    for (let i = 0; i < post.photos; i++) {
+      const dot = document.createElement('div');
+      dot.className = `photo-dot ${i === currentPhoto ? 'active' : ''}`;
+      dots.appendChild(dot);
+    }
+    viewport.appendChild(dots);
+  }
+
+  // 标题 & 描述
+  document.getElementById('caption').textContent = post.title;
+  const descEl = document.getElementById('description');
+  descEl.textContent = post.desc;
+  descEl.style.display = post.desc ? 'block' : 'none';
+  // 重新触发动画
+  descEl.style.animation = 'none';
+  descEl.offsetHeight; // force reflow
+  descEl.style.animation = '';
+}
+
+// ── 翻页（弧形 3D 翻转） ──
+function flipPhoto(dir) {
+  const post = POSTS[currentPost];
+  const next = currentPhoto + dir;
+  if (next < 0 || next >= post.photos) {
+    // 循环
+    currentPhoto = next < 0 ? post.photos - 1 : 0;
+  } else {
+    currentPhoto = next;
+  }
+
+  const slides = document.querySelectorAll('.photo-slide');
+  slides.forEach((slide, i) => {
+    slide.className = `photo-slide ${i === currentPhoto ? 'current' : i < currentPhoto ? 'prev' : 'next'}`;
+  });
+
+  // 更新圆点
+  const dots = document.querySelectorAll('.photo-dot');
+  dots.forEach((dot, i) => {
+    dot.className = `photo-dot ${i === currentPhoto ? 'active' : ''}`;
+  });
+}
+
+// ── 切换 post ──
+function goToPost(idx) {
+  if (idx === currentPost) return;
+  currentPost = idx;
+  currentPhoto = 0;
+
+  // 更新时间线高亮
+  document.querySelectorAll('.timeline-tick').forEach((tick, i) => {
+    tick.className = `timeline-tick ${i === currentPost ? 'active' : ''}`;
+  });
+
+  // 滚动到当前 tick
+  const activeTick = document.querySelector('.timeline-tick.active');
+  if (activeTick) {
+    activeTick.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+
+  renderPhotos();
+}
+
+// ── 键盘导航 ──
+document.addEventListener('keydown', (e) => {
+  switch (e.key) {
+    case 'ArrowLeft':  flipPhoto(-1); break;
+    case 'ArrowRight': flipPhoto(1);  break;
+    case 'ArrowUp':    e.preventDefault(); goToPost(Math.max(0, currentPost - 1)); break;
+    case 'ArrowDown':  e.preventDefault(); goToPost(Math.min(POSTS.length - 1, currentPost + 1)); break;
+  }
+});
+
+// ── 主题切换 ──
+function toggleTheme() {
+  const html = document.documentElement;
+  html.dataset.theme = html.dataset.theme === 'daylight' ? 'midnight' : 'daylight';
+}
+
+// ── 初始化 ──
+renderTimeline();
+renderPhotos();
+</script>
+</body>
+</html>

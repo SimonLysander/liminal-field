@@ -357,6 +357,8 @@ const DraftEditPage = () => {
 
         {/* Body — editor + right outline */}
         <div className="flex flex-1 overflow-hidden">
+          {/* 左侧留白和 Outline 等宽，让编辑器 mx-auto 相对视口居中 */}
+          <div className="w-[200px] shrink-0" />
           <div className="flex-1 overflow-y-auto overflow-x-hidden" data-scroll-container>
             <div className="mx-auto w-[85%] min-w-[600px] max-w-[960px] pb-40 pt-10">
               <DraftAssetProvider contentItemId={id!}>
@@ -373,7 +375,6 @@ const DraftEditPage = () => {
           {/* Right — outline */}
           <div
             className="flex w-[200px] shrink-0 flex-col overflow-y-auto px-4 py-10"
-            style={{}}
           >
             <div
               className="mb-3 font-semibold uppercase"
