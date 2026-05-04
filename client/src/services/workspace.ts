@@ -15,7 +15,7 @@ import { request, toQueryString } from './request';
 
 // ─── 共用类型（原 content-items.ts 导出，保持不变供消费方使用）───
 
-export type ContentStatus = 'committed' | 'published' | 'archived';
+export type ContentStatus = 'committed' | 'published';
 export type ContentChangeType = 'patch' | 'major';
 export type ContentAssetType = 'image' | 'audio' | 'video' | 'file';
 export type ContentVisibility = 'public' | 'all';
@@ -36,11 +36,6 @@ export interface ChangeLog {
   changeNote: string;
 }
 
-export interface ContentAssetRef {
-  path: string;
-  type: ContentAssetType;
-}
-
 export interface ContentListItem {
   id: string;
   title: string;
@@ -48,8 +43,6 @@ export interface ContentListItem {
   status: ContentStatus;
   latestVersion: ContentVersion;
   publishedVersion?: ContentVersion | null;
-  latestCommitHash?: string;
-  publishedCommitHash?: string;
   hasUnpublishedChanges: boolean;
   latestChange?: ChangeLog;
   createdAt: string;
@@ -63,12 +56,10 @@ export interface ContentDetail {
   status: ContentStatus;
   latestVersion: ContentVersion;
   publishedVersion?: ContentVersion | null;
-  latestCommitHash?: string;
-  publishedCommitHash?: string;
   hasUnpublishedChanges: boolean;
   bodyMarkdown: string;
-  plainText: string;
-  assetRefs: ContentAssetRef[];
+  /** 后端提取的 TOC 标题列表（level 1-3） */
+  headings: { level: number; text: string }[];
   changeLogs: ChangeLog[];
   createdAt: string;
   updatedAt: string;
@@ -77,7 +68,6 @@ export interface ContentDetail {
 export interface CreateContentDto {
   title: string;
   summary?: string;
-  status: ContentStatus;
   bodyMarkdown: string;
   changeNote?: string;
   changeType?: ContentChangeType;
@@ -115,7 +105,7 @@ export interface EditorDraft {
 }
 
 export interface UploadedAsset {
-  path: string;
+  url: string;
   fileName: string;
   contentType: string;
   size: number;
@@ -137,43 +127,86 @@ export interface ContentHistoryEntry {
   action: 'commit' | 'unknown';
 }
 
-// ─── Gallery 类型（原 gallery.ts 导出，保持不变）───
+// ─── Gallery 类型（按消费场景拆分）───
 
-export interface GalleryPost {
+/** 展示端画廊列表项（未登录用户） */
+export interface GalleryPublicListItem {
   id: string;
   title: string;
-  description: string;
-  status: 'draft' | 'published';
-  coverUrl: string | null;
-  photoCount: number;
-  createdAt: string;
-  updatedAt: string;
-  /** key-value 标签，如 { location: '上海', season: '春' } */
   tags: Record<string, string>;
-  /** 封面照片的原始文件名，null 表示未设置 */
-  coverPhotoFileName: string | null;
-  /** 预览图 URL 列表（前 N 张缩略图，由后端返回） */
-  previewPhotoUrls: string[];
-  /** 已发布版本的 commitHash，null 表示未发布 */
-  publishedCommitHash: string | null;
-  /** latestVersion 与 publishedVersion 不一致时为 true */
-  hasUnpublishedChanges: boolean;
+  createdAt: string;
 }
 
+/** 展示端画廊详情（未登录用户） */
+export interface GalleryPublicDetail {
+  id: string;
+  title: string;
+  prose: string;
+  photos: GalleryPhoto[];
+  tags: Record<string, string>;
+  createdAt: string;
+}
+
+/** 管理端画廊列表项 */
+export interface GalleryAdminListItem {
+  id: string;
+  title: string;
+  status: 'committed' | 'published';
+  coverUrl: string | null;
+  photoCount: number;
+  hasUnpublishedChanges: boolean;
+  tags: Record<string, string>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 管理端画廊详情 */
+export interface GalleryAdminDetail {
+  id: string;
+  title: string;
+  prose: string;
+  status: 'committed' | 'published';
+  photos: GalleryPhoto[];
+  /** 封面照片原始文件名，null 表示未设置 */
+  coverPhotoFileName: string | null;
+  hasUnpublishedChanges: boolean;
+  /** 已发布版本 commitHash，null 表示未发布 */
+  publishedCommitHash: string | null;
+  tags: Record<string, string>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 编辑器照片（后端已合并草稿+正式版） */
+export interface GalleryEditorPhoto {
+  file: string;
+  url: string;
+  size: number;
+  caption: string;
+  tags: Record<string, string>;
+}
+
+/** 编辑器加载状态（GET /editor 端点返回，后端已合并草稿+正式版） */
+export interface GalleryEditorState {
+  id: string;
+  title: string;
+  prose: string;
+  photos: GalleryEditorPhoto[];
+  cover: string | null;
+  tags: Record<string, string>;
+  hasDraft: boolean;
+  draftSavedAt: string | null;
+}
+
+/** 照片展示类型（精简版，无 size/order） */
 export interface GalleryPhoto {
   id: string;
   url: string;
   fileName: string;
-  size: number;
-  order: number;
   /** 照片说明文字，空字符串表示无说明 */
   caption: string;
   /** 照片级 key-value 标签，如 { location: '上海' } */
   tags: Record<string, string>;
-}
-
-export interface GalleryPostDetail extends GalleryPost {
-  photos: GalleryPhoto[];
 }
 
 export interface CreateGalleryPostDto {
@@ -313,8 +346,12 @@ export const notesApi = {
   deleteDraft: (id: string) =>
     request<void>(`/spaces/notes/items/${id}/draft`, { method: 'DELETE' }),
 
-  publish: (id: string) =>
-    request<ContentDetail>(`/spaces/notes/items/${id}/publish`, { method: 'PUT' }),
+  /** 发布。可选传 commitHash 发布指定历史版本，不传则发布 latestVersion。 */
+  publish: (id: string, commitHash?: string) =>
+    request<ContentDetail>(`/spaces/notes/items/${id}/publish`, {
+      method: 'PUT',
+      body: commitHash ? JSON.stringify({ commitHash }) : undefined,
+    }),
 
   unpublish: (id: string) =>
     request<ContentDetail>(`/spaces/notes/items/${id}/unpublish`, { method: 'PUT' }),
@@ -338,19 +375,37 @@ export const notesApi = {
   },
 };
 
-// ─── galleryApi — gallery scope 专用，兼容原 galleryApi 接口 ───
+// ─── galleryApi — gallery scope 专用 ───
 
 export const galleryApi = {
-  list: (status?: 'draft' | 'published') => {
+  // ── 展示端调用（未登录用户）──
+
+  /** 展示端：获取已发布相册列表 */
+  listPublished: () =>
+    request<GalleryPublicListItem[]>('/spaces/gallery/items?status=published'),
+
+  /** 展示端：获取单个相册详情（含 photos） */
+  getPublicDetail: (id: string) =>
+    request<GalleryPublicDetail>(`/spaces/gallery/items/${id}`),
+
+  // ── 管理端调用 ──
+
+  /** 管理端：列出所有相册，可选按 status 过滤 */
+  list: (status?: string) => {
     const query = status ? `?status=${status}` : '';
-    return request<GalleryPost[]>(`/spaces/gallery/items${query}`);
+    return request<GalleryAdminListItem[]>(`/spaces/gallery/items${query}`);
   },
 
+  /** 管理端：获取相册详情（含完整 photos + 状态元数据，需要 visibility=all） */
   getById: (id: string) =>
-    request<GalleryPostDetail>(`/spaces/gallery/items/${id}`),
+    request<GalleryAdminDetail>(`/spaces/gallery/items/${id}?visibility=all`),
+
+  /** 编辑器加载：后端已合并草稿+正式版，前端直接消费 */
+  getEditorState: (id: string) =>
+    request<GalleryEditorState>(`/spaces/gallery/items/${id}/editor`),
 
   create: (dto: CreateGalleryPostDto) =>
-    request<GalleryPost>('/spaces/gallery/items', {
+    request<GalleryAdminListItem>('/spaces/gallery/items', {
       method: 'POST',
       // 后端 DTO 字段名为 bodyMarkdown，补充 changeNote 满足后端 @IsNotEmpty() 校验
       body: JSON.stringify({
@@ -362,10 +417,10 @@ export const galleryApi = {
 
   /**
    * 正式提交：发结构化 JSON 给后端 PUT /spaces/gallery/items/:id，
-   * 后端负责序列化为 frontmatter main.md，返回 GalleryPostDetailDto。
+   * 后端负责序列化为 frontmatter main.md，返回 GalleryAdminDetail。
    */
   update: (id: string, dto: UpdateGalleryPostDto) =>
-    request<GalleryPostDetail>(`/spaces/gallery/items/${id}`, {
+    request<GalleryAdminDetail>(`/spaces/gallery/items/${id}`, {
       method: 'PUT',
       body: JSON.stringify(dto),
     }),
@@ -385,13 +440,13 @@ export const galleryApi = {
 
   /** 发布。可选传 commitHash 发布指定历史版本，不传则发布 latestVersion。 */
   publish: (id: string, commitHash?: string) =>
-    request<GalleryPost>(`/spaces/gallery/items/${id}/publish`, {
+    request<GalleryAdminDetail>(`/spaces/gallery/items/${id}/publish`, {
       method: 'PUT',
       body: commitHash ? JSON.stringify({ commitHash }) : undefined,
     }),
 
   unpublish: (id: string) =>
-    request<GalleryPost>(`/spaces/gallery/items/${id}/unpublish`, {
+    request<GalleryAdminDetail>(`/spaces/gallery/items/${id}/unpublish`, {
       method: 'PUT',
     }),
 

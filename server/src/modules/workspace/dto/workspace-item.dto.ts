@@ -7,12 +7,12 @@ export class WorkspaceItemDto {
   id: string;
   title: string;
   summary: string;
-  status: 'draft' | 'published';
+  /** 'committed' = 已提交但未发布，'published' = 已发布。 */
+  status: 'committed' | 'published';
   createdAt: string;
   updatedAt: string;
 }
 
 export class WorkspaceItemDetailDto extends WorkspaceItemDto {
   bodyMarkdown: string;
-  plainText: string;
 }

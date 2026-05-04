@@ -35,6 +35,8 @@ export type FormalContentState = {
   publishedVersion: ContentVersion | null;
   hasUnpublishedChanges: boolean;
   bodyMarkdown: string;
+  /** 后端提取的 TOC 标题列表，供右侧大纲面板渲染 */
+  headings: { level: number; text: string }[];
   updatedAt: string;
 };
 
@@ -59,6 +61,8 @@ export type PreviewState = {
   commitHash: string;
   title: string;
   bodyMarkdown: string;
+  /** 该版本的 TOC 标题列表（来自版本快照，与当前正式版独立） */
+  headings: { level: number; text: string }[];
   committedAt: string;
 };
 
@@ -110,6 +114,7 @@ export const EMPTY_FORMAL_CONTENT: FormalContentState = {
   publishedVersion: null,
   hasUnpublishedChanges: false,
   bodyMarkdown: '',
+  headings: [],
   updatedAt: '',
 };
 
@@ -134,6 +139,7 @@ export function toFormalContentState(detail: ContentDetail): FormalContentState 
     publishedVersion: detail.publishedVersion ?? null,
     hasUnpublishedChanges: detail.hasUnpublishedChanges,
     bodyMarkdown: detail.bodyMarkdown,
+    headings: detail.headings,
     updatedAt: detail.updatedAt,
   };
 }

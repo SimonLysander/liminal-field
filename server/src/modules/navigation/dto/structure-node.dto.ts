@@ -11,6 +11,7 @@ export class StructureNodeDto {
   contentItemId?: string;
   sortOrder: number;
   hasChildren: boolean;
+  /** 序列化后为 ISO 8601 字符串，此处 Date 类型由 JSON 序列化层自动转换。 */
   createdAt: Date;
   updatedAt?: Date;
 

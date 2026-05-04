@@ -102,8 +102,8 @@ function useStructureLevel(parentId: string | undefined) {
     setLoading(true);
 
     const req = parentId
-      ? structureApi.getChildren(parentId, { visibility: 'public' })
-      : structureApi.getRootNodes({ visibility: 'public' });
+      ? structureApi.getChildren(parentId, { visibility: 'public', scope: 'notes' })
+      : structureApi.getRootNodes({ visibility: 'public', scope: 'notes' });
 
     req
       .then((result) => { if (!cancelled) setNodes(result.children); })

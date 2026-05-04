@@ -37,7 +37,11 @@ import { CreateWorkspaceItemDto } from './dto/create-workspace-item.dto';
 import { UpdateWorkspaceItemDto } from './dto/update-workspace-item.dto';
 import { EditorDraftDto } from './dto/editor-draft.dto';
 import { SaveDraftDto } from './dto/save-draft.dto';
-import { GalleryPostDetailDto, GalleryDraftDto } from './dto/gallery-view.dto';
+import {
+  GalleryAdminDetailDto,
+  GalleryEditorDto,
+  GalleryDraftDto,
+} from './dto/gallery-view.dto';
 import { SaveGalleryPostDto } from './dto/save-gallery-post.dto';
 
 type MultipartRequest = {
@@ -104,7 +108,7 @@ export class WorkspaceController {
   async updateGalleryPost(
     @Param('id') id: string,
     @Body() dto: SaveGalleryPostDto,
-  ): Promise<GalleryPostDetailDto> {
+  ): Promise<GalleryAdminDetailDto> {
     return this.galleryViewService.commitPost(id, dto);
   }
 
@@ -142,6 +146,15 @@ export class WorkspaceController {
     @Param('commitHash') commitHash: string,
   ) {
     return this.galleryViewService.getByVersion(id, commitHash);
+  }
+
+  /**
+   * 编辑器加载接口：后端合并草稿和正式版照片列表，
+   * 前端不再需要区分 MinIO vs Git URL。
+   */
+  @Get('gallery/items/:id/editor')
+  async getGalleryEditorState(@Param('id') id: string): Promise<GalleryEditorDto> {
+    return this.galleryViewService.getEditorState(id);
   }
 
   // ─── 草稿资源（MinIO 临时存储）───
@@ -229,8 +242,14 @@ export class WorkspaceController {
     }
     if (scope === 'gallery') {
       const items = await this.workspaceService.list(scope, status);
+      const isAdmin = !!(request as any).user;
+      // 管理端返回含封面/状态的 AdminListItemDto，展示端返回精简的 PublicListItemDto
       return Promise.all(
-        items.map((n) => this.galleryViewService.toPostDto(n.id)),
+        items.map((n) =>
+          isAdmin
+            ? this.galleryViewService.toAdminListItemDto(n.id)
+            : this.galleryViewService.toPublicListItemDto(n.id),
+        ),
       );
     }
     if (scope === 'notes') {
@@ -270,8 +289,14 @@ export class WorkspaceController {
     if (!(request as any).user) {
       visibility = ContentVisibility.public;
     }
+    // scope 校验：确保 content item 属于请求的 scope
+    await this.workspaceService.assertScopeMatch(scope, id);
     if (scope === 'gallery') {
-      return this.galleryViewService.toPostDetailDto(id);
+      // 管理端（visibility=all）返回含 publishedCommitHash 等管理字段的详情
+      if (visibility === ContentVisibility.all) {
+        return this.galleryViewService.toAdminDetailDto(id);
+      }
+      return this.galleryViewService.toPublicDetailDto(id);
     }
     if (scope === 'notes') {
       return this.noteViewService.getById(id, visibility);
@@ -285,6 +310,7 @@ export class WorkspaceController {
     @Param('id') id: string,
     @Body() dto: UpdateWorkspaceItemDto,
   ) {
+    await this.workspaceService.assertScopeMatch(scope, id);
     return this.workspaceService.update(scope, id, dto);
   }
 
@@ -293,6 +319,7 @@ export class WorkspaceController {
     @Param('scope') scope: string,
     @Param('id') id: string,
   ) {
+    await this.workspaceService.assertScopeMatch(scope, id);
     return this.workspaceService.remove(scope, id);
   }
 
@@ -304,16 +331,20 @@ export class WorkspaceController {
     @Param('id') id: string,
     @Body() body?: { commitHash?: string },
   ) {
+    await this.workspaceService.assertScopeMatch(scope, id);
+    if (scope === 'gallery') await this.galleryViewService.assertPublishable(id, body?.commitHash);
     await this.workspaceService.publish(scope, id, body?.commitHash);
-    // notes scope 前端依赖含 latestVersion/publishedVersion 的完整格式
     if (scope === 'notes') return this.noteViewService.getById(id, 'all');
+    if (scope === 'gallery') return this.galleryViewService.toAdminDetailDto(id);
     return this.workspaceService.getById(scope, id);
   }
 
   @Put(':scope/items/:id/unpublish')
   async unpublish(@Param('scope') scope: string, @Param('id') id: string) {
+    await this.workspaceService.assertScopeMatch(scope, id);
     await this.workspaceService.unpublish(scope, id);
     if (scope === 'notes') return this.noteViewService.getById(id, 'all');
+    if (scope === 'gallery') return this.galleryViewService.toAdminDetailDto(id);
     return this.workspaceService.getById(scope, id);
   }
 
@@ -337,7 +368,7 @@ export class WorkspaceController {
     return this.workspaceService.listAssets(scope, id);
   }
 
-  /** 文件直出（gallery 照片、notes 附件均通过此路由）。 */
+  /** 文件直出（gallery 照片、notes 附件均通过此路由）。?v=commitHash 支持历史版本资源。 */
   @Public()
   @RawResponse()
   @Get(':scope/items/:id/assets/:fileName')
@@ -345,12 +376,14 @@ export class WorkspaceController {
     @Param('scope') _scope: string,
     @Param('id') id: string,
     @Param('fileName') fileName: string,
+    @Query('v') commitHash: string | undefined,
     @Res() reply: any,
   ) {
     const { buffer, contentType } =
-      await this.galleryViewService.readPhotoBuffer(id, fileName);
+      await this.galleryViewService.readPhotoBuffer(id, fileName, commitHash);
     reply.header('Content-Type', contentType);
-    reply.header('Cache-Control', 'public, max-age=86400');
+    // 带版本号的资源可以长缓存（内容不可变），否则用短缓存
+    reply.header('Cache-Control', commitHash ? 'public, max-age=31536000, immutable' : 'public, max-age=86400');
     reply.send(buffer);
   }
 }

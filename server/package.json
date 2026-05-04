@@ -14,7 +14,8 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-    "migrate:content-version-model": "ts-node -r tsconfig-paths/register scripts/migrate-content-version-model.ts"
+    "migrate:content-version-model": "ts-node -r tsconfig-paths/register scripts/migrate-content-version-model.ts",
+    "test": "jest"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
@@ -80,22 +81,5 @@
       "prisma",
       "unrs-resolver"
     ]
-  },
-  "jest": {
-    "moduleFileExtensions": [
-      "js",
-      "json",
-      "ts"
-    ],
-    "rootDir": "src",
-    "testRegex": ".*\\.test\\.ts$",
-    "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
-    },
-    "collectCoverageFrom": [
-      "**/*.(t|j)s"
-    ],
-    "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
   }
 }

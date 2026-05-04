@@ -15,7 +15,8 @@ import { ContentGitService } from './content-git.service';
 import { ContentRepoService } from './content-repo.service';
 import { ContentRepository } from './content.repository';
 import { ChangeLogDto } from './dto/change-log.dto';
-import { ContentAssetRefDto, ContentDetailDto } from './dto/content-detail.dto';
+import { ContentDetailDto } from './dto/content-detail.dto';
+import { extractHeadings } from '../../common/extract-headings';
 import { ContentHistoryEntryDto } from './dto/content-history.dto';
 import { ContentListItemDto } from './dto/content-list-item.dto';
 import { ContentQueryDto, ContentVisibility } from './dto/content-query.dto';
@@ -93,8 +94,6 @@ export class ContentService {
       status: normalizedStatus,
       latestVersion,
       publishedVersion,
-      latestCommitHash: latestVersion.commitHash,
-      publishedCommitHash: publishedVersion?.commitHash,
       hasUnpublishedChanges:
         !!publishedVersion &&
         latestVersion.commitHash !== publishedVersion.commitHash,
@@ -104,15 +103,6 @@ export class ContentService {
       createdAt: content.createdAt.toISOString(),
       updatedAt: content.updatedAt.toISOString(),
     };
-  }
-
-  private toAssetRefDtos(
-    assetRefs: { path: string; type: ContentAssetRefDto['type'] }[],
-  ): ContentAssetRefDto[] {
-    return assetRefs.map((assetRef) => ({
-      path: assetRef.path,
-      type: assetRef.type,
-    }));
   }
 
   private buildChangeLog(
@@ -208,7 +198,7 @@ export class ContentService {
 
   private toDetailDto(
     content: ContentItem,
-    source: Awaited<ReturnType<ContentRepoService['readContentSource']>>,
+    source: { bodyMarkdown: string },
     options?: { publicView?: boolean },
   ): ContentDetailDto {
     const latestVersion = this.resolveLatestVersion(content);
@@ -232,14 +222,12 @@ export class ContentService {
       status: normalizedStatus,
       latestVersion,
       publishedVersion,
-      latestCommitHash: latestVersion.commitHash,
-      publishedCommitHash: publishedVersion?.commitHash,
       hasUnpublishedChanges:
         !!publishedVersion &&
         latestVersion.commitHash !== publishedVersion.commitHash,
       bodyMarkdown: source.bodyMarkdown,
-      plainText: source.plainText,
-      assetRefs: this.toAssetRefDtos(source.assetRefs),
+      // 后端提取标题树，前端直接消费，不再自行解析 markdown
+      headings: extractHeadings(source.bodyMarkdown),
       changeLogs: content.changeLogs.map((changeLog) =>
         this.toChangeLogDto(changeLog),
       ),
@@ -270,11 +258,7 @@ export class ContentService {
       updatedBy: dto.createdBy,
     });
 
-    return this.toDetailDto(content, {
-      bodyMarkdown: '',
-      plainText: '',
-      assetRefs: [],
-    });
+    return this.toDetailDto(content, { bodyMarkdown: '' });
   }
 
   async saveContent(
@@ -386,6 +370,56 @@ export class ContentService {
     const source = await this.contentRepoService.readContentSource(id);
 
     return this.toDetailDto(updated, source);
+  }
+
+  /**
+   * 发布指定版本：纯指针操作，publishedVersion 指向目标 commitHash。
+   * 不走 saveContent 流程，不写 Git，不生成 changeLog。
+   * @param commitHash 可选，不传则发布 latestVersion。
+   */
+  async publishVersion(id: string, commitHash?: string): Promise<void> {
+    const content = await this.contentRepository.findById(id);
+    if (!content) throw new NotFoundException(`Content ${id} not found`);
+
+    const latestVersion = this.resolveLatestVersion(content);
+    if (!latestVersion.commitHash) {
+      throw new BadRequestException('Cannot publish: no committed version exists yet');
+    }
+
+    const targetHash = commitHash ?? latestVersion.commitHash;
+    const publishedVersion = this.buildVersionSnapshot(
+      targetHash,
+      latestVersion.title,
+      latestVersion.summary ?? '',
+    );
+
+    await this.contentRepository.update(id, {
+      latestVersion,
+      publishedVersion,
+      changeLogs: content.changeLogs,
+      updatedAt: new Date(),
+    });
+  }
+
+  /**
+   * 取消发布：清除 publishedVersion 指针。
+   * 不走 saveContent 流程，不写 Git。
+   */
+  async unpublishVersion(id: string): Promise<void> {
+    const content = await this.contentRepository.findById(id);
+    if (!content) throw new NotFoundException(`Content ${id} not found`);
+
+    const publishedVersion = this.resolvePublishedVersion(content);
+    if (!publishedVersion) {
+      throw new BadRequestException('Content is not published');
+    }
+
+    await this.contentRepository.update(id, {
+      latestVersion: this.resolveLatestVersion(content),
+      publishedVersion: null,
+      changeLogs: content.changeLogs,
+      updatedAt: new Date(),
+    });
   }
 
   async getContentById(

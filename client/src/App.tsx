@@ -24,6 +24,7 @@ import { LoadingState } from '@/components/LoadingState';
 import { smoothBounce } from './lib/motion';
 import { authApi } from '@/services/auth';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ConfirmProvider } from '@/contexts/ConfirmContext';
 
 import Sidebar from './components/global/Sidebar';
 import Topbar from './components/global/Topbar';
@@ -131,6 +132,7 @@ function MainLayout() {
 function App() {
   return (
     <ErrorBoundary>
+      <ConfirmProvider>
       <Routes>
         <Route path="/" element={<Navigate to="/home" replace />} />
         <Route
@@ -178,6 +180,7 @@ function App() {
         />
         <Route path="/*" element={<MainLayout />} />
       </Routes>
+      </ConfirmProvider>
       {/* 全局 toast 容器——样式对齐设计系统 token */}
       <Toaster
         position="bottom-right"

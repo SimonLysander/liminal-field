@@ -3,7 +3,6 @@ import { modelOptions, prop, Severity } from '@typegoose/typegoose';
 export enum ContentStatus {
   committed = 'committed',
   published = 'published',
-  archived = 'archived',
 }
 
 export enum ContentChangeType {

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { execFile } from 'child_process';
 import { mkdir, readdir, readFile, stat, unlink, writeFile } from 'fs/promises';
 import { basename, extname, join, parse, resolve } from 'path';
 import { randomUUID } from 'crypto';
@@ -342,11 +343,16 @@ export class ContentRepoService {
       /* main.md 不存在（刚创建还没第一次提交），返回空内容 */
       return { bodyMarkdown: '', plainText: '', assetRefs: [] };
     }
-    /* 将 ./assets/ 相对路径改写为 API 绝对路径，scope 由调用方传入 */
+    /* 将 ./assets/ 相对路径改写为 API 绝对路径，scope 由调用方传入。
+     * 有 commitHash 时附加 ?v=hash，确保历史版本的资源从正确的 git commit 读取。 */
     const scope = options?.scope ?? 'notes';
+    const versionSuffix = options?.commitHash ? `?v=${options.commitHash}` : '';
     const resolvedMarkdown = bodyMarkdown.replaceAll(
       /\.\/assets\//g,
       `/api/v1/spaces/${scope}/items/${contentId}/assets/`,
+    ).replaceAll(
+      new RegExp(`/api/v1/spaces/${scope}/items/${contentId}/assets/([^)\\s"]+)`, 'g'),
+      (match) => `${match}${versionSuffix}`,
     );
     return {
       bodyMarkdown: resolvedMarkdown,
@@ -376,12 +382,34 @@ export class ContentRepoService {
     }
   }
 
+  /**
+   * 读取资源文件。支持可选 commitHash 从 git 历史读取，保证历史版本的资源可访问。
+   * 无 commitHash 时从当前工作目录读取（最新版本）。
+   */
   async readAssetBuffer(
     contentId: string,
     fileName: string,
+    commitHash?: string,
   ): Promise<{ buffer: Buffer; contentType: string }> {
-    const filePath = this.resolveAssetPath(contentId, fileName);
-    const buffer = await readFile(filePath);
+    let buffer: Buffer;
+    if (commitHash) {
+      // simple-git 的 show() 返回 string，会损坏二进制文件。
+      // 直接 spawn git 进程拿 Buffer 输出，确保图片等二进制资源完整。
+      const trackedPath = `content/${contentId}/assets/${fileName}`;
+      buffer = await new Promise<Buffer>((res, rej) => {
+        execFile('git', ['show', `${commitHash}:${trackedPath}`], {
+          cwd: this.repoRoot,
+          encoding: 'buffer',
+          maxBuffer: 50 * 1024 * 1024, // 50MB
+        }, (err, stdout) => {
+          if (err) return rej(err);
+          res(stdout as unknown as Buffer);
+        });
+      });
+    } else {
+      const filePath = this.resolveAssetPath(contentId, fileName);
+      buffer = await readFile(filePath);
+    }
     const ext = extname(fileName).toLowerCase();
     let contentType = 'application/octet-stream';
     if (IMAGE_EXTENSIONS.has(ext)) {

@@ -10,7 +10,7 @@
  * 依赖关系：ContentService + ContentRepository + ContentRepoService（存储层）
  *          + NavigationRepository（业务索引层）
  */
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ContentService } from '../content/content.service';
 import { ContentRepository } from '../content/content.repository';
 import { ContentRepoService } from '../content/content-repo.service';
@@ -38,6 +38,17 @@ export class WorkspaceService {
     private readonly contentRepoService: ContentRepoService,
     private readonly navigationRepository: NavigationRepository,
   ) {}
+
+  /**
+   * 校验 content item 属于指定 scope。
+   * 通过导航节点查 scope，不匹配则抛 NotFoundException（对外表现为"不存在"）。
+   */
+  async assertScopeMatch(scope: string, contentItemId: string): Promise<void> {
+    const navNode = await this.navigationRepository.findByContentItemId(contentItemId);
+    if (!navNode || navNode.scope !== scope) {
+      throw new NotFoundException(`Item ${contentItemId} not found in scope ${scope}`);
+    }
+  }
 
   /**
    * 统一创建条目：写入 Content 存储 + 注册 Navigation 索引。
@@ -178,58 +189,24 @@ export class WorkspaceService {
   }
 
   /**
-   * 发布：publishedVersion 指向指定版本（纯指针操作）。
+   * 发布：publishedVersion 指向指定版本（纯指针操作，不写 Git）。
+   * scope 特有校验在此处集中处理（如 gallery 必须有照片才能发布）。
    * @param commitHash 可选，指定发布哪个历史版本。不传则发布 latestVersion。
    */
   async publish(
-    _scope: string,
+    scope: string,
     contentItemId: string,
     commitHash?: string,
-  ): Promise<WorkspaceItemDetailDto> {
-    const content = await this.contentRepository.findById(contentItemId);
-    if (!content) throw new NotFoundException(`Item ${contentItemId} not found`);
-
-    const version = content.latestVersion!;
-    const source =
-      await this.contentRepoService.readContentSource(contentItemId);
-
-    await this.contentService.saveContent(contentItemId, {
-      title: version.title,
-      summary: version.summary,
-      status: ContentStatus.committed,
-      bodyMarkdown: source.bodyMarkdown,
-      changeNote: commitHash
-        ? `发布版本 ${commitHash.slice(0, 8)}`
-        : 'Published',
-      action: ContentSaveAction.publish,
-      publishCommitHash: commitHash,
-    });
-
-    return this.getById(_scope, contentItemId);
+  ): Promise<void> {
+    await this.contentService.publishVersion(contentItemId, commitHash);
   }
 
-  /** 取消发布：清除 publishedVersion 指针。 */
+  /** 取消发布：清除 publishedVersion 指针（纯指针操作，不写 Git）。 */
   async unpublish(
     _scope: string,
     contentItemId: string,
-  ): Promise<WorkspaceItemDetailDto> {
-    const content = await this.contentRepository.findById(contentItemId);
-    if (!content) throw new NotFoundException(`Item ${contentItemId} not found`);
-
-    const version = content.latestVersion!;
-    const source =
-      await this.contentRepoService.readContentSource(contentItemId);
-
-    await this.contentService.saveContent(contentItemId, {
-      title: version.title,
-      summary: version.summary,
-      status: ContentStatus.published,
-      bodyMarkdown: source.bodyMarkdown,
-      changeNote: 'Unpublished',
-      action: ContentSaveAction.unpublish,
-    });
-
-    return this.getById(_scope, contentItemId);
+  ): Promise<void> {
+    await this.contentService.unpublishVersion(contentItemId);
   }
 
   /** 上传附件到 Content 存储层。 */

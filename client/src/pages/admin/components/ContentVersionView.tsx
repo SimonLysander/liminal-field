@@ -1,43 +1,19 @@
 /*
- * ContentVersionView — Read-only content preview with version comparison
+ * ContentVersionView — 只读内容预览 + 版本操作
  *
- * Markdown body container uses rounded-[10px] (radius-lg tier).
- * Preview bar uses mark-blue with 8% opacity background.
- * All font sizes use type scale variables (--text-2xs through --text-4xl).
- * TextLink buttons: pure text style (no border/background), hover changes
- * color from ink-faded to ink for a minimal, Apple-inspired interaction.
+ * 核心逻辑：中间区域始终展示某个版本（最新版或时间线选中的历史版本），
+ * 操作按钮跟着"当前展示的版本"走，不再分 preview/非 preview 两套 UI。
+ *
+ * 版本状态：
+ *   - 当前版本 = 已发布版 → 显示"已发布"状态 + "取消发布"操作
+ *   - 当前版本 ≠ 已发布版 → 显示"已提交"状态 + "发布此版本"操作
+ *   - 正在查看历史版本 → 额外显示"返回最新"
  */
 
-import type { ContentStatus } from '@/services/workspace';
+import { useConfirm } from '@/contexts/ConfirmContext';
 import MarkdownBody from '@/components/shared/MarkdownBody';
 import type { ContentVersionViewProps } from '../types';
 import { LoadingState, ContentFade } from '@/components/LoadingState';
-
-const statusLabel: Record<string, string> = {
-  published: '已发布',
-  committed: '已提交',
-  draft: '草稿',
-};
-
-const StatusPill = ({ status }: { status: ContentStatus }) => {
-  const isPublished = status === 'published';
-  return (
-    <span
-      className="inline-flex items-center gap-[5px] rounded-full px-2.5 py-[3px] font-medium"
-      style={{
-        fontSize: 'var(--text-2xs)',
-        background: isPublished ? 'rgba(52,199,89,0.1)' : 'var(--accent-soft)',
-        color: isPublished ? 'var(--mark-green)' : 'var(--ink-faded)',
-      }}
-    >
-      <span
-        className="h-[5px] w-[5px] rounded-full"
-        style={{ background: 'currentColor' }}
-      />
-      {statusLabel[status] ?? status}
-    </span>
-  );
-};
 
 export const ContentVersionView = ({
   node,
@@ -52,19 +28,43 @@ export const ContentVersionView = ({
   onExitPreview,
   onPublishPreview,
 }: ContentVersionViewProps) => {
+  const confirm = useConfirm();
+
+  /* 当前展示的版本是否为已发布版 */
+  const viewingHash = preview?.commitHash ?? content.latestVersion.commitHash;
+  const isViewingPublished = viewingHash === content.publishedVersion?.commitHash;
+  const isViewingLatest = !preview;
+
   const handlePublish = async () => {
-    const confirmed = window.confirm(
-      content.status === 'published' && content.hasUnpublishedChanges
-        ? '立即发布最新的已提交版本？'
-        : '立即发布此已提交版本？',
-    );
-    if (!confirmed) return;
-    await onPublish();
+    if (preview) {
+      // 发布历史版本
+      const ok = await confirm({
+        title: '发布版本',
+        message: `发布版本 ${preview.commitHash.slice(0, 8)} ？`,
+        confirmLabel: '发布',
+      });
+      if (!ok) return;
+      await onPublishPreview();
+    } else {
+      // 发布最新版
+      const ok = await confirm({
+        title: '发布',
+        message: '立即发布最新的已提交版本？',
+        confirmLabel: '发布',
+      });
+      if (!ok) return;
+      await onPublish();
+    }
   };
 
   const handleUnpublish = async () => {
-    const confirmed = window.confirm('立即取消发布此文档？');
-    if (!confirmed) return;
+    const ok = await confirm({
+      title: '取消发布',
+      message: '立即取消发布此文档？',
+      danger: true,
+      confirmLabel: '取消发布',
+    });
+    if (!ok) return;
     await onUnpublish();
   };
 
@@ -89,7 +89,7 @@ export const ContentVersionView = ({
         </div>
       )}
 
-      {/* Header */}
+      {/* Header — 始终显示，不因 preview 隐藏 */}
       <div className="flex items-start justify-between">
         <div>
           <h2
@@ -98,66 +98,45 @@ export const ContentVersionView = ({
           >
             {node.name}
           </h2>
-          {!preview && (
-            <>
-              <div className="mt-2 flex items-center gap-2.5">
-                {/* 管理端展示的是 latestVersion；若最新版本尚未发布，状态应显示"已提交"而非"已发布" */}
-                <StatusPill status={content.hasUnpublishedChanges ? 'committed' : content.status} />
-                <span style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)' }}>
-                  只读
-                </span>
-              </div>
-              {content.status === 'published' && content.hasUnpublishedChanges && (
-                <p className="mt-2" style={{ color: 'var(--mark-red)', fontSize: 'var(--text-xs)' }}>
-                  公开页面仍在使用旧版本 {content.publishedVersion?.commitHash?.slice(0, 8) ?? '--'}，点击「发布最新」更新。
-                </p>
-              )}
-            </>
-          )}
-        </div>
-        {!preview && (
-          <div className="flex items-center gap-4 pt-1">
-            <TextLink label="刷新" onClick={() => void onReload()} />
-            {content.status === 'published' ? (
-              <>
-                {content.hasUnpublishedChanges && (
-                  <TextLink label="发布最新" onClick={() => void handlePublish()} />
-                )}
-                <TextLink label="取消发布" danger onClick={() => void handleUnpublish()} />
-              </>
-            ) : (
-              <TextLink label="发布" onClick={() => void handlePublish()} />
+          <div className="mt-2 flex items-center gap-2.5">
+            <VersionStatusPill
+              isPublished={isViewingPublished}
+              commitHash={viewingHash}
+            />
+            {!preview && (
+              <span style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)' }}>
+                {new Date(content.updatedAt).toLocaleString('zh-CN')}
+              </span>
+            )}
+            {preview && (
+              <span style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)' }}>
+                {new Date(preview.committedAt).toLocaleString('zh-CN')}
+              </span>
             )}
           </div>
-        )}
-      </div>
-
-      {/* Preview bar */}
-      {preview && (
-        <div
-          className="flex items-center justify-between rounded-lg px-4 py-2.5"
-          style={{ background: 'rgba(10,132,255,0.08)', border: '1px solid rgba(10,132,255,0.15)' }}
-        >
-          <div className="flex items-center gap-2">
-            <span
-              className="h-[6px] w-[6px] rounded-full"
-              style={{ background: 'var(--mark-blue)' }}
-            />
-            <span className="font-medium" style={{ color: 'var(--mark-blue)', fontSize: 'var(--text-xs)' }}>
-              预览版本
-            </span>
-            <span
-              style={{ color: 'var(--mark-blue)', opacity: 0.7, fontSize: 'var(--text-2xs)', fontFamily: 'var(--font-mono)' }}
-            >
-              {preview.commitHash.slice(0, 8)}
-            </span>
-          </div>
-          <div className="flex items-center gap-4">
-            <TextLink label="发布此版本" onClick={() => void onPublishPreview()} />
-            <TextLink label="返回最新" onClick={onExitPreview} />
-          </div>
+          {/* 最新版有未发布变更时的提醒（仅在查看最新版时显示） */}
+          {isViewingLatest && content.status === 'published' && content.hasUnpublishedChanges && (
+            <p className="mt-2" style={{ color: 'var(--mark-red)', fontSize: 'var(--text-xs)' }}>
+              公开页面仍在使用旧版本 {content.publishedVersion?.commitHash?.slice(0, 8) ?? '--'}，点击「发布」更新。
+            </p>
+          )}
         </div>
-      )}
+
+        {/* 操作按钮 — 跟着当前展示的版本走 */}
+        <div className="flex items-center gap-4 pt-1">
+          {isViewingLatest && (
+            <TextLink label="刷新" onClick={() => void onReload()} />
+          )}
+          {!isViewingLatest && (
+            <TextLink label="返回最新" onClick={onExitPreview} />
+          )}
+          {isViewingPublished ? (
+            <TextLink label="取消发布" danger onClick={() => void handleUnpublish()} />
+          ) : (
+            <TextLink label="发布" onClick={() => void handlePublish()} />
+          )}
+        </div>
+      </div>
 
       {previewLoading && (
         <LoadingState label="加载版本内容中" />
@@ -165,34 +144,13 @@ export const ContentVersionView = ({
 
       {/* Markdown body */}
       <div
-        className="overflow-hidden rounded-[10px]"
-        style={{ border: '1px solid var(--box-border)' }}
+        className="leading-[1.9]"
+        style={{ fontSize: 'var(--text-lg)' }}
       >
-        <div
-          className="flex items-center justify-between px-4 py-2.5"
-          style={{
-            background: preview ? 'rgba(10,132,255,0.04)' : 'var(--shelf)',
-            borderBottom: '1px solid var(--box-border)',
-          }}
-        >
-          <span
-            className="font-semibold uppercase"
-            style={{ color: preview ? 'var(--mark-blue)' : 'var(--ink-ghost)', fontSize: 'var(--text-2xs)', letterSpacing: '0.04em' }}
-          >
-            {preview ? '历史版本正文' : '正文'}
-          </span>
-          <span style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)' }}>
-            {preview
-              ? new Date(preview.committedAt).toLocaleString('zh-CN')
-              : new Date(content.updatedAt).toLocaleString('zh-CN')}
-          </span>
-        </div>
-        <div
-          className="p-5 leading-[1.9]"
-          style={{ fontSize: 'var(--text-lg)' }}
-        >
-          <MarkdownBody markdown={(preview ? preview.bodyMarkdown : content.bodyMarkdown) || ''} contentItemId={node.contentItemId} />
-        </div>
+        <MarkdownBody
+          markdown={(preview ? preview.bodyMarkdown : content.bodyMarkdown) || ''}
+          contentItemId={node.contentItemId}
+        />
       </div>
     </div>
       )}
@@ -201,6 +159,29 @@ export const ContentVersionView = ({
 };
 
 /* ---------- Primitives ---------- */
+
+/** 版本状态标签：已发布（绿）或已提交（灰）+ commitHash */
+function VersionStatusPill({ isPublished, commitHash }: { isPublished: boolean; commitHash: string }) {
+  return (
+    <span
+      className="inline-flex items-center gap-[5px] rounded-full px-2.5 py-[3px] font-medium"
+      style={{
+        fontSize: 'var(--text-2xs)',
+        background: isPublished ? 'rgba(52,199,89,0.1)' : 'var(--accent-soft)',
+        color: isPublished ? 'var(--mark-green)' : 'var(--ink-faded)',
+      }}
+    >
+      <span
+        className="h-[5px] w-[5px] rounded-full"
+        style={{ background: 'currentColor' }}
+      />
+      {isPublished ? '已发布' : '已提交'}
+      <span style={{ fontFamily: 'var(--font-mono)', opacity: 0.7 }}>
+        {commitHash.slice(0, 8)}
+      </span>
+    </span>
+  );
+}
 
 function TextLink({ label, danger, onClick }: { label: string; danger?: boolean; onClick: () => void }) {
   return (

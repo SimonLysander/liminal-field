@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useConfirm } from '@/contexts/ConfirmContext';
 import { motion } from 'motion/react';
 import { Sun, Moon } from 'lucide-react';
 import { toast } from 'sonner';
@@ -39,6 +40,7 @@ type HeadingEntry = { level: number; text: string; index: number };
 const DraftEditPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const confirm = useConfirm();
 
   const { theme, setTheme } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -101,15 +103,14 @@ const DraftEditPage = () => {
       setLoading(true);
       setError('');
       try {
+        // 先请求草稿，有草稿直接用，跳过正式版请求
         let draft: EditorDraft | null = null;
         try {
           draft = await contentItemsApi.getDraft(id);
         } catch { /* No draft */ }
 
-        const detail = await contentItemsApi.getById(id, { visibility: 'all' });
-        setContentDetail(detail);
-
         if (draft) {
+          // 有草稿：直接恢复，不请求正式版（避免多余请求）
           setState({
             title: draft.title,
             summary: draft.summary,
@@ -119,6 +120,9 @@ const DraftEditPage = () => {
           });
           setLastSavedAt(draft.savedAt);
         } else {
+          // 无草稿：请求正式版，并创建初始草稿供自动保存使用
+          const detail = await contentItemsApi.getById(id, { visibility: 'all' });
+          setContentDetail(detail);
           const newDraft = await contentItemsApi.saveDraft(id, {
             title: detail.latestVersion.title,
             summary: detail.latestVersion.summary,
@@ -223,8 +227,8 @@ const DraftEditPage = () => {
 
   const discardDraft = useCallback(async () => {
     if (!id) return;
-    const confirmed = window.confirm('确认丢弃当前草稿？');
-    if (!confirmed) return;
+    const ok = await confirm({ title: '丢弃草稿', message: '确认丢弃当前草稿？', danger: true, confirmLabel: '丢弃' });
+    if (!ok) return;
 
     try {
       await contentItemsApi.deleteDraft(id);
