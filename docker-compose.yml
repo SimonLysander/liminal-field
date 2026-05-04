@@ -9,6 +9,11 @@ services:
       - mongo-data:/data/db
     ports:
       - "27018:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   minio:
     image: docker.1ms.run/minio/minio
@@ -27,8 +32,10 @@ services:
     build: ./server
     restart: unless-stopped
     depends_on:
-      - mongo
-      - minio
+      mongo:
+        condition: service_healthy
+      minio:
+        condition: service_started
     volumes:
       - ./server/configs/db.docker.yaml:/app/configs/db.yaml:ro
       - kb-data:/data/liminal-field-kb
@@ -47,6 +54,9 @@ services:
       MINIO_PASSWORD: ${MINIO_PASSWORD}
       MINIO_BUCKET: ${MINIO_BUCKET}
       KB_REMOTE_URL: ${KB_REMOTE_URL:-}
+      GIT_SYNC_CRON: ${GIT_SYNC_CRON:-0 3 * * *}
+      CONTENT_GIT_AUTHOR_NAME: ${CONTENT_GIT_AUTHOR_NAME:-Liminal Field}
+      CONTENT_GIT_AUTHOR_EMAIL: ${CONTENT_GIT_AUTHOR_EMAIL:-no-reply@liminal-field.local}
       MINERU_TOKEN: ${MINERU_TOKEN:-}
     ports:
       - "4398:4398"

@@ -424,7 +424,7 @@ export class GalleryViewService {
     }
 
     // 无草稿：用正式版数据
-    let parsed: ParsedGalleryContent = { photos: [], cover: null, tags: {}, prose: '' };
+    let parsed: ParsedGalleryContent = { photos: [], cover: null, tags: {}, prose: '', hasFrontmatter: false };
     try {
       const source = await this.contentRepoService.readContentSource(contentItemId, { scope: 'gallery' });
       parsed = parseGalleryContent(source.bodyMarkdown);
@@ -609,9 +609,10 @@ export class GalleryViewService {
   /** 文件名消毒：小写 + 去特殊字符 + 追加 uuid8 后缀防冲突。 */
   private sanitizeFileName(original: string): string {
     const parsed = parse(original);
+    // toLowerCase() 之后字符串不含大写字母，正则无需保留 A-Z
     const baseName = parsed.name
       .toLowerCase()
-      .replace(/[^a-zA-Z0-9-_]+/g, '-')
+      .replace(/[^a-z0-9-_]+/g, '-')
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '');
     const safeBaseName = baseName || 'photo';

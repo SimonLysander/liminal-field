@@ -371,8 +371,8 @@ export class ContentGitService implements OnModuleInit {
     }
   }
 
-  /** 每天凌晨 3 点自动 push + 检查月度切换。与写操作共享锁，避免 push 期间有 commit 进行 */
-  @Cron('0 3 * * *')
+  /** 定时自动 push + 检查月度切换。cron 表达式通过 GIT_SYNC_CRON 环境变量配置，默认每天凌晨 3 点。 */
+  @Cron(process.env.GIT_SYNC_CRON?.trim() || '0 3 * * *')
   async scheduledSync(): Promise<void> {
     if (this.writeLock.isLocked()) {
       this.logger.log('Scheduled sync skipped: write operation in progress');

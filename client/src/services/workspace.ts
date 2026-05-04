@@ -335,7 +335,7 @@ export const notesApi = {
     }),
 
   getDraft: (id: string) =>
-    request<EditorDraft>(`/spaces/notes/items/${id}/draft`),
+    request<EditorDraft | null>(`/spaces/notes/items/${id}/draft`),
 
   saveDraft: (id: string, dto: SaveDraftDto) =>
     request<EditorDraft>(`/spaces/notes/items/${id}/draft`, {

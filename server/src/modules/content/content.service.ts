@@ -376,6 +376,9 @@ export class ContentService {
    * 发布指定版本：纯指针操作，publishedVersion 指向目标 commitHash。
    * 不走 saveContent 流程，不写 Git，不生成 changeLog。
    * @param commitHash 可选，不传则发布 latestVersion。
+   *
+   * 发布历史版本时，title/summary 从 changeLogs 中查找对应记录，
+   * 而不是直接用 latestVersion.title，避免"发布 A 版本却显示 B 版本标题"。
    */
   async publishVersion(id: string, commitHash?: string): Promise<void> {
     const content = await this.contentRepository.findById(id);
@@ -387,11 +390,16 @@ export class ContentService {
     }
 
     const targetHash = commitHash ?? latestVersion.commitHash;
-    const publishedVersion = this.buildVersionSnapshot(
-      targetHash,
-      latestVersion.title,
-      latestVersion.summary ?? '',
-    );
+
+    // 发布历史版本时，从 changeLogs 中找到该版本对应的 title/summary，
+    // 避免用 latestVersion 的元数据覆盖历史版本的真实标题。
+    const changeLog = commitHash
+      ? content.changeLogs.find((c) => c.commitHash === commitHash)
+      : null;
+    const title = changeLog?.title ?? latestVersion.title;
+    const summary = changeLog?.summary ?? latestVersion.summary ?? '';
+
+    const publishedVersion = this.buildVersionSnapshot(targetHash, title, summary);
 
     await this.contentRepository.update(id, {
       latestVersion,

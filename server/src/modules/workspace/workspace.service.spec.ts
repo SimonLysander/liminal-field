@@ -68,44 +68,39 @@ describe('WorkspaceService.assertScopeMatch', () => {
   });
 });
 
-// ─── publish（gallery 空照片校验）────────────────────────────────────────────
+// ─── publish ────────────────────────────────────────────────────────────────
+//
+// WorkspaceService.publish 是纯指针操作（不写 Git），直接委托 publishVersion。
+// gallery 空照片校验已移至 GalleryViewService.assertPublishable，由 controller 层调用。
 
 describe('WorkspaceService.publish', () => {
-  it('gallery scope 有照片 → 正常调用 publishVersion', async () => {
+  it('gallery scope → 直接调 publishVersion，不调 listAssets', async () => {
     const { service, mockContentService, mockContentRepoService } = createMocks();
-    // listAssets 返回一张图片
-    mockContentRepoService.listAssets.mockResolvedValue([
-      { fileName: 'photo-1.jpg', type: 'image', size: 1024 },
-    ]);
     mockContentService.publishVersion.mockResolvedValue(undefined);
 
     await service.publish('gallery', 'ci_001');
 
+    // publish 不再负责照片校验（已移至 GalleryViewService.assertPublishable）
+    expect(mockContentRepoService.listAssets).not.toHaveBeenCalled();
     expect(mockContentService.publishVersion).toHaveBeenCalledWith('ci_001', undefined);
   });
 
-  // gallery 空照片校验已移至 GalleryViewService.assertPublishable，在 controller 层调用
-
-  it('notes scope → 不校验照片，直接调 publishVersion', async () => {
+  it('notes scope → 直接调 publishVersion', async () => {
     const { service, mockContentService, mockContentRepoService } = createMocks();
     mockContentService.publishVersion.mockResolvedValue(undefined);
 
     await service.publish('notes', 'ci_002');
 
-    // notes scope 不查 listAssets
     expect(mockContentRepoService.listAssets).not.toHaveBeenCalled();
     expect(mockContentService.publishVersion).toHaveBeenCalledWith('ci_002', undefined);
   });
 
-  it('gallery scope 传入 commitHash → 校验通过后转发 commitHash', async () => {
-    const { service, mockContentService, mockContentRepoService } = createMocks();
-    mockContentRepoService.listAssets.mockResolvedValue([
-      { fileName: 'photo-1.jpg', type: 'image', size: 512 },
-    ]);
+  it('传入 commitHash → 转发给 publishVersion', async () => {
+    const { service, mockContentService } = createMocks();
     mockContentService.publishVersion.mockResolvedValue(undefined);
 
-    await service.publish('gallery', 'ci_001', 'specific-hash');
+    await service.publish('gallery', 'ci_001', 'abc1234');
 
-    expect(mockContentService.publishVersion).toHaveBeenCalledWith('ci_001', 'specific-hash');
+    expect(mockContentService.publishVersion).toHaveBeenCalledWith('ci_001', 'abc1234');
   });
 });

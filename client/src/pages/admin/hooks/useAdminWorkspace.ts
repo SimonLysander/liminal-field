@@ -366,6 +366,7 @@ export function useAdminWorkspace() {
       setWorkspaceMode('draft');
     },
     [
+      confirm,
       draftPresence.exists,
       formalContent.bodyMarkdown,
       formalContent.id,
@@ -382,6 +383,11 @@ export function useAdminWorkspace() {
     setContentError('');
     try {
       const draft = await contentItemsApi.getDraft(activeContentItemId);
+      // getDraft 可能返回 null（无草稿），此时静默退出，不切换到 draft 模式
+      if (!draft) {
+        setContentError('草稿不存在');
+        return;
+      }
       setDraftState(toDraftEditorStateFromDraft(draft));
       setDraftPresence({ exists: true, savedAt: draft.savedAt });
       setLastDraftSavedAt(draft.savedAt);
@@ -560,7 +566,7 @@ export function useAdminWorkspace() {
     // 不清除 preview，保持停留在当前版本，让用户看到"已发布"标记
     toast.success(`版本 ${preview.commitHash.slice(0, 8)} 已发布`);
     setHistory(await contentItemsApi.getHistory(activeContentItemId));
-  }, [activeContentItemId, preview]);
+  }, [activeContentItemId, confirm, preview]);
 
   /* ================================================================
    * 自动保存

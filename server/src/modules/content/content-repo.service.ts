@@ -93,10 +93,11 @@ export class ContentRepoService {
 
   private sanitizeAssetFileName(originalFileName: string): string {
     const parsed = parse(originalFileName);
+    // toLowerCase() 之后字符串不含大写字母，正则无需保留 A-Z
     const baseName = (parsed.name || 'asset')
       .trim()
       .toLowerCase()
-      .replace(/[^a-zA-Z0-9-_]+/g, '-')
+      .replace(/[^a-z0-9-_]+/g, '-')
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '');
     const safeBaseName = baseName || 'asset';

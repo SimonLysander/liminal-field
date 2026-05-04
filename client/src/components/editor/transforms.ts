@@ -6,10 +6,8 @@ import { insertCodeBlock, toggleCodeBlock } from '@platejs/code-block';
 import { insertDate } from '@platejs/date';
 import { triggerFloatingLink } from '@platejs/link/react';
 import {
-  insertAudioPlaceholder,
   insertFilePlaceholder,
   insertMedia,
-  insertVideoPlaceholder,
 } from '@platejs/media';
 import { TablePlugin } from '@platejs/table/react';
 import {
@@ -50,7 +48,6 @@ const insertBlockMap: Record<
   [KEYS.listTodo]: insertList,
   [KEYS.ol]: insertList,
   [KEYS.ul]: insertList,
-  [KEYS.audio]: (editor) => insertAudioPlaceholder(editor, { select: true }),
   [KEYS.codeBlock]: (editor) => insertCodeBlock(editor, { select: true }),
   [KEYS.file]: (editor) => insertFilePlaceholder(editor, { select: true }),
   [KEYS.img]: (editor) =>
@@ -58,14 +55,8 @@ const insertBlockMap: Record<
       select: true,
       type: KEYS.img,
     }),
-  [KEYS.mediaEmbed]: (editor) =>
-    insertMedia(editor, {
-      select: true,
-      type: KEYS.mediaEmbed,
-    }),
   [KEYS.table]: (editor) =>
     editor.getTransforms(TablePlugin).insert.table({}, { select: true }),
-  [KEYS.video]: (editor) => insertVideoPlaceholder(editor, { select: true }),
 };
 
 const insertInlineMap: Record<

@@ -198,7 +198,7 @@ function NoteReader({ id }: { id: string }) {
           <button
             className="text-md transition-colors duration-150"
             style={{ color: 'var(--ink-ghost)' }}
-            onClick={() => navigate(-1)}
+            onClick={() => navigate('/note')}
           >
             ← 返回
           </button>

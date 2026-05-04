@@ -5,7 +5,7 @@
  *   const confirm = useConfirm();
  *   const ok = await confirm({ title: '...', message: '...' });
  */
-import { createContext, useCallback, useContext, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { smoothBounce } from '@/lib/motion';
 
@@ -46,6 +46,16 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
     resolveRef.current = null;
     setState(null);
   }, []);
+
+  // Escape 键关闭对话框（视为取消）
+  useEffect(() => {
+    if (!state) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleClose(false);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [state, handleClose]);
 
   return (
     <ConfirmContext.Provider value={confirm}>

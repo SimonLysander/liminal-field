@@ -63,7 +63,8 @@ async function bootstrap() {
 
   // 2. 服务和路由
   app.setGlobalPrefix('api/v1');
-  await app.listen(4398, '0.0.0.0');
+  const port = parseInt(process.env.PORT ?? '4398', 10);
+  await app.listen(port, '0.0.0.0');
 
   console.log(`Server is running on: ${await app.getUrl()}`);
 }

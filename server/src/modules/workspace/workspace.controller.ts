@@ -26,6 +26,7 @@ import type { FastifyRequest } from 'fastify';
 import { Public } from '../auth/decorators/public.decorator';
 import { ContentVisibility } from '../content/dto/content-query.dto';
 import { RawResponse } from '../../common/raw-response.decorator';
+import { validateCommitHash } from '../../common/validate-commit-hash';
 import type { MultipartFile } from '@fastify/multipart';
 import { ContentDetailDto } from '../content/dto/content-detail.dto';
 import { ContentHistoryEntryDto } from '../content/dto/content-history.dto';
@@ -95,6 +96,7 @@ export class WorkspaceController {
     @Param('id') id: string,
     @Param('commitHash') commitHash: string,
   ): Promise<ContentDetailDto> {
+    validateCommitHash(commitHash);
     return this.noteViewService.getByVersion(id, commitHash);
   }
 
@@ -145,6 +147,7 @@ export class WorkspaceController {
     @Param('id') id: string,
     @Param('commitHash') commitHash: string,
   ) {
+    validateCommitHash(commitHash);
     return this.galleryViewService.getByVersion(id, commitHash);
   }
 
@@ -331,6 +334,8 @@ export class WorkspaceController {
     @Param('id') id: string,
     @Body() body?: { commitHash?: string },
   ) {
+    // commitHash 是可选参数，仅在传入时校验格式
+    if (body?.commitHash) validateCommitHash(body.commitHash);
     await this.workspaceService.assertScopeMatch(scope, id);
     if (scope === 'gallery') await this.galleryViewService.assertPublishable(id, body?.commitHash);
     await this.workspaceService.publish(scope, id, body?.commitHash);
@@ -356,6 +361,7 @@ export class WorkspaceController {
     @Param('id') id: string,
     @Req() request: MultipartRequest,
   ) {
+    await this.workspaceService.assertScopeMatch(scope, id);
     const file = await request.file();
     if (!file) throw new BadRequestException('File is required');
     const buffer = await file.toBuffer();
@@ -365,6 +371,7 @@ export class WorkspaceController {
   @Public()
   @Get(':scope/items/:id/assets')
   async listAssets(@Param('scope') scope: string, @Param('id') id: string) {
+    await this.workspaceService.assertScopeMatch(scope, id);
     return this.workspaceService.listAssets(scope, id);
   }
 
@@ -379,6 +386,8 @@ export class WorkspaceController {
     @Query('v') commitHash: string | undefined,
     @Res() reply: any,
   ) {
+    // ?v= 是可选的，仅在传入时校验格式
+    if (commitHash) validateCommitHash(commitHash);
     const { buffer, contentType } =
       await this.galleryViewService.readPhotoBuffer(id, fileName, commitHash);
     reply.header('Content-Type', contentType);
