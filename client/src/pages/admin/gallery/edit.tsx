@@ -96,11 +96,11 @@ export default function GalleryEditPage() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* 浮动胶囊顶栏：绝对定位悬浮在内容区上方，左右两组胶囊 */}
-      <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex items-center justify-between px-4">
+      {/* 顶栏：两组胶囊左右分布 */}
+      <div className="flex shrink-0 items-center justify-between px-4" style={{ height: 48 }}>
         {/* 左侧胶囊：← 返回 / 标题输入 */}
         <div
-          className="pointer-events-auto flex items-center gap-2 px-3 py-1"
+          className="flex items-center gap-2 px-3 py-1"
           style={{
             background: 'var(--sidebar-bg)',
             border: '0.5px solid var(--separator)',
@@ -129,7 +129,7 @@ export default function GalleryEditPage() {
 
         {/* 右侧胶囊：保存状态 + 主题切换 + 操作按钮 */}
         <div
-          className="pointer-events-auto flex items-center gap-3 px-3 py-1"
+          className="flex items-center gap-3 px-3 py-1"
           style={{
             background: 'var(--sidebar-bg)',
             border: '0.5px solid var(--separator)',
