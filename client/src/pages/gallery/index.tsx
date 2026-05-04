@@ -22,7 +22,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { motion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import { galleryApi } from '@/services/workspace';
 import type { GalleryPhoto, GalleryPost, GalleryPostDetail } from '@/services/workspace';
 import { LoadingState } from '@/components/LoadingState';
@@ -32,15 +32,13 @@ import { appleEase } from '@/lib/motion';
 // offset -2 到 +2 分别映射到 farLeft / left / center / right / farRight
 // tx 是相对自身宽度的百分比偏移（基础居中由 translateX(-50%) 完成后叠加）
 const CARD_POSITIONS = {
-  center: { tx: '0',    rotate: 0,  scale: 1,    opacity: 1,    z: 10 },
-  left:   { tx: '-30%', rotate: -3, scale: 0.82, opacity: 0.15, z: 8  },
-  right:  { tx: '30%',  rotate: 3,  scale: 0.82, opacity: 0.15, z: 8  },
+  left:   { tx: '-30%', rotate: -2, scale: 0.88, opacity: 0.5, z: 8  },
+  center: { tx: '0',    rotate: 0,  scale: 1,    opacity: 1,   z: 10 },
+  right:  { tx: '30%',  rotate: 2,  scale: 0.88, opacity: 0.5, z: 8  },
 } as const;
 
 type CardSlot = keyof typeof CARD_POSITIONS;
 
-// offset（-1, 0, +1）→ slot 名称，只渲染 3 张卡片
-const OFFSET_TO_SLOT: CardSlot[] = ['left', 'center', 'right'];
 
 // ─── PhotoFrameBar ─────────────────────────────────────────────────────────────
 
@@ -125,53 +123,52 @@ function PhotoFrameBar({ photo }: { photo: GalleryPhoto }) {
 function PhotoCarousel({
   photos,
   photoIdx,
+  direction,
   onNavigate,
 }: {
   photos: GalleryPhoto[];
   photoIdx: number;
+  direction: number;
   onNavigate: (dir: number) => void;
 }) {
   if (photos.length === 0) return null;
 
   const total = photos.length;
+  const wrap = (i: number) => ((i % total) + total) % total;
 
-  // offset -2 到 +2 对应五个卡片槽位，当前 photoIdx 为 center（offset 0）
+  const slots: Array<{ slot: CardSlot; idx: number }> = [
+    { slot: 'left', idx: wrap(photoIdx - 1) },
+    { slot: 'center', idx: photoIdx },
+    { slot: 'right', idx: wrap(photoIdx + 1) },
+  ];
+
+  const baseStyle: React.CSSProperties = {
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+    translate: '-50% -50%',
+    border: '2px solid rgba(255,255,255,0.1)',
+    borderRadius: 8,
+    overflow: 'hidden',
+    background: '#0a0a0a',
+    width: '92%',
+    height: '94%',
+  };
+
   return (
-    <div
-      style={{
-        position: 'relative',
-        width: '100%',
-        height: '100%',
-      }}
-    >
-      {OFFSET_TO_SLOT.map((slot, slotIndex) => {
-        const offset = slotIndex - 1; // -1, 0, 1
-        // 循环取模，保证索引始终合法
-        const photoIndex = ((photoIdx + offset) % total + total) % total;
-        const photo = photos[photoIndex];
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      {slots.map(({ slot, idx }) => {
         const pos = CARD_POSITIONS[slot];
+        const photo = photos[idx];
         const isCenter = slot === 'center';
 
         return (
           <motion.div
             key={slot}
-            // 基础居中：left/top 50% + translateX/Y(-50%) 锚定到中心，
-            // 再叠加 animate.x 做水平偏移（motion 会把 x 合并进 transform）
             style={{
-              position: 'absolute',
-              left: '50%',
-              top: '50%',
-              translateX: '-50%',
-              translateY: '-50%',
+              ...baseStyle,
               zIndex: pos.z,
-              /* 相框：用 border 做视觉边缘，不用 padding，照片占满全部空间 */
-              border: '2px solid rgba(255,255,255,0.1)',
-              borderRadius: 8,
-              overflow: 'hidden',
-              background: '#0a0a0a',
-              width: '92%',
-              height: '94%',
-              cursor: isCenter ? 'default' : offset < 0 ? 'w-resize' : 'e-resize',
+              cursor: isCenter ? 'default' : slot === 'left' ? 'w-resize' : 'e-resize',
             }}
             animate={{
               x: pos.tx,
@@ -179,17 +176,32 @@ function PhotoCarousel({
               scale: pos.scale,
               opacity: pos.opacity,
             }}
-            transition={{ duration: 0.45, ease: appleEase }}
-            onClick={isCenter ? undefined : () => onNavigate(offset < 0 ? -1 : 1)}
+            transition={{ duration: 0.4, ease: appleEase }}
+            onClick={isCenter ? undefined : () => onNavigate(slot === 'left' ? -1 : 1)}
           >
-            {/* 照片占满全部卡片空间 */}
-            <img
-              src={photo.url}
-              alt={photo.caption || photo.fileName}
-              style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
-            />
-
-            {/* 参数行叠在照片底部，带渐变遮罩，不占空间 */}
+            {/* 滑动 + 交叉淡入：新图从移动方向滑入，旧图反向滑出 */}
+            <AnimatePresence mode="popLayout" initial={false}>
+              <motion.img
+                key={photo.id}
+                src={photo.url}
+                alt={photo.caption || photo.fileName}
+                initial={{
+                  opacity: 0,
+                  x: direction === 0 ? 0 : direction > 0 ? 80 : -80,
+                }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{
+                  opacity: 0,
+                  x: direction === 0 ? 0 : direction > 0 ? -80 : 80,
+                }}
+                transition={{ duration: 0.5, ease: appleEase }}
+                style={{
+                  position: 'absolute', inset: 0,
+                  width: '100%', height: '100%',
+                  objectFit: 'contain', display: 'block',
+                }}
+              />
+            </AnimatePresence>
             {isCenter && (
               <div style={{
                 position: 'absolute',
@@ -223,7 +235,7 @@ function BottomBar({
     <div style={{
       display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center', gap: 6,
-      flexShrink: 0, padding: '10px 40px 18px',
+      flexShrink: 0, padding: '10px 40px 18px', paddingRight: 150,
       /* 底部局部 scrim：从下往上渐变暗色 */
       background: 'linear-gradient(transparent, rgba(0,0,0,0.3))',
     }}>
@@ -408,22 +420,18 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
 function BlurBackground({ photoUrl }: { photoUrl: string | null }) {
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none' }}>
-      {photoUrl && (
-        <motion.div
-          key={photoUrl}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.6, ease: appleEase }}
-          style={{
-            position: 'absolute',
-            inset: -80,
-            backgroundImage: `url(${photoUrl})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            filter: 'blur(18px) brightness(0.55) saturate(1.2)',
-          }}
-        />
-      )}
+      {/* 直接换 backgroundImage，blur 这么重看不出切换过程，不需要淡入动画 */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: -80,
+          backgroundImage: photoUrl ? `url(${photoUrl})` : 'none',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          filter: 'blur(18px) brightness(0.55) saturate(1.2)',
+          transition: 'background-image 0.3s',
+        }}
+      />
       {/* 层 2：暗色蒙版兜底 */}
       <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)' }} />
     </div>,
@@ -450,6 +458,7 @@ export default function GalleryPage() {
   const [postIdx, setPostIdx] = useState(0);
   // 当前展示的照片索引（控制 PhotoCarousel 和 ← → 键导航）
   const [photoIdx, setPhotoIdx] = useState(0);
+  const [photoDir, setPhotoDir] = useState(0);
   // 详情加载状态（PhotoCarousel、BottomBar 等子组件实现后消费）
   const [_detailLoading, setDetailLoading] = useState(false);
 
@@ -492,9 +501,10 @@ export default function GalleryPage() {
       .catch(() => setDetailLoading(false));
   }, [posts, postIdx]);
 
-  // 当前相册切换时，照片索引归零
+  // 当前相册切换时，照片索引和方向归零
   useEffect(() => {
     setPhotoIdx(0);
+    setPhotoDir(0);
   }, [postIdx]);
 
   // 派生当前照片（currentDetail 未就绪时为 null）
@@ -505,6 +515,7 @@ export default function GalleryPage() {
     if (!currentDetail) return;
     const total = currentDetail.photos.length;
     if (total <= 1) return;
+    setPhotoDir(dir);
     setPhotoIdx((prev) => {
       const next = prev + dir;
       if (next < 0) return total - 1;
@@ -516,6 +527,8 @@ export default function GalleryPage() {
   // ── 导航：↑↓ 切换相册 ─────────────────────────────────────────────────────────
   const navigatePost = useCallback((dir: number) => {
     if (posts.length <= 1) return;
+    setPhotoIdx(0);
+    setPhotoDir(0);
     setPostIdx((prev) => {
       const next = prev + dir;
       if (next < 0) return posts.length - 1;
@@ -581,8 +594,45 @@ export default function GalleryPage() {
           <PhotoCarousel
             photos={currentDetail?.photos ?? []}
             photoIdx={photoIdx}
+            direction={photoDir}
             onNavigate={navigatePhoto}
           />
+
+          {/* 左右切换按钮 */}
+          {(currentDetail?.photos.length ?? 0) > 1 && (
+            <>
+              <button
+                onClick={() => navigatePhoto(-1)}
+                style={{
+                  position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)',
+                  width: 44, height: 44, borderRadius: '50%',
+                  background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.15)',
+                  color: '#fff',
+                  cursor: 'pointer', zIndex: 15,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.6)'; e.currentTarget.style.transform = 'translateY(-50%) scale(1.08)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.4)'; e.currentTarget.style.transform = 'translateY(-50%) scale(1)'; }}
+              ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+              <button
+                onClick={() => navigatePhoto(1)}
+                style={{
+                  position: 'absolute', right: 164, top: '50%', transform: 'translateY(-50%)',
+                  width: 44, height: 44, borderRadius: '50%',
+                  background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.15)',
+                  color: '#fff',
+                  cursor: 'pointer', zIndex: 15,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.6)'; e.currentTarget.style.transform = 'translateY(-50%) scale(1.08)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.4)'; e.currentTarget.style.transform = 'translateY(-50%) scale(1)'; }}
+              ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+            </>
+          )}
         </div>
 
         {/* 底部：caption + 照片圆点 */}
@@ -597,7 +647,7 @@ export default function GalleryPage() {
       <ArcTimeline
         albums={posts}
         currentIdx={postIdx}
-        onSelect={(i) => { setPostIdx(i); setPhotoIdx(0); }}
+        onSelect={(i) => { setPostIdx(i); setPhotoIdx(0); setPhotoDir(0); }}
       />
     </div>
   );
