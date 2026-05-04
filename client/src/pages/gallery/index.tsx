@@ -88,14 +88,14 @@ function PhotoFrameBar({ photo }: { photo: GalleryPhoto }) {
         ))}
       </div>
 
-      {/* 右侧：拍摄时间 + 照片名 */}
+      {/* 右侧：拍摄时间 + 照片名（从 tags.title 取，不是 caption） */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
         {t.shotAt && (
           <span style={{ whiteSpace: 'nowrap', opacity: 0.6, fontVariantNumeric: 'tabular-nums' }}>
             {t.shotAt}
           </span>
         )}
-        {photo.caption && (
+        {t.title && (
           <span
             style={{
               whiteSpace: 'nowrap',
@@ -104,7 +104,7 @@ function PhotoFrameBar({ photo }: { photo: GalleryPhoto }) {
               maxWidth: 120,
             }}
           >
-            {photo.caption}
+            {t.title}
           </span>
         )}
       </div>
