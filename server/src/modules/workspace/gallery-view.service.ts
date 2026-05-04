@@ -205,14 +205,14 @@ export class GalleryViewService {
 
   /**
    * 从 main.md 加载并解析 frontmatter，同时返回 Git assets 中的图片列表。
-   * 两个调用方（公开/管理详情）复用此私有方法，避免重复读文件。
+   * @param commitHash 可选，传入时从指定 git commit 读取（用于展示端读已发布版本）。
    */
-  private async loadParsedContent(contentItemId: string): Promise<{
+  private async loadParsedContent(contentItemId: string, commitHash?: string): Promise<{
     parsed: ParsedGalleryContent;
     imageAssets: Awaited<ReturnType<ContentRepoService['listAssets']>>;
   }> {
     const [source, assets] = await Promise.all([
-      this.contentRepoService.readContentSource(contentItemId, { scope: 'gallery' }).catch(() => null),
+      this.contentRepoService.readContentSource(contentItemId, { scope: 'gallery', commitHash }).catch(() => null),
       this.contentRepoService.listAssets(contentItemId),
     ]);
     const parsed = source ? parseGalleryContent(source.bodyMarkdown) : { photos: [], cover: null, tags: {}, prose: '', hasFrontmatter: false };
@@ -264,15 +264,18 @@ export class GalleryViewService {
   }
 
   /**
-   * 展示端列表 DTO：只含前端展示所需的最小字段。
+   * 展示端列表 DTO：从已发布版本读取，确保展示的是发布时的快照。
    */
   async toPublicListItemDto(contentItemId: string): Promise<GalleryPublicListItemDto> {
     const content = await this.contentRepository.findById(contentItemId);
     if (!content)
       throw new NotFoundException(`Gallery post ${contentItemId} not found`);
+    if (!content.publishedVersion)
+      throw new NotFoundException(`Gallery post ${contentItemId} is not published`);
 
-    const { parsed } = await this.loadParsedContent(contentItemId);
-    const version = content.latestVersion!;
+    const publishedHash = content.publishedVersion.commitHash;
+    const { parsed } = await this.loadParsedContent(contentItemId, publishedHash);
+    const version = content.publishedVersion;
 
     return {
       id: contentItemId,
@@ -318,22 +321,32 @@ export class GalleryViewService {
   }
 
   /**
-   * 展示端详情 DTO：含完整照片列表，不含管理字段（封面文件名、publishedCommitHash 等）。
+   * 展示端详情 DTO：从已发布版本的 commit 读取内容，确保展示的是发布时的快照。
+   * 不含管理字段（封面文件名、publishedCommitHash 等）。
    */
   async toPublicDetailDto(contentItemId: string): Promise<GalleryPublicDetailDto> {
     const content = await this.contentRepository.findById(contentItemId);
     if (!content)
       throw new NotFoundException(`Gallery post ${contentItemId} not found`);
+    if (!content.publishedVersion)
+      throw new NotFoundException(`Gallery post ${contentItemId} is not published`);
 
-    const { parsed, imageAssets } = await this.loadParsedContent(contentItemId);
+    // 从已发布版本的 commit 读取 main.md，不是当前工作目录
+    const publishedHash = content.publishedVersion.commitHash;
+    const { parsed, imageAssets } = await this.loadParsedContent(contentItemId, publishedHash);
     const photos = this.buildPhotoList(contentItemId, parsed.photos, imageAssets, parsed.hasFrontmatter);
-    const version = content.latestVersion!;
+
+    // 展示端照片 URL 带版本号，确保从发布版 commit 读取
+    const versionedPhotos = photos.map((p) => ({
+      ...p,
+      url: `${p.url}?v=${publishedHash}`,
+    }));
 
     return {
       id: contentItemId,
-      title: version.title,
+      title: content.publishedVersion.title,
       prose: parsed.prose,
-      photos,
+      photos: versionedPhotos,
       tags: parsed.tags,
       createdAt: content.createdAt.toISOString(),
     };
