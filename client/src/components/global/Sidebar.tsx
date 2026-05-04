@@ -218,7 +218,7 @@ export default function Sidebar() {
 
       {/* Search trigger — gallery 沉浸模式隐形占位 */}
       <button
-        className="sidebar-search mx-2 mb-2.5 flex items-center gap-2 rounded-lg px-2 py-1.5 text-base transition-all duration-150"
+        className="sidebar-search mx-2 mb-2.5 flex items-center gap-2 rounded-lg px-2 py-1.5 text-base"
         style={{
           background: 'var(--shelf)',
           color: 'var(--ink-ghost)',
@@ -472,17 +472,15 @@ export default function Sidebar() {
         </div>
       )}
 
-      {/* Bottom — ambient phrase（gallery 沉浸模式隐藏） */}
-      {!isGallery && (
-        <div className="mt-auto px-3 py-4">
-          <span
-            className="text-xs leading-relaxed"
-            style={{ color: 'var(--ink-ghost)', letterSpacing: '-0.01em' }}
-          >
-            {getAmbientPhrase()}
-          </span>
-        </div>
-      )}
+      {/* Bottom — ambient phrase（gallery 沉浸模式隐形占位，保持 sidebar 高度一致） */}
+      <div className="mt-auto px-3 py-4" style={isGallery ? { visibility: 'hidden' } : undefined}>
+        <span
+          className="text-xs leading-relaxed"
+          style={{ color: 'var(--ink-ghost)', letterSpacing: '-0.01em' }}
+        >
+          {getAmbientPhrase()}
+        </span>
+      </div>
     </aside>
   );
 }

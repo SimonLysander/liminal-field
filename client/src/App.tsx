@@ -98,6 +98,16 @@ function MainLayout() {
 
   return (
     <div data-layout-root className="relative z-[1] flex h-screen" style={{ background: 'var(--paper)' }}>
+      {/* Gallery 暗色渐入层：白天/黑夜统一渐入到 gallery 的深灰底色 */}
+      <motion.div
+        animate={{ opacity: isGallery ? 1 : 0 }}
+        transition={{ duration: 0.4 }}
+        style={{
+          position: 'absolute', inset: 0, zIndex: 0,
+          background: '#1c1c1e',
+          pointerEvents: 'none',
+        }}
+      />
       {/* Sidebar — floating grey card; see Sidebar.tsx for styling details */}
       <Sidebar />
 

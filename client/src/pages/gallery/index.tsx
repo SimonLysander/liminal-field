@@ -26,7 +26,6 @@ import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { galleryApi } from '@/services/workspace';
 import type { GalleryPhoto, GalleryPublicListItem, GalleryPublicDetail } from '@/services/workspace';
-import { LoadingState } from '@/components/LoadingState';
 import { appleEase } from '@/lib/motion';
 
 // ─── 常量：五个卡片槽位的静态布局参数 ────────────────────────────────────────────
@@ -170,6 +169,7 @@ function PhotoCarousel({
         return (
           <motion.div
             key={slot}
+            initial={false}
             style={{
               ...baseStyle,
               zIndex: pos.z,
@@ -181,7 +181,7 @@ function PhotoCarousel({
               scale: pos.scale,
               opacity: pos.opacity,
             }}
-            transition={{ duration: 0.4, ease: appleEase }}
+            transition={{ duration: 0.6, ease: appleEase }}
             onClick={isCenter ? undefined : () => onNavigate(slot === 'left' ? -1 : 1)}
           >
             {/* 滑动 + 交叉淡入：新图从移动方向滑入，旧图反向滑出 */}
@@ -199,7 +199,7 @@ function PhotoCarousel({
                   opacity: 0,
                   x: direction === 0 ? 0 : direction > 0 ? -80 : 80,
                 }}
-                transition={{ duration: 0.5, ease: appleEase }}
+                transition={{ duration: 0.7, ease: appleEase }}
                 style={{
                   position: 'absolute', inset: 0,
                   width: '100%', height: '100%',
@@ -456,7 +456,7 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
       {/* motion.div 驱动整体滑动，选中项永远在垂直中心 */}
       <motion.div
         animate={{ y: listY }}
-        transition={{ duration: 0.4, ease: appleEase }}
+        transition={{ duration: 0.6, ease: appleEase }}
         style={{ position: 'absolute', top: '50%', left: 0, right: 0 }}
       >
         {/* 上方占位点 */}
@@ -492,7 +492,7 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
  */
 function BlurBackground({ photoUrl }: { photoUrl: string | null }) {
   return createPortal(
-    <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', background: '#0a0a0a' }}>
       {/* 直接换 backgroundImage，blur 这么重看不出切换过程，不需要淡入动画 */}
       <div
         style={{
@@ -632,22 +632,28 @@ export default function GalleryPage() {
 
   // ── 渲染 ──────────────────────────────────────────────────────────────────────
 
+  // BlurBackground 始终渲染（不受 loading 拦截），确保暗底在第一帧就位
+  const blurBg = <BlurBackground photoUrl={currentPhoto?.url ?? null} />;
+
   if (loading) {
-    return <LoadingState variant="full" />;
+    return <>{blurBg}</>;
   }
 
   if (posts.length === 0) {
     return (
-      <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>暂无画廊内容</span>
-      </div>
+      <>
+        {blurBg}
+        <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', position: 'relative', zIndex: 1 }}>
+          <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>暂无画廊内容</span>
+        </div>
+      </>
     );
   }
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
       {/* 全屏模糊背景 — zIndex: 0，其他内容叠在上方 */}
-      <BlurBackground photoUrl={currentPhoto?.url ?? null} />
+      {blurBg}
 
       {/* 主内容层 */}
       <div
