@@ -1,13 +1,17 @@
 /**
  * MetadataFields / PhotoMetadataFields — 画廊元数据输入组件
  *
- * 使用项目 Input 组件 + Apple Photos 信息面板风格：
+ * 使用项目 UI 组件（Input、Calendar、Popover）+ Apple Photos 信息面板风格：
  * - 标签淡灰小字在上，值在下
- * - Input 视觉极简（去 border/ring，focus 时淡底色）
- * - EXIF 字段有格式提示占位符
+ * - 日期用 Popover + Calendar（shadcn），不用浏览器原生 date picker
+ * - 文本输入用项目 Input 组件，metadata-input 样式覆盖去掉 border
  */
 
+import { useState } from 'react';
+import { CalendarDays } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 /* ─── 帖子级：日期 + 地点 ─── */
 
@@ -19,16 +23,49 @@ interface MetadataFieldsProps {
 }
 
 export function MetadataFields({ date, location, onDateChange, onLocationChange }: MetadataFieldsProps) {
+  const [calOpen, setCalOpen] = useState(false);
+
+  /* 将 YYYY-MM-DD 字符串转为 Date 对象（Calendar 组件需要） */
+  const dateValue = date ? new Date(date + 'T00:00:00') : undefined;
+
+  const handleDateSelect = (day: Date | undefined) => {
+    if (day) {
+      const yyyy = day.getFullYear();
+      const mm = String(day.getMonth() + 1).padStart(2, '0');
+      const dd = String(day.getDate()).padStart(2, '0');
+      onDateChange(`${yyyy}-${mm}-${dd}`);
+    } else {
+      onDateChange(null);
+    }
+    setCalOpen(false);
+  };
+
   return (
-    <div className="flex gap-8">
+    <div className="flex items-end gap-8">
+      {/* 日期：Popover + Calendar */}
       <FieldGroup label="日期" className="w-[180px]">
-        <Input
-          type="date"
-          value={date ?? ''}
-          onChange={(e) => onDateChange(e.target.value || null)}
-          className="metadata-input"
-        />
+        <Popover open={calOpen} onOpenChange={setCalOpen}>
+          <PopoverTrigger asChild>
+            <button
+              className="metadata-input flex w-full items-center gap-1.5 text-left"
+              style={{ color: date ? 'var(--ink)' : 'var(--ink-ghost)', fontSize: 'var(--text-sm)' }}
+            >
+              <CalendarDays size={13} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)', flexShrink: 0 }} />
+              {date ?? '选择日期'}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={dateValue}
+              onSelect={handleDateSelect}
+              defaultMonth={dateValue}
+            />
+          </PopoverContent>
+        </Popover>
       </FieldGroup>
+
+      {/* 地点：自由文本 */}
       <FieldGroup label="地点" className="w-[200px]">
         <Input
           type="text"
@@ -70,7 +107,7 @@ export function PhotoMetadataFields({ tags, onChange }: PhotoMetadataFieldsProps
   };
 
   return (
-    <div className="grid grid-cols-2 gap-x-5 gap-y-0.5">
+    <div className="grid grid-cols-3 gap-x-3 gap-y-0.5">
       {PHOTO_FIELDS.map(({ key, label, placeholder }) => (
         <FieldGroup key={key} label={label}>
           <Input
