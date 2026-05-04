@@ -329,7 +329,7 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
                 }}
               >
                 <div style={{
-                  width: 3, height: 3, borderRadius: '50%',
+                  width: 4, height: 4, borderRadius: '50%',
                   background: 'var(--ink-ghost)',
                 }} />
               </div>
@@ -399,22 +399,21 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
  */
 function BlurBackground({ photoUrl }: { photoUrl: string | null }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none' }}>
       {photoUrl && (
-        <motion.img
+        <motion.div
           key={photoUrl}
-          src={photoUrl}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6, ease: appleEase }}
           style={{
-            width: '220%',
-            height: '220%',
             position: 'absolute',
-            top: '-60%',
-            left: '-60%',
-            objectFit: 'cover',
-            filter: 'blur(100px) saturate(1.6) brightness(var(--blur-brightness, 0.85))',
+            /* 比视口大一圈，确保模糊边缘不露底色 */
+            inset: -80,
+            backgroundImage: `url(${photoUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            filter: 'blur(60px) saturate(1.4) brightness(var(--blur-brightness, 0.55))',
           }}
         />
       )}
