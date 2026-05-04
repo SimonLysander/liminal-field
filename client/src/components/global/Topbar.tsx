@@ -17,11 +17,11 @@ export default function Topbar() {
       <button
         className="pointer-events-auto flex h-8 w-8 items-center justify-center rounded-full transition-all duration-200 hover:scale-110 active:scale-95"
         style={{
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          background: 'var(--sidebar-bg)',
-          border: '0.5px solid var(--separator)',
-          boxShadow: 'var(--shadow-sm)',
+          backdropFilter: 'blur(12px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(12px) saturate(180%)',
+          background: 'var(--glass-bg)',
+          border: '1px solid var(--glass-border)',
+          boxShadow: 'var(--glass-shadow)',
           color: 'var(--ink-faded)',
         }}
         onClick={() =>

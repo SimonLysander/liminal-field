@@ -252,6 +252,11 @@
   --pip-b: hsl(150 15% 55%);   /* 苔绿  */
   --pip-c: hsl(280 12% 60%);   /* 淡紫  */
 
+  /* ── Liquid Glass 胶囊（daylight） ── */
+  --glass-bg: rgba(255,255,255,0.55);
+  --glass-border: rgba(255,255,255,0.5);
+  --glass-shadow: 0 2px 12px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.5);
+
   /* ── Gallery 沉浸式背景（daylight） ── */
   --blur-brightness: 0.55;
   --frame-bg: rgba(255,255,255,0.08);
@@ -347,6 +352,11 @@
   --pip-a: hsl(210 22% 68%);
   --pip-b: hsl(150 16% 62%);
   --pip-c: hsl(280 14% 67%);
+
+  /* ── Liquid Glass 胶囊（midnight） ── */
+  --glass-bg: rgba(255,255,255,0.08);
+  --glass-border: rgba(255,255,255,0.15);
+  --glass-shadow: 0 2px 12px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1);
 
   /* ── Gallery 沉浸式背景（midnight） ── */
   --blur-brightness: 0.35;

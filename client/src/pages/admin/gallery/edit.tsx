@@ -102,10 +102,12 @@ export default function GalleryEditPage() {
         <div
           className="flex items-center gap-2 px-3 py-1"
           style={{
-            background: 'var(--sidebar-bg)',
-            border: '0.5px solid var(--separator)',
-            borderRadius: 9999,
-            boxShadow: 'var(--shadow-sm)',
+            background: 'var(--glass-bg)',
+            backdropFilter: 'blur(12px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(12px) saturate(180%)',
+            border: '1px solid var(--glass-border)',
+            borderRadius: 20,
+            boxShadow: 'var(--glass-shadow)',
           }}
         >
           <button
@@ -131,10 +133,12 @@ export default function GalleryEditPage() {
         <div
           className="flex items-center gap-3 px-3 py-1"
           style={{
-            background: 'var(--sidebar-bg)',
-            border: '0.5px solid var(--separator)',
-            borderRadius: 9999,
-            boxShadow: 'var(--shadow-sm)',
+            background: 'var(--glass-bg)',
+            backdropFilter: 'blur(12px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(12px) saturate(180%)',
+            border: '1px solid var(--glass-border)',
+            borderRadius: 20,
+            boxShadow: 'var(--glass-shadow)',
           }}
         >
           <SaveStatusBadge status={saveStatus} />

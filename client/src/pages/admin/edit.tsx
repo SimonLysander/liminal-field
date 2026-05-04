@@ -280,12 +280,13 @@ const DraftEditPage = () => {
           <div
             className="flex shrink-0 items-center gap-2"
             style={{
-              background: 'var(--sidebar-bg)',
-              border: '0.5px solid var(--separator)',
-              borderRadius: 9999,
+              background: 'var(--glass-bg)',
+              backdropFilter: 'blur(12px) saturate(180%)',
+              WebkitBackdropFilter: 'blur(12px) saturate(180%)',
+              border: '1px solid var(--glass-border)',
+              borderRadius: 20,
               padding: '4px 12px',
-              boxShadow: 'var(--shadow-sm)',
-              backdropFilter: 'blur(12px)',
+              boxShadow: 'var(--glass-shadow)',
             }}
           >
             <button
@@ -313,12 +314,13 @@ const DraftEditPage = () => {
           <div
             className="flex shrink-0 items-center gap-3"
             style={{
-              background: 'var(--sidebar-bg)',
-              border: '0.5px solid var(--separator)',
-              borderRadius: 9999,
+              background: 'var(--glass-bg)',
+              backdropFilter: 'blur(12px) saturate(180%)',
+              WebkitBackdropFilter: 'blur(12px) saturate(180%)',
+              border: '1px solid var(--glass-border)',
+              borderRadius: 20,
               padding: '4px 12px',
-              boxShadow: 'var(--shadow-sm)',
-              backdropFilter: 'blur(12px)',
+              boxShadow: 'var(--glass-shadow)',
             }}
           >
             <div className="flex items-center gap-2" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-sm)' }}>
