@@ -193,6 +193,8 @@ export default function Sidebar() {
     }
   };
 
+  const isGallery = active === 'gallery';
+
   return (
     <aside
       className="flex shrink-0 flex-col overflow-y-auto"
@@ -204,8 +206,8 @@ export default function Sidebar() {
         boxShadow: 'var(--shadow-sm)',
       }}
     >
-      {/* Header */}
-      <div className="px-3 pb-5 pt-2">
+      {/* Header — gallery 沉浸模式隐形占位，保持 tab 位置不偏移 */}
+      <div className="px-3 pb-5 pt-2" style={isGallery ? { visibility: 'hidden' } : undefined}>
         <span
           className="text-base font-bold"
           style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}
@@ -214,13 +216,14 @@ export default function Sidebar() {
         </span>
       </div>
 
-      {/* Search trigger */}
+      {/* Search trigger — gallery 沉浸模式隐形占位 */}
       <button
         className="sidebar-search mx-2 mb-2.5 flex items-center gap-2 rounded-lg px-2 py-1.5 text-base transition-all duration-150"
         style={{
           background: 'var(--shelf)',
           color: 'var(--ink-ghost)',
           fontFamily: 'var(--font-sans)',
+          ...(isGallery ? { visibility: 'hidden' } as const : {}),
         }}
       >
         <Search size={13} strokeWidth={2} style={{ opacity: 0.4, color: 'var(--ink)' }} />
@@ -228,9 +231,9 @@ export default function Sidebar() {
         <kbd className="ml-auto text-sm" style={{ opacity: 0.45, color: 'var(--ink-ghost)' }}>⌘K</kbd>
       </button>
 
-      {/* Main navigation */}
+      {/* Main navigation — gallery 模式只显示笔记+画廊 */}
       <nav className="flex flex-col gap-0.5">
-        {spaces.map((space) => (
+        {(isGallery ? (['notes', 'gallery'] as Space[]) : spaces).map((space) => (
           <div
             key={space}
             className="nav-item relative flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors duration-150"
@@ -469,15 +472,17 @@ export default function Sidebar() {
         </div>
       )}
 
-      {/* Bottom — ambient phrase */}
-      <div className="mt-auto px-3 py-4">
-        <span
-          className="text-xs leading-relaxed"
-          style={{ color: 'var(--ink-ghost)', letterSpacing: '-0.01em' }}
-        >
-          {getAmbientPhrase()}
-        </span>
-      </div>
+      {/* Bottom — ambient phrase（gallery 沉浸模式隐藏） */}
+      {!isGallery && (
+        <div className="mt-auto px-3 py-4">
+          <span
+            className="text-xs leading-relaxed"
+            style={{ color: 'var(--ink-ghost)', letterSpacing: '-0.01em' }}
+          >
+            {getAmbientPhrase()}
+          </span>
+        </div>
+      )}
     </aside>
   );
 }

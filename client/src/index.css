@@ -844,3 +844,23 @@ body.gallery-immersive {
 body.gallery-immersive [data-layout-root] {
   background: transparent !important;
 }
+/* gallery 边缘悬停箭头：默认隐藏，hover 淡入 */
+.gallery-edge-arrow {
+  opacity: 0;
+  transition: opacity 0.2s;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.5));
+}
+.gallery-edge-zone:hover .gallery-edge-arrow {
+  opacity: 1;
+}
+/* sidebar 沉浸化：脱离文档流浮动，main 撑满视口，照片自然居中 */
+body.gallery-immersive aside {
+  position: absolute;
+  z-index: 10;
+  --sidebar-bg: transparent;
+  --shadow-sm: none;
+  --ink: rgba(255,255,255,0.9);
+  --ink-faded: rgba(255,255,255,0.45);
+  --shelf: rgba(255,255,255,0.08);
+  --accent: rgba(255,255,255,0.9);
+}

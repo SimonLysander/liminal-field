@@ -33,9 +33,11 @@ import { appleEase } from '@/lib/motion';
 // offset -2 到 +2 分别映射到 farLeft / left / center / right / farRight
 // tx 是相对自身宽度的百分比偏移（基础居中由 translateX(-50%) 完成后叠加）
 const CARD_POSITIONS = {
-  left:   { tx: '-30%', rotate: -2, scale: 0.88, opacity: 0.5, z: 8  },
-  center: { tx: '0',    rotate: 0,  scale: 1,    opacity: 1,   z: 10 },
-  right:  { tx: '30%',  rotate: 2,  scale: 0.88, opacity: 0.5, z: 8  },
+  farLeft:  { tx: '-32%', rotate: -3, scale: 0.78, opacity: 0.2, z: 6  },
+  left:     { tx: '-17%', rotate: -2, scale: 0.88, opacity: 0.4, z: 8  },
+  center:   { tx: '0',    rotate: 0,  scale: 1,    opacity: 1,   z: 10 },
+  right:    { tx: '17%',  rotate: 2,  scale: 0.88, opacity: 0.4, z: 8  },
+  farRight: { tx: '32%',  rotate: 3,  scale: 0.78, opacity: 0.2, z: 6  },
 } as const;
 
 type CardSlot = keyof typeof CARD_POSITIONS;
@@ -135,12 +137,16 @@ function PhotoCarousel({
   if (photos.length === 0) return null;
 
   const total = photos.length;
-  const wrap = (i: number) => ((i % total) + total) % total;
 
+  /* 不循环：到头就不显示候选卡片，2+1+2 五槽布局 */
+  const hasPrev = photoIdx > 0;
+  const hasNext = photoIdx < total - 1;
   const slots: Array<{ slot: CardSlot; idx: number }> = [
-    { slot: 'left', idx: wrap(photoIdx - 1) },
+    ...(photoIdx > 1 ? [{ slot: 'farLeft' as CardSlot, idx: photoIdx - 2 }] : []),
+    ...(hasPrev ? [{ slot: 'left' as CardSlot, idx: photoIdx - 1 }] : []),
     { slot: 'center', idx: photoIdx },
-    { slot: 'right', idx: wrap(photoIdx + 1) },
+    ...(hasNext ? [{ slot: 'right' as CardSlot, idx: photoIdx + 1 }] : []),
+    ...(photoIdx < total - 2 ? [{ slot: 'farRight' as CardSlot, idx: photoIdx + 2 }] : []),
   ];
 
   const baseStyle: React.CSSProperties = {
@@ -148,12 +154,10 @@ function PhotoCarousel({
     left: '50%',
     top: '50%',
     translate: '-50% -50%',
-    border: '2px solid rgba(255,255,255,0.1)',
     borderRadius: 8,
     overflow: 'hidden',
-    background: '#0a0a0a',
-    width: '92%',
-    height: '94%',
+    width: '70%',
+    height: '88%',
   };
 
   return (
@@ -169,7 +173,7 @@ function PhotoCarousel({
             style={{
               ...baseStyle,
               zIndex: pos.z,
-              cursor: isCenter ? 'default' : slot === 'left' ? 'w-resize' : 'e-resize',
+              cursor: isCenter ? 'default' : 'pointer',
             }}
             animate={{
               x: pos.tx,
@@ -204,14 +208,43 @@ function PhotoCarousel({
               />
             </AnimatePresence>
             {isCenter && (
-              <div style={{
-                position: 'absolute',
-                bottom: 0, left: 0, right: 0,
-                padding: '20px 8px 6px',
-                background: 'linear-gradient(transparent, rgba(0,0,0,0.45))',
-              }}>
-                <PhotoFrameBar photo={photo} />
-              </div>
+              <>
+                {/* EXIF 参数行——无渐变，text-shadow 保证可读 */}
+                <div style={{
+                  position: 'absolute',
+                  bottom: 6, left: 8, right: 8,
+                  textShadow: '0 1px 4px rgba(0,0,0,0.8)',
+                }}>
+                  <PhotoFrameBar photo={photo} />
+                </div>
+                {/* 边缘悬停箭头——到头不渲染 */}
+                {hasPrev && (
+                  <div
+                    className="gallery-edge-zone"
+                    onClick={(e) => { e.stopPropagation(); onNavigate(-1); }}
+                    style={{
+                      position: 'absolute', left: 0, top: 0, bottom: 0, width: '12%',
+                      cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    <svg className="gallery-edge-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                  </div>
+                )}
+                {hasNext && (
+                  <div
+                    className="gallery-edge-zone"
+                    onClick={(e) => { e.stopPropagation(); onNavigate(1); }}
+                    style={{
+                      position: 'absolute', right: 0, top: 0, bottom: 0, width: '12%',
+                      cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    <svg className="gallery-edge-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                  </div>
+                )}
+              </>
             )}
           </motion.div>
         );
@@ -222,49 +255,87 @@ function PhotoCarousel({
 
 // ─── BottomBar ────────────────────────────────────────────────────────────────
 
-/** 底部：照片 caption（italic）+ 圆点指示器。相册标题已在右侧时间线展示。 */
-function BottomBar({
+/**
+ * 照片导航条：‹ dots › + 可选 caption，贴近照片底部居中。
+ * absolute 定位在照片区底部，不占文档流。
+ */
+function PhotoNavBar({
   caption,
   photoCount,
   photoIdx,
+  onNavigate,
 }: {
   caption: string;
   photoCount: number;
   photoIdx: number;
+  onNavigate: (dir: number) => void;
 }) {
+  if (photoCount <= 1 && !caption) return null;
+
+  const atStart = photoIdx === 0;
+  const atEnd = photoIdx === photoCount - 1;
+
+  const chevronStyle = (disabled: boolean): React.CSSProperties => ({
+    width: 24, height: 24,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    borderRadius: '50%',
+    color: disabled ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.5)',
+    cursor: disabled ? 'default' : 'pointer',
+    transition: 'color 0.2s',
+  });
+
   return (
     <div style={{
-      display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center', gap: 6,
-      flexShrink: 0, padding: '10px 40px 18px', paddingRight: 150,
-      /* 底部局部 scrim：从下往上渐变暗色 */
-      background: 'linear-gradient(transparent, rgba(0,0,0,0.3))',
+      position: 'absolute',
+      bottom: 16, left: '50%', transform: 'translateX(-50%)',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+      zIndex: 15, pointerEvents: 'none',
     }}>
-      {caption && (
-        <span style={{
-          fontSize: 13, color: 'rgba(255,255,255,0.65)',
-          textAlign: 'center', maxWidth: 500,
-          lineHeight: 1.6, fontStyle: 'italic',
-        }}>
-          {caption}
-        </span>
-      )}
+      {/* ‹ dots › */}
       {photoCount > 1 && (
-        <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-          {Array.from({ length: photoCount }, (_, i) => (
-            <div
-              key={i}
-              style={{
-                width: i === photoIdx ? 16 : 5,
-                height: 5,
-                borderRadius: i === photoIdx ? 3 : '50%',
-                background: i === photoIdx ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.25)',
-                transition: 'all 0.25s',
-              }}
-            />
-          ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, pointerEvents: 'auto' }}>
+          <button
+            onClick={atStart ? undefined : () => onNavigate(-1)}
+            style={chevronStyle(atStart)}
+            onMouseEnter={atStart ? undefined : e => { e.currentTarget.style.color = 'rgba(255,255,255,0.9)'; }}
+            onMouseLeave={atStart ? undefined : e => { e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+            {Array.from({ length: photoCount }, (_, i) => (
+              <div
+                key={i}
+                style={{
+                  width: i === photoIdx ? 16 : 5,
+                  height: 5,
+                  borderRadius: i === photoIdx ? 3 : '50%',
+                  background: i === photoIdx ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.25)',
+                  transition: 'all 0.25s',
+                }}
+              />
+            ))}
+          </div>
+          <button
+            onClick={atEnd ? undefined : () => onNavigate(1)}
+            style={chevronStyle(atEnd)}
+            onMouseEnter={atEnd ? undefined : e => { e.currentTarget.style.color = 'rgba(255,255,255,0.9)'; }}
+            onMouseLeave={atEnd ? undefined : e => { e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
         </div>
       )}
+      {/* caption 始终占位，无内容时 invisible 防止 dots 跳动 */}
+      <span style={{
+        fontSize: 13, color: 'rgba(255,255,255,0.55)',
+        textAlign: 'center', maxWidth: 500,
+        lineHeight: 1.6, fontStyle: 'italic',
+        pointerEvents: 'auto',
+        visibility: caption ? 'visible' : 'hidden',
+      }}>
+        {caption || '\u00A0'}
+      </span>
     </div>
   );
 }
@@ -537,8 +608,8 @@ export default function GalleryPage() {
     setPhotoDir(dir);
     setPhotoIdx((prev) => {
       const next = prev + dir;
-      if (next < 0) return total - 1;
-      if (next >= total) return 0;
+      /* 到头就停，不循环 */
+      if (next < 0 || next >= total) return prev;
       return next;
     });
   }, [currentDetail]);
@@ -594,15 +665,14 @@ export default function GalleryPage() {
           height: '100%',
         }}
       >
-        {/* 照片展示区 — 右侧 padding 给时间线留空间，center 卡片不重叠 */}
+        {/* 照片展示区 — 去掉右侧硬 padding，时间线是半透明浮层不影响居中 */}
         <div
           style={{
             flex: 1,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '16px 12px 16px 12px',
-            paddingRight: 150, /* 时间线 140px + 10px 间距 */
+            padding: '16px 12px',
           }}
         >
           <PhotoCarousel
@@ -612,49 +682,14 @@ export default function GalleryPage() {
             onNavigate={navigatePhoto}
           />
 
-          {/* 左右切换按钮 */}
-          {(currentDetail?.photos.length ?? 0) > 1 && (
-            <>
-              <button
-                onClick={() => navigatePhoto(-1)}
-                style={{
-                  position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)',
-                  width: 44, height: 44, borderRadius: '50%',
-                  background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.15)',
-                  color: '#fff',
-                  cursor: 'pointer', zIndex: 15,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.6)'; e.currentTarget.style.transform = 'translateY(-50%) scale(1.08)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.4)'; e.currentTarget.style.transform = 'translateY(-50%) scale(1)'; }}
-              ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
-              <button
-                onClick={() => navigatePhoto(1)}
-                style={{
-                  position: 'absolute', right: 164, top: '50%', transform: 'translateY(-50%)',
-                  width: 44, height: 44, borderRadius: '50%',
-                  background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.15)',
-                  color: '#fff',
-                  cursor: 'pointer', zIndex: 15,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.6)'; e.currentTarget.style.transform = 'translateY(-50%) scale(1.08)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.4)'; e.currentTarget.style.transform = 'translateY(-50%) scale(1)'; }}
-              ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
-            </>
-          )}
+          {/* ‹ dots › + caption，贴近照片底部居中 */}
+          <PhotoNavBar
+            caption={currentPhoto?.caption ?? ''}
+            photoCount={currentDetail?.photos.length ?? 0}
+            photoIdx={photoIdx}
+            onNavigate={navigatePhoto}
+          />
         </div>
-
-        {/* 底部：caption + 照片圆点 */}
-        <BottomBar
-          caption={currentPhoto?.caption ?? ''}
-          photoCount={currentDetail?.photos.length ?? 0}
-          photoIdx={photoIdx}
-        />
       </div>
 
       {/* 右侧时间轴 — ArcTimeline，fixed 脱离文档流 */}
