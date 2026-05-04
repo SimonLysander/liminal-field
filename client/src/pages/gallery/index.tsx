@@ -395,6 +395,15 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
  * 亮度由 --blur-brightness CSS 变量控制，日间 0.85、午夜 0.2。
  * key={photoUrl} 驱动 motion.img 的 enter 动画，每次照片切换淡入新背景。
  */
+/**
+ * 全屏模糊背景 — 参考 Apple Music 多层叠加方案（简化版）
+ *
+ * 层 1：照片模糊 + brightness(0.55) 压暗 + saturate(1.2) 提色
+ * 层 2：暗色蒙版 rgba(0,0,0,0.3) 兜底极端场景（纯白照片）
+ *
+ * 双保险：filter 压暗解决 90% 场景，蒙版兜底剩余 10%。
+ * 即使纯白照片，叠加后也足够暗，白色文字始终可读。
+ */
 function BlurBackground({ photoUrl }: { photoUrl: string | null }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none' }}>
@@ -406,15 +415,16 @@ function BlurBackground({ photoUrl }: { photoUrl: string | null }) {
           transition={{ duration: 0.6, ease: appleEase }}
           style={{
             position: 'absolute',
-            /* 比视口大一圈，确保模糊边缘不露底色 */
             inset: -80,
             backgroundImage: `url(${photoUrl})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
-            filter: 'blur(18px) saturate(1.2)',
+            filter: 'blur(18px) brightness(0.55) saturate(1.2)',
           }}
         />
       )}
+      {/* 层 2：暗色蒙版兜底 */}
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)' }} />
     </div>
   );
 }
