@@ -20,7 +20,7 @@
  *   └── BottomBar          — 底部相册信息条（占位）
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
@@ -515,12 +515,6 @@ function BlurBackground({ photoUrl }: { photoUrl: string | null }) {
 // ─── GalleryPage ──────────────────────────────────────────────────────────────
 
 export default function GalleryPage() {
-  // gallery 沉浸模式：useLayoutEffect 在绘制前切换，避免白色闪帧
-  useLayoutEffect(() => {
-    document.body.classList.add('gallery-immersive');
-    return () => { document.body.classList.remove('gallery-immersive'); };
-  }, []);
-
   const [searchParams, setSearchParams] = useSearchParams();
 
   // 相册列表（轻量，首次加载）

@@ -16,7 +16,7 @@
  *     own TreePanel sidebar and are code-split via React.lazy.
  */
 
-import { lazy, Suspense, useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect, useLayoutEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Toaster } from 'sonner';
@@ -89,6 +89,12 @@ const pageVariants = {
 
 function MainLayout() {
   const location = useLocation();
+
+  // gallery 沉浸模式：基于路由同步切换，在 AnimatePresence 过渡前就生效
+  const isGallery = location.pathname === '/gallery';
+  useLayoutEffect(() => {
+    document.body.classList.toggle('gallery-immersive', isGallery);
+  }, [isGallery]);
 
   return (
     <div data-layout-root className="relative z-[1] flex h-screen" style={{ background: 'var(--paper)' }}>
