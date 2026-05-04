@@ -2,8 +2,7 @@
  * GalleryEditPage — 画廊动态编辑页 (/admin/gallery/:id/edit)
  *
  * 布局：
- *   Topbar（主题切换）
- *   顶部导航栏：← 返回 | 标题输入 | 保存状态 | 保存/提交按钮
+ *   浮动胶囊顶栏（左：导航，右：主题切换 + 操作按钮）
  *   滚动内容区（max-w-[740px] 居中）：PhotoGrid + GalleryProseEditor + LocationSelect
  *   PhotoEditModal（照片详情弹窗）
  *
@@ -13,7 +12,8 @@
 
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import Topbar from '@/components/global/Topbar';
+import { Sun, Moon } from 'lucide-react';
+import { useTheme } from '@/hooks/use-theme';
 import { LoadingState } from '@/components/LoadingState';
 import { PhotoGrid } from './components/PhotoGrid';
 import { PhotoEditModal } from './components/PhotoEditModal';
@@ -52,6 +52,7 @@ function SaveStatusBadge({ status }: { status: 'saved' | 'dirty' | 'saving' }) {
 export default function GalleryEditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { theme, setTheme } = useTheme();
 
   const {
     loading,
@@ -95,48 +96,69 @@ export default function GalleryEditPage() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* 主题切换 Topbar */}
-      <Topbar />
-
-      {/* 顶部导航栏：← / 标题 / 状态 / 按钮 */}
-      <div
-        className="flex shrink-0 items-center gap-3 px-4"
-        style={{ height: 48, borderBottom: '0.5px solid var(--separator)' }}
-      >
-        {/* 左侧：← 返回列表 */}
-        <button
-          className="hover-shelf shrink-0 rounded-md px-2 py-1 transition-colors duration-150"
-          style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-base)' }}
-          onClick={() => navigate(`/admin/gallery?post=${id}`)}
-          aria-label="返回画廊列表"
+      {/* 浮动胶囊顶栏：绝对定位悬浮在内容区上方，左右两组胶囊 */}
+      <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex items-center justify-between px-4">
+        {/* 左侧胶囊：← 返回 / 标题输入 */}
+        <div
+          className="pointer-events-auto flex items-center gap-2 px-3 py-1"
+          style={{
+            background: 'var(--sidebar-bg)',
+            border: '0.5px solid var(--separator)',
+            borderRadius: 9999,
+            boxShadow: 'var(--shadow-sm)',
+          }}
         >
-          ←
-        </button>
-        <span className="shrink-0" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-base)' }}>/</span>
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => updateTitle(e.target.value)}
-          placeholder="无标题"
-          className="w-[160px] shrink-0 truncate border-none bg-transparent font-medium outline-none placeholder:text-[var(--ink-ghost)]"
-          style={{ color: 'var(--ink)', fontSize: 'var(--text-base)' }}
-        />
-
-        {/* 中间留白 */}
-        <div className="min-w-0 flex-1" />
-
-        {/* 右侧：保存状态 + 操作按钮 */}
-        <div className="flex shrink-0 items-center gap-3">
-          <SaveStatusBadge status={saveStatus} />
           <button
-            className="rounded-md px-3 py-1.5 text-sm transition-colors duration-150"
+            className="hover-shelf shrink-0 rounded-full px-1.5 py-0.5 transition-colors duration-150"
+            style={{ color: 'var(--ink-faded)' }}
+            onClick={() => navigate(`/admin/gallery?post=${id}`)}
+            aria-label="返回画廊列表"
+          >
+            ←
+          </button>
+          <span className="shrink-0 text-base" style={{ color: 'var(--ink-ghost)' }}>/</span>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => updateTitle(e.target.value)}
+            placeholder="无标题"
+            className="w-[160px] shrink-0 truncate border-none bg-transparent text-base font-medium outline-none placeholder:text-[var(--ink-ghost)]"
+            style={{ color: 'var(--ink)' }}
+          />
+        </div>
+
+        {/* 右侧胶囊：保存状态 + 主题切换 + 操作按钮 */}
+        <div
+          className="pointer-events-auto flex items-center gap-3 px-3 py-1"
+          style={{
+            background: 'var(--sidebar-bg)',
+            border: '0.5px solid var(--separator)',
+            borderRadius: 9999,
+            boxShadow: 'var(--shadow-sm)',
+          }}
+        >
+          <SaveStatusBadge status={saveStatus} />
+
+          {/* 主题切换按钮：亮色模式显示 Sun，暗色模式显示 Moon */}
+          <button
+            className="hover-shelf flex items-center rounded-full p-1 transition-colors duration-150"
+            style={{ color: 'var(--ink-faded)' }}
+            onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}
+            aria-label="切换主题"
+          >
+            <Sun size={14} strokeWidth={1.5} className="theme-icon-light" />
+            <Moon size={14} strokeWidth={1.5} className="theme-icon-dark" />
+          </button>
+
+          <button
+            className="rounded-full px-3 py-1 text-sm transition-colors duration-150"
             style={{ color: 'var(--ink-faded)', border: '0.5px solid var(--separator)' }}
             onClick={() => void save()}
           >
             保存草稿
           </button>
           <button
-            className="rounded-md px-3 py-1.5 text-sm font-medium transition-colors duration-150"
+            className="rounded-full px-3 py-1 text-sm font-medium transition-colors duration-150"
             style={{ background: 'var(--ink)', color: 'var(--paper)' }}
             onClick={() => setCommitModalOpen(true)}
           >

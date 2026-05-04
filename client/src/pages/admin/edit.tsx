@@ -271,32 +271,56 @@ const DraftEditPage = () => {
       <ThresholdOverlay visible={committing} label="正在提交版本..." />
 
       <main className="relative z-0 flex flex-1 flex-col overflow-hidden">
-        {/* 顶栏：返回 + 标题 + 工具栏 + 状态 + 操作，一行 */}
+        {/* 顶栏：两组浮动胶囊 + 中间 Portal 工具栏，无全宽底边线 */}
         <header
-          className="flex shrink-0 items-center gap-3 px-4"
-          style={{ height: 48, borderBottom: '0.5px solid var(--separator)' }}
+          className="flex shrink-0 items-center gap-3"
+          style={{ height: 48, padding: '8px 16px' }}
         >
-          <button
-            className="hover-shelf shrink-0 rounded-md px-2 py-1 transition-colors duration-150"
-            style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-base)' }}
-            onClick={() => navigate(-1)}
+          {/* 左侧胶囊：返回导航 + 标题输入 */}
+          <div
+            className="flex shrink-0 items-center gap-2"
+            style={{
+              background: 'var(--sidebar-bg)',
+              border: '0.5px solid var(--separator)',
+              borderRadius: 9999,
+              padding: '4px 12px',
+              boxShadow: 'var(--shadow-sm)',
+              backdropFilter: 'blur(12px)',
+            }}
           >
-            ←
-          </button>
-          <span className="shrink-0" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-base)' }}>/</span>
-          <input
-            type="text"
-            value={state.title}
-            onChange={(e) => handleChange('title', e.target.value)}
-            placeholder="无标题"
-            className="w-[160px] shrink-0 truncate border-none bg-transparent font-medium outline-none placeholder:text-[var(--ink-ghost)]"
-            style={{ color: 'var(--ink)', fontSize: 'var(--text-base)' }}
-          />
+            <button
+              className="hover-shelf shrink-0 rounded-md px-2 py-1 transition-colors duration-150"
+              style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-base)' }}
+              onClick={() => navigate(-1)}
+            >
+              ←
+            </button>
+            <span className="shrink-0" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-base)' }}>/</span>
+            <input
+              type="text"
+              value={state.title}
+              onChange={(e) => handleChange('title', e.target.value)}
+              placeholder="无标题"
+              className="w-[160px] shrink-0 truncate border-none bg-transparent font-medium outline-none placeholder:text-[var(--ink-ghost)]"
+              style={{ color: 'var(--ink)', fontSize: 'var(--text-base)' }}
+            />
+          </div>
 
-          {/* 工具栏占据中间空间（Portal 注入） */}
+          {/* 工具栏占据中间空间（Portal 注入），不包在胶囊里 */}
           <div ref={setToolbarPortal} className="min-w-0 flex-1 overflow-x-auto" />
 
-          <div className="flex shrink-0 items-center gap-4">
+          {/* 右侧胶囊：状态指示 + 主题切换 + 操作按钮 */}
+          <div
+            className="flex shrink-0 items-center gap-3"
+            style={{
+              background: 'var(--sidebar-bg)',
+              border: '0.5px solid var(--separator)',
+              borderRadius: 9999,
+              padding: '4px 12px',
+              boxShadow: 'var(--shadow-sm)',
+              backdropFilter: 'blur(12px)',
+            }}
+          >
             <div className="flex items-center gap-2" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-sm)' }}>
               {isAutosaving && <StatusDot color="var(--mark-blue)" />}
               {isDirty && !isAutosaving && <StatusDot color="var(--mark-red)" />}
