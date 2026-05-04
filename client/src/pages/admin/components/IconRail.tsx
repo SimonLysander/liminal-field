@@ -48,7 +48,6 @@ export function IconRail() {
         style={{
           width: 48,
           background: 'var(--sidebar-bg)',
-          borderRight: '0.5px solid var(--separator)',
         }}
       >
         {/* Logo */}

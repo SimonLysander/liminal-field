@@ -162,7 +162,7 @@ const ContentAdmin = () => {
           {/* Right — contextual side panel */}
           <aside
             className="flex w-[280px] shrink-0 flex-col overflow-hidden px-5 py-7"
-            style={{ borderLeft: '0.5px solid var(--separator)' }}
+            style={{}}
           >
             {workspace.selectedNode?.contentItemId ? (
               <FormalSidePanel

@@ -85,7 +85,6 @@ export default function HomePage() {
               key={i}
               className="hover-overlay group flex cursor-default items-start gap-4 rounded-lg px-2 py-3.5 transition-colors"
               style={{
-                borderBottom: i < activities.length - 1 ? '0.5px solid var(--separator)' : 'none',
                 transition: `background var(--duration-fast) var(--ease-out)`,
               }}
               custom={i}

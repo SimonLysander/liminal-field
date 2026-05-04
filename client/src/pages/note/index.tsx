@@ -264,7 +264,7 @@ function NoteReader({ id }: { id: string }) {
       <div
         ref={tocPanelRef}
         className="flex w-[200px] shrink-0 flex-col gap-7 overflow-y-auto px-4 py-10"
-        style={{ borderLeft: '0.5px solid var(--separator)' }}
+        style={{ background: 'var(--shelf)' }}
       >
         {toc.length > 0 && (
           <div>

@@ -266,7 +266,7 @@ export default function Sidebar() {
       {/* Sub-nav: Notes — tree drill-down, fetches per level */}
       {active === 'notes' && (
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <div className="mx-3 my-2.5 h-px" style={{ background: 'var(--separator)' }} />
+          <div className="my-3" />
 
           {/* 面包屑导航 — 单行返回路径模式
            *  根层级：section 标题样式，无箭头
@@ -429,7 +429,7 @@ export default function Sidebar() {
       {/* Sub-nav: Agent — sessions (placeholder) */}
       {active === 'agent' && (
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <div className="mx-3 my-2.5 h-px" style={{ background: 'var(--separator)' }} />
+          <div className="my-3" />
           <div
             className="px-3 pb-2 pt-1.5 text-2xs font-medium uppercase"
             style={{ color: 'var(--ink-ghost)', letterSpacing: '0.04em' }}

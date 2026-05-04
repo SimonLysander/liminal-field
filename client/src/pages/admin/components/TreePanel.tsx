@@ -330,7 +330,6 @@ export const TreePanel = ({
       className="flex w-[200px] shrink-0 flex-col overflow-hidden"
       style={{
         background: 'var(--sidebar-bg)',
-        borderRight: '0.5px solid var(--separator)',
       }}
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
@@ -403,7 +402,7 @@ export const TreePanel = ({
       {/* Bottom actions */}
       <div
         className="flex items-center justify-between px-5 pb-4"
-        style={{ borderTop: '0.5px solid var(--separator)', paddingTop: 12 }}
+        style={{ marginTop: 12, paddingTop: 12 }}
       >
         <button
           className="flex items-center gap-1.5 transition-colors duration-150"
