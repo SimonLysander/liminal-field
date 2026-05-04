@@ -300,12 +300,10 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
         position: 'absolute',
         right: 0, top: 0, bottom: 0,
         width: 140, zIndex: 20, overflow: 'hidden',
-        pointerEvents: 'none',
         display: 'flex', alignItems: 'center',
       }}
     >
-      {/* 固定高度列表，选中项永远在正中间 */}
-      <div style={{ pointerEvents: 'auto', width: '100%' }}>
+      <div style={{ width: '100%' }}>
         {slots.map(({ offset, albumIdx }) => {
           const dist = Math.abs(offset);
           const arcX = dist * dist * ARC_K;

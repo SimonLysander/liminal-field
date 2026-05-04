@@ -202,6 +202,9 @@ export default function Sidebar() {
         margin: '12px 0 12px 12px',
         borderRadius: 'var(--radius-lg)',
         boxShadow: 'var(--shadow-sm)',
+        /* gallery 页的模糊背景是 fixed z-index:0，sidebar 需要在其上方 */
+        position: 'relative',
+        zIndex: 2,
       }}
     >
       {/* Header */}
