@@ -88,26 +88,18 @@ const rules: PostProcessRule[] = [
     transform: (md) => md.replace(/==((?:[^=]|=[^=])+)==/g, '<mark>$1</mark>'),
   },
 
-  {
-    name: 'latexBlockToCodeBlock',
-    description: '块级 LaTeX $$...$$ → fenced code block（Plate 不支持 LaTeX 渲染）',
-    transform: (md) =>
-      md.replace(/\$\$([\s\S]*?)\$\$/g, (_, tex) => '\n```\n' + tex.trim() + '\n```\n'),
-  },
-
-  {
-    name: 'latexInlineToCode',
-    description: '行内 LaTeX $...$ → inline code',
-    transform: (md) => md.replace(/\$([^\n$]+?)\$/g, '`$1`'),
-  },
+  /* latexBlockToCodeBlock / latexInlineToCode 已移除：
+     前端已集成 @platejs/math + remark-math，
+     $$...$$ 和 $...$ 由 Plate EquationPlugin 直接渲染为 KaTeX 公式。 */
 
   {
     name: 'escapeBracesOutsideCode',
-    description: '转义 code block / inline code 外的 { }，防止 remarkMdx 静默截断',
+    description: '转义 code block / inline code / LaTeX 公式外的 { }，防止 remarkMdx 静默截断',
     transform: (md) => {
       const lines = md.split('\n');
       const result: string[] = [];
       let inCodeBlock = false;
+      let inBlockMath = false;
 
       for (const line of lines) {
         if (/^```/.test(line)) {
@@ -119,9 +111,21 @@ const rules: PostProcessRule[] = [
           result.push(line);
           continue;
         }
+        // $$...$$ 块级公式可能跨行
+        if (/^\$\$/.test(line.trim())) {
+          inBlockMath = !inBlockMath;
+          result.push(line);
+          continue;
+        }
+        if (inBlockMath) {
+          result.push(line);
+          continue;
+        }
+        // 跳过 inline code `...` 和行内公式 $...$
         result.push(
-          line.replace(/(`[^`]*`)|([{}])/g, (_match, codeSpan, brace) => {
+          line.replace(/(`[^`]*`)|(\$[^$\n]+?\$)|([{}])/g, (_match, codeSpan, mathSpan, brace) => {
             if (codeSpan) return codeSpan;
+            if (mathSpan) return mathSpan;
             return brace === '{' ? '\\{' : '\\}';
           }),
         );
