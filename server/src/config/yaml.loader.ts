@@ -41,6 +41,6 @@ function loadDotEnv(): void {
         process.env[key] = val;
       }
     }
-    break; // 只加载第一个找到的
+    // 不 break：继续加载其他候选文件，已有变量不覆盖
   }
 }
