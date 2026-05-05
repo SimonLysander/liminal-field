@@ -228,8 +228,8 @@ function NoteReader({ id }: { id: string }) {
 
         {summary && (
           <div
-            className="mb-8 text-lg leading-relaxed"
-            style={{ color: 'var(--ink-faded)', fontStyle: 'italic' }}
+            className="mb-8 rounded-lg px-4 py-3 text-lg leading-relaxed"
+            style={{ color: 'var(--ink-faded)', fontStyle: 'italic', background: 'var(--shelf)' }}
           >
             {summary}
           </div>

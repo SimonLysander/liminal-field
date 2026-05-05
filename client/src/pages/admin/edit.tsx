@@ -373,6 +373,30 @@ const DraftEditPage = () => {
                   toolbarContainer={toolbarPortal}
                 />
               </DraftAssetProvider>
+
+              {/* 文档摘要 — 编辑器下方，对齐 Plate 编辑器内边距（px-16 / sm:px-[max(64px,calc(50%-350px))]） */}
+              <div className="mt-8 px-16 sm:px-[max(64px,calc(50%-350px))]">
+                <hr style={{ border: 'none', borderTop: '1px solid var(--separator)' }} />
+                <div
+                  className="mt-4 mb-2 text-2xs font-semibold uppercase"
+                  style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}
+                >
+                  文档摘要
+                </div>
+                <textarea
+                  value={state.summary}
+                  onChange={(e) => handleChange('summary', e.target.value)}
+                  placeholder="简要描述文档内容..."
+                  rows={3}
+                  className="w-full resize-none rounded-lg border-none px-3 py-2 text-sm outline-none"
+                  style={{
+                    background: 'var(--shelf)',
+                    color: 'var(--ink-light)',
+                    fontFamily: 'var(--font-sans)',
+                    lineHeight: 1.7,
+                  }}
+                />
+              </div>
             </div>
           </div>
 
@@ -417,10 +441,8 @@ const DraftEditPage = () => {
       {/* Commit dialog */}
       {showCommitDialog && (
         <CommitDialog
-          summary={state.summary}
           changeNote={state.changeNote}
           changeType={state.changeType}
-          onSummary={(v) => handleChange('summary', v)}
           onChangeNote={(v) => handleChange('changeNote', v)}
           onChangeType={(v) => handleChange('changeType', v)}
           onConfirm={() => void commitDraft()}
@@ -434,19 +456,15 @@ const DraftEditPage = () => {
 /* ---------- Commit Dialog ---------- */
 
 function CommitDialog({
-  summary,
   changeNote,
   changeType,
-  onSummary,
   onChangeNote,
   onChangeType,
   onConfirm,
   onCancel,
 }: {
-  summary: string;
   changeNote: string;
   changeType: ContentChangeType;
-  onSummary: (v: string) => void;
   onChangeNote: (v: string) => void;
   onChangeType: (v: ContentChangeType) => void;
   onConfirm: () => void;
@@ -482,16 +500,6 @@ function CommitDialog({
         </p>
 
         <div className="space-y-3.5">
-          <label className="flex flex-col gap-1.5">
-            <span className="font-medium" style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-base)' }}>摘要</span>
-            <textarea
-              value={summary}
-              onChange={(e) => onSummary(e.target.value)}
-              placeholder="简要描述文档内容..."
-              className="min-h-[60px] resize-y rounded-lg border-none px-3 py-2 outline-none"
-              style={{ background: 'var(--shelf)', color: 'var(--ink)', fontSize: 'var(--text-base)' }}
-            />
-          </label>
 
           <label className="flex flex-col gap-1.5">
             <span className="font-medium" style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-base)' }}>变更说明</span>

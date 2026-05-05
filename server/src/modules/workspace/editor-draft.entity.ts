@@ -24,8 +24,8 @@ export class EditorDraft {
   @prop({ required: true, trim: true })
   title!: string;
 
-  @prop({ required: true, trim: true })
-  summary!: string;
+  @prop({ trim: true })
+  summary?: string;
 
   @prop({ required: true, trim: true })
   changeNote!: string;

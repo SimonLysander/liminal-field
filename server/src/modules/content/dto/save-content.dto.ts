@@ -13,8 +13,8 @@ export class SaveContentDto {
   title!: string;
 
   @IsString()
-  @IsNotEmpty()
-  summary!: string;
+  @IsOptional()
+  summary?: string;
 
   @IsEnum(ContentStatus)
   status!: ContentStatus;

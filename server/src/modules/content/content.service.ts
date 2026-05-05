@@ -271,6 +271,7 @@ export class ContentService {
     }
 
     const now = new Date();
+    const summary = dto.summary || '';
     this.enforceActionStateTransition(current, dto.action, dto.publishCommitHash);
     await this.contentGitService.prepareWritableWorkspace();
 
@@ -284,7 +285,7 @@ export class ContentService {
     const nextChangeLogs = [
       this.buildChangeLog(
         dto.title,
-        dto.summary,
+        summary,
         dto.changeNote,
         dto.changeType,
         now,
@@ -304,7 +305,7 @@ export class ContentService {
       latestVersion: {
         commitHash: this.resolveLatestVersion(current).commitHash,
         title: dto.title,
-        summary: dto.summary,
+        summary,
       },
       changeLogs: nextChangeLogs,
     } as ContentItem;
@@ -320,7 +321,7 @@ export class ContentService {
         nextLatestVersion = this.buildVersionSnapshot(
           committedHash,
           dto.title,
-          dto.summary,
+          summary,
         );
         nextChangeLogs[0] = {
           ...nextChangeLogs[0],
@@ -351,7 +352,7 @@ export class ContentService {
       nextLatestVersion = this.buildVersionSnapshot(
         nextLatestVersion.commitHash,
         dto.title,
-        dto.summary,
+        summary,
       );
     }
 

@@ -138,6 +138,16 @@ export const ContentVersionView = ({
         </div>
       </div>
 
+      {/* 摘要 — 和展示端一致 */}
+      {!preview && content.latestVersion.summary && (
+        <div
+          className="rounded-lg px-4 py-3 text-lg leading-relaxed"
+          style={{ color: 'var(--ink-faded)', fontStyle: 'italic', background: 'var(--shelf)' }}
+        >
+          {content.latestVersion.summary}
+        </div>
+      )}
+
       {previewLoading && (
         <LoadingState label="加载版本内容中" />
       )}
