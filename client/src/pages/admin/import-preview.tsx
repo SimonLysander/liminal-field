@@ -33,6 +33,8 @@ export default function ImportPreviewPage() {
   const [resolving, setResolving] = useState(false);
   const [toc, setToc] = useState<{ level: number; text: string; id: string }[]>([]);
   const [activeToc, setActiveToc] = useState('');
+  /** PlateReadOnly 异步就绪后才打上 data-heading-id，用计数触发 TOC 重新收集 */
+  const [plateLayoutGen, setPlateLayoutGen] = useState(0);
   const contentRef = useRef<HTMLDivElement>(null);
   const tocContainerRef = useRef<HTMLDivElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -59,7 +61,7 @@ export default function ImportPreviewPage() {
       .finally(() => setLoading(false));
   }, [parseId, navigate]);
 
-  // TOC：从渲染后的 DOM 提取标题
+  // TOC：从渲染后的 DOM 提取标题（依赖 plateLayoutGen：Plate 异步解析后再跑一遍）
   useLayoutEffect(() => {
     const container = contentRef.current;
     if (!container || !data) { setToc([]); return; }
@@ -71,7 +73,7 @@ export default function ImportPreviewPage() {
       entries.push({ level, text: el.textContent || '', id: el.getAttribute('data-heading-id') || '' });
     });
     setToc(entries);
-  }, [data]);
+  }, [data, plateLayoutGen]);
 
   // Scroll spy：追踪当前阅读位置
   const handleScroll = useCallback(() => {
@@ -181,14 +183,24 @@ export default function ImportPreviewPage() {
       {/* Body — 双栏 */}
       <div className="flex flex-1 overflow-hidden">
         {/* 左侧：Markdown 预览 */}
-        <main ref={contentRef} className="flex-[2] overflow-y-auto px-12 py-8">
-          <MarkdownBody markdown={data.markdown} />
+        <main
+          ref={contentRef}
+          className="min-w-0 flex-[2] overflow-y-auto px-12 py-8 max-[520px]:px-5"
+        >
+          <MarkdownBody
+            markdown={data.markdown}
+            onHeadingsMarked={() => setPlateLayoutGen((n) => n + 1)}
+          />
         </main>
 
         {/* 右侧：信息面板 */}
         <aside
-          className="flex w-[320px] flex-col border-l"
-          style={{ borderColor: 'var(--separator)', background: 'var(--sidebar-bg)' }}
+          className="flex shrink-0 flex-col border-l"
+          style={{
+            width: 'var(--layout-wide-aside)',
+            borderColor: 'var(--separator)',
+            background: 'var(--sidebar-bg)',
+          }}
         >
           <div className="flex-1 overflow-y-auto space-y-5 px-5 py-5">
             {/* 文件信息 + 标题可编辑 */}

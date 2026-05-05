@@ -104,14 +104,19 @@ function ReadOnlySkeleton() {
 export default function PlateReadOnly({
   markdown,
   contentItemId,
+  /** Plate 异步就绪并为 h1–h6 打上 data-heading-id 之后调用（用于父组件从 DOM 聚合 TOC） */
+  onHeadingsMarked,
 }: {
   markdown: string;
   /** 传入后将 ./assets/{name} 改写为服务端代理 URL */
   contentItemId?: string;
+  onHeadingsMarked?: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const onHeadingsMarkedRef = useRef(onHeadingsMarked);
+  onHeadingsMarkedRef.current = onHeadingsMarked;
 
   const processedMarkdown = useMemo(() => {
     let md = markdown || '';
@@ -138,6 +143,7 @@ export default function PlateReadOnly({
     headings.forEach((el, i) => {
       el.setAttribute('data-heading-id', `heading-${i}`);
     });
+    onHeadingsMarkedRef.current?.();
   }, [ready, processedMarkdown]);
 
   if (!ready || isPending) {
