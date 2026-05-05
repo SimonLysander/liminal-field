@@ -80,15 +80,7 @@ export const ContentVersionView = ({
         </div>
       ) : (
     <div className="space-y-6">
-      {/* Breadcrumb */}
-      {node.parentId && (
-        <div className="flex items-center gap-1.5" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)' }}>
-          <span style={{ opacity: 0.6 }}>...</span>
-          <span style={{ opacity: 0.4 }}>/</span>
-          <span style={{ color: 'var(--ink-faded)' }}>{node.name}</span>
-        </div>
-      )}
-
+      {/* 不在此重复面包屑：左侧结构面板已表达层级，中间仅保留标题 + 正文 */}
       {/* Header — 始终显示，不因 preview 隐藏 */}
       <div className="flex items-start justify-between">
         <div>
