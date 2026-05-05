@@ -71,4 +71,22 @@ describe('extractHeadings', () => {
       { level: 2, text: '另一个标题' },
     ]);
   });
+
+  // 目录文案去掉同一行内的 $$...$$，避免公式挤占 TOC
+  it('标题中的 $$ 块级公式从 TOC 文案中移除', () => {
+    const md = '## 前文 $$E=mc^2$$ 后文\n# $$\\sin x + \\cos x$$\n# 正常标题\n';
+    expect(extractHeadings(md)).toEqual([
+      { level: 2, text: '前文 后文' },
+      { level: 1, text: '正常标题' },
+    ]);
+  });
+
+  // CRLF 换行时仍能识别标题（与 LF 行为一致）
+  it('CRLF 换行下仍能提取标题', () => {
+    const md = '# 标题一\r\n\r\n## 标题二\r\n';
+    expect(extractHeadings(md)).toEqual([
+      { level: 1, text: '标题一' },
+      { level: 2, text: '标题二' },
+    ]);
+  });
 });
