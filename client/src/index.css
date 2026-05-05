@@ -407,6 +407,22 @@
   --radius-xl: 12px;
 
   /*
+   * Layout shell — 随视口平滑伸缩（替代到处写死 200px / 280px / 740px）
+   *
+   * sidebar：结构树 & 展示端侧栏，约 168–200px（随 vw 渐变）
+   * context：管理端右侧上下文栏，约 248–280px
+   * reading-max：正文栏最大宽度，≤740px 且随窄窗收缩
+   * editor-max：全屏编辑正文区最大宽度，≤960px
+   * 水平/垂直边距：各页保留原 Tailwind（px-10 py-9 等），窄屏用 max-[520px]:px-4 略收，避免与内容区 token 重复计算
+   */
+  --layout-sidebar: clamp(10.5rem, 10vw + 5rem, 12.5rem);
+  --layout-context: clamp(15rem, 11vw + 7.5rem, 17.5rem);
+  /* 导入预览等略宽侧栏（原 ~320px） */
+  --layout-wide-aside: clamp(15rem, 12vw + 8rem, 20rem);
+  --layout-reading-max: min(46.25rem, 92vw);
+  --layout-editor-max: min(60rem, 90vw);
+
+  /*
    * Type scale — 语义角色映射（对标 Apple HIG）
    *
    * 角色                Apple 名称       token       场景
