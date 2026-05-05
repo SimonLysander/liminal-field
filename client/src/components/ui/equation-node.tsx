@@ -57,7 +57,7 @@ export function EquationElement(props: PlateElementProps<TEquationElement>) {
   });
 
   return (
-    <PlateElement className="my-1" {...props}>
+    <PlateElement className="my-4" {...props}>
       <Popover open={open} onOpenChange={setOpen} modal={false}>
         <PopoverTrigger asChild>
           <div
@@ -137,7 +137,7 @@ export function InlineEquationElement(
     <PlateElement
       {...props}
       className={cn(
-        'mx-1 inline-block select-none rounded-sm [&_.katex-display]:my-0!'
+        'mx-1 my-1 inline-block select-none rounded-sm [&_.katex-display]:my-0!'
       )}
     >
       <Popover open={open} onOpenChange={setOpen} modal={false}>
@@ -145,7 +145,6 @@ export function InlineEquationElement(
           <div
             className={cn(
               'after:-top-0.5 after:-left-1 after:absolute after:inset-0 after:z-1 after:h-[calc(100%)+4px] after:w-[calc(100%+8px)] after:rounded-sm after:content-[""]',
-              'h-6',
               inlineSuggestionVariants(),
               ((element.texExpression.length > 0 && open) || selected) &&
                 'after:bg-brand/15',

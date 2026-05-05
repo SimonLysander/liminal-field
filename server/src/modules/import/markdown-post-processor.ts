@@ -93,6 +93,38 @@ const rules: PostProcessRule[] = [
      $$...$$ 和 $...$ 由 Plate EquationPlugin 直接渲染为 KaTeX 公式。 */
 
   {
+    name: 'fixPipesInTableMath',
+    description: '表格内 $...$ 公式里的 | 替换为 \\vert，避免与表格列分隔符冲突',
+    transform: (md) => {
+      return md.replace(/^(\|.*\|)$/gm, (tableLine) => {
+        // 只处理表格行（以 | 开头和结尾的行，排除分隔行 |---|）
+        if (/^\|[\s-:|]+\|$/.test(tableLine)) return tableLine;
+        // 替换表格行内 $...$ 公式中的 |
+        return tableLine.replace(/\$([^$\n]+?)\$/g, (_match, texContent) => {
+          return '$' + texContent.replace(/\\\|/g, '\\vert ').replace(/\|/g, '\\vert ') + '$';
+        });
+      });
+    },
+  },
+
+  {
+    name: 'isolateBlockMathFences',
+    description: 'remark-math 要求 $$ 独占一行；拆分 $$ 与内容粘连的情况',
+    transform: (md) =>
+      md
+        // $$content（$$ 开头但同行有内容，且行尾无 $$）→ $$\ncontent
+        .replace(/^\$\$([^\n$].+)$/gm, (match, content) => {
+          if (content.endsWith('$$')) return match;
+          return '$$\n' + content;
+        })
+        // content$$（行尾 $$ 但行首不是 $$）→ content\n$$
+        .replace(/^([^\n]+[^$])\$\$$/gm, (match, content) => {
+          if (content.startsWith('$$')) return match;
+          return content + '\n$$';
+        }),
+  },
+
+  {
     name: 'escapeBracesOutsideCode',
     description: '转义 code block / inline code / LaTeX 公式外的 { }，防止 remarkMdx 静默截断',
     transform: (md) => {
@@ -111,9 +143,11 @@ const rules: PostProcessRule[] = [
           result.push(line);
           continue;
         }
-        // $$...$$ 块级公式可能跨行
-        if (/^\$\$/.test(line.trim())) {
-          inBlockMath = !inBlockMath;
+        // $$...$$ 块级公式可能跨行：检测行中任意位置的 $$
+        const dollarPairs = (line.match(/\$\$/g) || []).length;
+        if (dollarPairs > 0) {
+          // 奇数个 $$ → 切换状态（开或关），偶数个 → 不变（同行开关）
+          if (dollarPairs % 2 === 1) inBlockMath = !inBlockMath;
           result.push(line);
           continue;
         }
