@@ -42,21 +42,21 @@ export class StartupDiagnosticsService implements OnApplicationBootstrap {
       const t0 = Date.now();
       await db.admin().command({ ping: 1 });
       const pingMs = Date.now() - t0;
-      mongoLine = `MongoDB: OK — ${mongoHost}:${mongoPort}/${mongoDb}, ping ${pingMs}ms`;
+      mongoLine = `OK — ${mongoHost}:${mongoPort}/${mongoDb}, ping ${pingMs}ms`;
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      mongoLine = `MongoDB: FAIL — ${mongoHost}:${mongoPort}/${mongoDb ?? '?'} — ${msg}`;
+      mongoLine = `FAIL — ${mongoHost}:${mongoPort}/${mongoDb ?? '?'} — ${msg}`;
     }
 
     const minioReady = this.minioService.isDraftStorageReady();
     const minioCfg = this.minioService.getDraftStorageConfig();
     const minioDetail = this.minioService.getDraftStorageInitError();
     const minioLine = minioReady
-      ? `MinIO (draft assets): OK — ${minioCfg.endpoint}:${minioCfg.port}, bucket "${minioCfg.bucket}", useSSL=${minioCfg.useSSL}`
-      : `MinIO (draft assets): FAIL — ${minioCfg.endpoint}:${minioCfg.port}, bucket "${minioCfg.bucket}" — ${minioDetail ?? 'unknown error'}`;
+      ? `OK — ${minioCfg.endpoint}:${minioCfg.port}, bucket "${minioCfg.bucket}"`
+      : `FAIL — ${minioCfg.endpoint}:${minioCfg.port}, bucket "${minioCfg.bucket}" — ${minioDetail ?? 'unknown error'}`;
 
     const kbRoot = this.contentRepoService.repoRoot;
-    const kbLine = `Knowledge base — content.repoRoot: ${kbRoot}`;
+    const kbLine = `repoRoot: ${kbRoot}`;
 
     const gitLine =
       this.contentGitService.getKbGitSummaryLine() ??
@@ -68,7 +68,7 @@ export class StartupDiagnosticsService implements OnApplicationBootstrap {
     );
     let mineruLine: string;
     if (!this.mineruService.isConfigured()) {
-      mineruLine = `MinerU (import): not configured — baseUrl=${mineruBaseUrl}, token empty (set MINERU_TOKEN or mineru.token in yaml)`;
+      mineruLine = `not configured — token empty`;
     } else {
       mineruLine = await this.probeMineruHost(mineruBaseUrl);
     }
@@ -78,33 +78,32 @@ export class StartupDiagnosticsService implements OnApplicationBootstrap {
 
     this.emitGroupedReport([
       {
-        title: '[1] MongoDB — primary database (required)',
-        lines: [`(1.1) ${mongoLine}`],
+        title: '[1] MongoDB',
+        lines: [mongoLine],
       },
       {
-        title: '[2] MinIO — draft asset bucket (required for editor uploads)',
-        lines: [`(2.1) ${minioLine}`],
+        title: '[2] MinIO',
+        lines: [minioLine],
       },
       {
-        title: '[3] Knowledge base — on-disk repo + git HEAD',
-        lines: [`(3.1) ${kbLine}`, `(3.2) ${gitLine}`],
+        title: '[3] Knowledge Base',
+        lines: [kbLine, gitLine],
       },
       {
-        title: '[4] MinerU — document import API (optional)',
-        lines: [`(4.1) ${mineruLine}`],
+        title: '[4] MinerU (optional)',
+        lines: [mineruLine],
       },
       {
-        title: '[5] HTTP / process — how this server is running',
+        title: '[5] Process',
         lines: [
-          `(5.1) listen PORT=${httpPort} (override with PORT env)`,
-          `(5.2) cwd=${process.cwd()}`,
-          `(5.3) NODE_ENV=${process.env.NODE_ENV ?? 'undefined'}`,
+          `PORT=${httpPort}, NODE_ENV=${process.env.NODE_ENV ?? 'undefined'}`,
+          `cwd=${process.cwd()}`,
         ],
       },
       {
-        title: '[6] Optional — remote KB clone / sync',
+        title: '[6] Remote sync',
         lines: [
-          `(6.1) KB_REMOTE_URL=${kbRemote ? `"${kbRemote}"` : 'unset'} — used when cloning or pushing KB`,
+          `KB_REMOTE_URL=${kbRemote ? `"${kbRemote}"` : 'unset'}`,
         ],
       },
     ]);

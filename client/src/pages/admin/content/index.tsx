@@ -70,6 +70,7 @@ const ContentAdmin = () => {
     return () => el.removeEventListener('scroll', handlePreviewScroll);
   }, [handlePreviewScroll]);
 
+
   /* 点击跳转 + 高亮 */
   const scrollToHeading = useCallback((index: number) => {
     const els = getHeadingEls();
@@ -251,6 +252,21 @@ function FormalSidePanel({
   onOverwriteDraft: () => Promise<void>;
   onSelectVersion: (commitHash: string) => Promise<void>;
 }) {
+  const tocPanelRef = useRef<HTMLDivElement>(null);
+
+  /* 大纲面板自动滚动：activeIndex 变化时，将激活项滚入可视区 */
+  useEffect(() => {
+    const panel = tocPanelRef.current;
+    if (activeIndex < 0 || !panel) return;
+    const activeEl = panel.children[activeIndex] as HTMLElement | undefined;
+    if (!activeEl) return;
+    const panelRect = panel.getBoundingClientRect();
+    const elRect = activeEl.getBoundingClientRect();
+    const offset = elRect.top - panelRect.top + panel.scrollTop;
+    const target = offset - panel.clientHeight / 2 + activeEl.offsetHeight / 2;
+    panel.scrollTo({ top: target, behavior: 'smooth' });
+  }, [activeIndex]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* 大纲 — flex-1，内部滚动；无标题时占位，避免布局跳动 */}
@@ -261,7 +277,7 @@ function FormalSidePanel({
         >
           大纲
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div ref={tocPanelRef} className="min-h-0 flex-1 overflow-y-auto">
           {toc.length > 0 ? (
             toc.map((item, i) => {
               const isActive = activeIndex === i;

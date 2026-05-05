@@ -1,23 +1,22 @@
 mongo:
-  host: localhost
-  port: 27017
-  username: admin
-  password: 3AY94J3UIO2TmRJ6tK
-  database: liminal-field
+  host: ${MONGO_HOST}
+  port: ${MONGO_PORT}
+  username: ${MONGO_USER}
+  password: ${MONGO_PASSWORD}
+  database: ${MONGO_DATABASE}
   options:
     authSource: admin
 
 minio:
-  endpoint: localhost
-  port: 9000
+  endpoint: ${MINIO_HOST}
+  port: ${MINIO_PORT}
   useSSL: false
-  accessKey: minioadmin
-  secretKey: minioadmin
-  bucket: draft-assets
+  accessKey: ${MINIO_USER}
+  secretKey: ${MINIO_PASSWORD}
+  bucket: ${MINIO_BUCKET}
 
 content:
-  # 相对 server 进程 cwd（`pnpm start:dev` 在 server/ 下执行 → 位于 server/liminal-field-kb）
-  repoRoot: ./liminal-field-kb
+  repoRoot: ${CONTENT_REPO_ROOT}
 
 mineru:
   baseUrl: https://mineru.net

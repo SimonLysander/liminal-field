@@ -37,27 +37,29 @@ services:
       minio:
         condition: service_started
     volumes:
-      - ./server/configs/db.docker.yaml:/app/configs/db.yaml:ro
       - kb-data:/data/liminal-field-kb
     environment:
       NODE_ENV: production
       TZ: Asia/Shanghai
-      JWT_SECRET: ${JWT_SECRET}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
-      # server 通过 db.yaml 读取连接信息，这里传入供 db.docker.yaml 使用
+      # db.yaml 统一用环境变量，Docker 场景覆盖 host 为容器名
       MONGO_HOST: mongo
+      MONGO_PORT: ${MONGO_PORT:-27017}
       MONGO_USER: ${MONGO_USER}
       MONGO_PASSWORD: ${MONGO_PASSWORD}
       MONGO_DATABASE: ${MONGO_DATABASE}
       MINIO_HOST: minio
+      MINIO_PORT: ${MINIO_PORT:-9000}
       MINIO_USER: ${MINIO_USER}
       MINIO_PASSWORD: ${MINIO_PASSWORD}
       MINIO_BUCKET: ${MINIO_BUCKET}
+      CONTENT_REPO_ROOT: /data/liminal-field-kb
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      MINERU_TOKEN: ${MINERU_TOKEN:-}
       KB_REMOTE_URL: ${KB_REMOTE_URL:-}
       GIT_SYNC_CRON: ${GIT_SYNC_CRON:-0 3 * * *}
       CONTENT_GIT_AUTHOR_NAME: ${CONTENT_GIT_AUTHOR_NAME:-Liminal Field}
       CONTENT_GIT_AUTHOR_EMAIL: ${CONTENT_GIT_AUTHOR_EMAIL:-no-reply@liminal-field.local}
-      MINERU_TOKEN: ${MINERU_TOKEN:-}
     ports:
       - "4398:4398"
 
