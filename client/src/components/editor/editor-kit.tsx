@@ -17,6 +17,7 @@ import { ListKit } from './plugins/list-kit';
 import { TableKit } from './plugins/table-kit';
 import { MediaKit } from './plugins/media-kit';
 import { FontKit } from './plugins/font-kit';
+import { MathKit } from './plugins/math-kit';
 import { MarkdownKit } from './plugins/markdown-kit';
 
 export const EditorKit = [
@@ -31,6 +32,7 @@ export const EditorKit = [
   ...TableKit,
   ...MediaKit,
   ...FontKit,
+  ...MathKit,
   ...MarkdownKit,
 
   /* ⌘+Enter 跳出代码块/引用等嵌套结构，在后面插入新段落 */

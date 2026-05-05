@@ -31,9 +31,11 @@ import { ListKit } from '@/components/editor/plugins/list-kit';
 import { TableKit } from '@/components/editor/plugins/table-kit';
 import { MediaKit } from '@/components/editor/plugins/media-kit';
 import { FontKit } from '@/components/editor/plugins/font-kit';
+import { MathKit } from '@/components/editor/plugins/math-kit';
 import { Editor } from '@/components/ui/editor';
 import { MarkdownPlugin } from '@platejs/markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 
 /**
  * read-only 插件集：不含 remarkMdx。
@@ -48,8 +50,9 @@ const ReadOnlyPlugins = [
   ...TableKit,
   ...MediaKit,
   ...FontKit,
+  ...MathKit,
   MarkdownPlugin.configure({
-    options: { remarkPlugins: [remarkGfm] },
+    options: { remarkPlugins: [remarkGfm, remarkMath] },
   }),
 ];
 

@@ -5,6 +5,7 @@ import type { PlateEditor } from 'platejs/react';
 import { insertCodeBlock, toggleCodeBlock } from '@platejs/code-block';
 import { insertDate } from '@platejs/date';
 import { triggerFloatingLink } from '@platejs/link/react';
+import { insertEquation, insertInlineEquation } from '@platejs/math';
 import {
   insertFilePlaceholder,
   insertMedia,
@@ -57,6 +58,7 @@ const insertBlockMap: Record<
     }),
   [KEYS.table]: (editor) =>
     editor.getTransforms(TablePlugin).insert.table({}, { select: true }),
+  equation: (editor) => insertEquation(editor, { select: true }),
 };
 
 const insertInlineMap: Record<
@@ -65,6 +67,7 @@ const insertInlineMap: Record<
 > = {
   [KEYS.date]: (editor) => insertDate(editor, { select: true }),
   [KEYS.link]: (editor) => triggerFloatingLink(editor, { focused: true }),
+  inline_equation: (editor) => insertInlineEquation(editor, '', { select: true }),
 };
 
 type InsertBlockOptions = {

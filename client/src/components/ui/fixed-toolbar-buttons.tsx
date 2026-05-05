@@ -18,6 +18,7 @@ import {
   PaintBucketIcon,
   PilcrowIcon,
   QuoteIcon,
+  RadicalIcon,
   StrikethroughIcon,
   TableIcon,
   UnderlineIcon,
@@ -178,6 +179,18 @@ export function FixedToolbarButtons() {
               <CalendarIcon />
             </ToolbarButton>
             <MediaToolbarButton nodeType={KEYS.img} />
+            <ToolbarButton
+              onClick={() => insertBlock(editor, 'equation')}
+              tooltip="插入公式块"
+            >
+              <RadicalIcon />
+            </ToolbarButton>
+            <ToolbarButton
+              onClick={() => insertInlineElement(editor, 'inline_equation')}
+              tooltip="插入行内公式"
+            >
+              <span className="font-serif text-xs italic">fx</span>
+            </ToolbarButton>
           </ToolbarGroup>
         </>
       )}
