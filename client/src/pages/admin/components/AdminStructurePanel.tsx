@@ -21,15 +21,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import type { StructureNode } from '@/services/structure';
-import {
-  ChevronLeft,
-  ChevronRight,
-  FileText,
-  Folder,
-  MoreHorizontal,
-  Plus,
-  RefreshCw,
-} from 'lucide-react';
+import { ChevronLeft, FileText, Folder, MoreHorizontal, Plus, RefreshCw } from 'lucide-react';
 import { useCallback, useState } from 'react';
 
 /* ---------- Types ---------- */
@@ -150,21 +142,11 @@ function NodeItem({
         )}
 
         <span
-          className="min-w-0 flex-1 truncate text-base"
+          className="min-w-0 flex-1 truncate pr-7 text-base"
           style={{ fontWeight: isSelected ? 500 : 400 }}
         >
           {node.name}
         </span>
-
-        {/* Folder drill-in chevron */}
-        {isFolder && node.hasChildren && (
-          <ChevronRight
-            size={12}
-            strokeWidth={2}
-            className="shrink-0"
-            style={{ color: 'var(--ink-ghost)' }}
-          />
-        )}
 
         {/* Hover actions — absolute 脱离文档流，单个 ··· 触发 DropdownMenu，不占文字宽度 */}
         <div
@@ -308,8 +290,9 @@ export function AdminStructurePanel({
 
   return (
     <aside
-      className="flex w-[200px] shrink-0 flex-col overflow-hidden"
+      className="flex shrink-0 flex-col overflow-hidden"
       style={{
+        width: 'var(--layout-sidebar)',
         background: 'var(--sidebar-bg)',
         borderRight: '0.5px solid var(--separator)',
       }}
@@ -356,9 +339,10 @@ export function AdminStructurePanel({
                 <span
                   className="max-w-[120px] cursor-pointer truncate rounded px-1 py-0.5 text-xs transition-colors duration-150"
                   style={{ color: 'var(--ink-light)' }}
+                  title={breadcrumb[0].name}
                   onClick={() => onGoToBreadcrumb(null)}
                 >
-                  内容管理
+                  {breadcrumb[0].name}
                 </span>
               ) : (
                 /* 2+ 级：… / 直接父级名，hover … 弹出完整路径 */
