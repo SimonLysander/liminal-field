@@ -199,7 +199,7 @@ export default function Sidebar() {
     <aside
       className="flex shrink-0 flex-col overflow-y-auto"
       style={{
-        width: 200,
+        width: 'var(--layout-sidebar)',
         background: 'var(--sidebar-bg)',
         margin: '12px 0 12px 12px',
         borderRadius: 'var(--radius-lg)',
@@ -286,7 +286,7 @@ export default function Sidebar() {
               </span>
             ) : (
               /* 有层级 — ← 回退一级 + 路径显示
-               * 1 级: ← 文稿
+               * 1 级: ← 当前文件夹名（点击回根）
                * 2+ 级: ← … / 直接父级（hover … 弹出完整路径可点击） */
               <div className="flex items-center whitespace-nowrap">
                 <span
@@ -302,13 +302,13 @@ export default function Sidebar() {
                 </span>
                 <div className="flex min-w-0 items-center">
                   {breadcrumb.length === 1 ? (
-                    /* 只有 1 级：显示 "文稿" 点击回根 */
                     <span
                       className="max-w-[120px] cursor-pointer truncate rounded px-1 py-0.5 text-xs transition-colors duration-150"
                       style={{ color: 'var(--ink-light)' }}
+                      title={breadcrumb[0].name}
                       onClick={() => goToBreadcrumb(null)}
                     >
-                      文稿
+                      {breadcrumb[0].name}
                     </span>
                   ) : (
                     /* 2+ 级：… / 直接父级名

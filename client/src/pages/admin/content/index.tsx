@@ -128,8 +128,11 @@ const ContentAdmin = () => {
         <div className="flex flex-1 overflow-hidden">
           {/* Center — content preview */}
           <div className="flex flex-1 flex-col overflow-hidden">
-            <div className="flex-1 overflow-y-auto px-10 py-9" ref={previewRef}>
-              <div className="mx-auto max-w-[740px]">
+            <div
+              className="flex-1 overflow-y-auto px-10 py-9 max-[520px]:px-4"
+              ref={previewRef}
+            >
+              <div className="mx-auto w-full max-w-[var(--layout-reading-max)]">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={workspace.selectedNode?.id ?? 'empty'}
@@ -167,8 +170,8 @@ const ContentAdmin = () => {
 
           {/* Right — contextual side panel */}
           <aside
-            className="flex w-[280px] shrink-0 flex-col overflow-hidden px-5 py-7"
-            style={{}}
+            className="flex shrink-0 flex-col overflow-hidden px-5 py-7"
+            style={{ width: 'var(--layout-context)' }}
           >
             {workspace.selectedNode?.contentItemId ? (
               <FormalSidePanel

@@ -246,8 +246,9 @@ export default function GalleryAdmin() {
     <>
       {/* ── 左侧面板：帖子列表 ── */}
       <aside
-        className="flex w-[200px] shrink-0 flex-col overflow-hidden"
+        className="flex shrink-0 flex-col overflow-hidden"
         style={{
+          width: 'var(--layout-sidebar)',
           background: 'var(--sidebar-bg)',
           borderRight: '0.5px solid var(--separator)',
         }}
@@ -319,7 +320,7 @@ export default function GalleryAdmin() {
         <div className="flex flex-1 overflow-hidden">
           {/* 中间：内容预览 */}
           <main
-            className="relative z-0 flex-1 overflow-y-auto px-10 py-9"
+            className="relative z-0 flex max-[520px]:px-4 flex-1 overflow-y-auto px-10 py-9"
             style={{ background: 'var(--paper)' }}
           >
             <AnimatePresence mode="wait">
@@ -389,8 +390,8 @@ export default function GalleryAdmin() {
           {/* 右侧信息栏（与 note 管理端右栏对齐） */}
           {detail && (
             <aside
-              className="flex w-[280px] shrink-0 flex-col overflow-y-auto px-5 py-7"
-              style={{ borderLeft: '0.5px solid var(--separator)' }}
+              className="flex shrink-0 flex-col overflow-y-auto px-5 py-7"
+              style={{ width: 'var(--layout-context)', borderLeft: '0.5px solid var(--separator)' }}
             >
               {/* 信息 */}
               <div className="mb-5">

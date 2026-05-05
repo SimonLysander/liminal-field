@@ -286,8 +286,8 @@ export default function AgentPage() {
 
       {/* Right panel — insights + related notes */}
       <div
-        className="flex w-[200px] shrink-0 flex-col gap-9 overflow-y-auto px-4 py-10"
-        style={{}}
+        className="flex shrink-0 flex-col gap-9 overflow-y-auto px-4 py-10"
+        style={{ width: 'var(--layout-sidebar)' }}
       >
         {/* Insights */}
         <div className="flex flex-col">

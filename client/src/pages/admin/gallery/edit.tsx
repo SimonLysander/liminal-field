@@ -3,7 +3,7 @@
  *
  * 布局：
  *   浮动胶囊顶栏（左：导航，右：主题切换 + 操作按钮）
- *   滚动内容区（max-w-[740px] 居中）：PhotoGrid + GalleryProseEditor + LocationSelect
+ *   滚动内容区（--layout-reading-max 居中）：PhotoGrid + GalleryProseEditor + LocationSelect
  *   PhotoEditModal（照片详情弹窗）
  *
  * 进入此页面时 id 必定存在（从列表页 Modal 创建后跳转而来）。
@@ -176,7 +176,7 @@ export default function GalleryEditPage() {
 
       {/* 滚动内容区 */}
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-[740px] px-10 py-6 flex flex-col gap-5">
+        <div className="mx-auto flex w-full max-w-[var(--layout-reading-max)] flex-col gap-5 px-10 py-6 max-[520px]:px-4">
           {/* 照片网格 */}
           <PhotoGrid
             photos={photos}

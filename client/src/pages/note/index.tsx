@@ -1,7 +1,7 @@
 /*
  * NotePage — Article reader with TOC and AI chat
  *
- * Reading width: max-w-[740px] px-10, matching the editor for consistency.
+ * Reading width: max-w-[var(--layout-reading-max)] + px-10（与编辑区阅读宽度一致）。
  *
  * Scroll-to-heading technique:
  *   Headings are rendered with data-heading-id attributes by MarkdownBody.
@@ -10,7 +10,7 @@
  *   container.scrollTo({ behavior: 'smooth' }). CSS scroll-margin-top (80px)
  *   compensates for sticky headers so headings don't hide behind them.
  *
- * TOC panel: 200px wide right panel matching Sidebar/TreePanel/editor outline.
+ * TOC panel: --layout-sidebar，与结构侧栏对齐。
  *   Active heading tracked via scroll spy (passive scroll listener), with a
  *   spring-animated paddingLeft shift for the active item.
  *
@@ -193,7 +193,7 @@ function NoteReader({ id }: { id: string }) {
     <div className="relative flex w-full items-stretch overflow-hidden">
       {/* Center — article body */}
       <div className="flex-1 overflow-y-auto py-12" ref={centerRef}>
-       <div className="mx-auto max-w-[740px] px-10">
+       <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 max-[520px]:px-4">
         <div className="mb-5 flex items-center gap-3">
           <button
             className="text-md transition-colors duration-150"
@@ -245,7 +245,8 @@ function NoteReader({ id }: { id: string }) {
       {/* Right — TOC panel（始终预留宽度，避免内容加载后布局抖动） */}
       <div
         ref={tocPanelRef}
-        className="flex w-[200px] shrink-0 flex-col gap-7 overflow-y-auto px-4 py-10"
+        className="flex shrink-0 flex-col gap-7 overflow-y-auto px-4 py-10"
+        style={{ width: 'var(--layout-sidebar)' }}
       >
         {toc.length > 0 && (
           <div>

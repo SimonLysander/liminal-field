@@ -139,7 +139,7 @@ export function GalleryPostPreview({
   const prose = post.prose;
 
   return (
-    <div className="mx-auto w-full max-w-[740px]">
+    <div className="mx-auto w-full max-w-[var(--layout-reading-max)]">
       {/* 标题 + 版本状态 + 操作按钮 */}
       <div className="mb-5 flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">

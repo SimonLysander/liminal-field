@@ -327,8 +327,9 @@ export const TreePanel = ({
 
   return (
     <aside
-      className="flex w-[200px] shrink-0 flex-col overflow-hidden"
+      className="flex shrink-0 flex-col overflow-hidden"
       style={{
+        width: 'var(--layout-sidebar)',
         background: 'var(--sidebar-bg)',
       }}
       onDragOver={(e) => e.preventDefault()}

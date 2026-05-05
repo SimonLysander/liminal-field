@@ -4,7 +4,7 @@
  * 布局：全屏沉浸式，无卡片浮起效果。顶栏单行：
  *   ← / 标题 | 工具栏(Portal) | 状态 + 操作按钮
  *
- * 内容区域：max-w-[740px] px-10，与阅读页宽度一致（所见即所得）。
+ * 内容区域：--layout-reading-max + shell padding，与阅读页一致。
  *
  * 右侧大纲面板：200px，从 markdown 提取标题层级，点击滚动到对应位置。
  *
@@ -275,14 +275,19 @@ const DraftEditPage = () => {
       <ThresholdOverlay visible={committing} label="正在提交版本..." />
 
       <main className="relative z-0 flex flex-1 flex-col overflow-hidden">
-        {/* 顶栏：两组浮动胶囊 + 中间 Portal 工具栏，无全宽底边线 */}
+        {/* 顶栏：1fr | auto | 1fr 让 Portal 工具栏相对视口水平居中（不随左右胶囊宽度漂移） */}
         <header
-          className="flex shrink-0 items-center gap-3"
-          style={{ height: 48, padding: '8px 16px' }}
+          className="grid shrink-0 items-center"
+          style={{
+            height: 48,
+            padding: '8px 16px',
+            gridTemplateColumns: '1fr auto 1fr',
+            columnGap: 12,
+          }}
         >
           {/* 左侧胶囊：返回导航 + 标题输入 */}
           <div
-            className="flex shrink-0 items-center gap-2"
+            className="flex min-w-0 shrink-0 items-center justify-self-start gap-2"
             style={{
               background: 'var(--glass-bg)',
               backdropFilter: 'blur(12px) saturate(180%)',
@@ -311,12 +316,15 @@ const DraftEditPage = () => {
             />
           </div>
 
-          {/* 工具栏占据中间空间（Portal 注入），不包在胶囊里 */}
-          <div ref={setToolbarPortal} className="min-w-0 flex-1 overflow-x-auto" />
+          {/* 工具栏 Portal 挂在中列，列宽随内容；左右 1fr 均分剩余宽度 → 视觉中心落在视口中间 */}
+          <div
+            ref={setToolbarPortal}
+            className="flex min-w-0 max-w-full justify-center justify-self-center overflow-x-auto"
+          />
 
           {/* 右侧胶囊：状态指示 + 主题切换 + 操作按钮 */}
           <div
-            className="flex shrink-0 items-center gap-3"
+            className="flex min-w-0 shrink-0 items-center justify-self-end gap-3"
             style={{
               background: 'var(--glass-bg)',
               backdropFilter: 'blur(12px) saturate(180%)',
@@ -362,9 +370,9 @@ const DraftEditPage = () => {
         {/* Body — editor + right outline */}
         <div className="flex flex-1 overflow-hidden">
           {/* 左侧留白和 Outline 等宽，让编辑器 mx-auto 相对视口居中 */}
-          <div className="w-[200px] shrink-0" />
-          <div className="flex-1 overflow-y-auto overflow-x-hidden" data-scroll-container>
-            <div className="mx-auto w-[85%] min-w-[600px] max-w-[960px] pb-40 pt-10">
+          <div className="shrink-0" style={{ width: 'var(--layout-sidebar)' }} />
+          <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden" data-scroll-container>
+            <div className="mx-auto w-full max-w-[var(--layout-editor-max)] pb-40 pt-10">
               <DraftAssetProvider contentItemId={id!}>
                 <PlateMarkdownEditor
                   key={`${id}-${resetKey}`}
@@ -402,7 +410,8 @@ const DraftEditPage = () => {
 
           {/* Right — outline */}
           <div
-            className="flex w-[200px] shrink-0 flex-col overflow-y-auto px-4 py-10"
+            className="flex shrink-0 flex-col overflow-y-auto px-4 py-10"
+            style={{ width: 'var(--layout-sidebar)' }}
           >
             <div
               className="mb-3 font-semibold uppercase"
