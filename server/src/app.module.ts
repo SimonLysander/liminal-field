@@ -11,6 +11,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { MinioModule } from './modules/minio/minio.module';
 import { ImportModule } from './modules/import/import.module';
 import { yamlLoader } from './config/yaml.loader';
+import { StartupDiagnosticsService } from './startup-diagnostics.service';
 
 @Module({
   imports: [
@@ -41,6 +42,6 @@ import { yamlLoader } from './config/yaml.loader';
     ImportModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, StartupDiagnosticsService],
 })
 export class AppModule {}

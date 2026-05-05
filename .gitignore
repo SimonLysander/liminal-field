@@ -95,3 +95,6 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 **/docs/**
 /content/
+
+# 本地知识库 Git 工作副本（由 content.repoRoot 默认生成）
+server/liminal-field-kb/

@@ -1,4 +1,3 @@
-import { ConfigService } from '@nestjs/config';
 import { join } from 'path';
 import simpleGit from 'simple-git';
 import { ContentGitService } from '../content-git.service';
@@ -38,16 +37,13 @@ describe('ContentGitService', () => {
     mockSimpleGit.mockReturnValue(mockGit as any);
 
     contentRepoService = {
+      repoRoot: knowledgeBaseRoot,
       getContentDirectoryPath: jest.fn((contentId: string) =>
         join(contentRoot, contentId),
       ),
     } as unknown as jest.Mocked<ContentRepoService>;
 
-    const configService = {
-      getOrThrow: () => knowledgeBaseRoot,
-    } as unknown as ConfigService;
-
-    service = new ContentGitService(contentRepoService, configService);
+    service = new ContentGitService(contentRepoService);
   });
 
   afterEach(() => {

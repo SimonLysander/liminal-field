@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto';
 import simpleGit, { SimpleGit } from 'simple-git';
 import { ContentItem } from './content-item.entity';
 import { ContentAssetType } from './dto/content-detail.dto';
+import { resolveAndEnsureContentRepoRoot } from './resolve-content-repo-root';
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.m4a', '.ogg']);
@@ -41,7 +42,15 @@ export class ContentRepoService {
   private readonly git: SimpleGit;
 
   constructor(private readonly configService: ConfigService) {
-    this.repoRoot = this.configService.getOrThrow<string>('content.repoRoot');
+    const configured = this.configService.getOrThrow<string>('content.repoRoot');
+    const { absoluteRoot, created } =
+      resolveAndEnsureContentRepoRoot(configured);
+    this.repoRoot = absoluteRoot;
+    if (created) {
+      this.logger.log(
+        `Content repo root did not exist; created directory: ${this.repoRoot}`,
+      );
+    }
     this.contentRoot = join(this.repoRoot, 'content');
     this.git = simpleGit(this.repoRoot);
   }
