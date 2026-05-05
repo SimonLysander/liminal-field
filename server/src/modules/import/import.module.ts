@@ -16,5 +16,6 @@ import { NavigationModule } from '../navigation/navigation.module';
   ],
   controllers: [ImportController],
   providers: [ImportService, ImportSessionRepository, MineruService],
+  exports: [MineruService],
 })
 export class ImportModule {}

@@ -11,35 +11,98 @@ import * as Minio from 'minio';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 
+/** MinIO / Node 连接错误常为 AggregateError，外层 message 为空，需展开 errors[] */
+function formatConnectionFailure(err: unknown): string {
+  if (err instanceof AggregateError && err.errors?.length) {
+    return err.errors.map((e) => formatConnectionFailure(e)).join('; ');
+  }
+  if (err && typeof err === 'object') {
+    const o = err as Record<string, unknown>;
+    const parts: string[] = [];
+    if (typeof o.message === 'string' && o.message.trim()) {
+      parts.push(o.message.trim());
+    }
+    if (typeof o.code === 'string') parts.push(`code=${o.code}`);
+    if (typeof o.errno === 'number' || typeof o.errno === 'string') {
+      parts.push(`errno=${o.errno}`);
+    }
+    if (typeof o.syscall === 'string') parts.push(`syscall=${o.syscall}`);
+    if (typeof o.address === 'string') parts.push(`address=${o.address}`);
+    if (typeof o.port === 'number') parts.push(`port=${o.port}`);
+    if (parts.length) return parts.join(', ');
+  }
+  if (err instanceof Error) return err.message || err.name;
+  return String(err);
+}
+
 @Injectable()
 export class MinioService implements OnModuleInit {
   private readonly logger = new Logger(MinioService.name);
+  private readonly minioEndPoint: string;
+  private readonly minioPort: number;
+  private readonly minioUseSSL: boolean;
   private client: Minio.Client;
   private bucket: string;
+  /** bucketExists / makeBucket 成功后才为 true；供启动诊断与排障 */
+  private draftStorageReady = false;
+  /** 未就绪时由 onModuleInit 记录，供 StartupDiagnostics 输出与首包 WARN 一致 */
+  private draftStorageInitError: string | null = null;
 
   constructor(private readonly config: ConfigService) {
+    this.minioEndPoint = config.getOrThrow<string>('minio.endpoint');
+    this.minioPort = config.getOrThrow<number>('minio.port');
+    this.minioUseSSL = config.get<boolean>('minio.useSSL', false);
     this.client = new Minio.Client({
-      endPoint: config.getOrThrow<string>('minio.endpoint'),
-      port: config.getOrThrow<number>('minio.port'),
-      useSSL: config.get<boolean>('minio.useSSL', false),
+      endPoint: this.minioEndPoint,
+      port: this.minioPort,
+      useSSL: this.minioUseSSL,
       accessKey: config.getOrThrow<string>('minio.accessKey'),
       secretKey: config.getOrThrow<string>('minio.secretKey'),
     });
     this.bucket = config.getOrThrow<string>('minio.bucket');
   }
 
+  /** 草稿桶已连通时为 true；未连通时上传仍会抛错（不在每次请求里重复探测） */
+  isDraftStorageReady(): boolean {
+    return this.draftStorageReady;
+  }
+
+  /** 与 isDraftStorageReady 配套；未就绪时返回与启动阶段相同的原因说明 */
+  getDraftStorageInitError(): string | null {
+    return this.draftStorageInitError;
+  }
+
+  /** Snapshot of yaml MinIO settings for startup diagnostics */
+  getDraftStorageConfig(): {
+    endpoint: string;
+    port: number;
+    bucket: string;
+    useSSL: boolean;
+  } {
+    return {
+      endpoint: this.minioEndPoint,
+      port: this.minioPort,
+      bucket: this.bucket,
+      useSSL: this.minioUseSSL,
+    };
+  }
+
   async onModuleInit() {
+    const target = `${this.minioEndPoint}:${this.minioPort}`;
+    this.draftStorageInitError = null;
     try {
       const exists = await this.client.bucketExists(this.bucket);
       if (!exists) {
         await this.client.makeBucket(this.bucket);
-        this.logger.log(`Created bucket: ${this.bucket}`);
+        this.logger.log(`MinIO: created bucket "${this.bucket}"`);
       }
-      this.logger.log(`MinIO connected — bucket: ${this.bucket}`);
-    } catch (err) {
-      // MinIO 不可用时降级：不阻塞应用启动，草稿资源功能暂不可用
+      this.draftStorageReady = true;
+    } catch (err: unknown) {
+      this.draftStorageReady = false;
+      const cause = formatConnectionFailure(err);
+      this.draftStorageInitError = cause;
       this.logger.warn(
-        `MinIO unavailable — draft asset features disabled. Error: ${err}`,
+        `MinIO: unreachable at ${target} — draft uploads will fail. Cause: ${cause}`,
       );
     }
   }
@@ -74,7 +137,9 @@ export class MinioService implements OnModuleInit {
 
     return {
       buffer: Buffer.concat(chunks),
-      contentType: (stat.metaData?.['content-type'] as string) || 'application/octet-stream',
+      contentType:
+        (stat.metaData?.['content-type'] as string) ||
+        'application/octet-stream',
     };
   }
 
@@ -91,7 +156,9 @@ export class MinioService implements OnModuleInit {
     if (objects.length === 0) return;
 
     await this.client.removeObjects(this.bucket, objects);
-    this.logger.log(`Cleaned ${objects.length} draft assets for ${contentItemId}`);
+    this.logger.log(
+      `Cleaned ${objects.length} draft assets for ${contentItemId}`,
+    );
   }
 
   /**
@@ -135,7 +202,11 @@ export class MinioService implements OnModuleInit {
   }
 
   /** 通用对象写入：将 buffer 以指定 MIME 类型存入任意 objectKey */
-  async putObject(objectKey: string, buffer: Buffer, mimeType: string): Promise<void> {
+  async putObject(
+    objectKey: string,
+    buffer: Buffer,
+    mimeType: string,
+  ): Promise<void> {
     await this.client.putObject(this.bucket, objectKey, buffer, buffer.length, {
       'Content-Type': mimeType,
     });

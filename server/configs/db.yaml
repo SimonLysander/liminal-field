@@ -16,7 +16,8 @@ minio:
   bucket: draft-assets
 
 content:
-  repoRoot: /Users/berrylucas/Desktop/Claude Practice/liminial-field-project/liminal-field-kb
+  # 相对 server 进程 cwd（`pnpm start:dev` 在 server/ 下执行 → 位于 server/liminal-field-kb）
+  repoRoot: ./liminal-field-kb
 
 mineru:
   baseUrl: https://mineru.net

@@ -4,7 +4,6 @@ import {
   Logger,
   OnModuleInit,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { Mutex } from 'async-mutex';
 import { existsSync } from 'fs';
@@ -25,13 +24,18 @@ export class ContentGitService implements OnModuleInit {
   private readonly git: SimpleGit;
   /** Git 写操作互斥锁：add → diff → commit 必须原子化，防止并发请求交叉污染 staged 区域 */
   private readonly writeLock = new Mutex();
+  /** init 结束后写入，供 StartupDiagnostics 打出与原先单行日志同等粒度的一行摘要 */
+  private kbGitSummaryLine: string | null = null;
 
-  constructor(
-    private readonly contentRepoService: ContentRepoService,
-    private readonly configService: ConfigService,
-  ) {
-    this.repoRoot = this.configService.getOrThrow<string>('content.repoRoot');
+  constructor(private readonly contentRepoService: ContentRepoService) {
+    // 与 ContentRepoService 共用已解析的绝对路径（含相对配置、目录已 ensure）
+    this.repoRoot = this.contentRepoService.repoRoot;
     this.git = simpleGit(this.repoRoot);
+  }
+
+  /** 若在 onModuleInit 前调用则为 null；成功后为 OK 行，失败为 FAILED 行 */
+  getKbGitSummaryLine(): string | null {
+    return this.kbGitSummaryLine;
   }
 
   /**
@@ -52,8 +56,10 @@ export class ContentGitService implements OnModuleInit {
       await this.ensureGitConfig();
       await this.ensureMainBranch();
       await this.ensureWorkspaceBranchReady();
-    } catch (error: any) {
-      this.logger.error(`Git init failed: ${error.message}`);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Git init failed: ${msg}`);
+      this.kbGitSummaryLine = `KB Git: FAILED — ${msg}`;
       return;
     }
 
@@ -67,9 +73,7 @@ export class ContentGitService implements OnModuleInit {
       this.git.raw(['rev-list', '--count', 'HEAD']),
     );
 
-    this.logger.log(
-      `Git storage ready — branch: ${branch}, commits: ${commitCount?.trim() ?? '?'}, remote: ${remote?.trim() ?? 'none'}`,
-    );
+    this.kbGitSummaryLine = `KB Git: OK — branch: ${branch?.trim() ?? '?'}, commits: ${commitCount?.trim() ?? '?'}, remote: ${remote?.trim() ?? 'none'}`;
   }
 
   /** Step 1: 获取或创建仓库 */
