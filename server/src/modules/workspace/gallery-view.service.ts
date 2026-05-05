@@ -261,6 +261,7 @@ export class GalleryViewService {
           id: p.file,
           url: this.buildPhotoUrl(contentItemId, p.file),
           fileName: p.file,
+          size: asset.size,
           caption: p.caption,
           tags: p.tags,
         } satisfies GalleryPhotoDto;
@@ -277,6 +278,7 @@ export class GalleryViewService {
       id: asset.fileName,
       url: this.buildPhotoUrl(contentItemId, asset.fileName),
       fileName: asset.fileName,
+      size: asset.size,
       caption: '',
       tags: {},
     }));
@@ -671,7 +673,7 @@ export class GalleryViewService {
     try {
       const exifr = await import('exifr');
       const data = await exifr.default.parse(buffer, {
-        pick: ['Make', 'Model', 'FNumber', 'ExposureTime', 'ISO', 'FocalLength', 'DateTimeOriginal', 'LensModel'],
+        pick: ['Make', 'Model', 'FNumber', 'ExposureTime', 'ISO', 'FocalLength', 'DateTimeOriginal', 'LensModel', 'ExifImageWidth', 'ExifImageHeight'],
       });
       if (!data) return {};
 
@@ -700,6 +702,11 @@ export class GalleryViewService {
       }
       // 镜头
       if (data.LensModel) tags.lens = data.LensModel;
+      // 分辨率（EXIF 中的原始像素尺寸）
+      if (data.ExifImageWidth && data.ExifImageHeight) {
+        tags.width = String(data.ExifImageWidth);
+        tags.height = String(data.ExifImageHeight);
+      }
 
       return tags;
     } catch {

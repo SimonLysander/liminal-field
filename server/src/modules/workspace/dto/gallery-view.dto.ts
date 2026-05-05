@@ -14,6 +14,8 @@ export class GalleryPhotoDto {
   id: string;
   url: string;
   fileName: string;
+  /** 文件大小（字节） */
+  size: number;
   caption: string;
   /** photo 级自定义标签，key-value 格式（如 camera: GR III）。 */
   tags: Record<string, string>;

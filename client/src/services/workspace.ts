@@ -210,6 +210,8 @@ export interface GalleryPhoto {
   id: string;
   url: string;
   fileName: string;
+  /** 文件大小（字节） */
+  size: number;
   /** 照片说明文字，空字符串表示无说明 */
   caption: string;
   /** 照片级 key-value 标签，如 { location: '上海' } */

@@ -8,11 +8,13 @@
  *   竖幅（高 > 宽）：flex-row，照片区左侧 320px，信息区右侧 flex-1
  *
  * 信息区从上到下：
- *   1. 关闭按钮（右上角 X）
- *   2. Caption textarea + 字符计数
- *   3. EXIF 汇总行（只读，点击展开 inline 编辑网格）
+ *   1. EXIF 汇总行（只读，点击展开 inline 编辑网格）
+ *   2. 分辨率（只读，来自图片实际像素尺寸）
+ *   3. Caption textarea + 字符计数
  *   4. 文件信息（底部小字）
  *   5. 操作栏：左"设为封面"，右"完成"
+ *
+ * 关闭按钮（X）位于整个 modal 的右上角（绝对定位）
  *
  * 交互细节：
  *   - captionDraft 非受控，切换照片/失焦时提交
@@ -21,7 +23,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, X, Camera, Aperture, CalendarDays } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { PhotoMetadataFields } from './LocationSelect';
 
@@ -71,26 +73,25 @@ function formatFileSize(bytes: number): string {
  */
 interface ExifSummaryProps {
   tags: Record<string, string>;
+  fileSize: number;
+  dimensions: { w: number; h: number } | null;
   onEdit: () => void;
 }
 
-function ExifSummary({ tags, onEdit }: ExifSummaryProps) {
-  /* 设备行：device + lens（或 focalLength） */
-  const deviceParts = [tags.device, tags.lens || tags.focalLength].filter(Boolean);
-  const deviceLine = deviceParts.length > 0 ? deviceParts.join(' · ') : null;
+const FRAME_FONT = '"SF Mono", SFMono-Regular, Menlo, Consolas, monospace';
 
-  /* 曝光行：aperture + shutter + ISO */
-  const exposureParts = [
-    tags.aperture,
-    tags.shutter,
-    tags.iso ? `ISO ${tags.iso}` : undefined,
-  ].filter(Boolean);
-  const exposureLine = exposureParts.length > 0 ? exposureParts.join(' · ') : null;
-
-  /* 日期行 */
-  const dateLine = tags.shotAt ?? null;
-
-  const hasAnyExif = deviceLine || exposureLine || dateLine;
+/**
+ * 收起态信息条 — 方案 D 格式：
+ * 左侧 segments（gap 10）：文件名  大小  分辨率  光圈·快门·ISO  焦距
+ * 右侧：拍摄日期
+ */
+function ExifSummary({ tags, fileSize, dimensions, onEdit }: ExifSummaryProps) {
+  const segments = [
+    fileSize ? formatFileSize(fileSize) : null,
+    dimensions ? `${dimensions.w}×${dimensions.h}` : null,
+    [tags.aperture, tags.shutter, tags.iso].filter(Boolean).join(' · ') || null,
+    tags.focalLength || null,
+  ].filter(Boolean) as string[];
 
   return (
     <button
@@ -98,33 +99,29 @@ function ExifSummary({ tags, onEdit }: ExifSummaryProps) {
       onClick={onEdit}
       aria-label="编辑拍摄参数"
     >
-      {hasAnyExif ? (
-        <div className="flex flex-col gap-1">
-          {deviceLine && (
-            <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--ink-faded)' }}>
-              <Camera size={12} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)', flexShrink: 0 }} />
-              <span>{deviceLine}</span>
-            </div>
-          )}
-          {exposureLine && (
-            <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--ink-faded)' }}>
-              <Aperture size={12} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)', flexShrink: 0 }} />
-              <span>{exposureLine}</span>
-            </div>
-          )}
-          {dateLine && (
-            <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--ink-faded)' }}>
-              <CalendarDays size={12} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)', flexShrink: 0 }} />
-              <span>{dateLine}</span>
-            </div>
-          )}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          fontFamily: FRAME_FONT,
+          fontSize: 10,
+          letterSpacing: '0.02em',
+          color: 'var(--ink-faded)',
+          lineHeight: 1,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
+          {segments.map((seg, i) => (
+            <span key={i} style={{ whiteSpace: 'nowrap' }}>{seg}</span>
+          ))}
         </div>
-      ) : (
-        <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-          <Camera size={12} strokeWidth={1.5} style={{ flexShrink: 0 }} />
-          <span>暂无拍摄参数</span>
-        </div>
-      )}
+        {tags.shotAt && (
+          <span style={{ whiteSpace: 'nowrap', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+            {tags.shotAt}
+          </span>
+        )}
+      </div>
     </button>
   );
 }
@@ -143,6 +140,8 @@ export function PhotoEditModal({
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   /* 图片方向：横幅上下布局，竖幅左右布局 */
   const [isLandscape, setIsLandscape] = useState(true);
+  /* 图片实际像素尺寸（比 EXIF 更可靠，对所有格式有效） */
+  const [imgDimensions, setImgDimensions] = useState<{ w: number; h: number } | null>(null);
   /* EXIF 编辑态：false = 汇总只读，true = 展开 inline 编辑 */
   const [isEditingExif, setIsEditingExif] = useState(false);
 
@@ -156,11 +155,14 @@ export function PhotoEditModal({
 
   const photo = photos[currentIndex];
 
-  /* 检测图片方向：加载后比较 naturalWidth / naturalHeight */
+  /* 检测图片方向 + 获取实际像素尺寸 */
   useEffect(() => {
     if (!photo) return;
     const img = new Image();
-    img.onload = () => setIsLandscape(img.naturalWidth >= img.naturalHeight);
+    img.onload = () => {
+      setIsLandscape(img.naturalWidth >= img.naturalHeight);
+      setImgDimensions({ w: img.naturalWidth, h: img.naturalHeight });
+    };
     img.src = photo.url;
   }, [photo?.url]);
 
@@ -236,6 +238,30 @@ export function PhotoEditModal({
           border: 'none',
         }}
       >
+        {/* 文件名 — 整个 modal 左上角 */}
+        <span
+          className="absolute left-3 top-3 z-10 flex h-6 items-center rounded-full px-2.5"
+          style={{
+            background: 'rgba(0,0,0,0.35)',
+            color: 'rgba(255,255,255,0.85)',
+            fontFamily: FRAME_FONT,
+            fontSize: 10,
+            letterSpacing: '0.02em',
+            lineHeight: 1,
+          }}
+        >
+          {photo.fileName}
+        </span>
+
+        {/* 关闭按钮 — 整个 modal 右上角，与文件名等高对齐 */}
+        <button
+          className="absolute right-3 top-3 z-10 flex h-6 w-6 items-center justify-center rounded-full transition-colors duration-150"
+          style={{ background: 'rgba(0,0,0,0.35)', color: '#fff' }}
+          onClick={handleClose}
+          aria-label="关闭"
+        >
+          <X size={12} strokeWidth={2} />
+        </button>
         {/* 无障碍：隐藏的 DialogTitle，消除 Radix 警告 */}
         <DialogTitle className="sr-only">照片编辑</DialogTitle>
 
@@ -299,59 +325,9 @@ export function PhotoEditModal({
           className="flex flex-1 flex-col"
           style={{ background: 'var(--paper)' }}
         >
-          {/* 关闭按钮 — 右上角，无标题 */}
-          <div className="flex items-center justify-end px-5 pt-4 pb-2">
-            <button
-              className="flex h-6 w-6 items-center justify-center rounded-md transition-colors duration-150"
-              style={{ color: 'var(--ink-ghost)' }}
-              onClick={handleClose}
-              aria-label="关闭"
-            >
-              <X size={15} strokeWidth={2} />
-            </button>
-          </div>
-
-          <div style={{ height: '0.5px', background: 'var(--separator)', margin: '0 20px' }} />
-
-          {/* Caption — 最突出的输入区，紧接分割线 */}
+          {/* 信息条 — 收起态合并为一行（方案 D），展开态显示编辑网格 */}
           <div className="px-5 pt-4">
-            <div className="relative">
-              <textarea
-                className="w-full resize-none rounded-md px-3 py-2.5 text-sm outline-none transition-colors duration-150"
-                style={{
-                  background: 'var(--shelf)',
-                  color: 'var(--ink)',
-                  border: '1px solid var(--separator)',
-                  minHeight: '72px',
-                }}
-                placeholder="添加说明..."
-                maxLength={30}
-                value={captionDraft}
-                onChange={(e) => setCaptionDraft(e.target.value)}
-                /* 失焦时立即提交，确保用户切换方式不是翻页时也能保存 */
-                onBlur={() => onCaptionChange(photo.id, captionDraft)}
-              />
-              {/* 字符计数：右下角，达到上限时变红 */}
-              <div
-                className="absolute bottom-2 right-3 text-2xs"
-                style={{
-                  color: captionDraft.length >= 30 ? 'var(--mark-red)' : 'var(--ink-ghost)',
-                  pointerEvents: 'none',
-                }}
-              >
-                {captionDraft.length} / 30
-              </div>
-            </div>
-          </div>
-
-          {/* EXIF 区 — 默认只读汇总，点击展开为编辑网格 */}
-          <div className="flex-1 px-5 pt-3">
             {isEditingExif ? (
-              /*
-               * 展开态：用 PhotoMetadataFields（6 字段网格）inline 编辑。
-               * 点击区域外（onBlur 无法完美捕获 grid 内部切换），
-               * 改为顶部加一个"收起"按钮。
-               */
               <div>
                 <div className="mb-1.5 flex items-center justify-between">
                   <span className="text-2xs font-semibold uppercase" style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}>
@@ -367,20 +343,51 @@ export function PhotoEditModal({
                 </div>
                 <PhotoMetadataFields
                   tags={photo.tags}
+                  fileSize={photo.size}
+                  dimensions={imgDimensions}
                   onChange={(tags) => onTagsChange(photo.id, tags)}
                 />
               </div>
             ) : (
-              /* 收起态：紧凑只读展示，点击进入编辑 */
-              <ExifSummary tags={photo.tags} onEdit={() => setIsEditingExif(true)} />
+              <ExifSummary
+                tags={photo.tags}
+                fileSize={photo.size}
+                dimensions={imgDimensions}
+                onEdit={() => setIsEditingExif(true)}
+              />
             )}
           </div>
 
-          {/* 文件信息 — 底部小字灰色 */}
-          <div className="px-5 pt-2 pb-1">
-            <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
-              {photo.fileName} · {formatFileSize(photo.size)}
-            </span>
+          <div style={{ height: '0.5px', background: 'var(--separator)', margin: '12px 20px 0' }} />
+
+          {/* Caption — 参数下方 */}
+          <div className="flex-1 px-5 pt-3">
+            <div className="relative">
+              <textarea
+                className="w-full resize-none rounded-md px-3 py-2.5 text-sm outline-none transition-colors duration-150"
+                style={{
+                  background: 'var(--shelf)',
+                  color: 'var(--ink)',
+                  border: '1px solid var(--separator)',
+                  minHeight: '72px',
+                }}
+                placeholder="添加说明..."
+                maxLength={30}
+                value={captionDraft}
+                onChange={(e) => setCaptionDraft(e.target.value)}
+                onBlur={() => onCaptionChange(photo.id, captionDraft)}
+              />
+              {/* 字符计数：右下角，达到上限时变红 */}
+              <div
+                className="absolute bottom-2 right-3 text-2xs"
+                style={{
+                  color: captionDraft.length >= 30 ? 'var(--mark-red)' : 'var(--ink-ghost)',
+                  pointerEvents: 'none',
+                }}
+              >
+                {captionDraft.length} / 30
+              </div>
+            </div>
           </div>
 
           {/* 操作栏：左"设为封面"，右"完成" */}

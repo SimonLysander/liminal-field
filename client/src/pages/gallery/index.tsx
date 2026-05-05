@@ -55,11 +55,22 @@ const FRAME_FONT = '"SF Mono", SFMono-Regular, Menlo, Consolas, monospace';
 function PhotoFrameBar({ photo }: { photo: GalleryPhoto }) {
   const t = photo.tags;
 
+  /* 格式化文件大小（旧数据可能无 size） */
+  const sizeStr = photo.size
+    ? (photo.size < 1024 * 1024
+        ? `${(photo.size / 1024).toFixed(1)}KB`
+        : `${(photo.size / (1024 * 1024)).toFixed(1)}MB`)
+    : null;
+
+  /* 分辨率：后端 EXIF 提取存入 tags */
+  const resolution = t.width && t.height ? `${t.width}×${t.height}` : null;
+
   const segments = [
-    t.device,
-    [t.aperture, t.shutter, t.iso].filter(Boolean).join(' · '),
-    t.focalLength,
-  ].filter(Boolean);
+    sizeStr,
+    resolution,
+    [t.aperture, t.shutter, t.iso].filter(Boolean).join(' · ') || null,
+    t.focalLength || null,
+  ].filter(Boolean) as string[];
 
   if (segments.length === 0 && !t.shotAt) return null;
 
@@ -69,6 +80,7 @@ function PhotoFrameBar({ photo }: { photo: GalleryPhoto }) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
+        width: '100%',
         padding: '6px 12px',
         fontFamily: FRAME_FONT,
         fontSize: 10,
@@ -77,14 +89,14 @@ function PhotoFrameBar({ photo }: { photo: GalleryPhoto }) {
         lineHeight: 1,
       }}
     >
-      {/* 左侧：设备 + 曝光参数 */}
+      {/* 左侧：大小 + 分辨率 + 曝光参数 + 焦距 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
         {segments.map((seg, i) => (
           <span key={i} style={{ whiteSpace: 'nowrap' }}>{seg}</span>
         ))}
       </div>
 
-      {/* 右侧：拍摄时间 */}
+      {/* 右侧：拍摄日期，贴白条最右边 */}
       {t.shotAt && (
         <span style={{ whiteSpace: 'nowrap', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
           {t.shotAt}

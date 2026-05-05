@@ -355,8 +355,8 @@ export default function GalleryAdmin() {
                       return {
                         id: p.file,
                         fileName: p.file,
-                        // 历史版本照片带 ?v=commitHash，确保从正确的 git commit 读取
                         url: existing?.url ?? `/api/v1/spaces/gallery/items/${detail.id}/assets/${p.file}?v=${preview.commitHash}`,
+                        size: existing?.size ?? 0,
                         caption: p.caption,
                         tags: p.tags,
                       };
