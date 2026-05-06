@@ -1,0 +1,7 @@
+# 与 .gitattributes（eol=lf）一致：主力在 Mac 开发时编辑器也默认 LF，避免保存成 CRLF。
+root = true
+
+[*]
+end_of_line = lf
+insert_final_newline = true
+charset = utf-8
