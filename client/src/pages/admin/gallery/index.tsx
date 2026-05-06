@@ -22,6 +22,7 @@ import { smoothBounce } from '@/lib/motion';
 import { GalleryPostListItem, GalleryPostPreview } from './components/GalleryFeedCard';
 import { PhotoLightbox } from './components/PhotoLightbox';
 import { CreateGalleryModal } from './components/CreateGalleryModal';
+import { VersionTimeline } from '../components/VersionTimeline';
 
 // ─── 空状态 ───
 
@@ -136,7 +137,9 @@ export default function GalleryAdmin() {
         setDetail(d);
         setDraftInfo(draft ? { exists: true, savedAt: draft.savedAt } : { exists: false });
         setHistory(hist);
-      } catch {
+      } catch (err) {
+        // 详情加载失败时静默重置状态，记录错误供调试
+        console.error('[GalleryAdmin] 加载动态详情失败:', err);
         if (!cancelled) {
           setDetail(null);
           setDraftInfo({ exists: false });
@@ -191,12 +194,17 @@ export default function GalleryAdmin() {
 
   /** 刷新选中帖子的详情 + 历史（发布/取消发布/提交后调用） */
   const reloadDetail = async (id: string) => {
-    const [d, hist] = await Promise.all([
-      galleryApi.getById(id),
-      galleryApi.getHistory(id).catch(() => []),
-    ]);
-    setDetail(d);
-    setHistory(hist);
+    try {
+      const [d, hist] = await Promise.all([
+        galleryApi.getById(id),
+        galleryApi.getHistory(id).catch(() => []),
+      ]);
+      setDetail(d);
+      setHistory(hist);
+    } catch (err) {
+      // 刷新详情失败时保留当前已展示的数据，记录错误供调试
+      console.error('[GalleryAdmin] 重载详情失败:', err);
+    }
   };
 
   /** 发布当前展示的版本：preview 模式发布历史版本，否则发布最新版 */
@@ -531,111 +539,3 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-/* ─── 版本时间线（与 note 管理端 VersionTimeline 样式一致） ─── */
-
-function formatCommitTime(iso: string): string {
-  const d = new Date(iso);
-  const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  const time = d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-  if (sameDay) return time;
-  return `${d.getMonth() + 1}/${d.getDate()} ${time}`;
-}
-
-function VersionTimeline({
-  history,
-  publishedHash,
-  activePreviewHash,
-  onSelect,
-}: {
-  history: ContentHistoryEntry[];
-  publishedHash: string | null;
-  activePreviewHash?: string | null;
-  onSelect?: (commitHash: string) => void;
-}) {
-  return (
-    <div className="relative" style={{ paddingLeft: 16 }}>
-      {/* 纵线 */}
-      <div
-        className="absolute"
-        style={{ left: 7, top: 8, bottom: 8, width: 1, background: 'var(--box-border)' }}
-      />
-      {history.map((entry, i) => {
-        const isPublished = publishedHash === entry.commitHash;
-        const isFirst = i === 0;
-        const isActive = activePreviewHash
-          ? activePreviewHash === entry.commitHash
-          : isFirst;
-        const title = entry.message.split(' | ')[1]?.trim()
-          || (entry.action === 'commit' ? '版本提交' : '版本更新');
-
-        return (
-          <div
-            key={entry.commitHash}
-            className="relative cursor-pointer transition-all duration-150 hover:opacity-80"
-            style={{
-              padding: '8px 0 8px 12px',
-              background: isActive ? 'var(--accent-soft)' : 'transparent',
-              borderRadius: isActive ? 'var(--radius-sm)' : 0,
-            }}
-            onClick={() => onSelect?.(entry.commitHash)}
-          >
-            {/* 节点圆点 */}
-            <span
-              className="absolute rounded-full"
-              style={{
-                left: -12,
-                top: 12,
-                width: 7,
-                height: 7,
-                background: isActive
-                  ? 'var(--mark-blue)'
-                  : isPublished
-                    ? 'var(--mark-green)'
-                    : isFirst
-                      ? 'var(--ink)'
-                      : 'var(--ink-ghost)',
-                border: '1.5px solid var(--paper-dark)',
-                boxShadow: isActive
-                  ? '0 0 6px rgba(10,132,255,0.4)'
-                  : isPublished
-                    ? '0 0 6px rgba(48,209,88,0.3)'
-                    : 'none',
-              }}
-            />
-            <div
-              className="font-medium"
-              style={{
-                color: isFirst ? 'var(--ink)' : 'var(--ink-light)',
-                fontSize: 'var(--text-xs)',
-                marginBottom: 3,
-              }}
-            >
-              {title}
-            </div>
-            <div
-              className="flex items-center gap-1.5"
-              style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)' }}
-            >
-              <span style={{ fontFamily: 'var(--font-mono)' }}>
-                {entry.commitHash.slice(0, 8)}
-              </span>
-              <span>· {formatCommitTime(entry.committedAt)}</span>
-              {isPublished && (
-                <span
-                  className="rounded px-1.5 py-[1px] font-semibold"
-                  style={{ background: 'rgba(48,209,88,0.12)', color: 'var(--mark-green)', fontSize: '0.5625rem' }}
-                >
-                  已发布
-                </span>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}

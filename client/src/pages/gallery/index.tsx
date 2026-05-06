@@ -545,7 +545,11 @@ export default function GalleryPage() {
         }
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((err) => {
+        // 列表加载失败时停止 loading 状态，页面展示空状态
+        console.error('[Gallery] 加载动态列表失败:', err);
+        setLoading(false);
+      });
      
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅挂载拉列表；searchParams 入 deps 会与 setSearchParams 互相触发
   }, []);
@@ -570,7 +574,10 @@ export default function GalleryPage() {
         detailCache.current.set(post.id, detail);
         setCurrentDetail(detail);
       })
-      .catch(() => {});
+      .catch((err) => {
+        // 详情加载失败时静默忽略（依赖缓存/重试），记录错误供调试
+        console.error('[Gallery] 加载动态详情失败:', err);
+      });
   }, [posts, postIdx]);
 
   // 当前相册切换时，照片索引和方向归零

@@ -8,6 +8,7 @@ import {
   Body,
   BadRequestException,
 } from '@nestjs/common';
+import { extname } from 'node:path';
 import { RawResponse } from '../../common/raw-response.decorator';
 import { ImportService } from './import.service';
 import { ConfirmImportDto } from './dto/confirm-import.dto';
@@ -47,6 +48,22 @@ export class ImportController {
   async parse(@Req() request: MultipartIterableRequest) {
     const file = await request.file();
     if (!file) throw new BadRequestException('文件不能为空');
+
+    // 安全：限制上传文件类型，防止任意文件写入存储
+    const ALLOWED_EXTENSIONS = new Set([
+      '.md',
+      '.pdf',
+      '.docx',
+      '.doc',
+      '.pptx',
+      '.ppt',
+    ]);
+    const ext = extname(file.filename).toLowerCase();
+    if (!ALLOWED_EXTENSIONS.has(ext)) {
+      throw new BadRequestException(
+        '不支持的文件格式，仅支持 .md / .pdf / .docx / .doc / .pptx / .ppt',
+      );
+    }
 
     const buffer = await file.toBuffer();
     return this.importService.parse(file.filename, buffer);

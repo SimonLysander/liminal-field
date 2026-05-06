@@ -202,11 +202,15 @@ export class ContentGitService implements OnModuleInit {
     return (await fn()).trim();
   }
 
-  /** 执行 git 命令，失败时返回 null */
+  /** 执行 git 命令，失败时返回 null（用于诊断场景，不中断流程） */
   private async tryRun(fn: () => Promise<string>): Promise<string | null> {
     try {
       return (await fn()).trim();
-    } catch {
+    } catch (err: unknown) {
+      // debug 级别：tryRun 本身设计为"失败可忽略"，但记录有助于诊断 git 环境问题
+      this.logger.debug(
+        `tryRun: git 命令失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
       return null;
     }
   }

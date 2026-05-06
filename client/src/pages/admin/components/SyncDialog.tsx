@@ -30,7 +30,9 @@ export function SyncDialog({ onClose }: { onClose: () => void }) {
       } else {
         toast.error(result.message);
       }
-    } catch {
+    } catch (err) {
+      // 同步推送失败，记录错误供调试
+      console.error('[SyncDialog] 同步失败:', err);
       toast.error('同步失败');
     } finally {
       setPushing(false);

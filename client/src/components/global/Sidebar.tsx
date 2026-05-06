@@ -111,7 +111,9 @@ function useStructureLevel(parentId: string | undefined) {
       try {
         const result = await req;
         if (!cancelled) setNodes(result.children);
-      } catch {
+      } catch (err) {
+        // 结构节点加载失败时静默降级为空列表，同时记录错误供调试
+        console.error('[Sidebar] 结构节点加载失败:', err);
         if (!cancelled) setNodes([]);
       } finally {
         if (!cancelled) setLoading(false);
@@ -167,7 +169,10 @@ export default function Sidebar() {
           .filter((n) => n.type === 'FOLDER')
           .map((n) => ({ id: n.id, name: n.name }));
         setBreadcrumb(folders);
-      }).catch(() => {});
+      }).catch((err) => {
+        // 面包屑路径加载失败不影响页面功能，仅记录错误
+        console.error('[Sidebar] 面包屑路径加载失败:', err);
+      });
     } else if (activeTopicId) {
       structureApi.getPathByNodeId(activeTopicId).then((path) => {
         if (cancelled) return;
@@ -175,7 +180,10 @@ export default function Sidebar() {
           .filter((n) => n.type === 'FOLDER')
           .map((n) => ({ id: n.id, name: n.name }));
         setBreadcrumb(folders);
-      }).catch(() => {});
+      }).catch((err) => {
+        // 面包屑路径加载失败不影响页面功能，仅记录错误
+        console.error('[Sidebar] 面包屑路径加载失败:', err);
+      });
     } else {
       void Promise.resolve().then(() => {
         if (!cancelled) setBreadcrumb([]);

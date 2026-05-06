@@ -35,7 +35,14 @@ function loadDotEnv(): void {
       const eqIdx = trimmed.indexOf('=');
       if (eqIdx < 0) continue;
       const key = trimmed.slice(0, eqIdx).trim();
-      const val = trimmed.slice(eqIdx + 1).trim();
+      let val = trimmed.slice(eqIdx + 1).trim();
+      // 兼容 .env 文件中 VALUE="xxx" 或 VALUE='xxx' 的写法
+      if (
+        (val.startsWith('"') && val.endsWith('"')) ||
+        (val.startsWith("'") && val.endsWith("'"))
+      ) {
+        val = val.slice(1, -1);
+      }
       // 不覆盖已有环境变量（Docker compose 设置的优先）
       if (!(key in process.env)) {
         process.env[key] = val;
