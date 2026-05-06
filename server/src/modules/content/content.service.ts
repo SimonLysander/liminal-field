@@ -574,26 +574,20 @@ export class ContentService {
     );
   }
 
-  async getHome(): Promise<{
-    hero: ContentListItemDto | null;
-    featured: ContentListItemDto[];
-    latest: ContentListItemDto[];
-  }> {
+  /** 最近 N 条已发布内容（供首页使用）。 */
+  async getPublishedLatest(limit: number): Promise<ContentListItemDto[]> {
+    // 多取一些候选条目再过滤，避免 limit*2 内已发布条目不足的边缘情况
     const contents = (
-      await this.contentRepository.list({
-        page: 1,
-        pageSize: 12,
-      })
+      await this.contentRepository.list({ page: 1, pageSize: limit * 2 })
     ).filter((content) => this.isPublished(content));
-    const items = contents.map((content) =>
-      this.toListItemDto(content, { publicView: true }),
-    );
+    return contents
+      .slice(0, limit)
+      .map((content) => this.toListItemDto(content, { publicView: true }));
+  }
 
-    return {
-      hero: items[0] ?? null,
-      featured: items.slice(1, 4),
-      latest: items.slice(0, 6),
-    };
+  /** 已发布内容总数。 */
+  async countPublished(): Promise<number> {
+    return this.contentRepository.countPublished();
   }
 
   /**

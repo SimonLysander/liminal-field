@@ -26,6 +26,8 @@ export class GalleryPhotoDto {
 export class GalleryPublicListItemDto {
   id: string;
   title: string;
+  /** 封面图 URL，null 表示无照片。 */
+  coverUrl: string | null;
   /** 帖子拍摄/发生日期（ISO 8601 日期字符串），null 表示未设置。 */
   date: string | null;
   /** 帖子地点，null 表示未设置。 */
