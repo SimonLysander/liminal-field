@@ -36,7 +36,7 @@ import { LoadingState } from '@/components/LoadingState';
 /* ---------- Data ---------- */
 
 type Space = 'home' | 'notes' | 'gallery' | 'agent';
-const spaces: Space[] = ['notes', 'gallery'];
+const spaces: Space[] = ['home', 'notes', 'gallery'];
 
 const labels: Record<Space, string> = {
   home: '首页',
