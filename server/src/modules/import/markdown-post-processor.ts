@@ -59,9 +59,13 @@ const rules: PostProcessRule[] = [
 
   {
     name: 'htmlImgToMarkdown',
-    description: 'HTML <img> → markdown 图片语法（MinerU 有时输出 HTML 而非标准 md）',
+    description:
+      'HTML <img> → markdown 图片语法（MinerU 有时输出 HTML 而非标准 md）',
     transform: (md) =>
-      md.replace(/<img[^>]+src=["']([^"']+)["'][^>]*\/?>/gi, (_, src) => `![](${src})`),
+      md.replace(
+        /<img[^>]+src=["']([^"']+)["'][^>]*\/?>/gi,
+        (_, src) => `![](${src})`,
+      ),
   },
 
   {
@@ -72,7 +76,8 @@ const rules: PostProcessRule[] = [
 
   {
     name: 'htmlTableToMarkdown',
-    description: 'HTML <table> → GFM markdown 表格（处理 colspan/rowspan 扁平化）',
+    description:
+      'HTML <table> → GFM markdown 表格（处理 colspan/rowspan 扁平化）',
     transform: (md) => md.replace(/<table>[\s\S]*?<\/table>/gi, htmlTableToGfm),
   },
 
@@ -94,15 +99,23 @@ const rules: PostProcessRule[] = [
 
   {
     name: 'fixPipesInTableMath',
-    description: '表格内 $...$ 公式里的 | 替换为 \\vert，避免与表格列分隔符冲突',
-    transform: (md) => {
-      return md.replace(/^(\|.*\|)$/gm, (tableLine) => {
+    description:
+      '表格内 $...$ 公式里的 | 替换为 \\vert，避免与表格列分隔符冲突',
+    transform: (md: string) => {
+      return md.replace(/^(\|.*\|)$/gm, (tableLine: string) => {
         // 只处理表格行（以 | 开头和结尾的行，排除分隔行 |---|）
         if (/^\|[\s-:|]+\|$/.test(tableLine)) return tableLine;
         // 替换表格行内 $...$ 公式中的 |
-        return tableLine.replace(/\$([^$\n]+?)\$/g, (_match, texContent) => {
-          return '$' + texContent.replace(/\\\|/g, '\\vert ').replace(/\|/g, '\\vert ') + '$';
-        });
+        return tableLine.replace(
+          /\$([^$\n]+?)\$/g,
+          (_match: string, texContent: string) => {
+            return (
+              '$' +
+              texContent.replace(/\\\|/g, '\\vert ').replace(/\|/g, '\\vert ') +
+              '$'
+            );
+          },
+        );
       });
     },
   },
@@ -113,12 +126,12 @@ const rules: PostProcessRule[] = [
     transform: (md) =>
       md
         // $$content（$$ 开头但同行有内容，且行尾无 $$）→ $$\ncontent
-        .replace(/^\$\$([^\n$].+)$/gm, (match, content) => {
+        .replace(/^\$\$([^\n$].+)$/gm, (match: string, content: string) => {
           if (content.endsWith('$$')) return match;
           return '$$\n' + content;
         })
         // content$$（行尾 $$ 但行首不是 $$）→ content\n$$
-        .replace(/^([^\n]+[^$])\$\$$/gm, (match, content) => {
+        .replace(/^([^\n]+[^$])\$\$$/gm, (match: string, content: string) => {
           if (content.startsWith('$$')) return match;
           return content + '\n$$';
         }),
@@ -126,7 +139,8 @@ const rules: PostProcessRule[] = [
 
   {
     name: 'escapeBracesOutsideCode',
-    description: '转义 code block / inline code / LaTeX 公式外的 { }，防止 remarkMdx 静默截断',
+    description:
+      '转义 code block / inline code / LaTeX 公式外的 { }，防止 remarkMdx 静默截断',
     transform: (md) => {
       const lines = md.split('\n');
       const result: string[] = [];
@@ -157,11 +171,19 @@ const rules: PostProcessRule[] = [
         }
         // 跳过 inline code `...` 和行内公式 $...$
         result.push(
-          line.replace(/(`[^`]*`)|(\$[^$\n]+?\$)|([{}])/g, (_match, codeSpan, mathSpan, brace) => {
-            if (codeSpan) return codeSpan;
-            if (mathSpan) return mathSpan;
-            return brace === '{' ? '\\{' : '\\}';
-          }),
+          line.replace(
+            /(`[^`]*`)|(\$[^$\n]+?\$)|([{}])/g,
+            (
+              _match: string,
+              codeSpan: string,
+              mathSpan: string,
+              brace: string,
+            ) => {
+              if (codeSpan) return codeSpan;
+              if (mathSpan) return mathSpan;
+              return brace === '{' ? '\\{' : '\\}';
+            },
+          ),
         );
       }
       return result.join('\n');
@@ -200,15 +222,16 @@ function stripTags(html: string): string {
 function htmlTableToGfm(tableHtml: string): string {
   // 提取所有行
   const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-  const cellRegex = /<t([dh])[^>]*?(?:colspan=["']?(\d+)["']?)?[^>]*?(?:rowspan=["']?(\d+)["']?)?[^>]*>([\s\S]*?)<\/t[dh]>/gi;
+  const cellRegex =
+    /<t([dh])[^>]*?(?:colspan=["']?(\d+)["']?)?[^>]*?(?:rowspan=["']?(\d+)["']?)?[^>]*>([\s\S]*?)<\/t[dh]>/gi;
 
   const rows: string[][] = [];
-  const maxCols = new Array(200).fill(0); // rowspan 占位追踪
-  let rowIdx = 0;
+  // new Array(n).fill(0) 在 TS 下常为 any[]，会拖累 maxCols[col] 赋值的类型推断
+  const maxCols: number[] = Array.from({ length: 200 }, () => 0); // rowspan 占位追踪
   let rowMatch: RegExpExecArray | null;
 
   while ((rowMatch = rowRegex.exec(tableHtml)) !== null) {
-    const rowHtml = rowMatch[1];
+    const rowHtml = rowMatch[1] ?? '';
     const cells: string[] = [];
     let colIdx = 0;
     let cellMatch: RegExpExecArray | null;
@@ -230,9 +253,11 @@ function htmlTableToGfm(tableHtml: string): string {
         colIdx++;
       }
 
-      const colspan = parseInt(cellMatch[2] || '1', 10);
-      const rowspan = parseInt(cellMatch[3] || '1', 10);
-      const text = stripTags(cellMatch[4]).replace(/\|/g, '\\|').replace(/\n/g, ' ');
+      const colspan = Number.parseInt(cellMatch[2] ?? '1', 10);
+      const rowspan = Number.parseInt(cellMatch[3] ?? '1', 10);
+      const text = stripTags(cellMatch[4] ?? '')
+        .replace(/\|/g, '\\|')
+        .replace(/\n/g, ' ');
 
       cells.push(text);
       colIdx++;
@@ -245,14 +270,14 @@ function htmlTableToGfm(tableHtml: string): string {
 
       // rowspan 标记后续行占位
       if (rowspan > 1) {
+        const anchorCol: number = colIdx - colspan;
         for (let r = 0; r < rowspan - 1; r++) {
-          maxCols[colIdx - colspan] = (maxCols[colIdx - colspan] || 0) + 1;
+          maxCols[anchorCol] = (maxCols[anchorCol] ?? 0) + 1;
         }
       }
     }
 
     rows.push(cells);
-    rowIdx++;
   }
 
   if (rows.length === 0) return '';

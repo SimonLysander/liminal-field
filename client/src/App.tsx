@@ -99,11 +99,18 @@ function MainLayout() {
   // overlay 只在过渡瞬间可见：渐入遮住白→透明闪帧，然后消失露出模糊背景
   const [showOverlay, setShowOverlay] = useState(false);
   useEffect(() => {
-    if (isGallery) {
+    if (!isGallery) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
       setShowOverlay(true);
-      const timer = setTimeout(() => setShowOverlay(false), 600);
-      return () => clearTimeout(timer);
-    }
+      timer = setTimeout(() => setShowOverlay(false), 600);
+    });
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) clearTimeout(timer);
+    };
   }, [isGallery]);
 
   return (

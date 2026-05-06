@@ -17,6 +17,20 @@ import { ContentGitService } from '../content/content-git.service';
 const COOKIE_NAME = 'auth_token';
 const COOKIE_PATH = '/api';
 
+/** @fastify/cookie 在运行时挂载；isolatedModules 下用窄接口代替 any */
+type ReplyWithCookie = FastifyReply & {
+  setCookie(
+    name: string,
+    value: string,
+    options?: Record<string, unknown>,
+  ): void;
+  clearCookie(name: string, options?: Record<string, unknown>): void;
+};
+
+function asCookieReply(reply: FastifyReply): ReplyWithCookie {
+  return reply;
+}
+
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -37,8 +51,7 @@ export class AuthController {
     }
 
     const token = this.jwtService.sign({ role: 'admin' });
-    // reply は @fastify/cookie で拡張された型 — isolatedModules 制約のため any キャスト
-    (reply as any).setCookie(COOKIE_NAME, token, {
+    asCookieReply(reply).setCookie(COOKIE_NAME, token, {
       httpOnly: true,
       sameSite: 'strict',
       secure: process.env.NODE_ENV === 'production',
@@ -50,15 +63,15 @@ export class AuthController {
   }
 
   @Post('logout')
-  async logout(@Res({ passthrough: true }) reply: FastifyReply) {
-    (reply as any).clearCookie(COOKIE_NAME, { path: COOKIE_PATH });
+  logout(@Res({ passthrough: true }) reply: FastifyReply) {
+    asCookieReply(reply).clearCookie(COOKIE_NAME, { path: COOKIE_PATH });
     return { authenticated: false };
   }
 
   @Public()
   @Get('check')
   check(@Req() request: FastifyRequest) {
-    return { authenticated: !!(request as any).user };
+    return { authenticated: !!request.user };
   }
 
   @Get('sync-status')

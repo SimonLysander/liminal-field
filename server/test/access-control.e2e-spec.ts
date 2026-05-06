@@ -8,7 +8,12 @@
  * - 未登录 POST 创建 → 401
  */
 import supertest from 'supertest';
-import { TestContext, login, createNoteItem, commitNoteContent } from './helpers';
+import {
+  TestContext,
+  login,
+  createNoteItem,
+  commitNoteContent,
+} from './helpers';
 
 describe('Access Control (e2e)', () => {
   let ctx: TestContext;
@@ -27,16 +32,36 @@ describe('Access Control (e2e)', () => {
   describe('未登录 GET /spaces/notes/items', () => {
     it('只返回已发布的笔记', async () => {
       // 创建已发布和未发布各一条
-      const publishedId = await createNoteItem(ctx.app, cookie, '访问控制已发布笔记');
-      await commitNoteContent(ctx.app, cookie, publishedId, '# 标题\n\n已发布内容。', '访问控制已发布笔记');
+      const publishedId = await createNoteItem(
+        ctx.app,
+        cookie,
+        '访问控制已发布笔记',
+      );
+      await commitNoteContent(
+        ctx.app,
+        cookie,
+        publishedId,
+        '# 标题\n\n已发布内容。',
+        '访问控制已发布笔记',
+      );
       await supertest(ctx.app.getHttpServer())
         .put(`/api/v1/spaces/notes/items/${publishedId}/publish`)
         .set('Cookie', cookie)
         .send({})
         .expect(200);
 
-      const unpublishedId = await createNoteItem(ctx.app, cookie, '访问控制未发布笔记');
-      await commitNoteContent(ctx.app, cookie, unpublishedId, '# 标题\n\n未发布内容。', '访问控制未发布笔记');
+      const unpublishedId = await createNoteItem(
+        ctx.app,
+        cookie,
+        '访问控制未发布笔记',
+      );
+      await commitNoteContent(
+        ctx.app,
+        cookie,
+        unpublishedId,
+        '# 标题\n\n未发布内容。',
+        '访问控制未发布笔记',
+      );
 
       // 无 cookie 请求列表
       const res = await supertest(ctx.app.getHttpServer())
@@ -52,7 +77,13 @@ describe('Access Control (e2e)', () => {
   describe('未登录 GET /spaces/notes/items/:id', () => {
     it('已发布笔记 → 200，返回已发布版内容', async () => {
       const id = await createNoteItem(ctx.app, cookie, '访问控制详情已发布');
-      await commitNoteContent(ctx.app, cookie, id, '# 标题\n\n访问控制内容。', '访问控制详情已发布');
+      await commitNoteContent(
+        ctx.app,
+        cookie,
+        id,
+        '# 标题\n\n访问控制内容。',
+        '访问控制详情已发布',
+      );
       await supertest(ctx.app.getHttpServer())
         .put(`/api/v1/spaces/notes/items/${id}/publish`)
         .set('Cookie', cookie)
@@ -70,7 +101,13 @@ describe('Access Control (e2e)', () => {
 
     it('未发布笔记 → 404', async () => {
       const id = await createNoteItem(ctx.app, cookie, '访问控制详情未发布');
-      await commitNoteContent(ctx.app, cookie, id, '# 标题\n\n未发布。', '访问控制详情未发布');
+      await commitNoteContent(
+        ctx.app,
+        cookie,
+        id,
+        '# 标题\n\n未发布。',
+        '访问控制详情未发布',
+      );
 
       await supertest(ctx.app.getHttpServer())
         .get(`/api/v1/spaces/notes/items/${id}`)

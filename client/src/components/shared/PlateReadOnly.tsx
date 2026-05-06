@@ -116,7 +116,9 @@ export default function PlateReadOnly({
   const [ready, setReady] = useState(false);
   const [isPending, startTransition] = useTransition();
   const onHeadingsMarkedRef = useRef(onHeadingsMarked);
-  onHeadingsMarkedRef.current = onHeadingsMarked;
+  useEffect(() => {
+    onHeadingsMarkedRef.current = onHeadingsMarked;
+  }, [onHeadingsMarked]);
 
   const processedMarkdown = useMemo(() => {
     let md = markdown || '';
@@ -128,9 +130,11 @@ export default function PlateReadOnly({
 
   // markdown 变化时重置 ready，用 startTransition 延迟重建 editor
   useEffect(() => {
-    setReady(false);
-    startTransition(() => {
-      setReady(true);
+    void Promise.resolve().then(() => {
+      setReady(false);
+      startTransition(() => {
+        setReady(true);
+      });
     });
   }, [processedMarkdown]);
 

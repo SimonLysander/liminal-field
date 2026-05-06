@@ -99,18 +99,28 @@ function useStructureLevel(parentId: string | undefined) {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      setLoading(true);
 
-    const req = parentId
-      ? structureApi.getChildren(parentId, { visibility: 'public', scope: 'notes' })
-      : structureApi.getRootNodes({ visibility: 'public', scope: 'notes' });
+      const req = parentId
+        ? structureApi.getChildren(parentId, { visibility: 'public', scope: 'notes' })
+        : structureApi.getRootNodes({ visibility: 'public', scope: 'notes' });
 
-    req
-      .then((result) => { if (!cancelled) setNodes(result.children); })
-      .catch(() => { if (!cancelled) setNodes([]); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      try {
+        const result = await req;
+        if (!cancelled) setNodes(result.children);
+      } catch {
+        if (!cancelled) setNodes([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [parentId]);
 
   return { nodes, loading };
@@ -167,8 +177,9 @@ export default function Sidebar() {
         setBreadcrumb(folders);
       }).catch(() => {});
     } else {
-      /* 回到根目录 /note：清空面包屑 */
-      setBreadcrumb([]);
+      void Promise.resolve().then(() => {
+        if (!cancelled) setBreadcrumb([]);
+      });
     }
 
     return () => { cancelled = true; };

@@ -79,19 +79,25 @@ function NoteReader({ id }: { id: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    contentItemsApi
-      .getById(id)
-      .then((data) => { if (!cancelled) setContent(data); })
-      .catch(() => {
+    void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      setLoading(true);
+      try {
+        const data = await contentItemsApi.getById(id);
+        if (!cancelled) setContent(data);
+      } catch {
         if (cancelled) return;
-        // 404（不存在或 scope 不匹配）→ toast 提示并跳回笔记根
         toast.error('文章不存在');
         navigate('/note', { replace: true });
-      })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [id]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, navigate]);
 
   /*
    * TOC 从 API 返回的 headings 字段派生，不再查询 DOM。

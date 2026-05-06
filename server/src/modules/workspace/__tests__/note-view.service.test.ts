@@ -73,7 +73,11 @@ describe('NoteViewService', () => {
       const result = await service.getById('ci_1', 'all');
 
       expect(result).toBe(detail);
-      expect(contentService.getContentById).toHaveBeenCalledWith('ci_1', { visibility: 'all' }, { scope: 'notes' });
+      expect(contentService.getContentById).toHaveBeenCalledWith(
+        'ci_1',
+        { visibility: 'all' },
+        { scope: 'notes' },
+      );
     });
 
     it('visibility 为 public 时传 ContentVisibility.public', async () => {
@@ -81,7 +85,11 @@ describe('NoteViewService', () => {
 
       await service.getById('ci_1', 'public');
 
-      expect(contentService.getContentById).toHaveBeenCalledWith('ci_1', { visibility: 'public' }, { scope: 'notes' });
+      expect(contentService.getContentById).toHaveBeenCalledWith(
+        'ci_1',
+        { visibility: 'public' },
+        { scope: 'notes' },
+      );
     });
 
     it('visibility 未指定时默认 public', async () => {
@@ -89,7 +97,11 @@ describe('NoteViewService', () => {
 
       await service.getById('ci_1');
 
-      expect(contentService.getContentById).toHaveBeenCalledWith('ci_1', { visibility: 'public' }, { scope: 'notes' });
+      expect(contentService.getContentById).toHaveBeenCalledWith(
+        'ci_1',
+        { visibility: 'public' },
+        { scope: 'notes' },
+      );
     });
   });
 
@@ -115,7 +127,13 @@ describe('NoteViewService', () => {
 
   describe('saveContent()', () => {
     it('委托 contentService.saveContent 进行正式保存', async () => {
-      const dto = { title: 'T', summary: 'S', status: 'committed', bodyMarkdown: 'B', changeNote: 'N' } as any;
+      const dto = {
+        title: 'T',
+        summary: 'S',
+        status: 'committed',
+        bodyMarkdown: 'B',
+        changeNote: 'N',
+      } as any;
       const expected = { id: 'ci_1' };
       minioService.moveDraftAssetsToDisk.mockResolvedValue([]);
       contentService.saveContent.mockResolvedValue(expected as any);
@@ -142,11 +160,13 @@ describe('NoteViewService', () => {
     };
 
     it('先确认 contentItem 存在，再返回草稿 DTO', async () => {
-      editorDraftRepository.findByContentItemId.mockResolvedValue(mockDraft as any);
+      editorDraftRepository.findByContentItemId.mockResolvedValue(mockDraft);
 
       const result = await service.getDraft('ci_1');
 
-      expect(contentService.assertContentItemExists).toHaveBeenCalledWith('ci_1');
+      expect(contentService.assertContentItemExists).toHaveBeenCalledWith(
+        'ci_1',
+      );
       expect(result).toEqual({
         id: 'draft:ci_1',
         contentItemId: 'ci_1',
@@ -171,7 +191,9 @@ describe('NoteViewService', () => {
         new NotFoundException('Content ci_999 not found'),
       );
 
-      await expect(service.getDraft('ci_999')).rejects.toThrow(NotFoundException);
+      await expect(service.getDraft('ci_999')).rejects.toThrow(
+        NotFoundException,
+      );
       // assertContentItemExists 在 findByContentItemId 之前调用
       expect(editorDraftRepository.findByContentItemId).not.toHaveBeenCalled();
     });
@@ -194,7 +216,7 @@ describe('NoteViewService', () => {
         ...dto,
         savedAt: new Date('2026-01-01'),
       };
-      editorDraftRepository.save.mockResolvedValue(saved as any);
+      editorDraftRepository.save.mockResolvedValue(saved);
 
       const result = await service.saveDraft('ci_1', dto);
 
@@ -212,8 +234,12 @@ describe('NoteViewService', () => {
     it('先确认 contentItem 存在，再删除草稿', async () => {
       await service.deleteDraft('ci_1');
 
-      expect(contentService.assertContentItemExists).toHaveBeenCalledWith('ci_1');
-      expect(editorDraftRepository.deleteByContentItemId).toHaveBeenCalledWith('ci_1');
+      expect(contentService.assertContentItemExists).toHaveBeenCalledWith(
+        'ci_1',
+      );
+      expect(editorDraftRepository.deleteByContentItemId).toHaveBeenCalledWith(
+        'ci_1',
+      );
     });
   });
 
@@ -226,7 +252,9 @@ describe('NoteViewService', () => {
 
       const result = await service.getHistory('ci_1');
 
-      expect(contentService.assertContentItemExists).toHaveBeenCalledWith('ci_1');
+      expect(contentService.assertContentItemExists).toHaveBeenCalledWith(
+        'ci_1',
+      );
       expect(result).toBe(history);
     });
   });
@@ -241,7 +269,11 @@ describe('NoteViewService', () => {
       const result = await service.getByVersion('ci_1', 'abc123');
 
       expect(result).toBe(detail);
-      expect(contentService.getContentByVersion).toHaveBeenCalledWith('ci_1', 'abc123', { scope: 'notes' });
+      expect(contentService.getContentByVersion).toHaveBeenCalledWith(
+        'ci_1',
+        'abc123',
+        { scope: 'notes' },
+      );
     });
   });
 
@@ -252,7 +284,7 @@ describe('NoteViewService', () => {
       contentRepoService.storeAsset.mockResolvedValue({
         path: 'content/ci_1/assets/img.png',
         fileName: 'img.png',
-      } as any);
+      });
 
       const result = await service.uploadAsset('ci_1', {
         originalFileName: 'img.png',
@@ -280,7 +312,9 @@ describe('NoteViewService', () => {
 
       const result = await service.listAssets('ci_1');
 
-      expect(contentService.assertContentItemExists).toHaveBeenCalledWith('ci_1');
+      expect(contentService.assertContentItemExists).toHaveBeenCalledWith(
+        'ci_1',
+      );
       expect(result).toBe(assets);
     });
   });

@@ -1,4 +1,7 @@
-import { parseGalleryContent, serializeGalleryContent } from './gallery-view.service';
+import {
+  parseGalleryContent,
+  serializeGalleryContent,
+} from './gallery-view.service';
 
 // ─── parseGalleryContent ────────────────────────────────────────────────────
 
@@ -67,7 +70,14 @@ describe('parseGalleryContent', () => {
   });
 
   it('frontmatter 中 photos 为空数组 → photos: [], hasFrontmatter: true', () => {
-    const raw = ['---', 'cover: cover.jpg', 'photos: []', '---', '', '正文'].join('\n');
+    const raw = [
+      '---',
+      'cover: cover.jpg',
+      'photos: []',
+      '---',
+      '',
+      '正文',
+    ].join('\n');
 
     const result = parseGalleryContent(raw);
 
@@ -86,7 +96,9 @@ describe('parseGalleryContent', () => {
 
   it('YAML 解析失败 → 降级为无 frontmatter', () => {
     // 故意写出非法 YAML（缩进混乱 + 不合法字符）
-    const raw = ['---', ': invalid: yaml: [broken', '---', '', '正文'].join('\n');
+    const raw = ['---', ': invalid: yaml: [broken', '---', '', '正文'].join(
+      '\n',
+    );
 
     const result = parseGalleryContent(raw);
 
@@ -131,7 +143,9 @@ describe('parseGalleryContent', () => {
 describe('serializeGalleryContent', () => {
   it('有 photos + cover + date + location → 生成完整 frontmatter', () => {
     const result = serializeGalleryContent({
-      photos: [{ file: 'photo-1.jpg', caption: '第一张', tags: { camera: 'GR III' } }],
+      photos: [
+        { file: 'photo-1.jpg', caption: '第一张', tags: { camera: 'GR III' } },
+      ],
       cover: 'photo-1.jpg',
       date: '2024-03-15',
       location: '上海',

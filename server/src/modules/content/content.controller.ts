@@ -22,7 +22,7 @@ export class ContentController {
     @Req() request: FastifyRequest,
   ): Promise<ContentListItemDto[]> {
     // 未登录用户强制只搜索已发布内容
-    if (!(request as any).user) {
+    if (!request.user) {
       query.visibility = ContentVisibility.public;
     }
     return this.contentService.searchContents(query);

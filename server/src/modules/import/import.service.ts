@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { randomUUID } from 'crypto';
 import { parse as parsePath } from 'path';
@@ -6,12 +11,13 @@ import { MinioService } from '../minio/minio.service';
 import { ContentRepoService } from '../content/content-repo.service';
 import { ContentGitService } from '../content/content-git.service';
 import { ContentRepository } from '../content/content.repository';
-import { ContentItem, ContentChangeType } from '../content/content-item.entity';
+import { ContentChangeType } from '../content/content-item.entity';
 import { NavigationNodeService } from '../navigation/navigation.service';
 import { MineruService } from './mineru.service';
 import { ImportSessionRepository } from './import-session.repository';
 import { AssetRefDto, ParseResultDto } from './dto/parse-result.dto';
 import { ConfirmImportDto } from './dto/confirm-import.dto';
+import type { FastifyReply } from 'fastify';
 import { processMarkdown } from './markdown-post-processor';
 
 /** 需要通过 MinerU 转换的文件扩展名 */
@@ -103,15 +109,19 @@ export class ImportService {
     const session = await this.importSessionRepo.findById(parseId);
     if (!session) throw new NotFoundException('导入会话不存在或已过期');
 
-    const mdBuffer = await this.minioService.getObject(`${IMPORT_PREFIX}/${parseId}/content.md`);
+    const mdBuffer = await this.minioService.getObject(
+      `${IMPORT_PREFIX}/${parseId}/content.md`,
+    );
     let markdown = mdBuffer.toString('utf-8');
 
     // 将已 resolved 的图片路径改写为预览 API URL
     for (const asset of session.assets) {
       if (asset.status === 'resolved') {
-        markdown = markdown.split(asset.ref).join(
-          `/api/v1/spaces/notes/import/parse/${parseId}/assets/${asset.filename}`,
-        );
+        markdown = markdown
+          .split(asset.ref)
+          .join(
+            `/api/v1/spaces/notes/import/parse/${parseId}/assets/${asset.filename}`,
+          );
       }
     }
 
@@ -119,12 +129,15 @@ export class ImportService {
   }
 
   /** 预览阶段提供图片访问 */
-  async getPreviewAsset(parseId: string, fileName: string, reply: any): Promise<void> {
+  async getPreviewAsset(
+    parseId: string,
+    fileName: string,
+    reply: FastifyReply,
+  ): Promise<void> {
     try {
       const buffer = await this.minioService.getObject(
         `${IMPORT_PREFIX}/${parseId}/assets/${fileName}`,
       );
-      const ext = parsePath(fileName).ext.toLowerCase();
       const contentType = this.guessMimeType(fileName);
       reply.header('Content-Type', contentType);
       reply.header('Cache-Control', 'max-age=300');
@@ -148,8 +161,12 @@ export class ImportService {
   private guessMimeType(fileName: string): string {
     const ext = parsePath(fileName).ext.toLowerCase();
     const map: Record<string, string> = {
-      '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-      '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.svg': 'image/svg+xml',
     };
     return map[ext] || 'application/octet-stream';
   }
@@ -168,7 +185,8 @@ export class ImportService {
     const assets = [...session.assets];
     const missingMap = new Map<string, number>();
     assets.forEach((asset, i) => {
-      if (asset.status === 'missing') missingMap.set(asset.filename.toLowerCase(), i);
+      if (asset.status === 'missing')
+        missingMap.set(asset.filename.toLowerCase(), i);
     });
 
     for (const file of files) {
@@ -194,11 +212,15 @@ export class ImportService {
    * 确认导入：单次 commit 创建 content item + structure node。
    * 直接使用底层服务，避免 createContent+saveContent 产生两次提交。
    */
-  async confirm(dto: ConfirmImportDto): Promise<{ nodeId: string; contentItemId: string }> {
+  async confirm(
+    dto: ConfirmImportDto,
+  ): Promise<{ nodeId: string; contentItemId: string }> {
     const session = await this.importSessionRepo.findById(dto.parseId);
     if (!session) throw new NotFoundException('导入会话不存在或已过期');
 
-    const mdBuffer = await this.minioService.getObject(`${IMPORT_PREFIX}/${dto.parseId}/content.md`);
+    const mdBuffer = await this.minioService.getObject(
+      `${IMPORT_PREFIX}/${dto.parseId}/content.md`,
+    );
     const rawMarkdown = mdBuffer.toString('utf-8');
     const title = dto.title || session.title;
     const now = new Date();
@@ -246,13 +268,20 @@ export class ImportService {
       createdAt: now,
     };
     await this.contentRepoService.writeReadme(
-      { id: contentId, _id: contentId, latestVersion: { commitHash: '', title, summary: title }, changeLogs: [changeLog], createdAt: now, updatedAt: now } as ContentItem,
+      {
+        id: contentId,
+        _id: contentId,
+        latestVersion: { commitHash: '', title, summary: title },
+        changeLogs: [changeLog],
+        createdAt: now,
+        updatedAt: now,
+      },
       source.assetRefs,
     );
 
     // 先创建 MongoDB 记录（占位，commitHash 稍后回填），
     // 再执行 Git commit。若 Git 失败，删除 MongoDB 记录回滚，避免产生孤立 commit。
-    const contentItem = await this.contentRepository.create({
+    await this.contentRepository.create({
       id: contentId,
       latestVersion: { commitHash: '', title, summary: title },
       publishedVersion: null,
@@ -263,8 +292,11 @@ export class ImportService {
 
     let commitHash: string | null;
     try {
-      commitHash = await this.contentGitService.recordCommittedContentChange(contentId, changeNote);
-    } catch (error) {
+      commitHash = await this.contentGitService.recordCommittedContentChange(
+        contentId,
+        changeNote,
+      );
+    } catch {
       // Git 失败 → 回滚 MongoDB 记录
       await this.contentRepository.deleteById(contentId);
       throw new BadRequestException('导入提交失败：Git commit error');
@@ -318,7 +350,9 @@ export class ImportService {
       for (const parseId of parseIds) {
         const session = await this.importSessionRepo.findById(parseId);
         if (!session) {
-          await this.minioService.removeByPrefix(`${IMPORT_PREFIX}/${parseId}/`);
+          await this.minioService.removeByPrefix(
+            `${IMPORT_PREFIX}/${parseId}/`,
+          );
           this.logger.log(`Cleaned orphaned import files: ${parseId}`);
         }
       }

@@ -10,7 +10,11 @@ import { ReorderSiblingsDto } from './dto/reorder-siblings.dto';
 import { NavigationRepository } from './navigation.repository';
 import { NavigationNodeDto } from './dto/navigation-node.dto';
 import { CreateNavigationNodeDto } from './dto/create-navigation-node.dto';
-import { StructureNodeDto, StructureListResultDto, DeleteStatsDto } from './dto/structure-node.dto';
+import {
+  StructureNodeDto,
+  StructureListResultDto,
+  DeleteStatsDto,
+} from './dto/structure-node.dto';
 import { UpdateNavigationNodeDto } from './dto/update-navigation-node.dto';
 import { UpdateStructureNodeDto } from './dto/update-structure-node.dto';
 import { NavigationNode, NavigationNodeType } from './navigation.entity';
@@ -208,7 +212,9 @@ export class NavigationNodeService {
     if (dto.contentItemId) {
       await this.contentService.assertContentItemExists(dto.contentItemId);
       // 一个 contentItemId 只能被一个导航节点引用，防止重复挂载
-      const existing = await this.navigationRepository.findByContentItemId(dto.contentItemId);
+      const existing = await this.navigationRepository.findByContentItemId(
+        dto.contentItemId,
+      );
       if (existing) {
         throw new BadRequestException('该内容项已被其他节点引用');
       }
@@ -249,8 +255,13 @@ export class NavigationNodeService {
     if (nextContentItemId) {
       await this.contentService.assertContentItemExists(nextContentItemId);
       // contentItemId 变更时，检查新值是否已被其他节点引用
-      if (dto.contentItemId && dto.contentItemId !== current.contentItemId?.toString()) {
-        const existing = await this.navigationRepository.findByContentItemId(dto.contentItemId);
+      if (
+        dto.contentItemId &&
+        dto.contentItemId !== current.contentItemId?.toString()
+      ) {
+        const existing = await this.navigationRepository.findByContentItemId(
+          dto.contentItemId,
+        );
         if (existing && existing._id.toString() !== id) {
           throw new BadRequestException('该内容项已被其他节点引用');
         }
@@ -260,9 +271,7 @@ export class NavigationNodeService {
     // name 或 parentId 发生变更时，检查目标位置是否存在同名节点（排除自身）
     const nextName = dto.name ?? current.name;
     const nextParentId =
-      dto.parentId !== undefined
-        ? dto.parentId
-        : current.parentId?.toString();
+      dto.parentId !== undefined ? dto.parentId : current.parentId?.toString();
     const nextScope = (current.scope as string) ?? 'notes';
     if (dto.name !== undefined || dto.parentId !== undefined) {
       const duplicate = await this.navigationRepository.findDuplicateName(
@@ -427,8 +436,13 @@ export class NavigationNodeService {
     this.validateNodeSemantics(nextType, nextContentItemId);
     if (nextContentItemId) {
       await this.contentService.assertContentItemExists(nextContentItemId);
-      if (updateDto.contentItemId && updateDto.contentItemId !== current.contentItemId?.toString()) {
-        const existing = await this.navigationRepository.findByContentItemId(updateDto.contentItemId);
+      if (
+        updateDto.contentItemId &&
+        updateDto.contentItemId !== current.contentItemId?.toString()
+      ) {
+        const existing = await this.navigationRepository.findByContentItemId(
+          updateDto.contentItemId,
+        );
         if (existing && existing._id.toString() !== id) {
           throw new BadRequestException('该内容项已被其他节点引用');
         }
@@ -454,10 +468,7 @@ export class NavigationNodeService {
       }
     }
 
-    const entity = await this.navigationRepository.update(
-      id,
-      updateDto as UpdateNavigationNodeDto & { nodeType?: NavigationNodeType },
-    );
+    const entity = await this.navigationRepository.update(id, updateDto);
     if (!entity) {
       throw new NotFoundException(`NavigationNode ${id} not found`);
     }
@@ -476,7 +487,10 @@ export class NavigationNodeService {
       await this.getParentOrThrow(parentId);
     }
 
-    const entities = await this.navigationRepository.listByParentId(parentId, scope);
+    const entities = await this.navigationRepository.listByParentId(
+      parentId,
+      scope,
+    );
     const readableEntities = await this.filterReadableStructureNodes(
       entities,
       visibility,
@@ -484,9 +498,7 @@ export class NavigationNodeService {
     const children = await this.toStructureDtos(readableEntities);
 
     // 有 parentId 时回溯祖先路径，根节点时 path 为空
-    const path = parentId
-      ? await this.findStructurePathByNodeId(parentId)
-      : [];
+    const path = parentId ? await this.findStructurePathByNodeId(parentId) : [];
 
     const result = new StructureListResultDto();
     result.path = path;

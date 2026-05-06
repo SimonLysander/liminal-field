@@ -47,7 +47,8 @@ describe('MarkdownPostProcessor', () => {
 
   describe('stripHtmlDivs', () => {
     it('removes div wrappers', () => {
-      const input = '<div style="position: relative;"><div>![](img.png)</div></div>';
+      const input =
+        '<div style="position: relative;"><div>![](img.png)</div></div>';
       const result = processMarkdown(input);
       expect(result).not.toContain('<div');
       expect(result).toContain('![](img.png)');
@@ -56,7 +57,8 @@ describe('MarkdownPostProcessor', () => {
 
   describe('htmlTableToMarkdown', () => {
     it('converts simple HTML table to GFM pipe table', () => {
-      const input = '<table><tr><td>A</td><td>B</td></tr><tr><td>1</td><td>2</td></tr></table>';
+      const input =
+        '<table><tr><td>A</td><td>B</td></tr><tr><td>1</td><td>2</td></tr></table>';
       const result = processMarkdown(input);
       expect(result).toContain('| A | B |');
       expect(result).toContain('| --- | --- |');
@@ -64,7 +66,8 @@ describe('MarkdownPostProcessor', () => {
     });
 
     it('converts single-column table to code block', () => {
-      const input = '<table><tr><td>line1</td></tr><tr><td>line2</td></tr></table>';
+      const input =
+        '<table><tr><td>line1</td></tr><tr><td>line2</td></tr></table>';
       const result = processMarkdown(input);
       expect(result).toContain('```');
       expect(result).toContain('line1');
@@ -72,7 +75,8 @@ describe('MarkdownPostProcessor', () => {
     });
 
     it('handles colspan by leaving extra cells empty', () => {
-      const input = '<table><tr><td colspan="2">Wide</td></tr><tr><td>A</td><td>B</td></tr></table>';
+      const input =
+        '<table><tr><td colspan="2">Wide</td></tr><tr><td>A</td><td>B</td></tr></table>';
       const result = processMarkdown(input);
       expect(result).toContain('| Wide |');
       expect(result).toContain('| A | B |');

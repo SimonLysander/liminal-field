@@ -4,7 +4,12 @@
  * 覆盖：创建、列表、详情、提交内容、删除。
  */
 import supertest from 'supertest';
-import { TestContext, login, createNoteItem, commitNoteContent } from './helpers';
+import {
+  TestContext,
+  login,
+  createNoteItem,
+  commitNoteContent,
+} from './helpers';
 
 describe('Notes CRUD (e2e)', () => {
   let ctx: TestContext;
@@ -102,7 +107,13 @@ describe('Notes CRUD (e2e)', () => {
     it('提交内容后 latestVersion.commitHash 有值', async () => {
       const id = await createNoteItem(ctx.app, cookie, '提交测试笔记');
 
-      const detail = await commitNoteContent(ctx.app, cookie, id, '# 标题\n\n正文内容。', '提交测试笔记');
+      const detail = await commitNoteContent(
+        ctx.app,
+        cookie,
+        id,
+        '# 标题\n\n正文内容。',
+        '提交测试笔记',
+      );
 
       expect(detail.latestVersion.commitHash).toBeTruthy();
       expect(detail.latestVersion.commitHash).toHaveLength(40);
@@ -110,7 +121,13 @@ describe('Notes CRUD (e2e)', () => {
 
     it('提交后 bodyMarkdown 更新', async () => {
       const id = await createNoteItem(ctx.app, cookie, '内容更新测试');
-      await commitNoteContent(ctx.app, cookie, id, '# 标题\n\n初始正文。', '内容更新测试');
+      await commitNoteContent(
+        ctx.app,
+        cookie,
+        id,
+        '# 标题\n\n初始正文。',
+        '内容更新测试',
+      );
 
       // 第二次提交新内容
       const res = await supertest(ctx.app.getHttpServer())

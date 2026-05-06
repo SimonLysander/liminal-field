@@ -47,7 +47,10 @@ export default function ImportPreviewPage() {
       navigate('/admin/notes');
       return;
     }
-    setLoading(true);
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) setLoading(true);
+    });
     importApi.getParse(parseId)
       .then((parsed) => {
         setData(parsed);
@@ -58,7 +61,10 @@ export default function ImportPreviewPage() {
         toast.info('导入会话已过期，请重新上传');
         navigate('/admin/notes');
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => {
+      cancelled = true;
+    };
   }, [parseId, navigate]);
 
   // TOC：从渲染后的 DOM 提取标题（依赖 plateLayoutGen：Plate 异步解析后再跑一遍）

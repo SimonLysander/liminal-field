@@ -162,11 +162,19 @@ describe('ContentRepoService', () => {
       'ci_scope',
       'Text with ![img](./assets/photo.png)',
     );
-    const notesSource = await service.readContentSource('ci_scope', { scope: 'notes' });
-    expect(notesSource.bodyMarkdown).toContain('/api/v1/spaces/notes/items/ci_scope/assets/');
+    const notesSource = await service.readContentSource('ci_scope', {
+      scope: 'notes',
+    });
+    expect(notesSource.bodyMarkdown).toContain(
+      '/api/v1/spaces/notes/items/ci_scope/assets/',
+    );
 
-    const gallerySource = await service.readContentSource('ci_scope', { scope: 'gallery' });
-    expect(gallerySource.bodyMarkdown).toContain('/api/v1/spaces/gallery/items/ci_scope/assets/');
+    const gallerySource = await service.readContentSource('ci_scope', {
+      scope: 'gallery',
+    });
+    expect(gallerySource.bodyMarkdown).toContain(
+      '/api/v1/spaces/gallery/items/ci_scope/assets/',
+    );
   });
 
   it('lists stored assets with type and size', async () => {

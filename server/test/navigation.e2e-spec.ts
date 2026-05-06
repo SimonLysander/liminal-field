@@ -4,7 +4,7 @@
  * 覆盖：创建文件夹/DOC、scope 过滤、更新、删除（含级联统计）。
  */
 import supertest from 'supertest';
-import { TestContext, login, createNoteItem, createGalleryItem } from './helpers';
+import { TestContext, login, createNoteItem } from './helpers';
 
 describe('Navigation (e2e)', () => {
   let ctx: TestContext;

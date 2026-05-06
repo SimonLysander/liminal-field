@@ -86,13 +86,23 @@ describe('Notes Draft (e2e)', () => {
       await supertest(ctx.app.getHttpServer())
         .put(`/api/v1/spaces/notes/items/${id}/draft`)
         .set('Cookie', cookie)
-        .send({ title: '第一版草稿', summary: '摘要', bodyMarkdown: '第一版。', changeNote: '保存' })
+        .send({
+          title: '第一版草稿',
+          summary: '摘要',
+          bodyMarkdown: '第一版。',
+          changeNote: '保存',
+        })
         .expect(200);
 
       await supertest(ctx.app.getHttpServer())
         .put(`/api/v1/spaces/notes/items/${id}/draft`)
         .set('Cookie', cookie)
-        .send({ title: '第二版草稿', summary: '摘要', bodyMarkdown: '第二版。', changeNote: '保存' })
+        .send({
+          title: '第二版草稿',
+          summary: '摘要',
+          bodyMarkdown: '第二版。',
+          changeNote: '保存',
+        })
         .expect(200);
 
       const res = await supertest(ctx.app.getHttpServer())
@@ -148,7 +158,12 @@ describe('Notes Draft (e2e)', () => {
       const id = await createNoteItem(ctx.app, cookie, '访问控制草稿保存测试');
       await supertest(ctx.app.getHttpServer())
         .put(`/api/v1/spaces/notes/items/${id}/draft`)
-        .send({ title: '草稿', summary: '摘要', bodyMarkdown: '内容', changeNote: '保存' })
+        .send({
+          title: '草稿',
+          summary: '摘要',
+          bodyMarkdown: '内容',
+          changeNote: '保存',
+        })
         .expect(401);
     });
   });

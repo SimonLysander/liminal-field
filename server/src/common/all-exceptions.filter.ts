@@ -29,9 +29,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
     if (exception instanceof HttpException) {
       httpStatus = exception.getStatus();
       const response = exception.getResponse();
-      msg = typeof response === 'string'
-        ? response
-        : (response as Record<string, unknown>).message as string ?? exception.message;
+      msg =
+        typeof response === 'string'
+          ? response
+          : (((response as Record<string, unknown>).message as string) ??
+            exception.message);
       // class-validator 会返回 message 数组
       if (Array.isArray(msg)) msg = (msg as string[]).join('; ');
     } else {

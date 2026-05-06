@@ -12,11 +12,11 @@ export const yamlLoader = () => {
   // 加载 .env（本地开发用；Docker 环境变量已由 compose 注入）
   loadDotEnv();
 
-  let raw = readFileSync(
-    join(process.cwd(), 'configs/db.yaml'),
-    'utf8',
+  let raw = readFileSync(join(process.cwd(), 'configs/db.yaml'), 'utf8');
+  raw = raw.replace(
+    /\$\{(\w+)\}/g,
+    (_sub: string, key: string) => process.env[key] ?? '',
   );
-  raw = raw.replace(/\$\{(\w+)\}/g, (_, key) => process.env[key] ?? '');
   return yaml.load(raw) as Record<string, unknown>;
 };
 

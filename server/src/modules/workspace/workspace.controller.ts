@@ -22,7 +22,7 @@ import {
   Req,
   Res,
 } from '@nestjs/common';
-import type { FastifyRequest } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { Public } from '../auth/decorators/public.decorator';
 import { ContentVisibility } from '../content/dto/content-query.dto';
 import { RawResponse } from '../../common/raw-response.decorator';
@@ -116,7 +116,9 @@ export class WorkspaceController {
 
   /** 获取画廊帖子的结构化草稿。无草稿时返回 null（200），避免 404 噪音。 */
   @Get('gallery/items/:id/draft')
-  async getGalleryDraft(@Param('id') id: string): Promise<GalleryDraftDto | null> {
+  async getGalleryDraft(
+    @Param('id') id: string,
+  ): Promise<GalleryDraftDto | null> {
     return this.galleryViewService.getDraft(id);
   }
 
@@ -137,7 +139,9 @@ export class WorkspaceController {
 
   /** 画廊帖子的版本历史（复用 NoteViewService）。 */
   @Get('gallery/items/:id/history')
-  async getGalleryHistory(@Param('id') id: string): Promise<ContentHistoryEntryDto[]> {
+  async getGalleryHistory(
+    @Param('id') id: string,
+  ): Promise<ContentHistoryEntryDto[]> {
     return this.noteViewService.getHistory(id);
   }
 
@@ -156,7 +160,9 @@ export class WorkspaceController {
    * 前端不再需要区分 MinIO vs Git URL。
    */
   @Get('gallery/items/:id/editor')
-  async getGalleryEditorState(@Param('id') id: string): Promise<GalleryEditorDto> {
+  async getGalleryEditorState(
+    @Param('id') id: string,
+  ): Promise<GalleryEditorDto> {
     return this.galleryViewService.getEditorState(id);
   }
 
@@ -184,10 +190,12 @@ export class WorkspaceController {
   async serveGalleryDraftPhoto(
     @Param('id') id: string,
     @Param('fileName') fileName: string,
-    @Res() reply: any,
+    @Res() reply: FastifyReply,
   ) {
-    const { buffer, contentType } =
-      await this.galleryViewService.getDraftPhoto(id, fileName);
+    const { buffer, contentType } = await this.galleryViewService.getDraftPhoto(
+      id,
+      fileName,
+    );
     reply.header('Content-Type', contentType);
     reply.header('Cache-Control', 'no-cache');
     reply.send(buffer);
@@ -215,10 +223,12 @@ export class WorkspaceController {
   async serveDraftAsset(
     @Param('id') id: string,
     @Param('fileName') fileName: string,
-    @Res() reply: any,
+    @Res() reply: FastifyReply,
   ) {
-    const { buffer, contentType } =
-      await this.noteViewService.getDraftAsset(id, fileName);
+    const { buffer, contentType } = await this.noteViewService.getDraftAsset(
+      id,
+      fileName,
+    );
     reply.header('Content-Type', contentType);
     reply.header('Cache-Control', 'no-cache');
     reply.send(buffer);
@@ -240,12 +250,12 @@ export class WorkspaceController {
     @Req() request: FastifyRequest,
   ) {
     // 未登录用户强制只返回已发布内容
-    if (!(request as any).user) {
+    if (!request.user) {
       status = 'published';
     }
     if (scope === 'gallery') {
       const items = await this.workspaceService.list(scope, status);
-      const isAdmin = !!(request as any).user;
+      const isAdmin = !!request.user;
       // 管理端返回含封面/状态的 AdminListItemDto，展示端返回精简的 PublicListItemDto
       return Promise.all(
         items.map((n) =>
@@ -289,7 +299,7 @@ export class WorkspaceController {
     @Req() request: FastifyRequest,
   ) {
     // 未登录用户强制只访问已发布内容
-    if (!(request as any).user) {
+    if (!request.user) {
       visibility = ContentVisibility.public;
     }
     // scope 校验：确保 content item 属于请求的 scope
@@ -318,10 +328,7 @@ export class WorkspaceController {
   }
 
   @Delete(':scope/items/:id')
-  async remove(
-    @Param('scope') scope: string,
-    @Param('id') id: string,
-  ) {
+  async remove(@Param('scope') scope: string, @Param('id') id: string) {
     await this.workspaceService.assertScopeMatch(scope, id);
     return this.workspaceService.remove(scope, id);
   }
@@ -337,10 +344,12 @@ export class WorkspaceController {
     // commitHash 是可选参数，仅在传入时校验格式
     if (body?.commitHash) validateCommitHash(body.commitHash);
     await this.workspaceService.assertScopeMatch(scope, id);
-    if (scope === 'gallery') await this.galleryViewService.assertPublishable(id, body?.commitHash);
+    if (scope === 'gallery')
+      await this.galleryViewService.assertPublishable(id, body?.commitHash);
     await this.workspaceService.publish(scope, id, body?.commitHash);
     if (scope === 'notes') return this.noteViewService.getById(id, 'all');
-    if (scope === 'gallery') return this.galleryViewService.toAdminDetailDto(id);
+    if (scope === 'gallery')
+      return this.galleryViewService.toAdminDetailDto(id);
     return this.workspaceService.getById(scope, id);
   }
 
@@ -349,7 +358,8 @@ export class WorkspaceController {
     await this.workspaceService.assertScopeMatch(scope, id);
     await this.workspaceService.unpublish(scope, id);
     if (scope === 'notes') return this.noteViewService.getById(id, 'all');
-    if (scope === 'gallery') return this.galleryViewService.toAdminDetailDto(id);
+    if (scope === 'gallery')
+      return this.galleryViewService.toAdminDetailDto(id);
     return this.workspaceService.getById(scope, id);
   }
 
@@ -384,7 +394,7 @@ export class WorkspaceController {
     @Param('id') id: string,
     @Param('fileName') fileName: string,
     @Query('v') commitHash: string | undefined,
-    @Res() reply: any,
+    @Res() reply: FastifyReply,
   ) {
     // ?v= 是可选的，仅在传入时校验格式
     if (commitHash) validateCommitHash(commitHash);
@@ -392,7 +402,12 @@ export class WorkspaceController {
       await this.galleryViewService.readPhotoBuffer(id, fileName, commitHash);
     reply.header('Content-Type', contentType);
     // 带版本号的资源可以长缓存（内容不可变），否则用短缓存
-    reply.header('Cache-Control', commitHash ? 'public, max-age=31536000, immutable' : 'public, max-age=86400');
+    reply.header(
+      'Cache-Control',
+      commitHash
+        ? 'public, max-age=31536000, immutable'
+        : 'public, max-age=86400',
+    );
     reply.send(buffer);
   }
 }

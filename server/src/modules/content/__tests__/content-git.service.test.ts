@@ -52,9 +52,15 @@ describe('ContentGitService', () => {
 
   it('switches to the work branch before recording content commits', async () => {
     // ensureWorkspaceBranchReady: branchLocal → current = main, workspace branch 不存在
-    mockGit.branchLocal.mockResolvedValueOnce({ current: 'main', all: ['main'] });
+    mockGit.branchLocal.mockResolvedValueOnce({
+      current: 'main',
+      all: ['main'],
+    });
     // 第二次 branchLocal：确认 workspace branch 仍不在 all 中 → 走 checkout -b 新建
-    mockGit.branchLocal.mockResolvedValueOnce({ current: 'main', all: ['main'] });
+    mockGit.branchLocal.mockResolvedValueOnce({
+      current: 'main',
+      all: ['main'],
+    });
     // checkout -b 新建分支
     mockGit.checkout.mockResolvedValueOnce(undefined);
     // add tracked path
@@ -72,9 +78,11 @@ describe('ContentGitService', () => {
     );
 
     expect(commitHash).toBe('def456');
-    expect(mockGit.checkout).toHaveBeenCalledWith(
-      ['-b', expectedWorkBranch, 'main'],
-    );
+    expect(mockGit.checkout).toHaveBeenCalledWith([
+      '-b',
+      expectedWorkBranch,
+      'main',
+    ]);
     expect(mockGit.env).toHaveBeenCalledWith(
       expect.objectContaining({
         GIT_AUTHOR_NAME: expect.any(String),
@@ -87,7 +95,10 @@ describe('ContentGitService', () => {
 
   it('skips git commit when the staged diff is empty', async () => {
     // Already on the correct work branch — ensureWorkspaceBranchReady returns early
-    mockGit.branchLocal.mockResolvedValueOnce({ current: expectedWorkBranch, all: [expectedWorkBranch] });
+    mockGit.branchLocal.mockResolvedValueOnce({
+      current: expectedWorkBranch,
+      all: [expectedWorkBranch],
+    });
     // add tracked path
     mockGit.add.mockResolvedValueOnce('');
     // diff --cached → empty (nothing staged)

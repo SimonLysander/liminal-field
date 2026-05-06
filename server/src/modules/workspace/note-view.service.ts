@@ -8,7 +8,7 @@
  *
  * 从原 EditorModule（editor.service.ts）迁移而来。
  */
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { join, parse, extname } from 'path';
 import { ContentService } from '../content/content.service';
@@ -63,7 +63,11 @@ export class NoteViewService {
   async getById(id: string, visibility?: string): Promise<ContentDetailDto> {
     const vis =
       visibility === 'all' ? ContentVisibility.all : ContentVisibility.public;
-    return this.contentService.getContentById(id, { visibility: vis }, { scope: 'notes' });
+    return this.contentService.getContentById(
+      id,
+      { visibility: vis },
+      { scope: 'notes' },
+    );
   }
 
   /**
@@ -79,7 +83,10 @@ export class NoteViewService {
    * commit 前先把 MinIO 草稿资源落盘到 git assets 目录，
    * 并将 markdown 中的草稿预览 URL 改写为 git 相对路径 ./assets/{name}。
    */
-  async saveContent(id: string, dto: SaveContentDto): Promise<ContentDetailDto> {
+  async saveContent(
+    id: string,
+    dto: SaveContentDto,
+  ): Promise<ContentDetailDto> {
     // 1. 将 MinIO 草稿资源下载到 content/{id}/assets/
     const assetsDir = join(
       this.contentRepoService.getContentDirectoryPath(id),
@@ -163,7 +170,9 @@ export class NoteViewService {
     id: string,
     commitHash: string,
   ): Promise<ContentDetailDto> {
-    return this.contentService.getContentByVersion(id, commitHash, { scope: 'notes' });
+    return this.contentService.getContentByVersion(id, commitHash, {
+      scope: 'notes',
+    });
   }
 
   /** 上传附件到内容存储目录。 */

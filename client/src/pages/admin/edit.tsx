@@ -37,6 +37,26 @@ type EditorState = {
 
 type HeadingEntry = { level: number; text: string; index: number };
 
+/** 模块级纯函数：避免 useMemo 内对闭包变量重新赋值触发 react-hooks 不可变/纯度规则 */
+function extractHeadingEntriesFromMarkdown(bodyMarkdown: string): HeadingEntry[] {
+  const acc: HeadingEntry[] = [];
+  let idx = 0;
+  let inCodeBlock = false;
+  for (const line of bodyMarkdown.split('\n')) {
+    if (line.startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+    if (inCodeBlock) continue;
+    const match = line.match(/^(#{1,3})\s+(.+)$/);
+    if (match) {
+      acc.push({ level: match[1].length, text: match[2].trim(), index: idx });
+      idx += 1;
+    }
+  }
+  return acc;
+}
+
 const DraftEditPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -63,25 +83,10 @@ const DraftEditPage = () => {
   const [toolbarPortal, setToolbarPortal] = useState<HTMLDivElement | null>(null);
 
   /* Parse headings from markdown for outline — skips code blocks */
-  const headings = useMemo<HeadingEntry[]>(() => {
-    let idx = 0;
-    let inCodeBlock = false;
-    return state.bodyMarkdown
-      .split('\n')
-      .reduce<HeadingEntry[]>((acc, line) => {
-        if (line.startsWith('```')) {
-          inCodeBlock = !inCodeBlock;
-          return acc;
-        }
-        if (inCodeBlock) return acc;
-        const match = line.match(/^(#{1,3})\s+(.+)$/);
-        if (match) {
-          acc.push({ level: match[1].length, text: match[2].trim(), index: idx });
-          idx++;
-        }
-        return acc;
-      }, []);
-  }, [state.bodyMarkdown]);
+  const headings = useMemo<HeadingEntry[]>(
+    () => extractHeadingEntriesFromMarkdown(state.bodyMarkdown),
+    [state.bodyMarkdown],
+  );
 
   const scrollToHeading = useCallback((index: number) => {
     const els = document.querySelectorAll(
@@ -98,8 +103,10 @@ const DraftEditPage = () => {
 
   useEffect(() => {
     if (!id) return;
-
-    const init = async () => {
+    let cancelled = false;
+    void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
       setLoading(true);
       setError('');
       try {
@@ -108,6 +115,8 @@ const DraftEditPage = () => {
         try {
           draft = await contentItemsApi.getDraft(id);
         } catch { /* No draft */ }
+
+        if (cancelled) return;
 
         if (draft) {
           // 有草稿：直接恢复，不请求正式版（避免多余请求）
@@ -122,6 +131,7 @@ const DraftEditPage = () => {
         } else {
           // 无草稿：请求正式版，并创建初始草稿供自动保存使用
           const detail = await contentItemsApi.getById(id, { visibility: 'all' });
+          if (cancelled) return;
           setContentDetail(detail);
           const newDraft = await contentItemsApi.saveDraft(id, {
             title: detail.latestVersion.title,
@@ -129,6 +139,7 @@ const DraftEditPage = () => {
             bodyMarkdown: detail.bodyMarkdown,
             changeNote: '更新内容',
           });
+          if (cancelled) return;
           setState({
             title: newDraft.title,
             summary: newDraft.summary,
@@ -139,13 +150,14 @@ const DraftEditPage = () => {
           setLastSavedAt(newDraft.savedAt);
         }
       } catch (initError) {
-        setError(parseError(initError, '加载内容失败'));
+        if (!cancelled) setError(parseError(initError, '加载内容失败'));
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
+    })();
+    return () => {
+      cancelled = true;
     };
-
-    void init();
   }, [id]);
 
   const handleChange = useCallback(
@@ -236,7 +248,7 @@ const DraftEditPage = () => {
     } catch (discardError) {
       setError(parseError(discardError, '丢弃失败'));
     }
-  }, [id, navigate]);
+  }, [id, navigate, confirm]);
 
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {

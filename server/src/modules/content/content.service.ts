@@ -272,7 +272,11 @@ export class ContentService {
 
     const now = new Date();
     const summary = dto.summary || '';
-    this.enforceActionStateTransition(current, dto.action, dto.publishCommitHash);
+    this.enforceActionStateTransition(
+      current,
+      dto.action,
+      dto.publishCommitHash,
+    );
     await this.contentGitService.prepareWritableWorkspace();
 
     if (dto.action === ContentSaveAction.commit || !dto.action) {
@@ -300,8 +304,9 @@ export class ContentService {
     const preCommitSource = await this.contentRepoService.readContentSource(id);
     // toObject() 把 Mongoose document 转为普通 JS 对象，
     // 否则 _id / createdAt 等字段在 spread 时均为 undefined
+    const plainContent = (current as { toObject(): ContentItem }).toObject();
     const preCommitContent = {
-      ...current.toObject(),
+      ...plainContent,
       latestVersion: {
         commitHash: this.resolveLatestVersion(current).commitHash,
         title: dto.title,
@@ -309,7 +314,10 @@ export class ContentService {
       },
       changeLogs: nextChangeLogs,
     } as ContentItem;
-    await this.contentRepoService.writeReadme(preCommitContent, preCommitSource.assetRefs);
+    await this.contentRepoService.writeReadme(
+      preCommitContent,
+      preCommitSource.assetRefs,
+    );
 
     if (dto.action === ContentSaveAction.commit) {
       const committedHash =
@@ -387,7 +395,9 @@ export class ContentService {
 
     const latestVersion = this.resolveLatestVersion(content);
     if (!latestVersion.commitHash) {
-      throw new BadRequestException('Cannot publish: no committed version exists yet');
+      throw new BadRequestException(
+        'Cannot publish: no committed version exists yet',
+      );
     }
 
     const targetHash = commitHash ?? latestVersion.commitHash;
@@ -400,7 +410,11 @@ export class ContentService {
     const title = changeLog?.title ?? latestVersion.title;
     const summary = changeLog?.summary ?? latestVersion.summary ?? '';
 
-    const publishedVersion = this.buildVersionSnapshot(targetHash, title, summary);
+    const publishedVersion = this.buildVersionSnapshot(
+      targetHash,
+      title,
+      summary,
+    );
 
     await this.contentRepository.update(id, {
       latestVersion,

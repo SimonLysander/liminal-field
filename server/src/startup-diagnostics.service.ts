@@ -9,7 +9,11 @@ import type { Connection } from 'mongoose';
 import { ContentGitService } from './modules/content/content-git.service';
 import { ContentRepoService } from './modules/content/content-repo.service';
 import { MineruService } from './modules/import/mineru.service';
-import { MinioService } from './modules/minio/minio.service';
+import type { MinioDraftStorageStatus } from './modules/minio/minio-draft-storage-status';
+import {
+  redactKbRemoteUrlForLog,
+  resolveKbRemoteUrlForGit,
+} from './common/kb-remote-url';
 
 /**
  * Grouped, numbered startup report — critical dependencies first (Mongo → MinIO → KB → optional).
@@ -22,7 +26,8 @@ export class StartupDiagnosticsService implements OnApplicationBootstrap {
     @Inject('DefaultTypegooseConnection')
     private readonly mongoConnection: Connection,
     private readonly configService: ConfigService,
-    private readonly minioService: MinioService,
+    @Inject('MINIO_DRAFT_STORAGE') // 须与 minio-draft-storage.token 导出常量一致
+    private readonly minioDraft: MinioDraftStorageStatus,
     private readonly contentRepoService: ContentRepoService,
     private readonly contentGitService: ContentGitService,
     private readonly mineruService: MineruService,
@@ -44,13 +49,14 @@ export class StartupDiagnosticsService implements OnApplicationBootstrap {
       const pingMs = Date.now() - t0;
       mongoLine = `OK — ${mongoHost}:${mongoPort}/${mongoDb}, ping ${pingMs}ms`;
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
+      // 与 minio.service 的 formatConnectionFailure 类似：避免对 unknown 使用 String() 触发 no-base-to-string
+      const msg = e instanceof Error ? e.message : 'Mongo ping failed';
       mongoLine = `FAIL — ${mongoHost}:${mongoPort}/${mongoDb ?? '?'} — ${msg}`;
     }
 
-    const minioReady = this.minioService.isDraftStorageReady();
-    const minioCfg = this.minioService.getDraftStorageConfig();
-    const minioDetail = this.minioService.getDraftStorageInitError();
+    const minioReady = this.minioDraft.isDraftStorageReady();
+    const minioCfg = this.minioDraft.getDraftStorageConfig();
+    const minioDetail = this.minioDraft.getDraftStorageInitError();
     const minioLine = minioReady
       ? `OK — ${minioCfg.endpoint}:${minioCfg.port}, bucket "${minioCfg.bucket}"`
       : `FAIL — ${minioCfg.endpoint}:${minioCfg.port}, bucket "${minioCfg.bucket}" — ${minioDetail ?? 'unknown error'}`;
@@ -74,7 +80,8 @@ export class StartupDiagnosticsService implements OnApplicationBootstrap {
     }
 
     const httpPort = process.env.PORT ?? '4398';
-    const kbRemote = process.env.KB_REMOTE_URL?.trim();
+    const kbEffective = resolveKbRemoteUrlForGit();
+    const kbTokenSet = Boolean(process.env.KB_GIT_TOKEN?.trim());
 
     this.emitGroupedReport([
       {
@@ -103,7 +110,8 @@ export class StartupDiagnosticsService implements OnApplicationBootstrap {
       {
         title: '[6] Remote sync',
         lines: [
-          `KB_REMOTE_URL=${kbRemote ? `"${kbRemote}"` : 'unset'}`,
+          `KB_REMOTE_URL (effective, redacted)=${kbEffective ? `"${redactKbRemoteUrlForLog(kbEffective)}"` : 'unset'}`,
+          `KB_GIT_TOKEN=${kbTokenSet ? 'set' : 'unset'}`,
         ],
       },
     ]);
@@ -154,7 +162,7 @@ export class StartupDiagnosticsService implements OnApplicationBootstrap {
       });
       return `MinerU (import): token configured; API origin reachable (${url.origin}, HTTP ${res.status})`;
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = e instanceof Error ? e.message : 'reachability check failed';
       return `MinerU (import): token configured but origin check failed (${url.origin}) — ${msg}`;
     } finally {
       clearTimeout(timer);

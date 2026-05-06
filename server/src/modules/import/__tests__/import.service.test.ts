@@ -53,7 +53,8 @@ describe('ImportService.parse', () => {
   });
 
   it('parses .md file and extracts local image refs', async () => {
-    const md = '# Title\n\n![](./img/photo.png)\n\ntext ![diagram](../assets/d.jpg)';
+    const md =
+      '# Title\n\n![](./img/photo.png)\n\ntext ![diagram](../assets/d.jpg)';
     const buffer = Buffer.from(md, 'utf-8');
 
     const result = await service.parse('notes.md', buffer);
@@ -61,8 +62,14 @@ describe('ImportService.parse', () => {
     expect(result.title).toBe('notes');
     expect(result.parseId).toHaveLength(16);
     expect(result.assets).toHaveLength(2);
-    expect(result.assets[0]).toMatchObject({ filename: 'photo.png', status: 'missing' });
-    expect(result.assets[1]).toMatchObject({ filename: 'd.jpg', status: 'missing' });
+    expect(result.assets[0]).toMatchObject({
+      filename: 'photo.png',
+      status: 'missing',
+    });
+    expect(result.assets[1]).toMatchObject({
+      filename: 'd.jpg',
+      status: 'missing',
+    });
   });
 
   it('applies heading normalization', async () => {
@@ -143,9 +150,14 @@ describe('ImportService.parse', () => {
     const buffer = Buffer.from('fake-docx-content');
     const result = await service.parse('report.docx', buffer);
 
-    expect(mockMineruService.convert).toHaveBeenCalledWith('report.docx', buffer);
+    expect(mockMineruService.convert).toHaveBeenCalledWith(
+      'report.docx',
+      buffer,
+    );
     expect(result.title).toBe('report');
-    expect(result.assets.find((a) => a.filename === 'fig1.png')?.status).toBe('resolved');
+    expect(result.assets.find((a) => a.filename === 'fig1.png')?.status).toBe(
+      'resolved',
+    );
     // 图片应存入 MinIO
     expect(mockMinioService.putObject).toHaveBeenCalledWith(
       expect.stringContaining('assets/fig1.png'),

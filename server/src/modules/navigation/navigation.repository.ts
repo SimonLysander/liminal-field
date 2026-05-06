@@ -51,7 +51,10 @@ export class NavigationRepository {
   }
 
   /** scope 可选过滤：传入时只返回该 scope 下的节点 */
-  async listByParentId(parentId?: string, scope?: string): Promise<NavigationNode[]> {
+  async listByParentId(
+    parentId?: string,
+    scope?: string,
+  ): Promise<NavigationNode[]> {
     const filter: Record<string, unknown> = { parentId: parentId ?? null };
     if (scope) filter.scope = scope;
     return this.navigationModel
@@ -63,7 +66,10 @@ export class NavigationRepository {
     return this.listByParentId(undefined, scope);
   }
 
-  async findChildrenByParentId(parentId: string, scope?: string): Promise<NavigationNode[]> {
+  async findChildrenByParentId(
+    parentId: string,
+    scope?: string,
+  ): Promise<NavigationNode[]> {
     return this.listByParentId(parentId, scope);
   }
 
