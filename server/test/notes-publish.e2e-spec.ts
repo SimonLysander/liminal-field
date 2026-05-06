@@ -4,7 +4,12 @@
  * 覆盖：发布、取消发布、指定历史版本发布、访问控制（未登录只看已发布）。
  */
 import supertest from 'supertest';
-import { TestContext, login, createNoteItem, commitNoteContent } from './helpers';
+import {
+  TestContext,
+  login,
+  createNoteItem,
+  commitNoteContent,
+} from './helpers';
 
 describe('Notes Publish (e2e)', () => {
   let ctx: TestContext;
@@ -49,7 +54,13 @@ describe('Notes Publish (e2e)', () => {
 
     it('发布指定 commitHash → publishedVersion 指向该版本', async () => {
       const id = await createNoteItem(ctx.app, cookie, '指定版本发布测试');
-      const v1 = await commitNoteContent(ctx.app, cookie, id, '# V1\n\n第一版内容。', '指定版本发布测试');
+      const v1 = await commitNoteContent(
+        ctx.app,
+        cookie,
+        id,
+        '# V1\n\n第一版内容。',
+        '指定版本发布测试',
+      );
       const v1Hash = v1.latestVersion.commitHash;
 
       // 提交第二版
@@ -102,7 +113,13 @@ describe('Notes Publish (e2e)', () => {
   describe('未登录访问控制', () => {
     it('已发布笔记 → 无 cookie 可访问，返回已发布版内容', async () => {
       const id = await createNoteItem(ctx.app, cookie, '公开笔记');
-      await commitNoteContent(ctx.app, cookie, id, '# 标题\n\n公开内容。', '公开笔记');
+      await commitNoteContent(
+        ctx.app,
+        cookie,
+        id,
+        '# 标题\n\n公开内容。',
+        '公开笔记',
+      );
       await supertest(ctx.app.getHttpServer())
         .put(`/api/v1/spaces/notes/items/${id}/publish`)
         .set('Cookie', cookie)
@@ -120,7 +137,13 @@ describe('Notes Publish (e2e)', () => {
 
     it('未发布笔记 → 无 cookie 访问 → 404', async () => {
       const id = await createNoteItem(ctx.app, cookie, '私有笔记');
-      await commitNoteContent(ctx.app, cookie, id, '# 私有\n\n私有内容。', '私有笔记');
+      await commitNoteContent(
+        ctx.app,
+        cookie,
+        id,
+        '# 私有\n\n私有内容。',
+        '私有笔记',
+      );
       // 不发布
 
       await supertest(ctx.app.getHttpServer())
@@ -130,16 +153,36 @@ describe('Notes Publish (e2e)', () => {
 
     it('无 cookie 的列表请求只返回已发布笔记', async () => {
       // 创建一个已发布、一个未发布的笔记
-      const publishedId = await createNoteItem(ctx.app, cookie, '已发布列表笔记');
-      await commitNoteContent(ctx.app, cookie, publishedId, '# 标题\n\n内容。', '已发布列表笔记');
+      const publishedId = await createNoteItem(
+        ctx.app,
+        cookie,
+        '已发布列表笔记',
+      );
+      await commitNoteContent(
+        ctx.app,
+        cookie,
+        publishedId,
+        '# 标题\n\n内容。',
+        '已发布列表笔记',
+      );
       await supertest(ctx.app.getHttpServer())
         .put(`/api/v1/spaces/notes/items/${publishedId}/publish`)
         .set('Cookie', cookie)
         .send({})
         .expect(200);
 
-      const unpublishedId = await createNoteItem(ctx.app, cookie, '未发布列表笔记');
-      await commitNoteContent(ctx.app, cookie, unpublishedId, '# 标题\n\n内容。', '未发布列表笔记');
+      const unpublishedId = await createNoteItem(
+        ctx.app,
+        cookie,
+        '未发布列表笔记',
+      );
+      await commitNoteContent(
+        ctx.app,
+        cookie,
+        unpublishedId,
+        '# 标题\n\n内容。',
+        '未发布列表笔记',
+      );
 
       // 无 cookie 列表请求
       const res = await supertest(ctx.app.getHttpServer())

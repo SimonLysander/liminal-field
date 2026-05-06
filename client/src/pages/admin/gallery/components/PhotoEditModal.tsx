@@ -150,7 +150,7 @@ export function PhotoEditModal({
    * 这样从外部重新打开弹窗时总能定位到正确的照片。
    */
   useEffect(() => {
-    setCurrentIndex(initialIndex);
+    void Promise.resolve().then(() => setCurrentIndex(initialIndex));
   }, [initialIndex, open]);
 
   const photo = photos[currentIndex];
@@ -164,11 +164,13 @@ export function PhotoEditModal({
       setImgDimensions({ w: img.naturalWidth, h: img.naturalHeight });
     };
     img.src = photo.url;
+     
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅 URL 变时需重测尺寸；caption 等字段不应触发重新 decode
   }, [photo?.url]);
 
   /* 切换照片时关闭 EXIF 编辑态 */
   useEffect(() => {
-    setIsEditingExif(false);
+    void Promise.resolve().then(() => setIsEditingExif(false));
   }, [photo?.id]);
 
   /*
@@ -181,19 +183,22 @@ export function PhotoEditModal({
   useEffect(() => {
     if (!photo) return;
 
-    /*
-     * 切换到新照片时，先将上一张的 caption 提交，再初始化草稿。
-     * 首次挂载时 prevPhotoIdRef 为 null，跳过提交。
-     */
-    if (prevPhotoIdRef.current && prevPhotoIdRef.current !== photo.id) {
-      const prevPhoto = photos.find((p) => p.id === prevPhotoIdRef.current);
-      if (prevPhoto) {
-        onCaptionChange(prevPhoto.id, captionDraft);
+    void Promise.resolve().then(() => {
+      /*
+       * 切换到新照片时，先将上一张的 caption 提交，再初始化草稿。
+       * 首次挂载时 prevPhotoIdRef 为 null，跳过提交。
+       */
+      if (prevPhotoIdRef.current && prevPhotoIdRef.current !== photo.id) {
+        const prevPhoto = photos.find((p) => p.id === prevPhotoIdRef.current);
+        if (prevPhoto) {
+          onCaptionChange(prevPhoto.id, captionDraft);
+        }
       }
-    }
 
-    prevPhotoIdRef.current = photo.id;
-    setCaptionDraft(photo.caption ?? '');
+      prevPhotoIdRef.current = photo.id;
+      setCaptionDraft(photo.caption ?? '');
+    });
+     
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photo?.id]);
 

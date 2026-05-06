@@ -2,6 +2,9 @@ import { ChangeLogDto } from './change-log.dto';
 import { ContentStatus } from '../content-item.entity';
 import { HeadingDto } from '../../../common/extract-headings';
 
+/** 正文引用的附件在 API/存储层的类型归类，与客户端展示/图标一致 */
+export type ContentAssetType = 'image' | 'audio' | 'video' | 'file';
+
 export class ContentVersionDto {
   commitHash!: string;
   title!: string;

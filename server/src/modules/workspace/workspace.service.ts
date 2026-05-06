@@ -10,14 +10,17 @@
  * 依赖关系：ContentService + ContentRepository + ContentRepoService（存储层）
  *          + NavigationRepository（业务索引层）
  */
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ContentService } from '../content/content.service';
 import { ContentRepository } from '../content/content.repository';
 import { ContentRepoService } from '../content/content-repo.service';
 import { ContentStatus } from '../content/content-item.entity';
 import { ContentSaveAction } from '../content/dto/save-content.dto';
 import { NavigationRepository } from '../navigation/navigation.repository';
-import { NavigationNodeType } from '../navigation/navigation.entity';
+import {
+  NavigationNodeType,
+  NavigationScope,
+} from '../navigation/navigation.entity';
 import { CreateWorkspaceItemDto } from './dto/create-workspace-item.dto';
 import { UpdateWorkspaceItemDto } from './dto/update-workspace-item.dto';
 import {
@@ -27,6 +30,10 @@ import {
 
 // 画廊动态允许无描述，用零宽空格占位通过 ContentService 的 bodyMarkdown 非空校验。
 const EMPTY_BODY_PLACEHOLDER = '\u200B';
+
+function isNavigationScope(s: string): s is NavigationScope {
+  return (Object.values(NavigationScope) as string[]).includes(s);
+}
 
 @Injectable()
 export class WorkspaceService {
@@ -44,9 +51,17 @@ export class WorkspaceService {
    * 通过导航节点查 scope，不匹配则抛 NotFoundException（对外表现为"不存在"）。
    */
   async assertScopeMatch(scope: string, contentItemId: string): Promise<void> {
-    const navNode = await this.navigationRepository.findByContentItemId(contentItemId);
+    if (!isNavigationScope(scope)) {
+      throw new NotFoundException(
+        `Item ${contentItemId} not found in scope ${scope}`,
+      );
+    }
+    const navNode =
+      await this.navigationRepository.findByContentItemId(contentItemId);
     if (!navNode || navNode.scope !== scope) {
-      throw new NotFoundException(`Item ${contentItemId} not found in scope ${scope}`);
+      throw new NotFoundException(
+        `Item ${contentItemId} not found in scope ${scope}`,
+      );
     }
   }
 
@@ -99,7 +114,9 @@ export class WorkspaceService {
           items.push(item);
         }
       } catch (error) {
-        this.logger.warn(`Skipping corrupted workspace item ${node.contentItemId}: ${error}`);
+        this.logger.warn(
+          `Skipping corrupted workspace item ${node.contentItemId}: ${error}`,
+        );
       }
     }
     return items;
@@ -111,15 +128,16 @@ export class WorkspaceService {
     contentItemId: string,
   ): Promise<WorkspaceItemDetailDto> {
     const content = await this.contentRepository.findById(contentItemId);
-    if (!content) throw new NotFoundException(`Item ${contentItemId} not found`);
+    if (!content)
+      throw new NotFoundException(`Item ${contentItemId} not found`);
 
-    const source =
-      await this.contentRepoService.readContentSource(contentItemId, { scope });
+    const source = await this.contentRepoService.readContentSource(
+      contentItemId,
+      { scope },
+    );
     const version = content.latestVersion!;
     const bodyMarkdown =
-      source.bodyMarkdown === EMPTY_BODY_PLACEHOLDER
-        ? ''
-        : source.bodyMarkdown;
+      source.bodyMarkdown === EMPTY_BODY_PLACEHOLDER ? '' : source.bodyMarkdown;
 
     return {
       id: contentItemId,
@@ -140,7 +158,8 @@ export class WorkspaceService {
     dto: UpdateWorkspaceItemDto,
   ): Promise<WorkspaceItemDetailDto> {
     const content = await this.contentRepository.findById(contentItemId);
-    if (!content) throw new NotFoundException(`Item ${contentItemId} not found`);
+    if (!content)
+      throw new NotFoundException(`Item ${contentItemId} not found`);
 
     const currentVersion = content.latestVersion!;
     const newTitle = dto.title ?? currentVersion.title;
@@ -202,10 +221,7 @@ export class WorkspaceService {
   }
 
   /** 取消发布：清除 publishedVersion 指针（纯指针操作，不写 Git）。 */
-  async unpublish(
-    _scope: string,
-    contentItemId: string,
-  ): Promise<void> {
+  async unpublish(_scope: string, contentItemId: string): Promise<void> {
     await this.contentService.unpublishVersion(contentItemId);
   }
 
@@ -240,7 +256,8 @@ export class WorkspaceService {
   /** 将 Content 存储层数据组装为列表 DTO（不含 bodyMarkdown）。 */
   private async toListDto(contentItemId: string): Promise<WorkspaceItemDto> {
     const content = await this.contentRepository.findById(contentItemId);
-    if (!content) throw new NotFoundException(`Item ${contentItemId} not found`);
+    if (!content)
+      throw new NotFoundException(`Item ${contentItemId} not found`);
 
     const version = content.latestVersion!;
     return {

@@ -5,7 +5,12 @@
  * WorkspaceService.assertScopeMatch 负责此校验，跨 scope 操作应返回 404。
  */
 import supertest from 'supertest';
-import { TestContext, login, createNoteItem, createGalleryItem } from './helpers';
+import {
+  TestContext,
+  login,
+  createNoteItem,
+  createGalleryItem,
+} from './helpers';
 
 describe('Scope Isolation (e2e)', () => {
   let ctx: TestContext;
@@ -23,7 +28,11 @@ describe('Scope Isolation (e2e)', () => {
 
   describe('跨 scope 访问应返回 404', () => {
     it('notes 条目通过 /gallery/items/:id 访问 → 404', async () => {
-      const noteId = await createNoteItem(ctx.app, cookie, 'scope 隔离测试笔记');
+      const noteId = await createNoteItem(
+        ctx.app,
+        cookie,
+        'scope 隔离测试笔记',
+      );
 
       await supertest(ctx.app.getHttpServer())
         .get(`/api/v1/spaces/gallery/items/${noteId}?visibility=all`)
@@ -32,7 +41,11 @@ describe('Scope Isolation (e2e)', () => {
     });
 
     it('gallery 条目通过 /notes/items/:id 访问 → 404', async () => {
-      const galleryId = await createGalleryItem(ctx.app, cookie, 'scope 隔离测试相册');
+      const galleryId = await createGalleryItem(
+        ctx.app,
+        cookie,
+        'scope 隔离测试相册',
+      );
 
       await supertest(ctx.app.getHttpServer())
         .get(`/api/v1/spaces/notes/items/${galleryId}?visibility=all`)
@@ -41,7 +54,11 @@ describe('Scope Isolation (e2e)', () => {
     });
 
     it('gallery 条目通过 /notes/items/:id/publish 发布 → 404', async () => {
-      const galleryId = await createGalleryItem(ctx.app, cookie, 'scope 隔离发布测试');
+      const galleryId = await createGalleryItem(
+        ctx.app,
+        cookie,
+        'scope 隔离发布测试',
+      );
 
       await supertest(ctx.app.getHttpServer())
         .put(`/api/v1/spaces/notes/items/${galleryId}/publish`)
@@ -51,7 +68,11 @@ describe('Scope Isolation (e2e)', () => {
     });
 
     it('notes 条目通过 /gallery/items/:id/publish 发布 → 404', async () => {
-      const noteId = await createNoteItem(ctx.app, cookie, 'scope 隔离 gallery 发布测试');
+      const noteId = await createNoteItem(
+        ctx.app,
+        cookie,
+        'scope 隔离 gallery 发布测试',
+      );
 
       await supertest(ctx.app.getHttpServer())
         .put(`/api/v1/spaces/gallery/items/${noteId}/publish`)
@@ -61,7 +82,11 @@ describe('Scope Isolation (e2e)', () => {
     });
 
     it('notes 条目通过 /gallery/items/:id DELETE → 404', async () => {
-      const noteId = await createNoteItem(ctx.app, cookie, 'scope 隔离删除测试');
+      const noteId = await createNoteItem(
+        ctx.app,
+        cookie,
+        'scope 隔离删除测试',
+      );
 
       await supertest(ctx.app.getHttpServer())
         .delete(`/api/v1/spaces/gallery/items/${noteId}`)
@@ -70,7 +95,11 @@ describe('Scope Isolation (e2e)', () => {
     });
 
     it('gallery 条目通过 /notes/items/:id DELETE → 404', async () => {
-      const galleryId = await createGalleryItem(ctx.app, cookie, 'scope 隔离 gallery 删除测试');
+      const galleryId = await createGalleryItem(
+        ctx.app,
+        cookie,
+        'scope 隔离 gallery 删除测试',
+      );
 
       await supertest(ctx.app.getHttpServer())
         .delete(`/api/v1/spaces/notes/items/${galleryId}`)
@@ -81,7 +110,11 @@ describe('Scope Isolation (e2e)', () => {
 
   describe('同 scope 访问正常', () => {
     it('notes 条目通过 /notes/items/:id 可以访问', async () => {
-      const noteId = await createNoteItem(ctx.app, cookie, '正常 notes 访问测试');
+      const noteId = await createNoteItem(
+        ctx.app,
+        cookie,
+        '正常 notes 访问测试',
+      );
 
       const res = await supertest(ctx.app.getHttpServer())
         .get(`/api/v1/spaces/notes/items/${noteId}?visibility=all`)
@@ -92,7 +125,11 @@ describe('Scope Isolation (e2e)', () => {
     });
 
     it('gallery 条目通过 /gallery/items/:id 可以访问', async () => {
-      const galleryId = await createGalleryItem(ctx.app, cookie, '正常 gallery 访问测试');
+      const galleryId = await createGalleryItem(
+        ctx.app,
+        cookie,
+        '正常 gallery 访问测试',
+      );
 
       const res = await supertest(ctx.app.getHttpServer())
         .get(`/api/v1/spaces/gallery/items/${galleryId}?visibility=all`)

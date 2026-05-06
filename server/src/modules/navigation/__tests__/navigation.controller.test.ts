@@ -53,10 +53,18 @@ describe('NavigationNodeController', () => {
   });
 
   it('passes visibility through when listing structure nodes', async () => {
-    navigationNodeService.listStructureNodes.mockResolvedValue({ path: [], children: [] } as never);
+    navigationNodeService.listStructureNodes.mockResolvedValue({
+      path: [],
+      children: [],
+    });
 
     const mockRequest = { user: { sub: 'admin' } } as any;
-    await controller.listStructureNodes('root', 'all' as never, undefined, mockRequest);
+    await controller.listStructureNodes(
+      'root',
+      'all' as never,
+      undefined,
+      mockRequest,
+    );
 
     expect(navigationNodeService.listStructureNodes.mock.calls).toEqual([
       ['root', 'all', undefined],

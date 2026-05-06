@@ -24,7 +24,11 @@
  *
  * 不包含 CRUD 逻辑 — 那由 WorkspaceService 统一处理。
  */
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { join, parse, extname } from 'path';
 import * as yaml from 'js-yaml';
@@ -82,14 +86,28 @@ interface ParsedGalleryContent {
 export function parseGalleryContent(raw: string): ParsedGalleryContent {
   // frontmatter 必须以 "---\n" 开头，否则视为无 frontmatter
   if (!raw.startsWith('---')) {
-    return { photos: [], cover: null, date: null, location: null, prose: raw, hasFrontmatter: false };
+    return {
+      photos: [],
+      cover: null,
+      date: null,
+      location: null,
+      prose: raw,
+      hasFrontmatter: false,
+    };
   }
 
   // 找到第二个 "---" 分隔符的位置（跳过开头的 "---"）
   const closingMarkerIndex = raw.indexOf('\n---', 3);
   if (closingMarkerIndex === -1) {
     // 只有开头的 "---"，没有关闭标记，视为无 frontmatter
-    return { photos: [], cover: null, date: null, location: null, prose: raw, hasFrontmatter: false };
+    return {
+      photos: [],
+      cover: null,
+      date: null,
+      location: null,
+      prose: raw,
+      hasFrontmatter: false,
+    };
   }
 
   const yamlContent = raw.slice(4, closingMarkerIndex); // "---\n" 之后到关闭 "---" 之前
@@ -100,7 +118,14 @@ export function parseGalleryContent(raw: string): ParsedGalleryContent {
     parsed = (yaml.load(yamlContent) as Record<string, unknown>) ?? {};
   } catch {
     // YAML 解析失败，降级为无 frontmatter
-    return { photos: [], cover: null, date: null, location: null, prose: raw, hasFrontmatter: false };
+    return {
+      photos: [],
+      cover: null,
+      date: null,
+      location: null,
+      prose: raw,
+      hasFrontmatter: false,
+    };
   }
 
   // 提取 cover（字符串或 null）
@@ -110,8 +135,14 @@ export function parseGalleryContent(raw: string): ParsedGalleryContent {
   const date = typeof parsed.date === 'string' ? parsed.date : null;
 
   // 提取 location：优先读一级字段，旧数据兼容从 tags.location 迁移
-  let location: string | null = typeof parsed.location === 'string' ? parsed.location : null;
-  if (location === null && parsed.tags !== null && typeof parsed.tags === 'object' && !Array.isArray(parsed.tags)) {
+  let location: string | null =
+    typeof parsed.location === 'string' ? parsed.location : null;
+  if (
+    location === null &&
+    parsed.tags !== null &&
+    typeof parsed.tags === 'object' &&
+    !Array.isArray(parsed.tags)
+  ) {
     const tagsObj = parsed.tags as Record<string, unknown>;
     if (typeof tagsObj.location === 'string') {
       location = tagsObj.location;
@@ -121,7 +152,9 @@ export function parseGalleryContent(raw: string): ParsedGalleryContent {
   // 提取 photos 数组，逐项规范化
   const rawPhotos = Array.isArray(parsed.photos) ? parsed.photos : [];
   const photos: FrontmatterPhoto[] = rawPhotos
-    .filter((p): p is Record<string, unknown> => p !== null && typeof p === 'object')
+    .filter(
+      (p): p is Record<string, unknown> => p !== null && typeof p === 'object',
+    )
     .map((p) => ({
       file: typeof p.file === 'string' ? p.file : '',
       caption: typeof p.caption === 'string' ? p.caption : '',
@@ -141,7 +174,14 @@ function parseTags(raw: unknown): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
     if (v !== null && v !== undefined) {
-      result[k] = String(v);
+      if (
+        typeof v === 'string' ||
+        typeof v === 'number' ||
+        typeof v === 'boolean' ||
+        typeof v === 'bigint'
+      ) {
+        result[k] = String(v);
+      }
     }
   }
   return result;
@@ -196,11 +236,17 @@ export class GalleryViewService {
    * 发布前校验：目标版本的 frontmatter 中必须有照片才能发布。
    * @param commitHash 要发布的版本，不传则检查最新版本（工作目录）。
    */
-  async assertPublishable(contentItemId: string, commitHash?: string): Promise<void> {
+  async assertPublishable(
+    contentItemId: string,
+    commitHash?: string,
+  ): Promise<void> {
     let parsed: ParsedGalleryContent;
     if (commitHash) {
       // 读取指定版本的 main.md
-      const source = await this.contentRepoService.readContentSource(contentItemId, { commitHash, scope: 'gallery' });
+      const source = await this.contentRepoService.readContentSource(
+        contentItemId,
+        { commitHash, scope: 'gallery' },
+      );
       parsed = parseGalleryContent(source.bodyMarkdown);
     } else {
       ({ parsed } = await this.loadParsedContent(contentItemId));
@@ -226,15 +272,29 @@ export class GalleryViewService {
    * 从 main.md 加载并解析 frontmatter，同时返回 Git assets 中的图片列表。
    * @param commitHash 可选，传入时从指定 git commit 读取（用于展示端读已发布版本）。
    */
-  private async loadParsedContent(contentItemId: string, commitHash?: string): Promise<{
+  private async loadParsedContent(
+    contentItemId: string,
+    commitHash?: string,
+  ): Promise<{
     parsed: ParsedGalleryContent;
     imageAssets: Awaited<ReturnType<ContentRepoService['listAssets']>>;
   }> {
     const [source, assets] = await Promise.all([
-      this.contentRepoService.readContentSource(contentItemId, { scope: 'gallery', commitHash }).catch(() => null),
+      this.contentRepoService
+        .readContentSource(contentItemId, { scope: 'gallery', commitHash })
+        .catch(() => null),
       this.contentRepoService.listAssets(contentItemId),
     ]);
-    const parsed = source ? parseGalleryContent(source.bodyMarkdown) : { photos: [], cover: null, date: null, location: null, prose: '', hasFrontmatter: false };
+    const parsed = source
+      ? parseGalleryContent(source.bodyMarkdown)
+      : {
+          photos: [],
+          cover: null,
+          date: null,
+          location: null,
+          prose: '',
+          hasFrontmatter: false,
+        };
     const imageAssets = assets.filter((a) => a.type === 'image');
     return { parsed, imageAssets };
   }
@@ -287,15 +347,22 @@ export class GalleryViewService {
   /**
    * 展示端列表 DTO：从已发布版本读取，确保展示的是发布时的快照。
    */
-  async toPublicListItemDto(contentItemId: string): Promise<GalleryPublicListItemDto> {
+  async toPublicListItemDto(
+    contentItemId: string,
+  ): Promise<GalleryPublicListItemDto> {
     const content = await this.contentRepository.findById(contentItemId);
     if (!content)
       throw new NotFoundException(`Gallery post ${contentItemId} not found`);
     if (!content.publishedVersion)
-      throw new NotFoundException(`Gallery post ${contentItemId} is not published`);
+      throw new NotFoundException(
+        `Gallery post ${contentItemId} is not published`,
+      );
 
     const publishedHash = content.publishedVersion.commitHash;
-    const { parsed } = await this.loadParsedContent(contentItemId, publishedHash);
+    const { parsed } = await this.loadParsedContent(
+      contentItemId,
+      publishedHash,
+    );
     const version = content.publishedVersion;
 
     return {
@@ -312,7 +379,9 @@ export class GalleryViewService {
    * 元数据来源：main.md YAML frontmatter（cover、tags、photos）。
    * 封面优先级：frontmatter.cover > assets 首图。
    */
-  async toAdminListItemDto(contentItemId: string): Promise<GalleryAdminListItemDto> {
+  async toAdminListItemDto(
+    contentItemId: string,
+  ): Promise<GalleryAdminListItemDto> {
     const content = await this.contentRepository.findById(contentItemId);
     if (!content)
       throw new NotFoundException(`Gallery post ${contentItemId} not found`);
@@ -322,7 +391,8 @@ export class GalleryViewService {
     // 封面图：frontmatter.cover 指定的文件必须存在于 assets，否则退化为首图
     const coverFileName = parsed.cover ?? null;
     const coverAsset = coverFileName
-      ? (imageAssets.find((a) => a.fileName === coverFileName) ?? imageAssets[0])
+      ? (imageAssets.find((a) => a.fileName === coverFileName) ??
+        imageAssets[0])
       : imageAssets[0];
 
     const version = content.latestVersion!;
@@ -331,10 +401,13 @@ export class GalleryViewService {
       id: contentItemId,
       title: version.title,
       status: content.publishedVersion ? 'published' : 'committed',
-      coverUrl: coverAsset ? this.buildPhotoUrl(contentItemId, coverAsset.fileName) : null,
+      coverUrl: coverAsset
+        ? this.buildPhotoUrl(contentItemId, coverAsset.fileName)
+        : null,
       photoCount: imageAssets.length,
       hasUnpublishedChanges: content.publishedVersion
-        ? content.latestVersion?.commitHash !== content.publishedVersion?.commitHash
+        ? content.latestVersion?.commitHash !==
+          content.publishedVersion?.commitHash
         : false,
       date: parsed.date,
       location: parsed.location,
@@ -347,17 +420,29 @@ export class GalleryViewService {
    * 展示端详情 DTO：从已发布版本的 commit 读取内容，确保展示的是发布时的快照。
    * 不含管理字段（封面文件名、publishedCommitHash 等）。
    */
-  async toPublicDetailDto(contentItemId: string): Promise<GalleryPublicDetailDto> {
+  async toPublicDetailDto(
+    contentItemId: string,
+  ): Promise<GalleryPublicDetailDto> {
     const content = await this.contentRepository.findById(contentItemId);
     if (!content)
       throw new NotFoundException(`Gallery post ${contentItemId} not found`);
     if (!content.publishedVersion)
-      throw new NotFoundException(`Gallery post ${contentItemId} is not published`);
+      throw new NotFoundException(
+        `Gallery post ${contentItemId} is not published`,
+      );
 
     // 从已发布版本的 commit 读取 main.md，不是当前工作目录
     const publishedHash = content.publishedVersion.commitHash;
-    const { parsed, imageAssets } = await this.loadParsedContent(contentItemId, publishedHash);
-    const photos = this.buildPhotoList(contentItemId, parsed.photos, imageAssets, parsed.hasFrontmatter);
+    const { parsed, imageAssets } = await this.loadParsedContent(
+      contentItemId,
+      publishedHash,
+    );
+    const photos = this.buildPhotoList(
+      contentItemId,
+      parsed.photos,
+      imageAssets,
+      parsed.hasFrontmatter,
+    );
 
     // 展示端照片 URL 带版本号，确保从发布版 commit 读取
     const versionedPhotos = photos.map((p) => ({
@@ -379,13 +464,20 @@ export class GalleryViewService {
   /**
    * 管理端详情 DTO：含封面文件名、publishedCommitHash 等管理所需字段。
    */
-  async toAdminDetailDto(contentItemId: string): Promise<GalleryAdminDetailDto> {
+  async toAdminDetailDto(
+    contentItemId: string,
+  ): Promise<GalleryAdminDetailDto> {
     const content = await this.contentRepository.findById(contentItemId);
     if (!content)
       throw new NotFoundException(`Gallery post ${contentItemId} not found`);
 
     const { parsed, imageAssets } = await this.loadParsedContent(contentItemId);
-    const photos = this.buildPhotoList(contentItemId, parsed.photos, imageAssets, parsed.hasFrontmatter);
+    const photos = this.buildPhotoList(
+      contentItemId,
+      parsed.photos,
+      imageAssets,
+      parsed.hasFrontmatter,
+    );
     const version = content.latestVersion!;
 
     return {
@@ -396,7 +488,8 @@ export class GalleryViewService {
       photos,
       coverPhotoFileName: parsed.cover,
       hasUnpublishedChanges: content.publishedVersion
-        ? content.latestVersion?.commitHash !== content.publishedVersion?.commitHash
+        ? content.latestVersion?.commitHash !==
+          content.publishedVersion?.commitHash
         : false,
       publishedCommitHash: content.publishedVersion?.commitHash ?? null,
       date: parsed.date,
@@ -437,9 +530,10 @@ export class GalleryViewService {
       const photos: GalleryEditorPhotoDto[] = parsed.photos.map((p) => {
         const gitSize = gitAssetMap.get(p.file);
         // 已提交到 Git 的照片用 Git URL，刚上传的草稿照片用 MinIO 代理 URL
-        const url = gitSize !== undefined
-          ? this.buildPhotoUrl(contentItemId, p.file)
-          : this.buildDraftPhotoUrl(contentItemId, p.file);
+        const url =
+          gitSize !== undefined
+            ? this.buildPhotoUrl(contentItemId, p.file)
+            : this.buildDraftPhotoUrl(contentItemId, p.file);
         return {
           file: p.file,
           url,
@@ -463,9 +557,19 @@ export class GalleryViewService {
     }
 
     // 无草稿：用正式版数据
-    let parsed: ParsedGalleryContent = { photos: [], cover: null, date: null, location: null, prose: '', hasFrontmatter: false };
+    let parsed: ParsedGalleryContent = {
+      photos: [],
+      cover: null,
+      date: null,
+      location: null,
+      prose: '',
+      hasFrontmatter: false,
+    };
     try {
-      const source = await this.contentRepoService.readContentSource(contentItemId, { scope: 'gallery' });
+      const source = await this.contentRepoService.readContentSource(
+        contentItemId,
+        { scope: 'gallery' },
+      );
       parsed = parseGalleryContent(source.bodyMarkdown);
     } catch {
       // main.md 还不存在（刚创建的条目），使用默认空值
@@ -510,7 +614,9 @@ export class GalleryViewService {
 
     /* 标题从 MongoDB changeLogs 里找（commitHash 匹配的那条），否则回退 latestVersion */
     const content = await this.contentRepository.findById(contentItemId);
-    const changeLog = content?.changeLogs.find((c) => c.commitHash === commitHash);
+    const changeLog = content?.changeLogs.find(
+      (c) => c.commitHash === commitHash,
+    );
     const title = changeLog?.title ?? content?.latestVersion?.title ?? '';
 
     return {
@@ -530,7 +636,11 @@ export class GalleryViewService {
     fileName: string,
     commitHash?: string,
   ): Promise<{ buffer: Buffer; contentType: string }> {
-    return this.contentRepoService.readAssetBuffer(contentItemId, fileName, commitHash);
+    return this.contentRepoService.readAssetBuffer(
+      contentItemId,
+      fileName,
+      commitHash,
+    );
   }
 
   /**
@@ -560,7 +670,10 @@ export class GalleryViewService {
    *
    * 返回更新后的画廊详情 DTO，前端不感知 frontmatter 的存在。
    */
-  async commitPost(contentItemId: string, dto: SaveGalleryPostDto): Promise<GalleryAdminDetailDto> {
+  async commitPost(
+    contentItemId: string,
+    dto: SaveGalleryPostDto,
+  ): Promise<GalleryAdminDetailDto> {
     // 1. 将 MinIO 草稿照片下载到 Git assets 目录
     const assetsDir = join(
       this.contentRepoService.getContentDirectoryPath(contentItemId),
@@ -596,7 +709,10 @@ export class GalleryViewService {
    * 保存画廊草稿：只写 MongoDB，不触发 Git commit。
    * 序列化在后端完成，前端只发结构化 JSON。
    */
-  async saveDraft(contentItemId: string, dto: SaveGalleryPostDto): Promise<GalleryDraftDto> {
+  async saveDraft(
+    contentItemId: string,
+    dto: SaveGalleryPostDto,
+  ): Promise<GalleryDraftDto> {
     await this.contentService.assertContentEditable(contentItemId);
     const bodyMarkdown = this.serializeDto(dto);
     const draft = await this.editorDraftRepository.save({
@@ -627,7 +743,8 @@ export class GalleryViewService {
    */
   async getDraft(contentItemId: string): Promise<GalleryDraftDto | null> {
     await this.contentService.assertContentItemExists(contentItemId);
-    const draft = await this.editorDraftRepository.findByContentItemId(contentItemId);
+    const draft =
+      await this.editorDraftRepository.findByContentItemId(contentItemId);
     if (!draft) return null;
 
     const parsed = parseGalleryContent(draft.bodyMarkdown);
@@ -671,41 +788,78 @@ export class GalleryViewService {
    */
   private async extractExif(buffer: Buffer): Promise<Record<string, string>> {
     try {
-      const exifr = await import('exifr');
-      const data = await exifr.default.parse(buffer, {
-        pick: ['Make', 'Model', 'FNumber', 'ExposureTime', 'ISO', 'FocalLength', 'DateTimeOriginal', 'LensModel', 'ExifImageWidth', 'ExifImageHeight'],
+      const exifrMod = (await import('exifr')) as {
+        default: {
+          parse: (
+            buf: Buffer,
+            opts?: Record<string, unknown>,
+          ) => Promise<unknown>;
+        };
+      };
+      const raw = await exifrMod.default.parse(buffer, {
+        pick: [
+          'Make',
+          'Model',
+          'FNumber',
+          'ExposureTime',
+          'ISO',
+          'FocalLength',
+          'DateTimeOriginal',
+          'LensModel',
+          'ExifImageWidth',
+          'ExifImageHeight',
+        ],
       });
-      if (!data) return {};
+      if (!raw || typeof raw !== 'object') return {};
+
+      const data = raw as Record<string, unknown>;
+      const num = (k: string): number | undefined => {
+        const v = data[k];
+        return typeof v === 'number' && !Number.isNaN(v) ? v : undefined;
+      };
+      const str = (k: string): string | undefined => {
+        const v = data[k];
+        return typeof v === 'string' ? v : undefined;
+      };
 
       const tags: Record<string, string> = {};
-      // 设备：品牌 + 型号
-      const device = [data.Make, data.Model].filter(Boolean).join(' ').trim();
+      const device = [str('Make'), str('Model')]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
       if (device) tags.device = device;
-      // 光圈
-      if (data.FNumber) tags.aperture = `f/${data.FNumber}`;
-      // 快门
-      if (data.ExposureTime) {
-        tags.shutter = data.ExposureTime >= 1
-          ? `${data.ExposureTime}s`
-          : `1/${Math.round(1 / data.ExposureTime)}s`;
+
+      const fNumber = num('FNumber');
+      if (fNumber !== undefined) tags.aperture = `f/${fNumber}`;
+
+      const exposure = num('ExposureTime');
+      if (exposure !== undefined) {
+        tags.shutter =
+          exposure >= 1 ? `${exposure}s` : `1/${Math.round(1 / exposure)}s`;
       }
-      // ISO
-      if (data.ISO) tags.iso = String(data.ISO);
-      // 焦距
-      if (data.FocalLength) tags.focalLength = `${Math.round(data.FocalLength)}mm`;
-      // 拍摄时间
-      if (data.DateTimeOriginal) {
-        const d = new Date(data.DateTimeOriginal);
+
+      const iso = num('ISO');
+      if (iso !== undefined) tags.iso = String(iso);
+
+      const focal = num('FocalLength');
+      if (focal !== undefined) tags.focalLength = `${Math.round(focal)}mm`;
+
+      const dto = data['DateTimeOriginal'];
+      if (dto !== undefined && dto !== null) {
+        const d = new Date(dto as string | number | Date);
         if (!isNaN(d.getTime())) {
           tags.shotAt = d.toISOString().slice(0, 10);
         }
       }
-      // 镜头
-      if (data.LensModel) tags.lens = data.LensModel;
-      // 分辨率（EXIF 中的原始像素尺寸）
-      if (data.ExifImageWidth && data.ExifImageHeight) {
-        tags.width = String(data.ExifImageWidth);
-        tags.height = String(data.ExifImageHeight);
+
+      const lens = str('LensModel');
+      if (lens) tags.lens = lens;
+
+      const w = num('ExifImageWidth');
+      const h = num('ExifImageHeight');
+      if (w !== undefined && h !== undefined) {
+        tags.width = String(w);
+        tags.height = String(h);
       }
 
       return tags;
@@ -718,13 +872,23 @@ export class GalleryViewService {
   async uploadDraftPhoto(
     contentItemId: string,
     input: { originalFileName: string; contentType: string; buffer: Buffer },
-  ): Promise<{ url: string; fileName: string; size: number; exif: Record<string, string> }> {
+  ): Promise<{
+    url: string;
+    fileName: string;
+    size: number;
+    exif: Record<string, string>;
+  }> {
     await this.contentService.assertContentItemExists(contentItemId);
     const fileName = this.sanitizeFileName(input.originalFileName);
 
     // 并行：上传 MinIO + 提取 EXIF
     const [, exif] = await Promise.all([
-      this.minioService.uploadDraftAsset(contentItemId, fileName, input.buffer, input.contentType),
+      this.minioService.uploadDraftAsset(
+        contentItemId,
+        fileName,
+        input.buffer,
+        input.contentType,
+      ),
       this.extractExif(input.buffer),
     ]);
 

@@ -343,7 +343,9 @@ describe('ContentService', () => {
       changeLogs: [],
       createdAt: now,
       updatedAt: now,
-      toObject() { return this; },
+      toObject() {
+        return this;
+      },
     } as never);
     contentRepository.update.mockResolvedValue({
       id: 'ci_test',
@@ -403,7 +405,9 @@ describe('ContentService', () => {
       changeLogs: [],
       createdAt: now,
       updatedAt: now,
-      toObject() { return this; },
+      toObject() {
+        return this;
+      },
     } as never);
     contentRepository.update.mockResolvedValue({
       id: 'ci_test',
@@ -505,7 +509,9 @@ describe('ContentService', () => {
       changeLogs: [],
       createdAt: now,
       updatedAt: now,
-      toObject() { return this; },
+      toObject() {
+        return this;
+      },
     } as never);
     contentRepository.update.mockResolvedValue({
       id: 'ci_test',

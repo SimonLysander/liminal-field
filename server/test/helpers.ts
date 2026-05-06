@@ -17,7 +17,7 @@ import {
   NestFastifyApplication,
   FastifyAdapter,
 } from '@nestjs/platform-fastify';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { TypegooseModule } from 'nestjs-typegoose';
 import { ScheduleModule } from '@nestjs/schedule';
 import { Reflector } from '@nestjs/core';
@@ -51,8 +51,10 @@ export class TestContext {
   tmpGitDir!: string;
 
   async setup(): Promise<void> {
-    // ─── 1. 启动内存 MongoDB ───
-    this.mongod = await MongoMemoryServer.create();
+    // ─── 1. 启动内存 MongoDB（下载/解压可能很慢，与 jest-e2e testTimeout 对齐）───
+    this.mongod = await MongoMemoryServer.create({
+      startTimeout: 120_000,
+    });
     const mongoUri = this.mongod.getUri();
 
     // ─── 2. 创建临时 Git 仓库（ContentGitService 在 onModuleInit 中会完成分支初始化） ───
@@ -108,7 +110,10 @@ export class TestContext {
       .useValue({
         onModuleInit: jest.fn(),
         uploadDraftAsset: jest.fn().mockResolvedValue('mock-file.jpg'),
-        getDraftAsset: jest.fn().mockResolvedValue({ buffer: Buffer.alloc(0), contentType: 'image/jpeg' }),
+        getDraftAsset: jest.fn().mockResolvedValue({
+          buffer: Buffer.alloc(0),
+          contentType: 'image/jpeg',
+        }),
         deleteDraftAssets: jest.fn().mockResolvedValue(undefined),
         // moveDraftAssetsToDisk 返回空数组：commit 时没有草稿资源需要落盘
         moveDraftAssetsToDisk: jest.fn().mockResolvedValue([]),
@@ -134,7 +139,9 @@ export class TestContext {
     this.app.useGlobalFilters(new AllExceptionsFilter());
 
     await this.app.register(cookie);
-    await this.app.register(multipart, { limits: { fileSize: 200 * 1024 * 1024 } });
+    await this.app.register(multipart, {
+      limits: { fileSize: 200 * 1024 * 1024 },
+    });
     this.app.setGlobalPrefix('api/v1');
 
     await this.app.init();
@@ -143,9 +150,10 @@ export class TestContext {
   }
 
   async teardown(): Promise<void> {
-    await this.app.close();
-    await this.mongod.stop();
-    await rm(this.tmpGitDir, { recursive: true, force: true });
+    if (this.app) await this.app.close();
+    if (this.mongod) await this.mongod.stop();
+    if (this.tmpGitDir)
+      await rm(this.tmpGitDir, { recursive: true, force: true });
   }
 }
 
@@ -241,7 +249,11 @@ export async function commitGalleryContent(
   options: {
     title?: string;
     prose?: string;
-    photos?: Array<{ file: string; caption: string; tags?: Record<string, string> }>;
+    photos?: Array<{
+      file: string;
+      caption: string;
+      tags?: Record<string, string>;
+    }>;
     changeNote?: string;
   } = {},
 ): Promise<any> {

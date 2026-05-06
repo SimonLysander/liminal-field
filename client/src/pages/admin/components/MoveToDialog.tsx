@@ -31,22 +31,30 @@ function useFolderLevel(parentId: string | undefined) {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      setLoading(true);
 
-    const req = parentId
-      ? structureApi.getChildren(parentId, { visibility: 'all' })
-      : structureApi.getRootNodes({ visibility: 'all' });
+      const req = parentId
+        ? structureApi.getChildren(parentId, { visibility: 'all' })
+        : structureApi.getRootNodes({ visibility: 'all' });
 
-    req
-      .then((result) => {
+      try {
+        const result = await req;
         if (!cancelled) {
           setFolders(result.children.filter((n) => n.type === 'FOLDER'));
         }
-      })
-      .catch(() => { if (!cancelled) setFolders([]); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      } catch {
+        if (!cancelled) setFolders([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [parentId]);
 
   return { folders, loading };

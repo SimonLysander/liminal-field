@@ -19,8 +19,8 @@ const config: Config = {
   rootDir: '..',
   testRegex: 'test/.*\\.e2e-spec\\.ts$',
   testEnvironment: 'node',
-  // e2e 测试涉及 MongoDB + Git + HTTP，需要更长的超时
-  testTimeout: 30000,
+  // mongodb-memory-server 首次需下载二进制（可达数分钟），beforeAll 与单测共用此时长
+  testTimeout: 600_000,
   // 每个测试文件独立进程，避免 MongoDB 连接/Git 目录相互污染
   maxWorkers: 1,
 };

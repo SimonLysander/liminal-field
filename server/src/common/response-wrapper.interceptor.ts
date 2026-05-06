@@ -32,7 +32,7 @@ export class ResponseWrapperInterceptor implements NestInterceptor {
     if (isRaw) return next.handle();
 
     return next.handle().pipe(
-      map((data) => ({
+      map((data: unknown) => ({
         code: 0,
         msg: 'ok',
         data: data ?? null,

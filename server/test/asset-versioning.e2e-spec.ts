@@ -9,7 +9,12 @@
 import supertest from 'supertest';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
-import { TestContext, login, createNoteItem, commitNoteContent } from './helpers';
+import {
+  TestContext,
+  login,
+  createNoteItem,
+  commitNoteContent,
+} from './helpers';
 
 /** 在 git 仓库的 content/{id}/assets/ 目录写一个真实 png 文件 */
 async function seedAsset(
@@ -64,14 +69,22 @@ describe('Asset Versioning (e2e)', () => {
       await seedAsset(ctx.tmpGitDir, id, fileName);
 
       const body = `# 标题\n\n测试\n\n![图片](./assets/${fileName})`;
-      const detail = await commitNoteContent(ctx.app, cookie, id, body, '版本化资产测试');
+      const detail = await commitNoteContent(
+        ctx.app,
+        cookie,
+        id,
+        body,
+        '版本化资产测试',
+      );
       const commitHash = detail.latestVersion.commitHash;
 
       expect(commitHash).toBeTruthy();
 
       // 带 commitHash 访问
       await supertest(ctx.app.getHttpServer())
-        .get(`/api/v1/spaces/notes/items/${id}/assets/${fileName}?v=${commitHash}`)
+        .get(
+          `/api/v1/spaces/notes/items/${id}/assets/${fileName}?v=${commitHash}`,
+        )
         .expect(200)
         .expect('Content-Type', /image/);
     });
@@ -81,11 +94,18 @@ describe('Asset Versioning (e2e)', () => {
       const fileName = 'ghost-asset.png';
       await seedAsset(ctx.tmpGitDir, id, fileName);
 
-      await commitNoteContent(ctx.app, cookie, id, `# 标题\n\n内容\n\n![](./assets/${fileName})`, '不存在版本测试');
+      await commitNoteContent(
+        ctx.app,
+        cookie,
+        id,
+        `# 标题\n\n内容\n\n![](./assets/${fileName})`,
+        '不存在版本测试',
+      );
 
       const fakeHash = 'a'.repeat(40);
-      const res = await supertest(ctx.app.getHttpServer())
-        .get(`/api/v1/spaces/notes/items/${id}/assets/${fileName}?v=${fakeHash}`);
+      const res = await supertest(ctx.app.getHttpServer()).get(
+        `/api/v1/spaces/notes/items/${id}/assets/${fileName}?v=${fakeHash}`,
+      );
 
       // 服务端应报错（git show 失败），返回 4xx 或 5xx
       expect(res.status).toBeGreaterThanOrEqual(400);

@@ -42,7 +42,8 @@ export class ContentRepoService {
   private readonly git: SimpleGit;
 
   constructor(private readonly configService: ConfigService) {
-    const configured = this.configService.getOrThrow<string>('content.repoRoot');
+    const configured =
+      this.configService.getOrThrow<string>('content.repoRoot');
     const { absoluteRoot, created } =
       resolveAndEnsureContentRepoRoot(configured);
     this.repoRoot = absoluteRoot;
@@ -159,9 +160,9 @@ export class ContentRepoService {
       }
     }
 
-    return Array.from(assetPaths).map((path) => ({
-      path,
-      type: this.toAssetType(path),
+    return Array.from(assetPaths).map((refPath) => ({
+      path: refPath,
+      type: this.toAssetType(refPath),
     }));
   }
 
@@ -252,9 +253,22 @@ export class ContentRepoService {
   }
 
   private getMediaSummary(assetRefs: ParsedAssetRef[]): string {
-    const counts = assetRefs.reduce<Record<ContentAssetType, number>>(
+    const counts = assetRefs.reduce(
       (accumulator, assetRef) => {
-        accumulator[assetRef.type] += 1;
+        switch (assetRef.type) {
+          case 'image':
+            accumulator.image += 1;
+            break;
+          case 'audio':
+            accumulator.audio += 1;
+            break;
+          case 'video':
+            accumulator.video += 1;
+            break;
+          case 'file':
+            accumulator.file += 1;
+            break;
+        }
         return accumulator;
       },
       {
@@ -357,13 +371,18 @@ export class ContentRepoService {
      * 有 commitHash 时附加 ?v=hash，确保历史版本的资源从正确的 git commit 读取。 */
     const scope = options?.scope ?? 'notes';
     const versionSuffix = options?.commitHash ? `?v=${options.commitHash}` : '';
-    const resolvedMarkdown = bodyMarkdown.replaceAll(
-      /\.\/assets\//g,
-      `/api/v1/spaces/${scope}/items/${contentId}/assets/`,
-    ).replaceAll(
-      new RegExp(`/api/v1/spaces/${scope}/items/${contentId}/assets/([^)\\s"]+)`, 'g'),
-      (match) => `${match}${versionSuffix}`,
-    );
+    const resolvedMarkdown = bodyMarkdown
+      .replaceAll(
+        /\.\/assets\//g,
+        `/api/v1/spaces/${scope}/items/${contentId}/assets/`,
+      )
+      .replaceAll(
+        new RegExp(
+          `/api/v1/spaces/${scope}/items/${contentId}/assets/([^)\\s"]+)`,
+          'g',
+        ),
+        (match) => `${match}${versionSuffix}`,
+      );
     return {
       bodyMarkdown: resolvedMarkdown,
       plainText: this.extractPlainText(bodyMarkdown),
@@ -407,14 +426,23 @@ export class ContentRepoService {
       // 直接 spawn git 进程拿 Buffer 输出，确保图片等二进制资源完整。
       const trackedPath = `content/${contentId}/assets/${fileName}`;
       buffer = await new Promise<Buffer>((res, rej) => {
-        execFile('git', ['show', `${commitHash}:${trackedPath}`], {
-          cwd: this.repoRoot,
-          encoding: 'buffer',
-          maxBuffer: 50 * 1024 * 1024, // 50MB
-        }, (err, stdout) => {
-          if (err) return rej(err);
-          res(stdout as unknown as Buffer);
-        });
+        execFile(
+          'git',
+          ['show', `${commitHash}:${trackedPath}`],
+          {
+            cwd: this.repoRoot,
+            encoding: 'buffer',
+            maxBuffer: 50 * 1024 * 1024, // 50MB
+          },
+          (err, stdout) => {
+            if (err) {
+              // 避免对非 Error 的 exec 回调入参做 String()，以满足 no-base-to-string
+              rej(err instanceof Error ? err : new Error('git show failed'));
+              return;
+            }
+            res(stdout);
+          },
+        );
       });
     } else {
       const filePath = this.resolveAssetPath(contentId, fileName);

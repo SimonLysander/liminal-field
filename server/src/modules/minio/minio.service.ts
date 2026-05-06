@@ -7,9 +7,10 @@
  */
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as Minio from 'minio';
+import { Client } from 'minio';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
+import type { MinioDraftStorageStatus } from './minio-draft-storage-status';
 
 /** MinIO / Node 连接错误常为 AggregateError，外层 message 为空，需展开 errors[] */
 function formatConnectionFailure(err: unknown): string {
@@ -35,13 +36,21 @@ function formatConnectionFailure(err: unknown): string {
   return String(err);
 }
 
+/** MinIO getObject 流的 chunk 在类型上常为 any；收敛为 Buffer 以满足严格 Buffer 泛型 */
+function bufferFromStreamChunk(chunk: unknown): Buffer {
+  if (Buffer.isBuffer(chunk)) return chunk;
+  if (chunk instanceof Uint8Array) return Buffer.from(chunk);
+  if (typeof chunk === 'string') return Buffer.from(chunk, 'utf8');
+  throw new TypeError('Unexpected object stream chunk type');
+}
+
 @Injectable()
-export class MinioService implements OnModuleInit {
+export class MinioService implements OnModuleInit, MinioDraftStorageStatus {
   private readonly logger = new Logger(MinioService.name);
   private readonly minioEndPoint: string;
   private readonly minioPort: number;
   private readonly minioUseSSL: boolean;
-  private client: Minio.Client;
+  private client: Client;
   private bucket: string;
   /** bucketExists / makeBucket 成功后才为 true；供启动诊断与排障 */
   private draftStorageReady = false;
@@ -52,7 +61,7 @@ export class MinioService implements OnModuleInit {
     this.minioEndPoint = config.getOrThrow<string>('minio.endpoint');
     this.minioPort = config.getOrThrow<number>('minio.port');
     this.minioUseSSL = config.get<boolean>('minio.useSSL', false);
-    this.client = new Minio.Client({
+    this.client = new Client({
       endPoint: this.minioEndPoint,
       port: this.minioPort,
       useSSL: this.minioUseSSL,
@@ -132,7 +141,7 @@ export class MinioService implements OnModuleInit {
 
     const chunks: Buffer[] = [];
     for await (const chunk of stream) {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      chunks.push(bufferFromStreamChunk(chunk));
     }
 
     return {
@@ -149,7 +158,8 @@ export class MinioService implements OnModuleInit {
     const objects: string[] = [];
 
     const stream = this.client.listObjects(this.bucket, prefix, true);
-    for await (const obj of stream) {
+    for await (const raw of stream) {
+      const obj = raw as { name?: string };
       if (obj.name) objects.push(obj.name);
     }
 
@@ -175,7 +185,8 @@ export class MinioService implements OnModuleInit {
     const materialized: string[] = [];
 
     const stream = this.client.listObjects(this.bucket, prefix, true);
-    for await (const obj of stream) {
+    for await (const raw of stream) {
+      const obj = raw as { name?: string };
       if (!obj.name) continue;
       const fileName = obj.name.slice(prefix.length);
 
@@ -183,7 +194,7 @@ export class MinioService implements OnModuleInit {
         const dataStream = await this.client.getObject(this.bucket, obj.name);
         const chunks: Buffer[] = [];
         for await (const chunk of dataStream) {
-          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          chunks.push(bufferFromStreamChunk(chunk));
         }
         await writeFile(join(targetDir, fileName), Buffer.concat(chunks));
         materialized.push(fileName);
@@ -217,7 +228,7 @@ export class MinioService implements OnModuleInit {
     const stream = await this.client.getObject(this.bucket, objectKey);
     const chunks: Buffer[] = [];
     for await (const chunk of stream) {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      chunks.push(bufferFromStreamChunk(chunk));
     }
     return Buffer.concat(chunks);
   }
@@ -226,7 +237,8 @@ export class MinioService implements OnModuleInit {
   async listByPrefix(prefix: string): Promise<string[]> {
     const keys: string[] = [];
     const stream = this.client.listObjects(this.bucket, prefix, true);
-    for await (const obj of stream) {
+    for await (const raw of stream) {
+      const obj = raw as { name?: string };
       if (obj.name) keys.push(obj.name);
     }
     return keys;

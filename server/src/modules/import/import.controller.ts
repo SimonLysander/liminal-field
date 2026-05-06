@@ -1,8 +1,36 @@
-import { Controller, Post, Get, Param, Req, Res, Body, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Param,
+  Req,
+  Res,
+  Body,
+  BadRequestException,
+} from '@nestjs/common';
 import { RawResponse } from '../../common/raw-response.decorator';
 import { ImportService } from './import.service';
 import { ConfirmImportDto } from './dto/confirm-import.dto';
-import type { MultipartFile } from '@fastify/multipart';
+import type { FastifyReply } from 'fastify';
+
+/** import 路由用的 multipart 形状（与 @fastify/multipart 一致，避免包类型解析失败） */
+type MultipartFilePart = {
+  type: 'file';
+  filename: string;
+  mimetype: string;
+  toBuffer(): Promise<Buffer>;
+};
+
+type MultipartFieldPart = {
+  type: 'field';
+  fieldname: string;
+  value?: string;
+};
+
+type MultipartIterableRequest = {
+  file(): Promise<MultipartFilePart | undefined>;
+  parts(): AsyncIterableIterator<MultipartFilePart | MultipartFieldPart>;
+};
 
 /**
  * ImportController — 文件导入 API
@@ -16,7 +44,7 @@ export class ImportController {
 
   /** 解析上传的 .md 文件，返回转换结果和资源缺失列表 */
   @Post('parse')
-  async parse(@Req() request: { file: () => Promise<MultipartFile | undefined> }) {
+  async parse(@Req() request: MultipartIterableRequest) {
     const file = await request.file();
     if (!file) throw new BadRequestException('文件不能为空');
 
@@ -36,23 +64,21 @@ export class ImportController {
   async servePreviewAsset(
     @Param('parseId') parseId: string,
     @Param('fileName') fileName: string,
-    @Res() reply: any,
+    @Res() reply: FastifyReply,
   ) {
     return this.importService.getPreviewAsset(parseId, fileName, reply);
   }
 
   /** 用户上传文件夹内容，按文件名匹配缺失资源 */
   @Post('resolve-assets')
-  async resolveAssets(
-    @Req() request: { parts: () => AsyncIterableIterator<MultipartFile & { fieldname: string; value?: string }> },
-  ) {
+  async resolveAssets(@Req() request: MultipartIterableRequest) {
     let parseId = '';
     const files: { filename: string; buffer: Buffer; mimetype: string }[] = [];
 
     for await (const part of request.parts()) {
       if (part.type === 'field') {
         if (part.fieldname === 'parseId') {
-          parseId = (part as unknown as { value: string }).value;
+          parseId = part.value ?? '';
         }
       } else if (part.type === 'file') {
         const buffer = await part.toBuffer();

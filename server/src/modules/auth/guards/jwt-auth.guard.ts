@@ -23,11 +23,11 @@ export class JwtAuthGuard implements CanActivate {
     ]);
 
     const request = context.switchToHttp().getRequest<FastifyRequest>();
-    const token = (request as any).cookies?.['auth_token'];
+    const token = request.cookies?.auth_token;
 
     if (token) {
       try {
-        (request as any).user = this.jwtService.verify(token);
+        request.user = this.jwtService.verify(token);
       } catch {
         if (!isPublic) {
           throw new UnauthorizedException('登录态已过期');

@@ -10,7 +10,7 @@ RUN pnpm build
 
 FROM docker.1ms.run/node:22-alpine
 RUN sed -i 's#https://dl-cdn.alpinelinux.org#https://mirrors.aliyun.com#g' /etc/apk/repositories
-RUN apk add --no-cache git
+RUN apk add --no-cache git openssh-client
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 COPY package.json pnpm-lock.yaml .npmrc* ./

@@ -28,7 +28,12 @@ export class NavigationNode {
   public name!: string;
 
   /** 业务模块隔离：决定该节点属于 notes 还是 gallery 等 scope */
-  @prop({ enum: NavigationScope, required: true, default: NavigationScope.notes, index: true })
+  @prop({
+    enum: NavigationScope,
+    required: true,
+    default: NavigationScope.notes,
+    index: true,
+  })
   public scope!: NavigationScope;
 
   @prop({ type: Types.ObjectId })

@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { WorkspaceService } from './workspace.service';
 
 // ─── Mock 工厂 ───────────────────────────────────────────────────────────────
@@ -47,7 +47,9 @@ describe('WorkspaceService.assertScopeMatch', () => {
       contentItemId: 'ci_001',
     });
 
-    await expect(service.assertScopeMatch('gallery', 'ci_001')).resolves.toBeUndefined();
+    await expect(
+      service.assertScopeMatch('gallery', 'ci_001'),
+    ).resolves.toBeUndefined();
   });
 
   it('导航节点存在但 scope 不匹配 → 抛 NotFoundException', async () => {
@@ -57,14 +59,18 @@ describe('WorkspaceService.assertScopeMatch', () => {
       contentItemId: 'ci_001',
     });
 
-    await expect(service.assertScopeMatch('gallery', 'ci_001')).rejects.toThrow(NotFoundException);
+    await expect(service.assertScopeMatch('gallery', 'ci_001')).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
   it('导航节点不存在 → 抛 NotFoundException', async () => {
     const { service, mockNavigationRepository } = createMocks();
     mockNavigationRepository.findByContentItemId.mockResolvedValue(null);
 
-    await expect(service.assertScopeMatch('gallery', 'ci_missing')).rejects.toThrow(NotFoundException);
+    await expect(
+      service.assertScopeMatch('gallery', 'ci_missing'),
+    ).rejects.toThrow(NotFoundException);
   });
 });
 
@@ -75,24 +81,32 @@ describe('WorkspaceService.assertScopeMatch', () => {
 
 describe('WorkspaceService.publish', () => {
   it('gallery scope → 直接调 publishVersion，不调 listAssets', async () => {
-    const { service, mockContentService, mockContentRepoService } = createMocks();
+    const { service, mockContentService, mockContentRepoService } =
+      createMocks();
     mockContentService.publishVersion.mockResolvedValue(undefined);
 
     await service.publish('gallery', 'ci_001');
 
     // publish 不再负责照片校验（已移至 GalleryViewService.assertPublishable）
     expect(mockContentRepoService.listAssets).not.toHaveBeenCalled();
-    expect(mockContentService.publishVersion).toHaveBeenCalledWith('ci_001', undefined);
+    expect(mockContentService.publishVersion).toHaveBeenCalledWith(
+      'ci_001',
+      undefined,
+    );
   });
 
   it('notes scope → 直接调 publishVersion', async () => {
-    const { service, mockContentService, mockContentRepoService } = createMocks();
+    const { service, mockContentService, mockContentRepoService } =
+      createMocks();
     mockContentService.publishVersion.mockResolvedValue(undefined);
 
     await service.publish('notes', 'ci_002');
 
     expect(mockContentRepoService.listAssets).not.toHaveBeenCalled();
-    expect(mockContentService.publishVersion).toHaveBeenCalledWith('ci_002', undefined);
+    expect(mockContentService.publishVersion).toHaveBeenCalledWith(
+      'ci_002',
+      undefined,
+    );
   });
 
   it('传入 commitHash → 转发给 publishVersion', async () => {
@@ -101,6 +115,9 @@ describe('WorkspaceService.publish', () => {
 
     await service.publish('gallery', 'ci_001', 'abc1234');
 
-    expect(mockContentService.publishVersion).toHaveBeenCalledWith('ci_001', 'abc1234');
+    expect(mockContentService.publishVersion).toHaveBeenCalledWith(
+      'ci_001',
+      'abc1234',
+    );
   });
 });

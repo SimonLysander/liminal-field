@@ -27,7 +27,7 @@ describe('ContentController', () => {
 
   it('delegates home aggregation to the service', async () => {
     const expected = { hero: null, featured: [], latest: [] };
-    contentService.getHome.mockResolvedValue(expected as never);
+    contentService.getHome.mockResolvedValue(expected);
 
     const result = await controller.getHome();
 

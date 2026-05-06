@@ -14,7 +14,11 @@ import { Public } from '../auth/decorators/public.decorator';
 import { ContentVisibility } from '../content/dto/content-query.dto';
 import { CreateStructureNodeDto } from './dto/create-structure-node.dto';
 import { ReorderSiblingsDto } from './dto/reorder-siblings.dto';
-import { StructureNodeDto, StructureListResultDto, DeleteStatsDto } from './dto/structure-node.dto';
+import {
+  StructureNodeDto,
+  StructureListResultDto,
+  DeleteStatsDto,
+} from './dto/structure-node.dto';
 import { NavigationNodeService } from './navigation.service';
 import { UpdateStructureNodeDto } from './dto/update-structure-node.dto';
 
@@ -43,9 +47,7 @@ export class NavigationNodeController {
   }
 
   @Post('structure-nodes/reorder')
-  async reorderSiblings(
-    @Body() dto: ReorderSiblingsDto,
-  ): Promise<void> {
+  async reorderSiblings(@Body() dto: ReorderSiblingsDto): Promise<void> {
     return this.navigationNodeService.reorderSiblings(dto);
   }
 
@@ -58,10 +60,14 @@ export class NavigationNodeController {
     @Req() request: FastifyRequest,
   ): Promise<StructureListResultDto> {
     // 未登录用户强制只查看已发布内容
-    if (!(request as any).user) {
+    if (!request.user) {
       visibility = ContentVisibility.public;
     }
-    return this.navigationNodeService.listStructureNodes(parentId, visibility, scope);
+    return this.navigationNodeService.listStructureNodes(
+      parentId,
+      visibility,
+      scope,
+    );
   }
 
   @Get('structure-nodes/:id/delete-stats')

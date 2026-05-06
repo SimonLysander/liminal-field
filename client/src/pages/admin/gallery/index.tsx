@@ -65,7 +65,7 @@ export default function GalleryAdmin() {
 
   // ─── 数据加载 ───
 
-  const loadPosts = async () => {
+  const loadPosts = useCallback(async () => {
     setLoading(true);
     try {
       const data = await galleryApi.list();
@@ -80,11 +80,20 @@ export default function GalleryAdmin() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchParams, setSelectedId]);
 
   useEffect(() => {
-    void loadPosts();
-  }, []);
+    let cancelled = false;
+    void (async () => {
+      /* set-state-in-effect：首帧 setState 推迟到微任务后，避免与 effect 同步阶段叠连 render */
+      await Promise.resolve();
+      if (cancelled) return;
+      await loadPosts();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadPosts]);
 
   /* 草稿状态 */
   const [draftInfo, setDraftInfo] = useState<{ exists: boolean; savedAt?: string }>({ exists: false });
@@ -103,39 +112,47 @@ export default function GalleryAdmin() {
 
   /* 选中帖子变化时并行加载：详情 + 草稿 + 版本历史 */
   useEffect(() => {
-    if (!selectedId) {
-      setDetail(null);
-      setDraftInfo({ exists: false });
-      setHistory([]);
-      setPreview(null);
-      return;
-    }
     let cancelled = false;
-    setDetailLoading(true);
-    setHistoryLoading(true);
-
-    Promise.all([
-      galleryApi.getById(selectedId),
-      galleryApi.getDraft(selectedId).catch(() => null),
-      galleryApi.getHistory(selectedId).catch(() => []),
-    ]).then(([d, draft, hist]) => {
+    void (async () => {
+      await Promise.resolve();
       if (cancelled) return;
-      setDetail(d);
-      setDraftInfo(draft ? { exists: true, savedAt: draft.savedAt } : { exists: false });
-      setHistory(hist);
-      setDetailLoading(false);
-      setHistoryLoading(false);
-    }).catch(() => {
-      if (!cancelled) {
+      if (!selectedId) {
         setDetail(null);
         setDraftInfo({ exists: false });
         setHistory([]);
-        setDetailLoading(false);
-        setHistoryLoading(false);
+        setPreview(null);
+        return;
       }
-    });
+      setDetailLoading(true);
+      setHistoryLoading(true);
 
-    return () => { cancelled = true; };
+      try {
+        const [d, draft, hist] = await Promise.all([
+          galleryApi.getById(selectedId),
+          galleryApi.getDraft(selectedId).catch(() => null),
+          galleryApi.getHistory(selectedId).catch(() => []),
+        ]);
+        if (cancelled) return;
+        setDetail(d);
+        setDraftInfo(draft ? { exists: true, savedAt: draft.savedAt } : { exists: false });
+        setHistory(hist);
+      } catch {
+        if (!cancelled) {
+          setDetail(null);
+          setDraftInfo({ exists: false });
+          setHistory([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setDetailLoading(false);
+          setHistoryLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedId]);
 
   // ─── 操作处理 ───

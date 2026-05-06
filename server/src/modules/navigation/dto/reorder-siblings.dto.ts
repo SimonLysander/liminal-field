@@ -1,4 +1,10 @@
-import { ArrayMinSize, ArrayMaxSize, IsArray, IsOptional, IsString } from 'class-validator';
+import {
+  ArrayMinSize,
+  ArrayMaxSize,
+  IsArray,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class ReorderSiblingsDto {
   @IsString()

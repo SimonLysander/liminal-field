@@ -119,9 +119,10 @@ describe('Gallery Publish (e2e)', () => {
         })
         .expect(200);
 
-      const v1Hash = v1Res.body.data.latestVersion?.commitHash
+      const v1Hash =
+        v1Res.body.data.latestVersion?.commitHash ??
         // GalleryAdminDetailDto 不含 latestVersion，需从 content MongoDB 中回溯
-        ?? null;
+        null;
 
       // 第二次提交：清空照片（用空 frontmatter）
       await supertest(ctx.app.getHttpServer())

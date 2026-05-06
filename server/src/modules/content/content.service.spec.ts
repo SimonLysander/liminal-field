@@ -19,10 +19,16 @@ function buildContentItem(overrides: {
   const item: Record<string, unknown> = {
     _id: id,
     id,
-    latestVersion: { commitHash: latestHash, title: '测试标题', summary: '摘要' },
+    latestVersion: {
+      commitHash: latestHash,
+      title: '测试标题',
+      summary: '摘要',
+    },
     publishedVersion:
       publishedHash !== undefined
-        ? (publishedHash === null ? null : { commitHash: publishedHash, title: '测试标题', summary: '' })
+        ? publishedHash === null
+          ? null
+          : { commitHash: publishedHash, title: '测试标题', summary: '' }
         : null,
     changeLogs: [],
     createdAt: new Date('2024-01-01'),
@@ -70,7 +76,9 @@ describe('ContentService.publishVersion', () => {
     expect(mockRepository.update).toHaveBeenCalledWith(
       'ci_test001',
       expect.objectContaining({
-        publishedVersion: expect.objectContaining({ commitHash: 'latest-hash' }),
+        publishedVersion: expect.objectContaining({
+          commitHash: 'latest-hash',
+        }),
       }),
     );
   });
@@ -86,7 +94,9 @@ describe('ContentService.publishVersion', () => {
     expect(mockRepository.update).toHaveBeenCalledWith(
       'ci_test001',
       expect.objectContaining({
-        publishedVersion: expect.objectContaining({ commitHash: 'specific-hash' }),
+        publishedVersion: expect.objectContaining({
+          commitHash: 'specific-hash',
+        }),
       }),
     );
   });
@@ -95,7 +105,9 @@ describe('ContentService.publishVersion', () => {
     const { service, mockRepository } = createMocks();
     mockRepository.findById.mockResolvedValue(null);
 
-    await expect(service.publishVersion('ci_missing')).rejects.toThrow(NotFoundException);
+    await expect(service.publishVersion('ci_missing')).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
   it('latestVersion 没有 commitHash（从未提交）→ 抛 BadRequestException', async () => {
@@ -103,7 +115,9 @@ describe('ContentService.publishVersion', () => {
     const item = buildContentItem({ latestCommitHash: '' }); // 空 hash = 未提交
     mockRepository.findById.mockResolvedValue(item);
 
-    await expect(service.publishVersion('ci_test001')).rejects.toThrow(BadRequestException);
+    await expect(service.publishVersion('ci_test001')).rejects.toThrow(
+      BadRequestException,
+    );
   });
 });
 
@@ -132,13 +146,17 @@ describe('ContentService.unpublishVersion', () => {
     const item = buildContentItem({ publishedCommitHash: null }); // 未发布
     mockRepository.findById.mockResolvedValue(item);
 
-    await expect(service.unpublishVersion('ci_test001')).rejects.toThrow(BadRequestException);
+    await expect(service.unpublishVersion('ci_test001')).rejects.toThrow(
+      BadRequestException,
+    );
   });
 
   it('内容不存在 → 抛 NotFoundException', async () => {
     const { service, mockRepository } = createMocks();
     mockRepository.findById.mockResolvedValue(null);
 
-    await expect(service.unpublishVersion('ci_missing')).rejects.toThrow(NotFoundException);
+    await expect(service.unpublishVersion('ci_missing')).rejects.toThrow(
+      NotFoundException,
+    );
   });
 });

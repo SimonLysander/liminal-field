@@ -546,6 +546,8 @@ export default function GalleryPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+     
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅挂载拉列表；searchParams 入 deps 会与 setSearchParams 互相触发
   }, []);
 
   // ── 选中相册后加载详情 ────────────────────────────────────────────────────────
@@ -573,7 +575,7 @@ export default function GalleryPage() {
 
   // 当前相册切换时，照片索引和方向归零
   useEffect(() => {
-    setPhotoIdx(0);
+    void Promise.resolve().then(() => setPhotoIdx(0));
   }, [postIdx]);
 
   // 派生当前照片（currentDetail 未就绪时为 null）

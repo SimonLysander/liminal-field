@@ -19,5 +19,23 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      /* Vite 预设已开 allowConstantExport；cva()/数组常量等仍需显式放行 */
+      'react-refresh/only-export-components': [
+        'error',
+        {
+          allowConstantExport: true,
+          allowExportNames: [
+            'resetAuth',
+            'useConfirm',
+            'useDraftAssetContext',
+            'blockSelectionVariants',
+            'buttonVariants',
+            'DEFAULT_COLORS',
+            'mediaResizeHandleVariants',
+          ],
+        },
+      ],
+    },
   },
 ])

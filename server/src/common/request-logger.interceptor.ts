@@ -1,12 +1,24 @@
 import {
   CallHandler,
   ExecutionContext,
+  HttpException,
   Injectable,
   Logger,
   NestInterceptor,
 } from '@nestjs/common';
 import { Observable, tap } from 'rxjs';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+
+/** Nest 异常或携带 status/statusCode 的底层错误 */
+function statusFromError(err: unknown): number {
+  if (err instanceof HttpException) return err.getStatus();
+  if (err && typeof err === 'object') {
+    const o = err as { status?: unknown; statusCode?: unknown };
+    if (typeof o.status === 'number') return o.status;
+    if (typeof o.statusCode === 'number') return o.statusCode;
+  }
+  return 500;
+}
 
 /**
  * 替代 Fastify 默认的 JSON 请求日志，输出人类可读的单行格式：
@@ -26,11 +38,13 @@ export class RequestLoggerInterceptor implements NestInterceptor {
         next: () => {
           const reply = context.switchToHttp().getResponse<FastifyReply>();
           const duration = Date.now() - startTime;
-          this.logger.log(`${method} ${url} → ${reply.statusCode} (${duration}ms)`);
+          this.logger.log(
+            `${method} ${url} → ${reply.statusCode} (${duration}ms)`,
+          );
         },
-        error: (error) => {
+        error: (err: unknown) => {
           const duration = Date.now() - startTime;
-          const status = error?.status ?? error?.statusCode ?? 500;
+          const status = statusFromError(err);
           this.logger.warn(`${method} ${url} → ${status} (${duration}ms)`);
         },
       }),

@@ -83,7 +83,10 @@ export function useAdminWorkspace() {
 
   /* urlFolderId 变化 → 重新加载当前层级 */
   useEffect(() => {
-    void loadLevel(urlFolderId);
+    void (async () => {
+      await Promise.resolve();
+      await loadLevel(urlFolderId);
+    })();
   }, [loadLevel, urlFolderId]);
 
   const reloadLevel = useCallback(() => {
@@ -300,7 +303,7 @@ export function useAdminWorkspace() {
         setHistoryLoading(false);
       }
     },
-    [probeDraftPresence],
+    [probeDraftPresence, navigate],
   );
 
   /* contentItemId 变化 → 加载内容或重置 */
@@ -308,24 +311,35 @@ export function useAdminWorkspace() {
     if (activeContentItemId === prevContentItemIdRef.current) return;
     prevContentItemIdRef.current = activeContentItemId;
 
+    let cancelled = false;
+
     if (!activeContentItemId) {
-      setWorkspaceMode('formal');
-      setFormalContent(EMPTY_FORMAL_CONTENT);
-      setDraftState(EMPTY_DRAFT_EDITOR_STATE);
-      setDraftPresence(EMPTY_DRAFT_PRESENCE);
-      setContentError('');
-      setDraftInfo('');
-      setHistory([]);
-      setIsDirty(false);
-      setIsAutosaving(false);
-      setLastDraftSavedAt('');
-      setAutosaveError('');
-      setHistoryLoading(false);
-      setPreview(null);
-      return;
+      void Promise.resolve().then(() => {
+        if (cancelled) return;
+        setWorkspaceMode('formal');
+        setFormalContent(EMPTY_FORMAL_CONTENT);
+        setDraftState(EMPTY_DRAFT_EDITOR_STATE);
+        setDraftPresence(EMPTY_DRAFT_PRESENCE);
+        setContentError('');
+        setDraftInfo('');
+        setHistory([]);
+        setIsDirty(false);
+        setIsAutosaving(false);
+        setLastDraftSavedAt('');
+        setAutosaveError('');
+        setHistoryLoading(false);
+        setPreview(null);
+      });
+    } else {
+      void (async () => {
+        await Promise.resolve();
+        await loadFormalContent(activeContentItemId);
+      })();
     }
 
-    void loadFormalContent(activeContentItemId);
+    return () => {
+      cancelled = true;
+    };
   }, [activeContentItemId, loadFormalContent]);
 
   /* ================================================================

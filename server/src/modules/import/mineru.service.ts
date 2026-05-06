@@ -73,7 +73,9 @@ export class MineruService {
    */
   async convert(fileName: string, buffer: Buffer): Promise<MineruResult> {
     if (!this.token) {
-      throw new ServiceUnavailableException('MinerU 未配置 Token，无法转换文档');
+      throw new ServiceUnavailableException(
+        'MinerU 未配置 Token，无法转换文档',
+      );
     }
 
     // Step 1: 获取签名 URL
@@ -93,22 +95,34 @@ export class MineruService {
   }
 
   /** 获取 OSS 签名 URL */
-  private async getPresignedUrl(fileName: string): Promise<{ batchId: string; presignedUrl: string }> {
+  private async getPresignedUrl(
+    fileName: string,
+  ): Promise<{ batchId: string; presignedUrl: string }> {
     const res = await this.apiRequest('/api/v4/file-urls/batch', {
       method: 'POST',
       body: JSON.stringify({ files: [{ name: fileName, is_ocr: false }] }),
     });
-    const data = res.data;
+    const data = res.data as {
+      batch_id: string;
+      file_urls: string[];
+    };
     return { batchId: data.batch_id, presignedUrl: data.file_urls[0] };
   }
 
   /** PUT 上传文件到签名 URL */
-  private async uploadFile(presignedUrl: string, buffer: Buffer): Promise<void> {
+  private async uploadFile(
+    presignedUrl: string,
+    buffer: Buffer,
+  ): Promise<void> {
     const res = await fetch(presignedUrl, { method: 'PUT', body: buffer });
     if (!res.ok) {
-      throw new BadRequestException(`文件上传到 MinerU 失败 (HTTP ${res.status})`);
+      throw new BadRequestException(
+        `文件上传到 MinerU 失败 (HTTP ${res.status})`,
+      );
     }
-    this.logger.log(`File uploaded to MinerU (${(buffer.length / 1024).toFixed(0)} KB)`);
+    this.logger.log(
+      `File uploaded to MinerU (${(buffer.length / 1024).toFixed(0)} KB)`,
+    );
   }
 
   /** 提交批量解析任务 */
@@ -133,11 +147,22 @@ export class MineruService {
     while (Date.now() - startTime < this.pollTimeoutMs) {
       await this.sleep(this.pollIntervalMs);
 
-      const res = await this.apiRequest(`/api/v4/extract-results/batch/${batchId}`, {
-        method: 'GET',
-      });
+      const res = await this.apiRequest(
+        `/api/v4/extract-results/batch/${batchId}`,
+        {
+          method: 'GET',
+        },
+      );
 
-      const extract = res.data?.extract_result?.[0];
+      const data = res.data as {
+        extract_result?: Array<{
+          state?: string;
+          full_zip_url?: string;
+          extract_progress?: { total_pages?: number };
+          err_msg?: string;
+        }>;
+      };
+      const extract = data.extract_result?.[0];
       if (!extract) continue;
 
       if (extract.state === 'done' && extract.full_zip_url) {
@@ -178,7 +203,9 @@ export class MineruService {
       await execFile('unzip', ['-o', zipPath, '-d', extractDir]);
 
       // 递归查找 markdown 文件（替代 shell find 命令）
-      const mdPath = await this.findFileRecursive(extractDir, (name) => name.endsWith('.md'));
+      const mdPath = await this.findFileRecursive(extractDir, (name) =>
+        name.endsWith('.md'),
+      );
       if (!mdPath) {
         throw new BadRequestException('MinerU 返回结果中未找到 markdown 文件');
       }
@@ -196,7 +223,9 @@ export class MineruService {
         }
       }
 
-      this.logger.log(`Extracted: ${markdown.length} chars markdown, ${images.size} images`);
+      this.logger.log(
+        `Extracted: ${markdown.length} chars markdown, ${images.size} images`,
+      );
       return { markdown, images };
     } finally {
       // 清理临时目录
@@ -208,7 +237,7 @@ export class MineruService {
   private async apiRequest(
     path: string,
     init: RequestInit,
-  ): Promise<{ code: number; data: Record<string, any> }> {
+  ): Promise<{ code: number; data: unknown }> {
     const url = `${this.baseUrl}${path}`;
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.token}`,
@@ -218,18 +247,26 @@ export class MineruService {
     const res = await fetch(url, { ...init, headers });
 
     if (!res.ok) {
-      throw new ServiceUnavailableException(`MinerU API 请求失败 (HTTP ${res.status})`);
+      throw new ServiceUnavailableException(
+        `MinerU API 请求失败 (HTTP ${res.status})`,
+      );
     }
 
-    const json = await res.json();
+    const json = (await res.json()) as {
+      code?: number;
+      msg?: string;
+      data?: unknown;
+    };
 
-    if (json.code !== 0) {
-      const friendlyMsg = ERROR_MESSAGES[String(json.code)] || json.msg || `MinerU 错误 (${json.code})`;
-      this.logger.warn(`MinerU API error: code=${json.code}, msg=${json.msg}`);
+    const code = json.code ?? -1;
+    if (code !== 0) {
+      const friendlyMsg =
+        ERROR_MESSAGES[String(code)] || json.msg || `MinerU 错误 (${code})`;
+      this.logger.warn(`MinerU API error: code=${code}, msg=${json.msg}`);
       throw new BadRequestException(friendlyMsg);
     }
 
-    return json;
+    return { code, data: json.data };
   }
 
   private sleep(ms: number): Promise<void> {
@@ -254,7 +291,10 @@ export class MineruService {
   }
 
   /** 递归查找第一个匹配名称的目录，替代 shell `find -type d -name` */
-  private async findDirRecursive(dir: string, targetName: string): Promise<string | null> {
+  private async findDirRecursive(
+    dir: string,
+    targetName: string,
+  ): Promise<string | null> {
     const entries = await readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;

@@ -1,15 +1,14 @@
-import {
-  ConflictException,
-  Injectable,
-  Logger,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Mutex } from 'async-mutex';
 import { existsSync } from 'fs';
 import { mkdir } from 'fs/promises';
 import { isAbsolute, join, relative } from 'path';
 import simpleGit, { SimpleGit } from 'simple-git';
+import {
+  redactKbRemoteUrlForLog,
+  resolveKbRemoteUrlForGit,
+} from '../../common/kb-remote-url';
 import { ContentRepoService } from './content-repo.service';
 import { ContentHistoryEntryDto } from './dto/content-history.dto';
 
@@ -69,49 +68,70 @@ export class ContentGitService implements OnModuleInit {
     const remote = await this.tryRun(() =>
       this.git.raw(['remote', 'get-url', 'origin']),
     );
+    const remoteSafe = remote?.trim()
+      ? redactKbRemoteUrlForLog(remote.trim())
+      : 'none';
     const commitCount = await this.tryRun(() =>
       this.git.raw(['rev-list', '--count', 'HEAD']),
     );
 
-    this.kbGitSummaryLine = `KB Git: OK — branch: ${branch?.trim() ?? '?'}, commits: ${commitCount?.trim() ?? '?'}, remote: ${remote?.trim() ?? 'none'}`;
+    this.kbGitSummaryLine = `KB Git: OK — branch: ${branch?.trim() ?? '?'}, commits: ${commitCount?.trim() ?? '?'}, remote: ${remoteSafe}`;
   }
 
   /** Step 1: 获取或创建仓库 */
   private async ensureRepo(): Promise<void> {
     if (existsSync(join(this.repoRoot, '.git'))) return;
 
-    const remoteUrl = process.env.KB_REMOTE_URL?.trim();
+    const remoteUrl = resolveKbRemoteUrlForGit();
     await mkdir(this.repoRoot, { recursive: true });
 
     if (remoteUrl) {
-      this.logger.log(`Cloning knowledge-base from ${remoteUrl}`);
+      this.logger.log(
+        `Cloning knowledge-base from ${redactKbRemoteUrlForLog(remoteUrl)}`,
+      );
       await simpleGit().clone(remoteUrl, this.repoRoot);
     } else {
-      this.logger.log('Initializing empty knowledge-base repo (no KB_REMOTE_URL)');
+      this.logger.log(
+        'Initializing empty knowledge-base repo (no KB_REMOTE_URL)',
+      );
       await this.git.init();
     }
   }
 
   /** Step 2: 补设或更新 remote origin */
   private async ensureRemote(): Promise<void> {
-    const remoteUrl = process.env.KB_REMOTE_URL?.trim();
+    const remoteUrl = resolveKbRemoteUrlForGit();
     if (!remoteUrl) return;
 
     const remotes = await this.git.getRemotes(true);
     const origin = remotes.find((r) => r.name === 'origin');
     if (!origin) {
       await this.git.addRemote('origin', remoteUrl);
-      this.logger.log(`Added remote origin: ${remoteUrl}`);
+      this.logger.log(
+        `Added remote origin: ${redactKbRemoteUrlForLog(remoteUrl)}`,
+      );
     } else if (origin.refs.fetch !== remoteUrl) {
       await this.git.remote(['set-url', 'origin', remoteUrl]);
-      this.logger.log(`Updated remote origin: ${remoteUrl}`);
+      this.logger.log(
+        `Updated remote origin: ${redactKbRemoteUrlForLog(remoteUrl)}`,
+      );
     }
   }
 
   /** Step 3: 容器内没有全局 git config，设到 repo 级别 */
   private async ensureGitConfig(): Promise<void> {
-    await this.git.addConfig('user.name', this.resolveAuthorName(), false, 'local');
-    await this.git.addConfig('user.email', this.resolveAuthorEmail(), false, 'local');
+    await this.git.addConfig(
+      'user.name',
+      this.resolveAuthorName(),
+      false,
+      'local',
+    );
+    await this.git.addConfig(
+      'user.email',
+      this.resolveAuthorEmail(),
+      false,
+      'local',
+    );
   }
 
   private resolveRepositoryRoot(): string {
@@ -198,7 +218,12 @@ export class ContentGitService implements OnModuleInit {
 
     // 空仓库没有任何 commit → 先创建一个（git config 已在 step 3 设好）
     if (branches.all.length === 0) {
-      await this.git.raw(['commit', '--allow-empty', '-m', 'init: empty knowledge base']);
+      await this.git.raw([
+        'commit',
+        '--allow-empty',
+        '-m',
+        'init: empty knowledge base',
+      ]);
       this.logger.log('Created initial empty commit');
     }
 
@@ -240,7 +265,10 @@ export class ContentGitService implements OnModuleInit {
     if (branches.current === targetBranch) return;
 
     // 旧月分支需要归档到 main
-    if (branches.current.startsWith('workspace/') && branches.current !== targetBranch) {
+    if (
+      branches.current.startsWith('workspace/') &&
+      branches.current !== targetBranch
+    ) {
       const hasCommits = await this.tryRun(() =>
         this.git.raw(['log', '--oneline', '-1', branches.current]),
       );
@@ -336,8 +364,10 @@ export class ContentGitService implements OnModuleInit {
     const lastLog = await this.tryRun(() =>
       this.git.raw(['log', '-1', '--format=%s%x1f%aI']),
     );
-    const [lastCommitMessage, lastCommitTime] =
-      lastLog?.split('\x1f') ?? ['', ''];
+    const [lastCommitMessage, lastCommitTime] = lastLog?.split('\x1f') ?? [
+      '',
+      '',
+    ];
 
     const remote = await this.tryRun(() =>
       this.git.raw(['remote', 'get-url', 'origin']),
@@ -369,9 +399,10 @@ export class ContentGitService implements OnModuleInit {
       await this.git.push('origin', currentBranch);
       this.logger.log(`Pushed ${currentBranch} to origin`);
       return { success: true, message: `已同步 ${currentBranch} 到远程` };
-    } catch (error: any) {
-      this.logger.error(`Failed to push ${currentBranch}: ${error.message}`);
-      return { success: false, message: `同步失败: ${error.message}` };
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to push ${currentBranch}: ${msg}`);
+      return { success: false, message: `同步失败: ${msg}` };
     }
   }
 

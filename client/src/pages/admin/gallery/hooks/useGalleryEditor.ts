@@ -108,12 +108,12 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
   // 使用 /editor 端点：后端已合并草稿+正式版，前端直接消费，无需手动 photoMap 合并
 
   useEffect(() => {
-    if (!postId) {
-      setLoading(false);
-      return;
-    }
-
-    const init = async () => {
+    void (async () => {
+      await Promise.resolve();
+      if (!postId) {
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       try {
         const editorState = await galleryApi.getEditorState(postId);
@@ -139,9 +139,7 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
       } finally {
         setLoading(false);
       }
-    };
-
-    void init();
+    })();
   }, [postId]);
 
   // ─── 构建结构化保存 payload（前端不再序列化 frontmatter，后端负责） ───

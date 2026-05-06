@@ -126,7 +126,11 @@ export class GalleryVersionDto {
 export class GalleryDraftDto {
   title!: string;
   prose!: string;
-  photos!: Array<{ file: string; caption: string; tags: Record<string, string> }>;
+  photos!: Array<{
+    file: string;
+    caption: string;
+    tags: Record<string, string>;
+  }>;
   cover!: string | null;
   date!: string | null;
   location!: string | null;
