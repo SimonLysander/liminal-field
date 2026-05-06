@@ -10,6 +10,7 @@ import { WorkspaceModule } from './modules/workspace/workspace.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { MinioModule } from './modules/minio/minio.module';
 import { ImportModule } from './modules/import/import.module';
+import { HomeModule } from './modules/home/home.module';
 import { yamlLoader } from './config/yaml.loader';
 import { StartupDiagnosticsService } from './startup-diagnostics.service';
 
@@ -40,6 +41,7 @@ import { StartupDiagnosticsService } from './startup-diagnostics.service';
     NavigationModule,
     WorkspaceModule,
     ImportModule,
+    HomeModule,
   ],
   controllers: [AppController],
   providers: [AppService, StartupDiagnosticsService],

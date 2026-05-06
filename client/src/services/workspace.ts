@@ -133,6 +133,8 @@ export interface ContentHistoryEntry {
 export interface GalleryPublicListItem {
   id: string;
   title: string;
+  /** 封面图 URL，null 表示未设置。 */
+  coverUrl: string | null;
   /** 帖子拍摄/发生日期（ISO 8601），null 表示未设置。 */
   date: string | null;
   /** 帖子地点，null 表示未设置。 */
@@ -487,5 +489,26 @@ export const galleryApi = {
   /** 查看指定历史版本的结构化内容（后端已解析 frontmatter） */
   getByVersion: (id: string, commitHash: string) =>
     request<GalleryVersionContent>(`/spaces/gallery/items/${id}/versions/${commitHash}`),
+};
+
+// ── 首页 ──
+
+/** 首页统计数字 */
+export interface HomeStats {
+  noteCount: number;
+  galleryCount: number;
+}
+
+/** GET /home 返回结构 */
+export interface HomeData {
+  stats: HomeStats;
+  /** 最近有变更记录的文稿列表（含 latestChange） */
+  latest: ContentListItem[];
+  /** 最近更新的已发布图集列表（含 coverUrl） */
+  recentGallery: GalleryPublicListItem[];
+}
+
+export const homeApi = {
+  get: () => request<HomeData>('/home'),
 };
 

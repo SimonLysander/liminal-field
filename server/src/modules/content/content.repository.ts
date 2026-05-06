@@ -112,4 +112,11 @@ export class ContentRepository {
   async deleteById(id: string): Promise<void> {
     await this.contentItemModel.findByIdAndDelete(id);
   }
+
+  /** 已发布内容总数（MongoDB countDocuments，不加载文档到内存）。 */
+  async countPublished(): Promise<number> {
+    return this.contentItemModel.countDocuments({
+      publishedVersion: { $ne: null },
+    });
+  }
 }

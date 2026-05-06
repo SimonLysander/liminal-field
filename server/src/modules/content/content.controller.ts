@@ -2,7 +2,8 @@
  * ContentController — 保留跨 scope 的公共端点。
  *
  * CRUD 路由已迁移至 WorkspaceController（/spaces/:scope/items/...），
- * 此处仅保留全局搜索和首页聚合——它们不属于任何单一 scope。
+ * 此处仅保留全局搜索——它不属于任何单一 scope。
+ * 首页聚合端点已迁移至 HomeController（/home），由 HomeModule 统一编排。
  */
 import { Controller, Get, Query, Req } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
@@ -26,12 +27,5 @@ export class ContentController {
       query.visibility = ContentVisibility.public;
     }
     return this.contentService.searchContents(query);
-  }
-
-  /** 首页聚合：hero + featured + latest（原 HomeModule 收入此处）。 */
-  @Public()
-  @Get('home')
-  async getHome() {
-    return this.contentService.getHome();
   }
 }

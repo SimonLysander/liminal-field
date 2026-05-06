@@ -52,6 +52,8 @@ import {
 import { EditorDraftRepository } from './editor-draft.repository';
 import { SaveGalleryPostDto } from './dto/save-gallery-post.dto';
 import { MinioService } from '../minio/minio.service';
+import { NavigationRepository } from '../navigation/navigation.repository';
+import { NavigationNodeType } from '../navigation/navigation.entity';
 
 /** main.md frontmatter 中单张照片的结构。 */
 interface FrontmatterPhoto {
@@ -228,6 +230,7 @@ export class GalleryViewService {
     private readonly contentService: ContentService,
     private readonly editorDraftRepository: EditorDraftRepository,
     private readonly minioService: MinioService,
+    private readonly navigationRepository: NavigationRepository,
   ) {}
 
   /** 构建照片的统一访问 URL（走 /spaces/gallery/items/:id/assets/:fileName）。 */
@@ -368,15 +371,28 @@ export class GalleryViewService {
       );
 
     const publishedHash = content.publishedVersion.commitHash;
-    const { parsed } = await this.loadParsedContent(
+    const { parsed, imageAssets } = await this.loadParsedContent(
       contentItemId,
       publishedHash,
     );
+
+    // 封面优先级：frontmatter.cover 指定的文件 > assets 首图；与 toAdminListItemDto 逻辑保持一致
+    const coverFileName = parsed.cover ?? null;
+    const coverAsset = coverFileName
+      ? (imageAssets.find((a) => a.fileName === coverFileName) ??
+        imageAssets[0])
+      : imageAssets[0];
+
     const version = content.publishedVersion;
 
     return {
       id: contentItemId,
       title: version.title,
+      // 封面 URL 带版本号，确保从已发布 commit 读取资源
+      coverUrl: coverAsset
+        ? this.buildPhotoUrl(contentItemId, coverAsset.fileName) +
+          `?v=${publishedHash}`
+        : null,
       date: parsed.date,
       location: parsed.location,
       createdAt: content.createdAt.toISOString(),
@@ -775,6 +791,47 @@ export class GalleryViewService {
   async deleteDraft(contentItemId: string): Promise<void> {
     await this.editorDraftRepository.deleteByContentItemId(contentItemId);
     await this.minioService.deleteDraftAssets(contentItemId);
+  }
+
+  /**
+   * 首页用：返回最近 N 个已发布 gallery 条目的展示端列表 DTO。
+   *
+   * 实现方式：从导航索引取 gallery scope 所有节点，逐一检查 publishedVersion，
+   * 映射为 PublicListItemDto 后按 createdAt 倒序截取前 limit 条。
+   * 与 WorkspaceController.list('gallery', 'published') 逻辑对齐，避免重复实现查询路径。
+   */
+  async listPublishedForHome(
+    limit: number,
+  ): Promise<GalleryPublicListItemDto[]> {
+    // 取 gallery scope 所有导航节点，过滤出有 contentItemId 的条目
+    const nodes = await this.navigationRepository.findRootNodes('gallery');
+    const contentNodes = nodes.filter(
+      (n) => n.nodeType === NavigationNodeType.content && n.contentItemId,
+    );
+
+    const dtos: GalleryPublicListItemDto[] = [];
+    for (const node of contentNodes) {
+      // 只处理已发布的内容
+      const content = await this.contentRepository.findById(
+        node.contentItemId!,
+      );
+      if (!content?.publishedVersion) continue;
+
+      try {
+        const dto = await this.toPublicListItemDto(node.contentItemId!);
+        dtos.push(dto);
+      } catch (error) {
+        // 个别条目加载失败不阻断整体列表（如 git 资源缺失等边缘情况）
+        this.logger.warn(
+          `listPublishedForHome: 跳过条目 ${node.contentItemId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    // 按 createdAt 倒序（最新的在前）后截取 limit 条
+    return dtos
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit);
   }
 
   // ─── 草稿照片（MinIO 临时存储）───
