@@ -17,43 +17,12 @@ import {
 } from 'platejs/react';
 import { serializeMd, deserializeMd } from '@platejs/markdown';
 
-import type { TElement } from 'platejs';
-
+import { fixCodeBlockLines } from '@/components/shared/plate-transforms';
 import { EditorKit } from '@/components/editor/editor-kit';
 import { Editor, EditorContainer } from '@/components/ui/editor';
 import { FixedToolbar } from '@/components/ui/fixed-toolbar';
 import { FixedToolbarButtons } from '@/components/ui/fixed-toolbar-buttons';
 import { TooltipProvider } from '@/components/ui/tooltip';
-
-/**
- * deserializeMd 会把 code_block 的所有行合并成单个 code_line，
- * 丢失换行符。这里按 \n 拆分回多个 code_line 节点。
- */
-function fixCodeBlockLines(nodes: TElement[]): TElement[] {
-  return nodes.map((node) => {
-    if (node.type !== 'code_block') return node;
-
-    const fixedChildren: TElement[] = [];
-    for (const child of node.children as TElement[]) {
-      if (child.type !== 'code_line') {
-        fixedChildren.push(child);
-        continue;
-      }
-      const text = (child.children as { text: string }[])
-        .map((c) => c.text)
-        .join('');
-      const lines = text.split('\n');
-      for (const line of lines) {
-        fixedChildren.push({
-          type: 'code_line',
-          children: [{ text: line }],
-        } as TElement);
-      }
-    }
-
-    return { ...node, children: fixedChildren };
-  });
-}
 
 export function PlateMarkdownEditor({
   initialMarkdown,
@@ -74,7 +43,9 @@ export function PlateMarkdownEditor({
         try {
           const nodes = deserializeMd(editor, initialMarkdown || '');
           return fixCodeBlockLines(nodes);
-        } catch {
+        } catch (err) {
+          // 反序列化失败时降级为空段落，记录错误供调试
+          console.error('[PlateEditor] Markdown 反序列化失败:', err);
           return [{ type: 'p', children: [{ text: '' }] }];
         }
       },

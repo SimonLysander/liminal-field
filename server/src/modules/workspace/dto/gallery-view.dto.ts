@@ -51,7 +51,8 @@ export class GalleryPublicDetailDto {
 export class GalleryAdminListItemDto {
   id: string;
   title: string;
-  status: string;
+  // 与 WorkspaceItemDto 保持一致的状态联合类型
+  status: 'committed' | 'published';
   coverUrl: string | null;
   photoCount: number;
   /** 是否有已提交但未发布的变更。 */
@@ -68,7 +69,8 @@ export class GalleryAdminDetailDto {
   id: string;
   title: string;
   prose: string;
-  status: string;
+  // 与 WorkspaceItemDto 保持一致的状态联合类型
+  status: 'committed' | 'published';
   photos: GalleryPhotoDto[];
   /** frontmatter.cover 指定的封面图文件名，null 表示退化为首图。 */
   coverPhotoFileName: string | null;

@@ -27,6 +27,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -219,6 +220,8 @@ export function serializeGalleryContent(data: {
 
 @Injectable()
 export class GalleryViewService {
+  private readonly logger = new Logger(GalleryViewService.name);
+
   constructor(
     private readonly contentRepository: ContentRepository,
     private readonly contentRepoService: ContentRepoService,
@@ -282,7 +285,13 @@ export class GalleryViewService {
     const [source, assets] = await Promise.all([
       this.contentRepoService
         .readContentSource(contentItemId, { scope: 'gallery', commitHash })
-        .catch(() => null),
+        .catch((err: unknown) => {
+          // main.md 不存在时属于正常情况（刚创建的内容），其他错误也静默降级
+          this.logger.warn(
+            `readContentSource 失败, 返回 null: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          return null;
+        }),
       this.contentRepoService.listAssets(contentItemId),
     ]);
     const parsed = source
@@ -571,8 +580,11 @@ export class GalleryViewService {
         { scope: 'gallery' },
       );
       parsed = parseGalleryContent(source.bodyMarkdown);
-    } catch {
+    } catch (err: unknown) {
       // main.md 还不存在（刚创建的条目），使用默认空值
+      this.logger.warn(
+        `toEditorDto: 读取内容失败 (${contentItemId}), 使用默认空值: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     const photos: GalleryEditorPhotoDto[] = parsed.photos
@@ -863,7 +875,11 @@ export class GalleryViewService {
       }
 
       return tags;
-    } catch {
+    } catch (err: unknown) {
+      // PNG/WebP 通常没有 EXIF，提取失败属于正常情况；JPEG 失败时记录以便排查
+      this.logger.warn(
+        `extractExif: EXIF 提取失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
       return {};
     }
   }

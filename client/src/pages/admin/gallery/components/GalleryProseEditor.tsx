@@ -70,8 +70,9 @@ export function GalleryProseEditor({
     try {
       const md = serializeMd(editor);
       onChange(md);
-    } catch {
+    } catch (err) {
       /* 快速编辑时序列化偶尔失败，跳过本次，下次变更会补上 */
+      if (import.meta.env.DEV) console.warn('[GalleryProseEditor] 序列化失败 (通常为暂态):', err);
     }
   }, [editor, onChange]);
 

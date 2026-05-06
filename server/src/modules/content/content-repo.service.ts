@@ -331,7 +331,11 @@ export class ContentRepoService {
       return assets.sort((left, right) =>
         left.fileName.localeCompare(right.fileName),
       );
-    } catch {
+    } catch (err: unknown) {
+      // 目录不存在（刚创建的内容还没有 assets 目录）属于正常情况，warn 级别即可
+      this.logger.warn(
+        `listAssets: 读取资产目录失败 (${contentId}): ${err instanceof Error ? err.message : String(err)}`,
+      );
       return [];
     }
   }
@@ -363,8 +367,11 @@ export class ContentRepoService {
       bodyMarkdown = options?.commitHash
         ? await this.readVersionedMainMarkdown(contentId, options.commitHash)
         : await readFile(this.getMainMarkdownPath(contentId), 'utf8');
-    } catch {
+    } catch (err: unknown) {
       /* main.md 不存在（刚创建还没第一次提交），返回空内容 */
+      this.logger.warn(
+        `readContentSource: 读取内容失败 (${contentId}), 返回空内容: ${err instanceof Error ? err.message : String(err)}`,
+      );
       return { bodyMarkdown: '', plainText: '', assetRefs: [] };
     }
     /* 将 ./assets/ 相对路径改写为 API 绝对路径，scope 由调用方传入。
@@ -406,8 +413,13 @@ export class ContentRepoService {
     const filePath = this.resolveAssetPath(contentId, fileName);
     try {
       await unlink(filePath);
-    } catch {
-      // File already gone
+    } catch (err: unknown) {
+      // ENOENT 表示文件已不存在，属于幂等预期；其他错误才值得记录
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        this.logger.warn(
+          `deleteAsset: 删除失败 (${filePath}): ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
   }
 

@@ -20,9 +20,9 @@ import {
 } from 'react';
 import { Plate, usePlateEditor } from 'platejs/react';
 import { deserializeMd } from '@platejs/markdown';
-import type { TElement } from 'platejs';
 import { motion } from 'motion/react';
 
+import { fixCodeBlockLines } from '@/components/shared/plate-transforms';
 import { BasicNodesKit } from '@/components/editor/plugins/basic-nodes-kit';
 import { CodeBlockKit } from '@/components/editor/plugins/code-block-kit';
 import { DateKit } from '@/components/editor/plugins/date-kit';
@@ -55,28 +55,6 @@ const ReadOnlyPlugins = [
     options: { remarkPlugins: [remarkGfm, remarkMath] },
   }),
 ];
-
-/**
- * deserializeMd 会把 code_block 的所有行合并成单个 code_line，
- * 按 \n 拆分回多个 code_line 节点。
- */
-function fixCodeBlockLines(nodes: TElement[]): TElement[] {
-  return nodes.map((node) => {
-    if (node.type !== 'code_block') return node;
-    const fixedChildren: TElement[] = [];
-    for (const child of node.children as TElement[]) {
-      if (child.type !== 'code_line') {
-        fixedChildren.push(child);
-        continue;
-      }
-      const text = (child.children as { text: string }[]).map((c) => c.text).join('');
-      for (const line of text.split('\n')) {
-        fixedChildren.push({ type: 'code_line', children: [{ text: line }] } as TElement);
-      }
-    }
-    return { ...node, children: fixedChildren };
-  });
-}
 
 /** 骨架屏：模拟文本行的脉冲条，比文字更自然 */
 function ReadOnlySkeleton() {

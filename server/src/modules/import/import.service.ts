@@ -142,7 +142,11 @@ export class ImportService {
       reply.header('Content-Type', contentType);
       reply.header('Cache-Control', 'max-age=300');
       reply.send(buffer);
-    } catch {
+    } catch (err: unknown) {
+      // MinIO 对象不存在或不可用，统一返回 404
+      this.logger.warn(
+        `getPreviewAsset: 读取资产失败 (${parseId}/${fileName}): ${err instanceof Error ? err.message : String(err)}`,
+      );
       reply.status(404).send({ message: 'Asset not found' });
     }
   }
@@ -356,8 +360,11 @@ export class ImportService {
           this.logger.log(`Cleaned orphaned import files: ${parseId}`);
         }
       }
-    } catch {
-      // MinIO 不可用时静默忽略
+    } catch (err: unknown) {
+      // MinIO 不可用时静默忽略，但记录 warn 以便排查
+      this.logger.warn(
+        `cleanupOrphanedFiles: 清理失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 }

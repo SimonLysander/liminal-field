@@ -106,31 +106,7 @@ describe('MarkdownPostProcessor', () => {
     });
   });
 
-  describe('latexBlockToCodeBlock', () => {
-    it('converts $$...$$ to fenced code block', () => {
-      const input = 'before\n$$\nx^2 + y^2\n$$\nafter';
-      const result = processMarkdown(input);
-      expect(result).toContain('```');
-      expect(result).toContain('x^2 + y^2');
-      expect(result).not.toContain('$$');
-    });
-  });
-
-  describe('latexInlineToCode', () => {
-    it('converts $...$ to inline code', () => {
-      const input = 'the value $x + 1$ is good';
-      const result = processMarkdown(input);
-      expect(result).toContain('`x + 1`');
-      expect(result).not.toMatch(/\$x \+ 1\$/);
-    });
-
-    it('does not match across newlines', () => {
-      const input = 'price is $100\nnext line $200';
-      const result = processMarkdown(input);
-      // 不应该匹配跨行的 $...$
-      expect(result).toContain('$100');
-    });
-  });
+  // latexBlockToCodeBlock 和 latexInlineToCode 规则已移除，由前端 Plate EquationPlugin 处理
 
   describe('escapeBracesOutsideCode', () => {
     it('escapes { } in normal text', () => {
@@ -191,8 +167,8 @@ describe('MarkdownPostProcessor', () => {
       expect(result).not.toContain('<div');
       // highlight
       expect(result).toContain('<mark>重点概念</mark>');
-      // LaTeX → code
-      expect(result).toContain('`x \\in D`');
+      // LaTeX 行内公式保留为 $...$（由前端 Plate EquationPlugin 渲染）
+      expect(result).toContain('$x \\in D$');
       // table
       expect(result).toContain('| Name | Value |');
       // braces escaped

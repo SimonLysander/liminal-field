@@ -57,7 +57,9 @@ export default function ImportPreviewPage() {
         setTitle(parsed.title);
         setAssets(parsed.assets);
       })
-      .catch(() => {
+      .catch((err) => {
+        // 导入会话加载失败（通常为过期），记录错误后提示用户重试
+        console.error('[ImportPreview] 加载导入会话失败:', err);
         toast.info('导入会话已过期，请重新上传');
         navigate('/admin/notes');
       })
