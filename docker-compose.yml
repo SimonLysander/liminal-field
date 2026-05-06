@@ -69,10 +69,27 @@ services:
     restart: unless-stopped
     depends_on:
       - server
+    # 不再直接暴露端口，由 Caddy 统一代理
+    # 调试时可取消注释：ports: ["4399:80"]
+
+  caddy:
+    image: docker.1ms.run/caddy:2
+    restart: unless-stopped
+    depends_on:
+      - client
     ports:
-      - "4399:80"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:-localhost}
 
 volumes:
   mongo-data:
   minio-data:
   kb-data:
+  caddy-data:
+  caddy-config:
