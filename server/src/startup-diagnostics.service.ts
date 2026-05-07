@@ -89,7 +89,7 @@ export class StartupDiagnosticsService implements OnApplicationBootstrap {
         lines: [mongoLine],
       },
       {
-        title: '[2] MinIO',
+        title: '[2] OSS (Aliyun)',
         lines: [minioLine],
       },
       {

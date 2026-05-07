@@ -7,14 +7,6 @@ mongo:
   options:
     authSource: admin
 
-minio:
-  endpoint: ${MINIO_HOST}
-  port: ${MINIO_PORT}
-  useSSL: false
-  accessKey: ${MINIO_USER}
-  secretKey: ${MINIO_PASSWORD}
-  bucket: ${MINIO_BUCKET}
-
 content:
   repoRoot: ${CONTENT_REPO_ROOT}
 

@@ -35,8 +35,8 @@ import { AuthModule } from '../src/modules/auth/auth.module';
 import { ContentModule } from '../src/modules/content/content.module';
 import { NavigationModule } from '../src/modules/navigation/navigation.module';
 import { WorkspaceModule } from '../src/modules/workspace/workspace.module';
-import { MinioModule } from '../src/modules/minio/minio.module';
-import { MinioService } from '../src/modules/minio/minio.service';
+import { OssModule } from '../src/modules/oss/oss.module';
+import { OssService } from '../src/modules/oss/oss.service';
 import { ResponseWrapperInterceptor } from '../src/common/response-wrapper.interceptor';
 import { RequestLoggerInterceptor } from '../src/common/request-logger.interceptor';
 import { AllExceptionsFilter } from '../src/common/all-exceptions.filter';
@@ -82,14 +82,12 @@ export class TestContext {
               content: {
                 repoRoot: this.tmpGitDir,
               },
-              // minio 配置需要存在（MinioService 构造器里调 getOrThrow），
+              // oss 配置需要存在（OssService 构造器里调 getOrThrow），
               // 但会被 overrideProvider 完全替换，值本身不生效
-              minio: {
-                endpoint: 'localhost',
-                port: 9000,
-                useSSL: false,
-                accessKey: 'test',
-                secretKey: 'test',
+              oss: {
+                region: 'oss-cn-beijing',
+                accessKeyId: 'test',
+                accessKeySecret: 'test',
                 bucket: 'test-bucket',
               },
             }),
@@ -98,15 +96,15 @@ export class TestContext {
         // TypegooseModule 直接连内存 MongoDB，跳过 yaml 配置中的生产 URI
         TypegooseModule.forRoot(mongoUri),
         ScheduleModule.forRoot(),
-        MinioModule,
+        OssModule,
         AuthModule,
         ContentModule,
         NavigationModule,
         WorkspaceModule,
       ],
     })
-      // MinioService.onModuleInit 会尝试连真实 MinIO，E2E 中完全 mock 掉
-      .overrideProvider(MinioService)
+      // OssService.onModuleInit 会尝试连真实 OSS，E2E 中完全 mock 掉
+      .overrideProvider(OssService)
       .useValue({
         onModuleInit: jest.fn(),
         uploadDraftAsset: jest.fn().mockResolvedValue('mock-file.jpg'),

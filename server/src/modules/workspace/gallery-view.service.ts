@@ -52,7 +52,7 @@ import {
 } from './dto/gallery-view.dto';
 import { EditorDraftRepository } from './editor-draft.repository';
 import { SaveGalleryPostDto } from './dto/save-gallery-post.dto';
-import { MinioService } from '../minio/minio.service';
+import { OssService } from '../oss/oss.service';
 import { NavigationRepository } from '../navigation/navigation.repository';
 import { NavigationNodeType } from '../navigation/navigation.entity';
 
@@ -230,7 +230,7 @@ export class GalleryViewService {
     private readonly contentRepoService: ContentRepoService,
     private readonly contentService: ContentService,
     private readonly editorDraftRepository: EditorDraftRepository,
-    private readonly minioService: MinioService,
+    private readonly minioService: OssService,
     private readonly navigationRepository: NavigationRepository,
     private readonly snapshotRepository: ContentSnapshotRepository,
   ) {}

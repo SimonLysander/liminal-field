@@ -3,7 +3,7 @@ import { NoteViewService } from '../note-view.service';
 import { ContentService } from '../../content/content.service';
 import { ContentRepoService } from '../../content/content-repo.service';
 import { ContentGitService } from '../../content/content-git.service';
-import { MinioService } from '../../minio/minio.service';
+import { OssService } from '../../oss/oss.service';
 import { EditorDraftRepository } from '../editor-draft.repository';
 
 describe('NoteViewService', () => {
@@ -12,7 +12,7 @@ describe('NoteViewService', () => {
   let contentRepoService: jest.Mocked<ContentRepoService>;
   let contentGitService: jest.Mocked<ContentGitService>;
   let editorDraftRepository: jest.Mocked<EditorDraftRepository>;
-  let minioService: jest.Mocked<MinioService>;
+  let minioService: jest.Mocked<OssService>;
 
   beforeEach(() => {
     contentService = {
@@ -46,7 +46,7 @@ describe('NoteViewService', () => {
       getDraftAsset: jest.fn(),
       deleteDraftAssets: jest.fn(),
       moveDraftAssetsToDisk: jest.fn(),
-    } as unknown as jest.Mocked<MinioService>;
+    } as unknown as jest.Mocked<OssService>;
 
     service = new NoteViewService(
       contentService,

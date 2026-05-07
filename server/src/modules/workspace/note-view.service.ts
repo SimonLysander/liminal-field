@@ -14,7 +14,7 @@ import { join, parse, extname } from 'path';
 import { ContentService } from '../content/content.service';
 import { ContentRepoService } from '../content/content-repo.service';
 import { ContentGitService } from '../content/content-git.service';
-import { MinioService } from '../minio/minio.service';
+import { OssService } from '../oss/oss.service';
 import { ContentDetailDto } from '../content/dto/content-detail.dto';
 import { ContentListItemDto } from '../content/dto/content-list-item.dto';
 import { ContentHistoryEntryDto } from '../content/dto/content-history.dto';
@@ -39,7 +39,7 @@ export class NoteViewService {
     private readonly contentRepoService: ContentRepoService,
     private readonly contentGitService: ContentGitService,
     private readonly editorDraftRepository: EditorDraftRepository,
-    private readonly minioService: MinioService,
+    private readonly minioService: OssService,
   ) {}
 
   private toDraftDto(draft: EditorDraft): EditorDraftDto {
