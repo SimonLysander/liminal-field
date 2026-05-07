@@ -8,7 +8,7 @@ import { ContentModule } from './modules/content/content.module';
 import { NavigationModule } from './modules/navigation/navigation.module';
 import { WorkspaceModule } from './modules/workspace/workspace.module';
 import { AuthModule } from './modules/auth/auth.module';
-import { MinioModule } from './modules/minio/minio.module';
+import { OssModule } from './modules/oss/oss.module';
 import { ImportModule } from './modules/import/import.module';
 import { HomeModule } from './modules/home/home.module';
 import { yamlLoader } from './config/yaml.loader';
@@ -35,7 +35,7 @@ import { StartupDiagnosticsService } from './startup-diagnostics.service';
       },
     }),
     ScheduleModule.forRoot(),
-    MinioModule,
+    OssModule,
     AuthModule,
     ContentModule,
     NavigationModule,

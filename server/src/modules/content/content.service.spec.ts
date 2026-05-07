@@ -52,11 +52,15 @@ function createMocks() {
   // 传空对象即可满足构造函数要求。
   const mockRepoService = {} as never;
   const mockGitService = {} as never;
+  const mockSnapshotRepository = {
+    listByContentItemId: jest.fn().mockResolvedValue([]),
+  };
 
   const service = new ContentService(
     mockRepository as never,
     mockRepoService,
     mockGitService,
+    mockSnapshotRepository as never,
   );
 
   return { service, mockRepository };

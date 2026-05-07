@@ -7,7 +7,7 @@ import {
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { randomUUID } from 'crypto';
 import { parse as parsePath } from 'path';
-import { MinioService } from '../minio/minio.service';
+import { OssService } from '../oss/oss.service';
 import { ContentRepoService } from '../content/content-repo.service';
 import { ContentGitService } from '../content/content-git.service';
 import { ContentRepository } from '../content/content.repository';
@@ -31,7 +31,7 @@ export class ImportService {
   private readonly logger = new Logger(ImportService.name);
 
   constructor(
-    private readonly minioService: MinioService,
+    private readonly minioService: OssService,
     private readonly mineruService: MineruService,
     private readonly importSessionRepo: ImportSessionRepository,
     private readonly contentRepoService: ContentRepoService,
