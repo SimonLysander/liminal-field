@@ -677,13 +677,36 @@ export class GalleryViewService {
     };
   }
 
-  /** 直接读取照片文件 buffer，用于文件直出端点。支持 commitHash 读取历史版本资源。 */
-  /** V2: 从磁盘读取资源文件（Phase 1 OSS 后改为从 OSS 读取）。 */
+  /**
+   * V2: 读取照片文件，优先磁盘，磁盘未命中时回退 OSS draft/ 路径。
+   * 草稿照片提交后异步下载到磁盘，在此期间从 OSS 直接读取避免 404。
+   */
   async readPhotoBuffer(
     contentItemId: string,
     fileName: string,
   ): Promise<{ buffer: Buffer; contentType: string }> {
-    return this.contentRepoService.readAssetBuffer(contentItemId, fileName);
+    try {
+      return await this.contentRepoService.readAssetBuffer(
+        contentItemId,
+        fileName,
+      );
+    } catch {
+      // 磁盘未命中（异步归档尚未完成），回退 OSS draft 路径
+      const ossKey = `draft/${contentItemId}/${fileName}`;
+      const buffer = await this.minioService.getObject(ossKey);
+      const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+      const mimeMap: Record<string, string> = {
+        png: 'image/png',
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        webp: 'image/webp',
+        gif: 'image/gif',
+      };
+      return {
+        buffer,
+        contentType: mimeMap[ext] ?? 'application/octet-stream',
+      };
+    }
   }
 
   /**
@@ -717,20 +740,13 @@ export class GalleryViewService {
     contentItemId: string,
     dto: SaveGalleryPostDto,
   ): Promise<GalleryAdminDetailDto> {
-    // 1. 将 MinIO 草稿照片下载到 Git assets 目录
-    const assetsDir = join(
-      this.contentRepoService.getContentDirectoryPath(contentItemId),
-      'assets',
-    );
-    const materialized = await this.minioService.moveDraftAssetsToDisk(
-      contentItemId,
-      assetsDir,
-    );
+    // V2: 草稿照片下载到磁盘 + 清理 OSS 改为异步，不阻塞提交请求。
+    // 照片在 OSS draft/{id}/ 下仍可访问，serveAsset 磁盘未命中时回退 OSS。
 
-    // 2. 序列化 frontmatter + prose → main.md
+    // 1. 序列化 frontmatter + prose → main.md
     const bodyMarkdown = this.serializeDto(dto);
 
-    // 3. 写入 Git
+    // 2. 写入 ContentSnapshot + ContentItem（同步），Git 后台异步归档
     await this.contentService.saveContent(contentItemId, {
       title: dto.title,
       summary: dto.title,
@@ -740,16 +756,39 @@ export class GalleryViewService {
       action: ContentSaveAction.commit,
     });
 
-    // 4. 提交成功后清理 MinIO 草稿照片
-    if (materialized.length > 0) {
-      await this.minioService.deleteDraftAssets(contentItemId);
-    }
+    // 3. 后台：下载草稿照片到磁盘 + Git 归档 + 清理 OSS
+    void this.archiveDraftAssets(contentItemId).catch((err: unknown) => {
+      this.logger.warn(
+        `archiveDraftAssets failed for ${contentItemId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
 
     return this.toAdminDetailDto(contentItemId);
   }
 
   /**
    * 保存画廊草稿：只写 MongoDB，不触发 Git commit。
+   * V2: 后台将草稿照片从 OSS 下载到磁盘（供 Git 归档），完成后清理 OSS 草稿。
+   * fire-and-forget，失败不影响用户操作。
+   */
+  private async archiveDraftAssets(contentItemId: string): Promise<void> {
+    const assetsDir = join(
+      this.contentRepoService.getContentDirectoryPath(contentItemId),
+      'assets',
+    );
+    const materialized = await this.minioService.moveDraftAssetsToDisk(
+      contentItemId,
+      assetsDir,
+    );
+    if (materialized.length > 0) {
+      await this.minioService.deleteDraftAssets(contentItemId);
+      this.logger.log(
+        `Archived ${materialized.length} draft assets for ${contentItemId}`,
+      );
+    }
+  }
+
+  /**
    * 序列化在后端完成，前端只发结构化 JSON。
    */
   async saveDraft(

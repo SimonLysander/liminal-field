@@ -23,7 +23,8 @@ export function PhotoLightbox({ open, urls, initialIndex, onClose }: PhotoLightb
       index={initialIndex}
       slides={urls.map((src) => ({ src }))}
       styles={{
-        container: { backgroundColor: 'rgba(0, 0, 0, 0.6)', backdropFilter: 'blur(12px)' },
+        // 用高不透明度替代 backdropFilter: blur()，避免大图背景模糊导致严重卡顿
+        container: { backgroundColor: 'rgba(0, 0, 0, 0.85)' },
       }}
     />
   );
