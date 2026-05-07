@@ -388,9 +388,7 @@ export default function GalleryAdmin() {
                       };
                     }),
                     photoCount: preview.photos.length,
-                  } : history.length === 0
-                    ? { ...detail, photos: [], prose: '', photoCount: 0 }
-                    : detail;
+                  } : detail;
 
                   return (
                     <GalleryPostPreview

@@ -441,9 +441,10 @@ export class GalleryViewService {
         ? this.buildPhotoUrl(contentItemId, coverAsset.fileName)
         : null,
       photoCount: imageAssets.length,
+      // V2: 用 versionId 比较（commitHash 异步回填，可能延迟）
       hasUnpublishedChanges: content.publishedVersion
-        ? content.latestVersion?.commitHash !==
-          content.publishedVersion?.commitHash
+        ? content.latestVersion?.versionId !==
+          content.publishedVersion?.versionId
         : false,
       date: parsed.date,
       location: parsed.location,
@@ -529,9 +530,10 @@ export class GalleryViewService {
       status: content.publishedVersion ? 'published' : 'committed',
       photos,
       coverPhotoFileName: parsed.cover,
+      // V2: 用 versionId 比较（commitHash 异步回填，可能延迟）
       hasUnpublishedChanges: content.publishedVersion
-        ? content.latestVersion?.commitHash !==
-          content.publishedVersion?.commitHash
+        ? content.latestVersion?.versionId !==
+          content.publishedVersion?.versionId
         : false,
       publishedCommitHash: content.publishedVersion?.commitHash ?? null,
       date: parsed.date,
