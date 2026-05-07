@@ -13,9 +13,11 @@ export const yamlLoader = () => {
   loadDotEnv();
 
   let raw = readFileSync(join(process.cwd(), 'configs/db.yaml'), 'utf8');
+  // 支持 ${VAR} 和 ${VAR:default} 两种格式
   raw = raw.replace(
-    /\$\{(\w+)\}/g,
-    (_sub: string, key: string) => process.env[key] ?? '',
+    /\$\{(\w+)(?::([^}]*))?\}/g,
+    (_sub: string, key: string, fallback?: string) =>
+      process.env[key] ?? fallback ?? '',
   );
   return yaml.load(raw) as Record<string, unknown>;
 };
