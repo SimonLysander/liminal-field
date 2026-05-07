@@ -38,6 +38,15 @@ type EditorState = {
 type HeadingEntry = { level: number; text: string; index: number };
 
 /** 模块级纯函数：避免 useMemo 内对闭包变量重新赋值触发 react-hooks 不可变/纯度规则 */
+/** 清理标题中的 LaTeX 定界符：$$...$$ 移除，$...$ 保留内容 */
+function stripLatexForToc(raw: string): string {
+  return raw
+    .replace(/\$\$[\s\S]*?\$\$/g, ' ')
+    .replace(/\$([^$]+)\$/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function extractHeadingEntriesFromMarkdown(bodyMarkdown: string): HeadingEntry[] {
   const acc: HeadingEntry[] = [];
   let idx = 0;
@@ -50,7 +59,9 @@ function extractHeadingEntriesFromMarkdown(bodyMarkdown: string): HeadingEntry[]
     if (inCodeBlock) continue;
     const match = line.match(/^(#{1,3})\s+(.+)$/);
     if (match) {
-      acc.push({ level: match[1].length, text: match[2].trim(), index: idx });
+      const text = stripLatexForToc(match[2].trim());
+      if (!text) continue;
+      acc.push({ level: match[1].length, text, index: idx });
       idx += 1;
     }
   }
