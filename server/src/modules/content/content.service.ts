@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { nanoid } from 'nanoid';
 import {
   ContentChangeLog,
   ContentChangeType,
@@ -14,6 +15,7 @@ import {
 import { ContentGitService } from './content-git.service';
 import { ContentRepoService } from './content-repo.service';
 import { ContentRepository } from './content.repository';
+import { ContentSnapshotRepository } from './content-snapshot.repository';
 import { ChangeLogDto } from './dto/change-log.dto';
 import { ContentDetailDto } from './dto/content-detail.dto';
 import { extractHeadings } from '../../common/extract-headings';
@@ -29,10 +31,16 @@ export class ContentService {
     private readonly contentRepository: ContentRepository,
     private readonly contentRepoService: ContentRepoService,
     private readonly contentGitService: ContentGitService,
+    private readonly snapshotRepository: ContentSnapshotRepository,
   ) {}
 
   private buildContentId(): string {
     return `ci_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+  }
+
+  /** V2: 生成版本标识符，不依赖 Git commitHash，snapshot 创建即可用 */
+  private generateVersionId(): string {
+    return nanoid(16);
   }
 
   private toChangeLogDto(changeLog: ContentChangeLog): ChangeLogDto {
@@ -43,8 +51,10 @@ export class ContentService {
     commitHash: string,
     title: string,
     summary?: string,
+    versionId?: string,
   ): ContentVersion {
     return {
+      versionId,
       commitHash,
       title,
       summary,
@@ -246,10 +256,23 @@ export class ContentService {
     const now = new Date();
     const id = this.buildContentId();
     const summary = dto.summary || dto.title;
+    const versionId = this.generateVersionId();
+
+    // V2: 创建时即生成初始快照（空正文），确保 getContentById 始终能查到 snapshot
+    await this.snapshotRepository.create({
+      versionId,
+      contentItemId: id,
+      title: dto.title,
+      summary,
+      bodyMarkdown: '',
+      assetRefs: [],
+      createdAt: now,
+      changeNote: '',
+    });
 
     const content = await this.contentRepository.create({
       id,
-      latestVersion: { commitHash: '', title: dto.title, summary },
+      latestVersion: { versionId, commitHash: '', title: dto.title, summary },
       publishedVersion: null,
       changeLogs: [],
       createdAt: now,
@@ -325,17 +348,34 @@ export class ContentService {
           current.id,
           dto.changeNote,
         );
+      const versionId = this.generateVersionId();
       if (committedHash) {
         nextLatestVersion = this.buildVersionSnapshot(
           committedHash,
           dto.title,
           summary,
+          versionId,
         );
         nextChangeLogs[0] = {
           ...nextChangeLogs[0],
           commitHash: committedHash,
         };
       }
+
+      // V2: 创建版本快照，公开读取将从此处读取而非 git show
+      await this.snapshotRepository.create({
+        versionId,
+        contentItemId: id,
+        title: dto.title,
+        summary,
+        bodyMarkdown: dto.bodyMarkdown,
+        assetRefs: this.contentRepoService
+          .extractAssetRefs(dto.bodyMarkdown)
+          .map((ref) => ref.path),
+        createdAt: now,
+        changeNote: dto.changeNote ?? '',
+        commitHash: committedHash ?? undefined,
+      });
     }
 
     if (dto.action === ContentSaveAction.publish) {
@@ -343,12 +383,22 @@ export class ContentService {
        * 发布指定版本：dto.publishCommitHash 指定历史 commitHash，
        * 直接把 publishedVersion 指向该版本，不产生新提交。
        * 未指定时默认发布 latestVersion（兼容原行为）。
+       * V2: 继承 latestVersion.versionId 或按 commitHash 查找对应 snapshot。
        */
       const targetHash = dto.publishCommitHash ?? nextLatestVersion.commitHash;
+      let targetVersionId = nextLatestVersion.versionId;
+      if (dto.publishCommitHash) {
+        const snapshots = await this.snapshotRepository.listByContentItemId(id);
+        const matched = snapshots.find(
+          (s) => s.commitHash === dto.publishCommitHash,
+        );
+        targetVersionId = matched?.versionId;
+      }
       nextPublishedVersion = this.buildVersionSnapshot(
         targetHash,
         nextLatestVersion.title,
         nextLatestVersion.summary ?? '',
+        targetVersionId,
       );
     }
 
@@ -357,11 +407,27 @@ export class ContentService {
     }
 
     if (!dto.action) {
+      const versionId = this.generateVersionId();
       nextLatestVersion = this.buildVersionSnapshot(
         nextLatestVersion.commitHash,
         dto.title,
         summary,
+        versionId,
       );
+
+      // V2: 无 action 的保存也创建快照（写入 Markdown 但不产生 git commit）
+      await this.snapshotRepository.create({
+        versionId,
+        contentItemId: id,
+        title: dto.title,
+        summary,
+        bodyMarkdown: dto.bodyMarkdown,
+        assetRefs: this.contentRepoService
+          .extractAssetRefs(dto.bodyMarkdown)
+          .map((ref) => ref.path),
+        createdAt: now,
+        changeNote: dto.changeNote ?? '',
+      });
     }
 
     const updated = await this.contentRepository.update(id, {
@@ -410,10 +476,20 @@ export class ContentService {
     const title = changeLog?.title ?? latestVersion.title;
     const summary = changeLog?.summary ?? latestVersion.summary ?? '';
 
+    // V2: 发布时需要关联 versionId，优先从 latestVersion 继承（默认发布最新版），
+    // 发布历史版本时按 commitHash 查找对应的 snapshot。
+    let targetVersionId = latestVersion.versionId;
+    if (commitHash) {
+      const snapshots = await this.snapshotRepository.listByContentItemId(id);
+      const matched = snapshots.find((s) => s.commitHash === commitHash);
+      targetVersionId = matched?.versionId;
+    }
+
     const publishedVersion = this.buildVersionSnapshot(
       targetHash,
       title,
       summary,
+      targetVersionId,
     );
 
     await this.contentRepository.update(id, {
@@ -459,17 +535,46 @@ export class ContentService {
     }
 
     const publicView = query?.visibility !== ContentVisibility.all;
-    const publishedVersion = this.resolvePublishedVersion(content);
-    const source = await this.contentRepoService.readContentSource(id, {
-      commitHash:
-        publicView && publishedVersion
-          ? publishedVersion.commitHash
-          : undefined,
-      scope: options?.scope,
-    });
-    return this.toDetailDto(content, source, {
-      publicView,
-    });
+
+    // V2: 从 ContentSnapshot 读取正文，不再走 Git show / fs.readFile。
+    // 公开视图读已发布版本的快照，管理视图读最新版本的快照。
+    const versionId = publicView
+      ? content.publishedVersion?.versionId
+      : content.latestVersion?.versionId;
+
+    if (!versionId) {
+      throw new NotFoundException(`Content ${id} has no snapshot`);
+    }
+
+    const snapshot = await this.snapshotRepository.findByVersionId(versionId);
+    if (!snapshot) {
+      throw new NotFoundException(
+        `Snapshot ${versionId} not found for content ${id}`,
+      );
+    }
+
+    // 将 ./assets/ 相对路径改写为 API 绝对路径，与旧的 readContentSource 逻辑保持一致。
+    // V2 用 versionId 作为缓存破坏参数，替代旧的 commitHash。
+    const scope = options?.scope ?? 'notes';
+    const versionSuffix = `?v=${versionId}`;
+    const resolvedMarkdown = snapshot.bodyMarkdown
+      .replaceAll(
+        /\.\/assets\//g,
+        `/api/v1/spaces/${scope}/items/${id}/assets/`,
+      )
+      .replaceAll(
+        new RegExp(
+          `/api/v1/spaces/${scope}/items/${id}/assets/([^)\\s"]+)`,
+          'g',
+        ),
+        (match) => `${match}${versionSuffix}`,
+      );
+
+    return this.toDetailDto(
+      content,
+      { bodyMarkdown: resolvedMarkdown },
+      { publicView },
+    );
   }
 
   async getContentByVersion(

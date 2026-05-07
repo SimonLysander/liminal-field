@@ -31,6 +31,10 @@ export class ContentChangeLog {
 }
 
 export class ContentVersion {
+  /** V2: nanoid 版本标识，不依赖 Git；optional 保证旧文档向后兼容 */
+  @prop({ trim: true })
+  versionId?: string;
+
   /** 创建后第一次提交前为空字符串，提交后填入真实 git commitHash */
   @prop({ trim: true, default: '' })
   commitHash!: string;
