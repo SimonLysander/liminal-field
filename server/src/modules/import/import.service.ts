@@ -294,6 +294,9 @@ export class ImportService {
       updatedAt: now,
     });
 
+    // TODO: Phase 3 后续优化——import confirm 当前仍同步执行 Git commit，
+    // 因导入是低频操作且需要 commitHash 做节点关联，暂保留同步方式。
+    // 如需异步化，可参考 ContentService.archiveToGit 的 fire-and-forget 模式。
     let commitHash: string | null;
     try {
       commitHash = await this.contentGitService.recordCommittedContentChange(

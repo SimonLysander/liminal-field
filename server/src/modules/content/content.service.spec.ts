@@ -20,6 +20,7 @@ function buildContentItem(overrides: {
     _id: id,
     id,
     latestVersion: {
+      versionId: 'test-vid-001',
       commitHash: latestHash,
       title: '测试标题',
       summary: '摘要',
@@ -114,9 +115,11 @@ describe('ContentService.publishVersion', () => {
     );
   });
 
-  it('latestVersion 没有 commitHash（从未提交）→ 抛 BadRequestException', async () => {
+  it('V2: latestVersion 没有 versionId → 抛 BadRequestException', async () => {
     const { service, mockRepository } = createMocks();
-    const item = buildContentItem({ latestCommitHash: '' }); // 空 hash = 未提交
+    const item = buildContentItem({ latestCommitHash: '' });
+    // V2: 移除 versionId 模拟从未创建 snapshot 的情况
+    (item.latestVersion as Record<string, unknown>).versionId = undefined;
     mockRepository.findById.mockResolvedValue(item);
 
     await expect(service.publishVersion('ci_test001')).rejects.toThrow(
