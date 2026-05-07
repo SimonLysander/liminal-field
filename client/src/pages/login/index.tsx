@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '@/services/auth';
+import { resetAuth } from '@/App';
 import { parseError } from '@/pages/admin/helpers';
 
 export default function LoginPage() {
@@ -15,6 +16,8 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await authApi.login(password);
+      // 清除 AuthGuard 的鉴权缓存，否则旧的 isAuthenticated=false 会阻止跳转
+      resetAuth();
       navigate('/admin', { replace: true });
     } catch (err) {
       setError(parseError(err, '登录失败'));
