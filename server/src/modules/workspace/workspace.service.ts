@@ -14,6 +14,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ContentService } from '../content/content.service';
 import { ContentRepository } from '../content/content.repository';
 import { ContentRepoService } from '../content/content-repo.service';
+import { ContentSnapshotRepository } from '../content/content-snapshot.repository';
 import { ContentStatus } from '../content/content-item.entity';
 import { ContentSaveAction } from '../content/dto/save-content.dto';
 import { NavigationRepository } from '../navigation/navigation.repository';
@@ -43,6 +44,7 @@ export class WorkspaceService {
     private readonly contentService: ContentService,
     private readonly contentRepository: ContentRepository,
     private readonly contentRepoService: ContentRepoService,
+    private readonly snapshotRepository: ContentSnapshotRepository,
     private readonly navigationRepository: NavigationRepository,
   ) {}
 
@@ -122,7 +124,7 @@ export class WorkspaceService {
     return items;
   }
 
-  /** 获取条目详情：读取 Content 存储层的 Markdown 源文件 + 元数据。 */
+  /** 获取条目详情：V2 从 ContentSnapshot 读取正文，不再读磁盘文件。 */
   async getById(
     scope: string,
     contentItemId: string,
@@ -131,13 +133,36 @@ export class WorkspaceService {
     if (!content)
       throw new NotFoundException(`Item ${contentItemId} not found`);
 
-    const source = await this.contentRepoService.readContentSource(
-      contentItemId,
-      { scope },
-    );
     const version = content.latestVersion!;
-    const bodyMarkdown =
-      source.bodyMarkdown === EMPTY_BODY_PLACEHOLDER ? '' : source.bodyMarkdown;
+
+    // V2: 从最新版本快照读取正文，替代 readContentSource（不再读磁盘）。
+    // 尚无快照（刚创建未提交）时返回空字符串。
+    let bodyMarkdown = '';
+    const versionId = version.versionId;
+    if (versionId) {
+      const snapshot = await this.snapshotRepository.findByVersionId(versionId);
+      if (snapshot) {
+        const rawBody = snapshot.bodyMarkdown;
+        // 将 ./assets/ 相对路径改写为 API 绝对路径（与旧 readContentSource 保持一致）
+        const versionSuffix = `?v=${versionId}`;
+        bodyMarkdown = rawBody
+          .replaceAll(
+            /\.\/assets\//g,
+            `/api/v1/spaces/${scope}/items/${contentItemId}/assets/`,
+          )
+          .replaceAll(
+            new RegExp(
+              `/api/v1/spaces/${scope}/items/${contentItemId}/assets/([^)\\s"]+)`,
+              'g',
+            ),
+            (match) => `${match}${versionSuffix}`,
+          );
+        // 零宽空格占位符（画廊空白正文）对外展示为空字符串
+        if (bodyMarkdown === EMPTY_BODY_PLACEHOLDER) {
+          bodyMarkdown = '';
+        }
+      }
+    }
 
     return {
       id: contentItemId,
@@ -146,7 +171,6 @@ export class WorkspaceService {
       // 修正：与 WorkspaceItemDto 声明的 'committed' | 'published' 保持一致
       status: content.publishedVersion ? 'published' : 'committed',
       bodyMarkdown,
-      plainText: source.plainText,
       createdAt: content.createdAt.toISOString(),
       updatedAt: content.updatedAt.toISOString(),
     };
@@ -170,9 +194,16 @@ export class WorkspaceService {
     if (dto.bodyMarkdown !== undefined) {
       bodyMarkdown = dto.bodyMarkdown || EMPTY_BODY_PLACEHOLDER;
     } else {
-      const source =
-        await this.contentRepoService.readContentSource(contentItemId);
-      bodyMarkdown = source.bodyMarkdown;
+      // V2: 从最新版本快照读取正文（不再读磁盘），供 update 仅改标题/摘要时复用原正文
+      const versionId = currentVersion.versionId;
+      if (versionId) {
+        const snapshot =
+          await this.snapshotRepository.findByVersionId(versionId);
+        // 快照存原始 ./assets/ 路径，传给 saveContent 写入 Git 前无需改写 API URL
+        bodyMarkdown = snapshot?.bodyMarkdown ?? EMPTY_BODY_PLACEHOLDER;
+      } else {
+        bodyMarkdown = EMPTY_BODY_PLACEHOLDER;
+      }
     }
 
     /* update 永远是业务提交，只更新 latestVersion，不动 publishedVersion */

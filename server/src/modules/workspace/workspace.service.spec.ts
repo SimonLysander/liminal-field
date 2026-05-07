@@ -17,6 +17,10 @@ function createMocks() {
     listAssets: jest.fn(),
   };
 
+  const mockSnapshotRepository = {
+    findByVersionId: jest.fn(),
+  };
+
   const mockNavigationRepository = {
     findByContentItemId: jest.fn(),
   };
@@ -25,6 +29,7 @@ function createMocks() {
     mockContentService as never,
     mockContentRepository as never,
     mockContentRepoService as never,
+    mockSnapshotRepository as never,
     mockNavigationRepository as never,
   );
 

@@ -27,3 +27,9 @@ mineru:
   enableTable: true
   pollIntervalMs: 3000
   pollTimeoutMs: 600000
+
+oss:
+  region: ${OSS_REGION:oss-cn-beijing}
+  accessKeyId: ${OSS_ACCESS_KEY_ID:}
+  accessKeySecret: ${OSS_ACCESS_KEY_SECRET:}
+  bucket: ${OSS_BUCKET:}

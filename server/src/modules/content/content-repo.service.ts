@@ -151,7 +151,7 @@ export class ContentRepoService {
     return targets;
   }
 
-  private extractAssetRefs(bodyMarkdown: string): ParsedAssetRef[] {
+  extractAssetRefs(bodyMarkdown: string): ParsedAssetRef[] {
     // 内容协议只把 ./assets/ 下的相对路径视为可托管资源，避免把任意外链误当成项目内附件。
     const assetPaths = new Set<string>();
     for (const target of this.extractLinkTargets(bodyMarkdown)) {

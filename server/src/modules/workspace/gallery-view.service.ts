@@ -35,6 +35,7 @@ import { join, parse, extname } from 'path';
 import * as yaml from 'js-yaml';
 import { ContentRepository } from '../content/content.repository';
 import { ContentRepoService } from '../content/content-repo.service';
+import { ContentSnapshotRepository } from '../content/content-snapshot.repository';
 import { ContentService } from '../content/content.service';
 import { ContentStatus } from '../content/content-item.entity';
 import { ContentSaveAction } from '../content/dto/save-content.dto';
@@ -231,6 +232,7 @@ export class GalleryViewService {
     private readonly editorDraftRepository: EditorDraftRepository,
     private readonly minioService: MinioService,
     private readonly navigationRepository: NavigationRepository,
+    private readonly snapshotRepository: ContentSnapshotRepository,
   ) {}
 
   /** 构建照片的统一访问 URL（走 /spaces/gallery/items/:id/assets/:fileName）。 */
@@ -240,7 +242,7 @@ export class GalleryViewService {
 
   /**
    * 发布前校验：目标版本的 frontmatter 中必须有照片才能发布。
-   * @param commitHash 要发布的版本，不传则检查最新版本（工作目录）。
+   * @param commitHash 要发布的历史版本（仍走 Git 读取），不传则检查最新版本快照。
    */
   async assertPublishable(
     contentItemId: string,
@@ -248,14 +250,19 @@ export class GalleryViewService {
   ): Promise<void> {
     let parsed: ParsedGalleryContent;
     if (commitHash) {
-      // 读取指定版本的 main.md
+      // 历史版本校验：仍从 Git 读取，V2 快照不覆盖历史版本的发布校验路径
       const source = await this.contentRepoService.readContentSource(
         contentItemId,
         { commitHash, scope: 'gallery' },
       );
       parsed = parseGalleryContent(source.bodyMarkdown);
     } else {
-      ({ parsed } = await this.loadParsedContent(contentItemId));
+      // V2: 无 commitHash 时从最新版本快照读取，不再读磁盘
+      const content = await this.contentRepository.findById(contentItemId);
+      ({ parsed } = await this.loadParsedContent(
+        contentItemId,
+        content?.latestVersion?.versionId,
+      ));
     }
 
     if (parsed.hasFrontmatter && parsed.photos.length === 0) {
@@ -275,38 +282,37 @@ export class GalleryViewService {
   }
 
   /**
-   * 从 main.md 加载并解析 frontmatter，同时返回 Git assets 中的图片列表。
-   * @param commitHash 可选，传入时从指定 git commit 读取（用于展示端读已发布版本）。
+   * 从 ContentSnapshot 加载并解析 frontmatter，同时返回磁盘 assets 中的图片列表。
+   *
+   * V2 读路径变更：正文改从 ContentSnapshot 读取，不再走 git show / fs.readFile。
+   * 资产列表暂时仍从磁盘读取（Phase 1 接入 OSS 后替换）。
+   *
+   * @param versionId 快照版本标识，不传时返回空内容（刚创建尚无快照的情况）。
    */
   private async loadParsedContent(
     contentItemId: string,
-    commitHash?: string,
+    versionId?: string,
   ): Promise<{
     parsed: ParsedGalleryContent;
     imageAssets: Awaited<ReturnType<ContentRepoService['listAssets']>>;
   }> {
-    const [source, assets] = await Promise.all([
-      this.contentRepoService
-        .readContentSource(contentItemId, { scope: 'gallery', commitHash })
-        .catch((err: unknown) => {
-          // main.md 不存在时属于正常情况（刚创建的内容），其他错误也静默降级
-          this.logger.warn(
-            `readContentSource 失败, 返回 null: ${err instanceof Error ? err.message : String(err)}`,
-          );
-          return null;
-        }),
+    // 从快照读取正文；无 versionId（内容刚创建）时降级为空
+    let bodyMarkdown = '';
+    if (versionId) {
+      const snapshot = await this.snapshotRepository.findByVersionId(versionId);
+      if (snapshot) {
+        bodyMarkdown = snapshot.bodyMarkdown;
+      } else {
+        this.logger.warn(
+          `loadParsedContent: 快照 ${versionId} 不存在 (contentItemId=${contentItemId})，返回空内容`,
+        );
+      }
+    }
+
+    const [parsed, assets] = await Promise.all([
+      Promise.resolve(parseGalleryContent(bodyMarkdown)),
       this.contentRepoService.listAssets(contentItemId),
     ]);
-    const parsed = source
-      ? parseGalleryContent(source.bodyMarkdown)
-      : {
-          photos: [],
-          cover: null,
-          date: null,
-          location: null,
-          prose: '',
-          hasFrontmatter: false,
-        };
     const imageAssets = assets.filter((a) => a.type === 'image');
     return { parsed, imageAssets };
   }
@@ -370,10 +376,11 @@ export class GalleryViewService {
         `Gallery post ${contentItemId} is not published`,
       );
 
-    const publishedHash = content.publishedVersion.commitHash;
+    // V2: 用 versionId 从快照读取已发布版本内容，替代 commitHash + git show
+    const publishedVersionId = content.publishedVersion.versionId;
     const { parsed, imageAssets } = await this.loadParsedContent(
       contentItemId,
-      publishedHash,
+      publishedVersionId,
     );
 
     // 封面优先级：frontmatter.cover 指定的文件 > assets 首图；与 toAdminListItemDto 逻辑保持一致
@@ -388,10 +395,10 @@ export class GalleryViewService {
     return {
       id: contentItemId,
       title: version.title,
-      // 封面 URL 带版本号，确保从已发布 commit 读取资源
+      // 封面 URL 带版本号（versionId 作缓存破坏参数，替代旧的 commitHash）
       coverUrl: coverAsset
         ? this.buildPhotoUrl(contentItemId, coverAsset.fileName) +
-          `?v=${publishedHash}`
+          (publishedVersionId ? `?v=${publishedVersionId}` : '')
         : null,
       date: parsed.date,
       location: parsed.location,
@@ -411,7 +418,11 @@ export class GalleryViewService {
     if (!content)
       throw new NotFoundException(`Gallery post ${contentItemId} not found`);
 
-    const { parsed, imageAssets } = await this.loadParsedContent(contentItemId);
+    // V2: 用 latestVersion.versionId 从快照读取最新版本内容
+    const { parsed, imageAssets } = await this.loadParsedContent(
+      contentItemId,
+      content.latestVersion?.versionId,
+    );
 
     // 封面图：frontmatter.cover 指定的文件必须存在于 assets，否则退化为首图
     const coverFileName = parsed.cover ?? null;
@@ -456,11 +467,11 @@ export class GalleryViewService {
         `Gallery post ${contentItemId} is not published`,
       );
 
-    // 从已发布版本的 commit 读取 main.md，不是当前工作目录
-    const publishedHash = content.publishedVersion.commitHash;
+    // V2: 用 versionId 从快照读取已发布版本内容，替代 commitHash + git show
+    const publishedVersionId = content.publishedVersion.versionId;
     const { parsed, imageAssets } = await this.loadParsedContent(
       contentItemId,
-      publishedHash,
+      publishedVersionId,
     );
     const photos = this.buildPhotoList(
       contentItemId,
@@ -469,11 +480,13 @@ export class GalleryViewService {
       parsed.hasFrontmatter,
     );
 
-    // 展示端照片 URL 带版本号，确保从发布版 commit 读取
-    const versionedPhotos = photos.map((p) => ({
-      ...p,
-      url: `${p.url}?v=${publishedHash}`,
-    }));
+    // 展示端照片 URL 带版本号（versionId 作缓存破坏参数）
+    const versionedPhotos = publishedVersionId
+      ? photos.map((p) => ({
+          ...p,
+          url: `${p.url}?v=${publishedVersionId}`,
+        }))
+      : photos;
 
     return {
       id: contentItemId,
@@ -496,7 +509,11 @@ export class GalleryViewService {
     if (!content)
       throw new NotFoundException(`Gallery post ${contentItemId} not found`);
 
-    const { parsed, imageAssets } = await this.loadParsedContent(contentItemId);
+    // V2: 用 latestVersion.versionId 从快照读取最新版本内容
+    const { parsed, imageAssets } = await this.loadParsedContent(
+      contentItemId,
+      content.latestVersion?.versionId,
+    );
     const photos = this.buildPhotoList(
       contentItemId,
       parsed.photos,
@@ -581,7 +598,8 @@ export class GalleryViewService {
       };
     }
 
-    // 无草稿：用正式版数据
+    // 无草稿：从最新版本快照读取正式版数据（V2：不再读磁盘文件）
+    const latestVersionId = content.latestVersion?.versionId;
     let parsed: ParsedGalleryContent = {
       photos: [],
       cover: null,
@@ -590,17 +608,16 @@ export class GalleryViewService {
       prose: '',
       hasFrontmatter: false,
     };
-    try {
-      const source = await this.contentRepoService.readContentSource(
-        contentItemId,
-        { scope: 'gallery' },
-      );
-      parsed = parseGalleryContent(source.bodyMarkdown);
-    } catch (err: unknown) {
-      // main.md 还不存在（刚创建的条目），使用默认空值
-      this.logger.warn(
-        `toEditorDto: 读取内容失败 (${contentItemId}), 使用默认空值: ${err instanceof Error ? err.message : String(err)}`,
-      );
+    if (latestVersionId) {
+      const snapshot =
+        await this.snapshotRepository.findByVersionId(latestVersionId);
+      if (snapshot) {
+        parsed = parseGalleryContent(snapshot.bodyMarkdown);
+      } else {
+        this.logger.warn(
+          `getEditorState: 快照 ${latestVersionId} 不存在 (contentItemId=${contentItemId})，使用默认空值`,
+        );
+      }
     }
 
     const photos: GalleryEditorPhotoDto[] = parsed.photos
