@@ -128,7 +128,7 @@ export class OssService implements OnModuleInit, MinioDraftStorageStatus {
     const keys = await this.listByPrefix(prefix);
     if (keys.length === 0) return;
     // ali-oss deleteMulti 接受对象数组，每个元素为 { name: string }
-    await this.client.deleteMulti(keys.map((k) => ({ name: k })));
+    await this.client.deleteMulti(keys);
     this.logger.log(`Cleaned ${keys.length} draft assets for ${contentItemId}`);
   }
 
@@ -197,7 +197,7 @@ export class OssService implements OnModuleInit, MinioDraftStorageStatus {
   async removeByPrefix(prefix: string): Promise<void> {
     const keys = await this.listByPrefix(prefix);
     if (keys.length === 0) return;
-    await this.client.deleteMulti(keys.map((k) => ({ name: k })));
+    await this.client.deleteMulti(keys);
     this.logger.log(`Removed ${keys.length} objects under prefix "${prefix}"`);
   }
 }
