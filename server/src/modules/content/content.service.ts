@@ -518,11 +518,15 @@ export class ContentService {
             return log;
           });
 
+          // Mongoose 子文档 spread 会丢字段，用 JSON 序列化确保提取所有字段（含 versionId）
+          const latestPlain = JSON.parse(
+            JSON.stringify(current.latestVersion),
+          ) as Record<string, unknown>;
           await this.contentRepository.update(contentId, {
             latestVersion: {
-              ...current.latestVersion,
+              ...latestPlain,
               commitHash: committedHash,
-            },
+            } as ContentVersion,
             publishedVersion: current.publishedVersion ?? null,
             changeLogs: updatedChangeLogs,
             updatedAt: current.updatedAt,
