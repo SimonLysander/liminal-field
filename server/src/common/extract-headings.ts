@@ -10,12 +10,15 @@ const HEADING_REGEX = /^(#{1,3})\s+(.+)$/;
 const CODE_FENCE_REGEX = /^```/;
 
 /**
- * 去掉标题里供目录展示的 TeX 块级公式片段 $$...$$（同一标题行内），
- * 避免 TOC 被 LaTeX 占满；去掉后仅余空白则整条标题不进入 headings。
+ * 清理标题中的 TeX 公式标记，供目录展示：
+ * - $$...$$ 块级公式整段移除（避免 TOC 被 LaTeX 占满）
+ * - $...$ 行内公式去掉定界符保留内容（$k$ → k）
+ * 去掉后仅余空白则整条标题不进入 headings。
  */
 function stripDisplayMathForToc(raw: string): string {
   return raw
     .replace(/\$\$[\s\S]*?\$\$/g, ' ')
+    .replace(/\$([^$]+)\$/g, '$1')
     .replace(/\s+/g, ' ')
     .trim();
 }

@@ -81,6 +81,15 @@ describe('extractHeadings', () => {
     ]);
   });
 
+  // 行内公式 $...$ 去掉定界符保留内容（$k$ → k）
+  it('标题中的 $ 行内公式去掉定界符保留内容', () => {
+    const md = '## $k$ 阶矩\n## 随机变量 $X$ 的期望';
+    expect(extractHeadings(md)).toEqual([
+      { level: 2, text: 'k 阶矩' },
+      { level: 2, text: '随机变量 X 的期望' },
+    ]);
+  });
+
   // CRLF 换行时仍能识别标题（与 LF 行为一致）
   it('CRLF 换行下仍能提取标题', () => {
     const md = '# 标题一\r\n\r\n## 标题二\r\n';
