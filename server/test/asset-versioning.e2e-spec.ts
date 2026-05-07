@@ -100,13 +100,14 @@ describe('Asset Versioning (e2e)', () => {
         '不存在版本测试',
       );
 
-      const fakeHash = 'a'.repeat(40);
+      // V2: ?v= 仅用于缓存 key，不再触发 git show。
+      // 传任意 version 字符串仍从磁盘正常读取文件，返回 200。
+      const fakeVersion = 'nonexistent-version-id';
       const res = await supertest(ctx.app.getHttpServer()).get(
-        `/api/v1/spaces/notes/items/${id}/assets/${fileName}?v=${fakeHash}`,
+        `/api/v1/spaces/notes/items/${id}/assets/${fileName}?v=${fakeVersion}`,
       );
 
-      // 服务端应报错（git show 失败），返回 4xx 或 5xx
-      expect(res.status).toBeGreaterThanOrEqual(400);
+      expect(res.status).toBe(200);
     });
   });
 

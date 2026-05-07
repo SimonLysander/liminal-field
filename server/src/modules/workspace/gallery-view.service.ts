@@ -676,16 +676,12 @@ export class GalleryViewService {
   }
 
   /** 直接读取照片文件 buffer，用于文件直出端点。支持 commitHash 读取历史版本资源。 */
+  /** V2: 从磁盘读取资源文件（Phase 1 OSS 后改为从 OSS 读取）。 */
   async readPhotoBuffer(
     contentItemId: string,
     fileName: string,
-    commitHash?: string,
   ): Promise<{ buffer: Buffer; contentType: string }> {
-    return this.contentRepoService.readAssetBuffer(
-      contentItemId,
-      fileName,
-      commitHash,
-    );
+    return this.contentRepoService.readAssetBuffer(contentItemId, fileName);
   }
 
   /**

@@ -393,20 +393,18 @@ export class WorkspaceController {
     @Param('scope') _scope: string,
     @Param('id') id: string,
     @Param('fileName') fileName: string,
-    @Query('v') commitHash: string | undefined,
+    @Query('v') version: string | undefined,
     @Res() reply: FastifyReply,
   ) {
-    // ?v= 是可选的，仅在传入时校验格式
-    if (commitHash) validateCommitHash(commitHash);
+    // V2: ?v= 现在是 versionId（nanoid），不再是 commitHash，不做 hex 校验。
+    // 资源从磁盘读取当前文件（Phase 1 OSS 后改为 redirect 到 OSS URL）。
     const { buffer, contentType } =
-      await this.galleryViewService.readPhotoBuffer(id, fileName, commitHash);
+      await this.galleryViewService.readPhotoBuffer(id, fileName);
     reply.header('Content-Type', contentType);
     // 带版本号的资源可以长缓存（内容不可变），否则用短缓存
     reply.header(
       'Cache-Control',
-      commitHash
-        ? 'public, max-age=31536000, immutable'
-        : 'public, max-age=86400',
+      version ? 'public, max-age=31536000, immutable' : 'public, max-age=86400',
     );
     reply.send(buffer);
   }
