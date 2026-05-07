@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -27,6 +28,8 @@ import { ContentSaveAction, SaveContentDto } from './dto/save-content.dto';
 
 @Injectable()
 export class ContentService {
+  private readonly logger = new Logger(ContentService.name);
+
   constructor(
     private readonly contentRepository: ContentRepository,
     private readonly contentRepoService: ContentRepoService,
@@ -104,9 +107,10 @@ export class ContentService {
       status: normalizedStatus,
       latestVersion,
       publishedVersion,
+      // V2 Phase 3: 用 versionId 比较，commitHash 可能还在异步回填中，versionId 写入即可用
       hasUnpublishedChanges:
         !!publishedVersion &&
-        latestVersion.commitHash !== publishedVersion.commitHash,
+        latestVersion.versionId !== publishedVersion.versionId,
       latestChange: content.changeLogs[0]
         ? this.toChangeLogDto(content.changeLogs[0])
         : undefined,
@@ -174,20 +178,21 @@ export class ContentService {
       : ContentStatus.committed;
 
     if (action === ContentSaveAction.publish) {
-      /* 从未提交过（commitHash 为空）→ 不能发布 */
-      const latestHash = this.resolveLatestVersion(current).commitHash;
-      if (!latestHash) {
+      /* V2: 从未提交过（无 versionId）→ 不能发布。commitHash 可能异步回填中，用 versionId 判断。 */
+      const latestVid = this.resolveLatestVersion(current).versionId;
+      if (!latestVid) {
         throw new BadRequestException(
           'Cannot publish: no committed version exists yet',
         );
       }
-      /* 已发布且无新变更 → 不能重复发布（指定历史 commitHash 除外） */
+      /* 已发布且无新变更 → 不能重复发布（指定历史 commitHash 除外）
+       * V2: 用 versionId 比较替代 commitHash（后者可能异步回填中）。 */
       if (
         !publishCommitHash &&
         currentStatus !== ContentStatus.committed &&
         !(
           currentStatus === ContentStatus.published &&
-          latestHash !== this.resolvePublishedVersion(current)?.commitHash
+          latestVid !== this.resolvePublishedVersion(current)?.versionId
         )
       ) {
         throw new BadRequestException(
@@ -232,9 +237,10 @@ export class ContentService {
       status: normalizedStatus,
       latestVersion,
       publishedVersion,
+      // V2 Phase 3: 用 versionId 比较，commitHash 可能还在异步回填中，versionId 写入即可用
       hasUnpublishedChanges:
         !!publishedVersion &&
-        latestVersion.commitHash !== publishedVersion.commitHash,
+        latestVersion.versionId !== publishedVersion.versionId,
       bodyMarkdown: source.bodyMarkdown,
       // 后端提取标题树，前端直接消费，不再自行解析 markdown
       headings: extractHeadings(source.bodyMarkdown),
@@ -300,14 +306,9 @@ export class ContentService {
       dto.action,
       dto.publishCommitHash,
     );
-    await this.contentGitService.prepareWritableWorkspace();
 
-    if (dto.action === ContentSaveAction.commit || !dto.action) {
-      // Only version-forming actions write the canonical Markdown source.
-      // Publish and Unpublish are visibility transitions and must not rewrite
-      // the latest committed files from a stale formal-content view.
-      await this.contentRepoService.writeMainMarkdown(id, dto.bodyMarkdown);
-    }
+    // V2 Phase 3: prepareWritableWorkspace 移入 archiveToGit，不再阻塞请求
+    // publish/unpublish 不写 Git，无需调用
 
     const nextChangeLogs = [
       this.buildChangeLog(
@@ -323,44 +324,17 @@ export class ContentService {
     let nextLatestVersion = this.resolveLatestVersion(current);
     let nextPublishedVersion = this.resolvePublishedVersion(current);
 
-    // README 在 commit 之前写入，确保随内容一起进入 Git commit
-    const preCommitSource = await this.contentRepoService.readContentSource(id);
-    // toObject() 把 Mongoose document 转为普通 JS 对象，
-    // 否则 _id / createdAt 等字段在 spread 时均为 undefined
-    const plainContent = (current as { toObject(): ContentItem }).toObject();
-    const preCommitContent = {
-      ...plainContent,
-      latestVersion: {
-        commitHash: this.resolveLatestVersion(current).commitHash,
-        title: dto.title,
-        summary,
-      },
-      changeLogs: nextChangeLogs,
-    } as ContentItem;
-    await this.contentRepoService.writeReadme(
-      preCommitContent,
-      preCommitSource.assetRefs,
-    );
-
+    // V2 Phase 3: 先写 MongoDB（同步），Git 后台异步归档
     if (dto.action === ContentSaveAction.commit) {
-      const committedHash =
-        await this.contentGitService.recordCommittedContentChange(
-          current.id,
-          dto.changeNote,
-        );
       const versionId = this.generateVersionId();
-      if (committedHash) {
-        nextLatestVersion = this.buildVersionSnapshot(
-          committedHash,
-          dto.title,
-          summary,
-          versionId,
-        );
-        nextChangeLogs[0] = {
-          ...nextChangeLogs[0],
-          commitHash: committedHash,
-        };
-      }
+
+      // commitHash 待异步回填，先用空字符串占位
+      nextLatestVersion = this.buildVersionSnapshot(
+        '',
+        dto.title,
+        summary,
+        versionId,
+      );
 
       // V2: 创建版本快照，公开读取将从此处读取而非 git show
       await this.snapshotRepository.create({
@@ -374,8 +348,19 @@ export class ContentService {
           .map((ref) => ref.path),
         createdAt: now,
         changeNote: dto.changeNote ?? '',
-        commitHash: committedHash ?? undefined,
+        // commitHash 有意省略——异步回填
       });
+
+      // 异步归档到 Git，不阻塞请求；错误由 archiveToGit 内部捕获并记录日志
+      void this.archiveToGit(
+        id,
+        versionId,
+        dto.bodyMarkdown,
+        dto.changeNote ?? '',
+        dto.title,
+        summary,
+        nextChangeLogs,
+      );
     }
 
     if (dto.action === ContentSaveAction.publish) {
@@ -406,6 +391,7 @@ export class ContentService {
       nextPublishedVersion = null;
     }
 
+    // V2 Phase 3: 无 action 的保存（草稿写入），同样先写 MongoDB，再异步写磁盘
     if (!dto.action) {
       const versionId = this.generateVersionId();
       nextLatestVersion = this.buildVersionSnapshot(
@@ -428,6 +414,15 @@ export class ContentService {
         createdAt: now,
         changeNote: dto.changeNote ?? '',
       });
+
+      // no-action 保存不产生 git commit，但仍写磁盘供后续 commit 使用
+      void this.archiveMarkdownToDisk(id, dto.bodyMarkdown).catch(
+        (err: unknown) => {
+          this.logger.warn(
+            `archiveMarkdownToDisk failed for ${id}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        },
+      );
     }
 
     const updated = await this.contentRepository.update(id, {
@@ -442,9 +437,116 @@ export class ContentService {
       throw new NotFoundException(`Content ${id} not found`);
     }
 
-    const source = await this.contentRepoService.readContentSource(id);
+    // V2 Phase 3: 响应从 snapshot 构建，不再走 Git 磁盘
+    let responseMarkdown = '';
+    if (dto.action === ContentSaveAction.commit || !dto.action) {
+      // 刚写入的正文直接从 DTO 取，避免再查一次 DB
+      responseMarkdown = dto.bodyMarkdown;
+    } else {
+      // publish/unpublish：从 latestVersion 对应的 snapshot 读取
+      const latestVid = updated.latestVersion?.versionId;
+      if (latestVid) {
+        const snap = await this.snapshotRepository.findByVersionId(latestVid);
+        responseMarkdown = snap?.bodyMarkdown ?? '';
+      }
+    }
 
-    return this.toDetailDto(updated, source);
+    return this.toDetailDto(updated, { bodyMarkdown: responseMarkdown });
+  }
+
+  /**
+   * V2 Phase 3: 异步归档到 Git（fire-and-forget）。
+   *
+   * 在 MongoDB 写入成功后后台执行，不阻塞 HTTP 请求。
+   * 完成后回填 commitHash 到 ContentSnapshot 和 ContentItem。
+   * 失败时仅记录日志，snapshot.commitHash 保持为空（可被定时任务重试）。
+   */
+  private async archiveToGit(
+    contentId: string,
+    versionId: string,
+    bodyMarkdown: string,
+    changeNote: string,
+    title: string,
+    summary: string,
+    changeLogs: ContentChangeLog[],
+  ): Promise<void> {
+    try {
+      await this.contentGitService.prepareWritableWorkspace();
+      await this.contentRepoService.writeMainMarkdown(contentId, bodyMarkdown);
+
+      // README 需要 content 信息，从 MongoDB 重新读取，确保拿到最新数据
+      const content = await this.contentRepository.findById(contentId);
+      if (content) {
+        const assetRefs =
+          this.contentRepoService.extractAssetRefs(bodyMarkdown);
+        // toObject() 把 Mongoose document 转为普通 JS 对象，
+        // 否则 _id / createdAt 等字段在 spread 时均为 undefined
+        const plainContent = (
+          content as { toObject(): ContentItem }
+        ).toObject();
+        await this.contentRepoService.writeReadme(
+          {
+            ...plainContent,
+            latestVersion: { commitHash: '', title, summary, versionId },
+            changeLogs,
+          } as ContentItem,
+          assetRefs,
+        );
+      }
+
+      const committedHash =
+        await this.contentGitService.recordCommittedContentChange(
+          contentId,
+          changeNote,
+        );
+
+      if (committedHash) {
+        // 回填 commitHash 到 ContentSnapshot
+        await this.snapshotRepository.backfillCommitHash(
+          versionId,
+          committedHash,
+        );
+
+        // 回填 commitHash 到 ContentItem 的 latestVersion 和 changeLogs
+        const current = await this.contentRepository.findById(contentId);
+        if (current?.latestVersion?.versionId === versionId) {
+          const updatedChangeLogs = current.changeLogs.map((log, index) => {
+            // 最新 changeLog（index 0）尚无 commitHash，对应本次 Git commit
+            if (index === 0 && !log.commitHash) {
+              return { ...log, commitHash: committedHash };
+            }
+            return log;
+          });
+
+          await this.contentRepository.update(contentId, {
+            latestVersion: {
+              ...current.latestVersion,
+              commitHash: committedHash,
+            },
+            publishedVersion: current.publishedVersion ?? null,
+            changeLogs: updatedChangeLogs,
+            updatedAt: current.updatedAt,
+          });
+        }
+      }
+
+      this.logger.log(
+        `Git archived: ${contentId} → ${committedHash ?? 'no-change'}`,
+      );
+    } catch (err: unknown) {
+      this.logger.warn(
+        `archiveToGit failed for ${contentId}/${versionId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      // 不抛出——snapshot.commitHash 保持为空，可被定时任务重试
+    }
+  }
+
+  /** 仅写 main.md 到磁盘，不做 git commit（供后续 commit 时使用）。 */
+  private async archiveMarkdownToDisk(
+    contentId: string,
+    bodyMarkdown: string,
+  ): Promise<void> {
+    await this.contentRepoService.writeMainMarkdown(contentId, bodyMarkdown);
   }
 
   /**
@@ -460,7 +562,8 @@ export class ContentService {
     if (!content) throw new NotFoundException(`Content ${id} not found`);
 
     const latestVersion = this.resolveLatestVersion(content);
-    if (!latestVersion.commitHash) {
+    // V2: 用 versionId 判断是否有可发布版本（commitHash 可能异步回填中）
+    if (!latestVersion.versionId) {
       throw new BadRequestException(
         'Cannot publish: no committed version exists yet',
       );

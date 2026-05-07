@@ -38,18 +38,18 @@ describe('Notes Publish (e2e)', () => {
 
       expect(res.body.data.status).toBe('published');
       expect(res.body.data.publishedVersion).toBeDefined();
-      expect(res.body.data.publishedVersion.commitHash).toBeTruthy();
+      // V2: commitHash 异步回填，改为断言 versionId 存在
+      expect(res.body.data.publishedVersion.versionId).toBeTruthy();
     });
 
-    it('未提交就发布 → 400', async () => {
+    it('V2: 创建后即可发布（初始快照已存在）→ 200', async () => {
       const id = await createNoteItem(ctx.app, cookie, '未提交发布测试');
-      // 不 commit，直接发布
-
+      // V2: createContent 创建了初始 snapshot，直接发布合法
       await supertest(ctx.app.getHttpServer())
         .put(`/api/v1/spaces/notes/items/${id}/publish`)
         .set('Cookie', cookie)
         .send({})
-        .expect(400);
+        .expect(200);
     });
 
     it('发布指定 commitHash → publishedVersion 指向该版本', async () => {

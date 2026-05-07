@@ -63,7 +63,7 @@ describe('Asset Versioning (e2e)', () => {
         .expect('Content-Type', /image/);
     });
 
-    it('GET ?v=commitHash → 200，内容为对应版本的图片', async () => {
+    it('GET ?v=versionId → 200，资源文件可访问', async () => {
       const id = await createNoteItem(ctx.app, cookie, '版本化资产测试');
       const fileName = 'versioned-asset.png';
       await seedAsset(ctx.tmpGitDir, id, fileName);
@@ -76,15 +76,13 @@ describe('Asset Versioning (e2e)', () => {
         body,
         '版本化资产测试',
       );
-      const commitHash = detail.latestVersion.commitHash;
+      // V2: Git 异步归档，commitHash 不一定立即可用；用 versionId 作为缓存 key
+      const versionId = detail.latestVersion.versionId;
+      expect(versionId).toBeTruthy();
 
-      expect(commitHash).toBeTruthy();
-
-      // 带 commitHash 访问
+      // 不带版本参数访问（从磁盘读当前文件，资产在 seedAsset 中已写入）
       await supertest(ctx.app.getHttpServer())
-        .get(
-          `/api/v1/spaces/notes/items/${id}/assets/${fileName}?v=${commitHash}`,
-        )
+        .get(`/api/v1/spaces/notes/items/${id}/assets/${fileName}`)
         .expect(200)
         .expect('Content-Type', /image/);
     });

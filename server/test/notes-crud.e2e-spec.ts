@@ -115,8 +115,8 @@ describe('Notes CRUD (e2e)', () => {
         '提交测试笔记',
       );
 
-      expect(detail.latestVersion.commitHash).toBeTruthy();
-      expect(detail.latestVersion.commitHash).toHaveLength(40);
+      // V2: Git 异步归档，commitHash 不一定立即可用；改为断言 versionId 存在
+      expect(detail.latestVersion.versionId).toBeTruthy();
     });
 
     it('提交后 bodyMarkdown 更新', async () => {
