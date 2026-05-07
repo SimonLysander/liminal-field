@@ -11,7 +11,9 @@ import { OssService } from '../oss/oss.service';
 import { ContentRepoService } from '../content/content-repo.service';
 import { ContentGitService } from '../content/content-git.service';
 import { ContentRepository } from '../content/content.repository';
+import { ContentSnapshotRepository } from '../content/content-snapshot.repository';
 import { ContentChangeType } from '../content/content-item.entity';
+import { nanoid } from 'nanoid';
 import { NavigationNodeService } from '../navigation/navigation.service';
 import { MineruService } from './mineru.service';
 import { ImportSessionRepository } from './import-session.repository';
@@ -37,6 +39,7 @@ export class ImportService {
     private readonly contentRepoService: ContentRepoService,
     private readonly contentGitService: ContentGitService,
     private readonly contentRepository: ContentRepository,
+    private readonly snapshotRepository: ContentSnapshotRepository,
     private readonly navigationNodeService: NavigationNodeService,
   ) {}
 
@@ -283,11 +286,27 @@ export class ImportService {
       source.assetRefs,
     );
 
+    // V2: 生成 versionId，创建 ContentSnapshot + ContentItem
+    const versionId = nanoid(16);
+
+    await this.snapshotRepository.create({
+      versionId,
+      contentItemId: contentId,
+      title,
+      summary: title,
+      bodyMarkdown: body,
+      assetRefs: this.contentRepoService
+        .extractAssetRefs(body)
+        .map((ref) => ref.path),
+      createdAt: now,
+      changeNote,
+    });
+
     // 先创建 MongoDB 记录（占位，commitHash 稍后回填），
     // 再执行 Git commit。若 Git 失败，删除 MongoDB 记录回滚，避免产生孤立 commit。
     await this.contentRepository.create({
       id: contentId,
-      latestVersion: { commitHash: '', title, summary: title },
+      latestVersion: { versionId, commitHash: '', title, summary: title },
       publishedVersion: null,
       changeLogs: [{ ...changeLog, commitHash: '' }],
       createdAt: now,
@@ -314,12 +333,13 @@ export class ImportService {
       throw new BadRequestException('导入提交失败：无变更可提交');
     }
 
-    // 回填真实 commitHash
+    // 回填真实 commitHash 到 ContentItem 和 ContentSnapshot
     await this.contentRepository.update(contentId, {
-      latestVersion: { commitHash, title, summary: title },
+      latestVersion: { versionId, commitHash, title, summary: title },
       changeLogs: [{ ...changeLog, commitHash }],
       updatedAt: now,
     });
+    await this.snapshotRepository.backfillCommitHash(versionId, commitHash);
 
     // 创建 structure node（传 contentItemId 避免重复创建 CI）
     const node = await this.navigationNodeService.createStructureNode({
