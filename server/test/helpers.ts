@@ -37,6 +37,7 @@ import { NavigationModule } from '../src/modules/navigation/navigation.module';
 import { WorkspaceModule } from '../src/modules/workspace/workspace.module';
 import { OssModule } from '../src/modules/oss/oss.module';
 import { OssService } from '../src/modules/oss/oss.service';
+import { ImportModule } from '../src/modules/import/import.module';
 import { ResponseWrapperInterceptor } from '../src/common/response-wrapper.interceptor';
 import { RequestLoggerInterceptor } from '../src/common/request-logger.interceptor';
 import { AllExceptionsFilter } from '../src/common/all-exceptions.filter';
@@ -49,6 +50,12 @@ export class TestContext {
   mongod!: MongoMemoryServer;
   app!: NestFastifyApplication;
   tmpGitDir!: string;
+  /**
+   * 模拟 OSS 的内存存储，与本 TestContext 实例绑定。
+   * 使用 Map-based mock 使 putObject/getObject 形成真实的读写闭环，
+   * 这样 import confirm 流程（parse 写 → confirm 读）在 E2E 中可以正确运行。
+   */
+  ossStore!: Map<string, Buffer>;
 
   async setup(): Promise<void> {
     // ─── 1. 启动内存 MongoDB（下载/解压可能很慢，与 jest-e2e testTimeout 对齐）───
@@ -69,7 +76,12 @@ export class TestContext {
     process.env.JWT_SECRET = 'test-secret-for-e2e';
     process.env.ADMIN_PASSWORD = 'test-password';
 
-    // ─── 4. 创建测试模块 ───
+    // ─── 4. 初始化 OSS 内存存储（每个 TestContext 独立，互不干扰） ───
+    this.ossStore = new Map<string, Buffer>();
+    // 关闭 ossStore 以便在 mock factory 中捕获
+    const store = this.ossStore;
+
+    // ─── 5. 创建测试模块 ───
     // 不使用 AppModule（内嵌 yamlLoader 读取 configs/db.yaml），
     // 而是手动组装，通过 ConfigModule.forRoot load 函数注入测试配置。
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -101,24 +113,54 @@ export class TestContext {
         ContentModule,
         NavigationModule,
         WorkspaceModule,
+        ImportModule,
       ],
     })
-      // OssService.onModuleInit 会尝试连真实 OSS，E2E 中完全 mock 掉
+      // OssService.onModuleInit 会尝试连真实 OSS，E2E 中完全 mock 掉。
+      // 使用 Map-based 实现替代原先固定返回 Buffer.alloc(0) 的版本，
+      // 使 putObject/getObject 形成真实读写闭环，支持 import 流程的 E2E 测试。
       .overrideProvider(OssService)
       .useValue({
         onModuleInit: jest.fn(),
-        uploadDraftAsset: jest.fn().mockResolvedValue('mock-file.jpg'),
-        getDraftAsset: jest.fn().mockResolvedValue({
-          buffer: Buffer.alloc(0),
-          contentType: 'image/jpeg',
-        }),
+        uploadDraftAsset: jest
+          .fn()
+          .mockImplementation(
+            (id: string, fileName: string, buffer: Buffer) => {
+              store.set(`draft/${id}/${fileName}`, buffer);
+              return Promise.resolve(fileName);
+            },
+          ),
+        getDraftAsset: jest
+          .fn()
+          .mockImplementation((id: string, fileName: string) =>
+            Promise.resolve({
+              buffer: store.get(`draft/${id}/${fileName}`) ?? Buffer.alloc(0),
+              contentType: 'application/octet-stream',
+            }),
+          ),
         deleteDraftAssets: jest.fn().mockResolvedValue(undefined),
         // moveDraftAssetsToDisk 返回空数组：commit 时没有草稿资源需要落盘
         moveDraftAssetsToDisk: jest.fn().mockResolvedValue([]),
-        putObject: jest.fn().mockResolvedValue(undefined),
-        getObject: jest.fn().mockResolvedValue(Buffer.alloc(0)),
-        listByPrefix: jest.fn().mockResolvedValue([]),
-        removeByPrefix: jest.fn().mockResolvedValue(undefined),
+        putObject: jest
+          .fn()
+          .mockImplementation((key: string, buffer: Buffer) => {
+            store.set(key, buffer);
+            return Promise.resolve();
+          }),
+        getObject: jest.fn().mockImplementation((key: string) => {
+          return Promise.resolve(store.get(key) ?? Buffer.alloc(0));
+        }),
+        listByPrefix: jest.fn().mockImplementation((prefix: string) => {
+          return Promise.resolve(
+            [...store.keys()].filter((k) => k.startsWith(prefix)),
+          );
+        }),
+        removeByPrefix: jest.fn().mockImplementation((prefix: string) => {
+          for (const key of store.keys()) {
+            if (key.startsWith(prefix)) store.delete(key);
+          }
+          return Promise.resolve();
+        }),
       })
       .compile();
 
