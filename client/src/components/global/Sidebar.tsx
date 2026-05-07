@@ -250,9 +250,9 @@ export default function Sidebar() {
         <kbd className="ml-auto text-sm" style={{ opacity: 0.45, color: 'var(--ink-ghost)' }}>⌘K</kbd>
       </button>
 
-      {/* Main navigation — gallery 模式只显示笔记+画廊 */}
+      {/* Main navigation — 始终显示所有 tab */}
       <nav className="flex flex-col gap-0.5">
-        {(isGallery ? (['notes', 'gallery'] as Space[]) : spaces).map((space) => (
+        {spaces.map((space) => (
           <div
             key={space}
             className="nav-item relative flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors duration-150"
