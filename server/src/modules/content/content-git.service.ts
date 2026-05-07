@@ -388,6 +388,41 @@ export class ContentGitService implements OnModuleInit {
   }
 
   /**
+   * 若 .liminal-field.yaml 有未提交的变更，将其 stage 并提交一个专属 commit。
+   * 设计为幂等：文件无变更时 diff --cached 为空，直接返回，不产生空 commit。
+   * 由 AuthController.syncToRemote 在推送前调用，确保清单随本次 push 入远程。
+   */
+  async commitManifestIfChanged(): Promise<void> {
+    return this.writeLock.runExclusive(async () => {
+      const manifestFile = '.liminal-field.yaml';
+      await this.run(() => this.git.add(['--', manifestFile]));
+
+      const staged = await this.run(() =>
+        this.git.raw(['diff', '--cached', '--name-only', '--', manifestFile]),
+      );
+
+      if (!staged) return; // 无变更，跳过
+
+      await this.git
+        .env({
+          GIT_AUTHOR_NAME: this.resolveAuthorName(),
+          GIT_AUTHOR_EMAIL: this.resolveAuthorEmail(),
+          GIT_COMMITTER_NAME: this.resolveAuthorName(),
+          GIT_COMMITTER_EMAIL: this.resolveAuthorEmail(),
+        })
+        .raw([
+          'commit',
+          '-m',
+          'chore: update .liminal-field.yaml manifest',
+          '--',
+          manifestFile,
+        ]);
+
+      this.logger.log('Manifest commit created');
+    });
+  }
+
+  /**
    * Push 当前工作分支到远程。
    * 纯基础设施操作——只推送已 commit 的内容，不做 add/commit。
    */

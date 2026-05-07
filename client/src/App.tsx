@@ -40,6 +40,7 @@ const GalleryAdmin = lazy(() => import('./pages/admin/gallery'));
 const GalleryEditPage = lazy(() => import('./pages/admin/gallery/edit'));
 const DraftEditPage = lazy(() => import('./pages/admin/edit'));
 const ImportPreviewPage = lazy(() => import('./pages/admin/import-preview'));
+const SettingsPage = lazy(() => import('./pages/admin/settings'));
 const LoginPage = lazy(() => import('./pages/login'));
 
 /**
@@ -190,6 +191,7 @@ function App() {
           <Route path="notes" element={<Suspense fallback={<LoadingState variant="full" />}><ContentAdmin /></Suspense>} />
           <Route path="gallery" element={<Suspense fallback={<LoadingState variant="full" />}><GalleryAdmin /></Suspense>} />
           <Route path="gallery/:id/edit" element={<Suspense fallback={<LoadingState variant="full" />}><GalleryEditPage /></Suspense>} />
+          <Route path="settings" element={<Suspense fallback={<LoadingState variant="full" />}><SettingsPage /></Suspense>} />
         </Route>
         <Route
           path="/admin/notes/:id/edit"
