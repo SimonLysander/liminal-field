@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { FileText, Image, RefreshCw, LogOut } from 'lucide-react';
+import { FileText, Image, RefreshCw, LogOut, Settings } from 'lucide-react';
 import { authApi } from '@/services/auth';
 import { resetAuth } from '@/App';
 import { SyncDialog } from './SyncDialog';
@@ -18,6 +18,7 @@ import { SyncDialog } from './SyncDialog';
 const NAV_ITEMS = [
   { path: '/admin/notes', icon: FileText, label: '笔记管理' },
   { path: '/admin/gallery', icon: Image, label: '画廊管理' },
+  { path: '/admin/settings', icon: Settings, label: '设置' },
 ] as const;
 
 export function IconRail() {

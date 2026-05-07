@@ -11,6 +11,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { OssModule } from './modules/oss/oss.module';
 import { ImportModule } from './modules/import/import.module';
 import { HomeModule } from './modules/home/home.module';
+import { SettingsModule } from './modules/settings/settings.module';
 import { yamlLoader } from './config/yaml.loader';
 import { StartupDiagnosticsService } from './startup-diagnostics.service';
 
@@ -42,6 +43,7 @@ import { StartupDiagnosticsService } from './startup-diagnostics.service';
     WorkspaceModule,
     ImportModule,
     HomeModule,
+    SettingsModule,
   ],
   controllers: [AppController],
   providers: [AppService, StartupDiagnosticsService],
