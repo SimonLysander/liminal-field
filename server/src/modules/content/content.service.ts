@@ -17,6 +17,7 @@ import { ContentGitService } from './content-git.service';
 import { ContentRepoService } from './content-repo.service';
 import { ContentRepository } from './content.repository';
 import { ContentSnapshotRepository } from './content-snapshot.repository';
+import { OssService } from '../oss/oss.service';
 import { ChangeLogDto } from './dto/change-log.dto';
 import { ContentDetailDto } from './dto/content-detail.dto';
 import { extractHeadings } from '../../common/extract-headings';
@@ -35,6 +36,7 @@ export class ContentService {
     private readonly contentRepoService: ContentRepoService,
     private readonly contentGitService: ContentGitService,
     private readonly snapshotRepository: ContentSnapshotRepository,
+    private readonly ossService: OssService,
   ) {}
 
   private buildContentId(): string {
@@ -660,22 +662,25 @@ export class ContentService {
       );
     }
 
-    // 将 ./assets/ 相对路径改写为 API 绝对路径，与旧的 readContentSource 逻辑保持一致。
-    // V2 用 versionId 作为缓存破坏参数，替代旧的 commitHash。
+    // 将 ./assets/{fileName} 重写为 OSS 直连 URL（带图片处理 + 版本缓存参数），
+    // OSS 未就绪时降级为 NestJS 代理 URL。
     const scope = options?.scope ?? 'notes';
-    const versionSuffix = `?v=${versionId}`;
-    const resolvedMarkdown = snapshot.bodyMarkdown
-      .replaceAll(
-        /\.\/assets\//g,
-        `/api/v1/spaces/${scope}/items/${id}/assets/`,
-      )
-      .replaceAll(
-        new RegExp(
-          `/api/v1/spaces/${scope}/items/${id}/assets/([^)\\s"]+)`,
-          'g',
-        ),
-        (match) => `${match}${versionSuffix}`,
-      );
+    const useOss = this.ossService.isDraftStorageReady();
+    const resolvedMarkdown = snapshot.bodyMarkdown.replaceAll(
+      /\.\/assets\/([^)\s"]+)/g,
+      (_match, fileName: string) => {
+        if (useOss) {
+          const url = this.ossService.getPublicUrl(
+            `assets/${id}/${fileName}`,
+            OssService.IMAGE_PRESETS.reading,
+          );
+          return url.includes('?')
+            ? `${url}&v=${versionId}`
+            : `${url}?v=${versionId}`;
+        }
+        return `/api/v1/spaces/${scope}/items/${id}/assets/${fileName}?v=${versionId}`;
+      },
+    );
 
     return this.toDetailDto(
       content,

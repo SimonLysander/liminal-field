@@ -87,7 +87,8 @@ export class NoteViewService {
     id: string,
     dto: SaveContentDto,
   ): Promise<ContentDetailDto> {
-    // 1. 将 MinIO 草稿资源下载到 content/{id}/assets/
+    // 1. 草稿资源提升到 OSS 永久位置（内部拷贝，零流量）+ 下载到磁盘（Git 归档用）
+    await this.minioService.promoteDraftAssets(id).catch(() => {});
     const assetsDir = join(
       this.contentRepoService.getContentDirectoryPath(id),
       'assets',

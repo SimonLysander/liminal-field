@@ -236,8 +236,29 @@ export class GalleryViewService {
   ) {}
 
   /** 构建照片的统一访问 URL（走 /spaces/gallery/items/:id/assets/:fileName）。 */
-  private buildPhotoUrl(contentItemId: string, fileName: string): string {
+  /**
+   * 构建图片 URL：优先使用 OSS 直连（带图片处理参数），
+   * OSS 未就绪时降级为 NestJS 代理。
+   */
+  private buildPhotoUrl(
+    contentItemId: string,
+    fileName: string,
+    process?: string,
+  ): string {
+    if (this.minioService.isDraftStorageReady()) {
+      return this.minioService.getPublicUrl(
+        `assets/${contentItemId}/${fileName}`,
+        process,
+      );
+    }
+    // OSS 未就绪降级为代理
     return `/api/v1/spaces/gallery/items/${contentItemId}/assets/${fileName}`;
+  }
+
+  /** 拼接版本号用于缓存破坏（兼容 OSS URL 已有 ? 的情况） */
+  private appendVersion(url: string, version?: string | null): string {
+    if (!version) return url;
+    return url.includes('?') ? `${url}&v=${version}` : `${url}?v=${version}`;
   }
 
   /**
@@ -337,7 +358,11 @@ export class GalleryViewService {
         if (!asset) return null;
         return {
           id: p.file,
-          url: this.buildPhotoUrl(contentItemId, p.file),
+          url: this.buildPhotoUrl(
+            contentItemId,
+            p.file,
+            OssService.IMAGE_PRESETS.detail,
+          ),
           fileName: p.file,
           size: asset.size,
           caption: p.caption,
@@ -354,7 +379,11 @@ export class GalleryViewService {
     // 无 frontmatter（旧数据）→ 从 assets 目录推断完整列表
     return imageAssets.map((asset) => ({
       id: asset.fileName,
-      url: this.buildPhotoUrl(contentItemId, asset.fileName),
+      url: this.buildPhotoUrl(
+        contentItemId,
+        asset.fileName,
+        OssService.IMAGE_PRESETS.detail,
+      ),
       fileName: asset.fileName,
       size: asset.size,
       caption: '',
@@ -395,10 +424,15 @@ export class GalleryViewService {
     return {
       id: contentItemId,
       title: version.title,
-      // 封面 URL 带版本号（versionId 作缓存破坏参数，替代旧的 commitHash）
       coverUrl: coverAsset
-        ? this.buildPhotoUrl(contentItemId, coverAsset.fileName) +
-          (publishedVersionId ? `?v=${publishedVersionId}` : '')
+        ? this.appendVersion(
+            this.buildPhotoUrl(
+              contentItemId,
+              coverAsset.fileName,
+              OssService.IMAGE_PRESETS.cover,
+            ),
+            publishedVersionId,
+          )
         : null,
       date: parsed.date,
       location: parsed.location,
@@ -438,7 +472,11 @@ export class GalleryViewService {
       title: version.title,
       status: content.publishedVersion ? 'published' : 'committed',
       coverUrl: coverAsset
-        ? this.buildPhotoUrl(contentItemId, coverAsset.fileName)
+        ? this.buildPhotoUrl(
+            contentItemId,
+            coverAsset.fileName,
+            OssService.IMAGE_PRESETS.thumbnail,
+          )
         : null,
       photoCount: imageAssets.length,
       // V2: 用 versionId 比较（commitHash 异步回填，可能延迟）
@@ -576,7 +614,11 @@ export class GalleryViewService {
         // 已提交到 Git 的照片用 Git URL，刚上传的草稿照片用 MinIO 代理 URL
         const url =
           gitSize !== undefined
-            ? this.buildPhotoUrl(contentItemId, p.file)
+            ? this.buildPhotoUrl(
+                contentItemId,
+                p.file,
+                OssService.IMAGE_PRESETS.detail,
+              )
             : this.buildDraftPhotoUrl(contentItemId, p.file);
         return {
           file: p.file,
@@ -626,7 +668,11 @@ export class GalleryViewService {
       .filter((p) => gitAssetMap.has(p.file)) // 过滤掉 assets 中不存在的条目
       .map((p) => ({
         file: p.file,
-        url: this.buildPhotoUrl(contentItemId, p.file),
+        url: this.buildPhotoUrl(
+          contentItemId,
+          p.file,
+          OssService.IMAGE_PRESETS.detail,
+        ),
         size: gitAssetMap.get(p.file) ?? 0,
         caption: p.caption,
         tags: p.tags,
@@ -772,6 +818,8 @@ export class GalleryViewService {
    * fire-and-forget，失败不影响用户操作。
    */
   private async archiveDraftAssets(contentItemId: string): Promise<void> {
+    // 先提升到 OSS 永久位置（内部拷贝），再下载到磁盘
+    await this.minioService.promoteDraftAssets(contentItemId).catch(() => {});
     const assetsDir = join(
       this.contentRepoService.getContentDirectoryPath(contentItemId),
       'assets',

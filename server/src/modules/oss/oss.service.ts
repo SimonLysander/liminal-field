@@ -193,6 +193,70 @@ export class OssService implements OnModuleInit, MinioDraftStorageStatus {
     return objects.map((o) => o.name);
   }
 
+  // ─── L3 资源服务层：公开 URL + 内部拷贝 ───
+
+  /** 图片处理预设：不同展示场景使用不同缩放 + WebP 转换参数 */
+  static readonly IMAGE_PRESETS = {
+    /** 列表缩略图 38×38 等 */
+    thumbnail: 'image/resize,w_200/format,webp',
+    /** 封面卡片 ~400px */
+    cover: 'image/resize,w_400/format,webp',
+    /** 详情轮播 ~1200px */
+    detail: 'image/resize,w_1200/format,webp',
+    /** 笔记阅读宽度 ~800px */
+    reading: 'image/resize,w_800/format,webp',
+    /** Lightbox 全屏 ~2000px */
+    full: 'image/resize,w_2000/format,webp',
+  } as const;
+
+  /**
+   * 生成 OSS 公开访问 URL（走外网域名，客户端直连）。
+   * @param key OSS 对象 key
+   * @param process 可选的图片处理参数（如 IMAGE_PRESETS.cover）
+   */
+  getPublicUrl(key: string, process?: string): string {
+    const base = `https://${this.bucketName}.${this.region}.aliyuncs.com/${key}`;
+    return process ? `${base}?x-oss-process=${process}` : base;
+  }
+
+  /**
+   * OSS 内部对象拷贝（同 bucket，零流量消耗）。
+   * 用于 commit 时把草稿资源拷贝到永久位置。
+   */
+  async copyObject(srcKey: string, destKey: string): Promise<void> {
+    await this.client.copy(destKey, srcKey);
+  }
+
+  /**
+   * commit 时把草稿资源提升为永久资源：
+   * 从 draft key（{contentId}/{fileName}）拷贝到永久 key（assets/{contentId}/{fileName}）。
+   * 返回提升成功的文件名列表。
+   */
+  async promoteDraftAssets(contentItemId: string): Promise<string[]> {
+    const prefix = `${contentItemId}/`;
+    const keys = await this.listByPrefix(prefix);
+    const promoted: string[] = [];
+
+    for (const key of keys) {
+      const fileName = key.slice(prefix.length);
+      const permanentKey = `assets/${contentItemId}/${fileName}`;
+      try {
+        await this.copyObject(key, permanentKey);
+        promoted.push(fileName);
+      } catch (err) {
+        this.logger.warn(`Failed to promote ${key} → ${permanentKey}: ${err}`);
+      }
+    }
+
+    if (promoted.length > 0) {
+      this.logger.log(
+        `Promoted ${promoted.length} assets for ${contentItemId} to permanent OSS`,
+      );
+    }
+
+    return promoted;
+  }
+
   /** 删除指定前缀下的全部对象 */
   async removeByPrefix(prefix: string): Promise<void> {
     const keys = await this.listByPrefix(prefix);

@@ -57,11 +57,16 @@ function createMocks() {
     listByContentItemId: jest.fn().mockResolvedValue([]),
   };
 
+  const mockOssService = {
+    isDraftStorageReady: jest.fn().mockReturnValue(false),
+    getPublicUrl: jest.fn().mockImplementation((key: string) => `/mock-oss/${key}`),
+  };
   const service = new ContentService(
     mockRepository as never,
     mockRepoService,
     mockGitService,
     mockSnapshotRepository as never,
+    mockOssService as never,
   );
 
   return { service, mockRepository };

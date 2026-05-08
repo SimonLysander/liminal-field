@@ -265,6 +265,11 @@ export class ImportService {
           asset.filename,
           buf,
         );
+        // 写到 OSS 永久位置
+        const permanentKey = `assets/${contentId}/${stored.fileName}`;
+        await this.minioService
+          .putObject(permanentKey, buf, this.guessMimeType(asset.filename))
+          .catch(() => {});
         pathMap.set(asset.filename, stored.path);
       }
     }
@@ -705,6 +710,11 @@ export class ImportService {
             asset.filename,
             buf,
           );
+          // 同步写到 OSS 永久位置（导入路径不走 draft → promote 流程）
+          const permanentKey = `assets/${contentId}/${stored.fileName}`;
+          await this.minioService
+            .putObject(permanentKey, buf, this.guessMimeType(asset.filename))
+            .catch(() => {});
           return {
             ref: asset.ref,
             filename: asset.filename,

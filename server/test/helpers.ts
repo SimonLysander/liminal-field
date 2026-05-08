@@ -161,6 +161,33 @@ export class TestContext {
           }
           return Promise.resolve();
         }),
+        // L3 资源服务层方法
+        isDraftStorageReady: jest.fn().mockReturnValue(false),
+        getPublicUrl: jest
+          .fn()
+          .mockImplementation((key: string, process?: string) => {
+            const base = `/mock-oss/${key}`;
+            return process ? `${base}?x-oss-process=${process}` : base;
+          }),
+        copyObject: jest.fn().mockImplementation((src: string, dest: string) => {
+          const buf = store.get(src);
+          if (buf) store.set(dest, buf);
+          return Promise.resolve();
+        }),
+        promoteDraftAssets: jest
+          .fn()
+          .mockImplementation((contentItemId: string) => {
+            const prefix = `${contentItemId}/`;
+            const promoted: string[] = [];
+            for (const [key, buf] of store.entries()) {
+              if (key.startsWith(prefix)) {
+                const fileName = key.slice(prefix.length);
+                store.set(`assets/${contentItemId}/${fileName}`, buf);
+                promoted.push(fileName);
+              }
+            }
+            return Promise.resolve(promoted);
+          }),
       })
       .compile();
 

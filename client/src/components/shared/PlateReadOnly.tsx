@@ -12,7 +12,6 @@
 import {
   useId,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   useTransition,
@@ -81,12 +80,13 @@ function ReadOnlySkeleton() {
 
 export default function PlateReadOnly({
   markdown,
-  contentItemId,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 保留接口兼容
+  contentItemId: _,
   /** Plate 异步就绪并为 h1–h6 打上 data-heading-id 之后调用（用于父组件从 DOM 聚合 TOC） */
   onHeadingsMarked,
 }: {
   markdown: string;
-  /** 传入后将 ./assets/{name} 改写为服务端代理 URL */
+  /** @deprecated 服务端已完成 URL 重写，此参数保留仅为接口兼容 */
   contentItemId?: string;
   onHeadingsMarked?: () => void;
 }) {
@@ -98,13 +98,8 @@ export default function PlateReadOnly({
     onHeadingsMarkedRef.current = onHeadingsMarked;
   }, [onHeadingsMarked]);
 
-  const processedMarkdown = useMemo(() => {
-    let md = markdown || '';
-    if (contentItemId) {
-      md = md.replaceAll(/\.\/assets\//g, `/api/v1/spaces/notes/items/${contentItemId}/assets/`);
-    }
-    return md;
-  }, [markdown, contentItemId]);
+  // 服务端已将 ./assets/ 重写为 OSS 直连 URL（或代理 URL），客户端无需再处理
+  const processedMarkdown = markdown || '';
 
   // markdown 变化时重置 ready，用 startTransition 延迟重建 editor
   useEffect(() => {
