@@ -7,13 +7,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, FolderOpen, FileText } from 'lucide-react';
+import { ChevronRight, FolderOpen, FileText, MoreHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import { setPendingImportFiles } from '../batch-import-store';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { structureApi } from '@/services/structure';
@@ -199,8 +200,8 @@ export function FolderOverviewPanel({
         </div>
       )}
 
-      {/* ---- 操作按钮 ---- */}
-      <div className="flex flex-wrap items-center gap-2">
+      {/* ---- 操作：高频平铺 + 低频收纳在 ··· ---- */}
+      <div className="flex items-center gap-2">
         <button
           className="rounded-lg px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-80"
           style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
@@ -208,27 +209,29 @@ export function FolderOverviewPanel({
         >
           导入文件夹
         </button>
+        <button
+          className="rounded-lg px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-80"
+          style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
+          onClick={async () => {
+            const result = await structureApi.batchPublish(node.id);
+            toast.success(`已发布 ${result.successCount} 篇，跳过 ${result.skippedCount} 篇`);
+            void load();
+            onReload();
+          }}
+        >
+          发布全部
+        </button>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              className="rounded-lg px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-80"
-              style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
+              className="flex h-7 w-7 items-center justify-center rounded-lg transition-opacity hover:opacity-80"
+              style={{ background: 'var(--shelf)', color: 'var(--ink-ghost)' }}
             >
-              发布 ▾
+              <MoreHorizontal size={14} strokeWidth={1.5} />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="min-w-[120px]">
-            <DropdownMenuItem
-              onClick={async () => {
-                const result = await structureApi.batchPublish(node.id);
-                toast.success(`已发布 ${result.successCount} 篇，跳过 ${result.skippedCount} 篇`);
-                void load();
-                onReload();
-              }}
-            >
-              发布全部
-            </DropdownMenuItem>
+          <DropdownMenuContent align="start" className="min-w-[140px]">
             <DropdownMenuItem
               onClick={async () => {
                 const result = await structureApi.batchUnpublish(node.id);
@@ -239,30 +242,19 @@ export function FolderOverviewPanel({
             >
               取消全部发布
             </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              className="rounded-lg px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-80"
-              style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
-            >
-              管理 ▾
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="min-w-[120px]">
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onEdit(node)}>
               重命名
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onMoveTo(node)}>
               移动到...
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => onDelete(node)}
               style={{ color: 'var(--mark-red)' }}
             >
-              删除
+              删除文件夹
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

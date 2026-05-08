@@ -10,6 +10,14 @@
  *   - 正在查看历史版本 → 额外显示"返回最新"
  */
 
+import { MoreHorizontal } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import MarkdownBody from '@/components/shared/MarkdownBody';
 import type { ContentVersionViewProps } from '../types';
@@ -27,6 +35,9 @@ export const ContentVersionView = ({
   onUnpublish,
   onExitPreview,
   onPublishPreview,
+  onEdit,
+  onDelete,
+  onMoveTo,
 }: ContentVersionViewProps) => {
   const confirm = useConfirm();
 
@@ -126,6 +137,43 @@ export const ContentVersionView = ({
             <TextLink label="取消发布" danger onClick={() => void handleUnpublish()} />
           ) : (
             <TextLink label="发布" onClick={() => void handlePublish()} />
+          )}
+
+          {/* 低频管理操作 */}
+          {(onEdit || onDelete || onMoveTo) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="flex h-6 w-6 items-center justify-center rounded-md transition-opacity hover:opacity-70"
+                  style={{ color: 'var(--ink-ghost)' }}
+                >
+                  <MoreHorizontal size={14} strokeWidth={1.5} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[120px]">
+                {onEdit && (
+                  <DropdownMenuItem onClick={() => onEdit(node)}>
+                    重命名
+                  </DropdownMenuItem>
+                )}
+                {onMoveTo && (
+                  <DropdownMenuItem onClick={() => onMoveTo(node)}>
+                    移动到...
+                  </DropdownMenuItem>
+                )}
+                {onDelete && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => onDelete(node)}
+                      style={{ color: 'var(--mark-red)' }}
+                    >
+                      删除
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
       </div>

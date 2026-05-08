@@ -151,6 +151,9 @@ const ContentAdmin = () => {
                       onUnpublish={workspace.unpublishContent}
                       onExitPreview={workspace.exitPreview}
                       onPublishPreview={workspace.publishPreview}
+                      onEdit={workspace.openEdit}
+                      onDelete={workspace.setDeleteTarget}
+                      onMoveTo={workspace.setMoveTarget}
                     />
                   ) : workspace.currentFolderNode ? (
                     <FolderOverviewPanel

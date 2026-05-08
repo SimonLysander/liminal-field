@@ -78,6 +78,9 @@ export type ContentVersionViewProps = {
   onUnpublish: () => Promise<void>;
   onExitPreview: () => void;
   onPublishPreview: () => Promise<void>;
+  onEdit?: (node: StructureNode) => void;
+  onDelete?: (node: StructureNode) => void;
+  onMoveTo?: (node: StructureNode) => void;
 };
 
 export type DraftWorkspaceProps = {
