@@ -667,6 +667,7 @@ export class NavigationNodeService {
               dto.contentItemId,
             );
             dto.summary = item.summary;
+            dto.updatedAt = item.updatedAt;
             if (!item.publishedVersion) {
               dto.publishStatus = 'unpublished';
               totalUnpublished++;

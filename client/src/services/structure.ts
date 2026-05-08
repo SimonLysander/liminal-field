@@ -55,6 +55,7 @@ export interface FolderOverviewChild {
   childPublishedCount?: number;
   publishStatus?: ChildPublishStatus;
   summary?: string;
+  updatedAt?: string;
 }
 
 export interface FolderOverview {

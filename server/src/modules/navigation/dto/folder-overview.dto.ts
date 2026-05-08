@@ -28,6 +28,8 @@ export class FolderOverviewChildDto {
   publishStatus?: ChildPublishStatus;
   /** DOC 子节点：摘要截断 */
   summary?: string;
+  /** 最近更新时间 */
+  updatedAt?: string;
 }
 
 export class FolderOverviewDto {

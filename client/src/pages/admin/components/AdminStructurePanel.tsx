@@ -2,26 +2,19 @@
  * AdminStructurePanel — 面包屑钻入式导航面板
  *
  * 替代原 TreePanel 的递归树结构，改为一次只显示一个层级。
- * 交互模式对齐展示端 Sidebar 的面包屑钻入，但增加了管理端特有功能：
+ * 交互模式对齐展示端 Sidebar 的面包屑钻入，管理端特有功能：
  *   - 同级拖拽排序（仅 before/after，无 inside）
- *   - hover 操作按钮（编辑、删除、移动到...）
  *   - visibility: 'all'（可见未发布内容）
+ * 节点操作（重命名/删除/移动）统一由中间面板承载，sidebar 只负责导航。
  *
  * 字号全部使用 Tailwind class（text-base / text-xs / text-2xs），
  * 与展示端 Sidebar 保持同一套 token，不用 inline fontSize。
  */
 
 import { ContentFade, LoadingState } from '@/components/LoadingState';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import type { StructureNode } from '@/services/structure';
-import { ChevronLeft, FileText, Folder, MoreHorizontal, Plus, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileText, Folder, Plus, RefreshCw } from 'lucide-react';
 import { useCallback, useState } from 'react';
 
 /* ---------- Types ---------- */
@@ -46,12 +39,7 @@ type AdminStructurePanelProps = {
   onEnterFolder: (node: StructureNode) => void;
   onGoToBreadcrumb: (index: number | null) => void;
   onAddChild: (parentId?: string) => void;
-  onEdit: (node: StructureNode) => void;
-  onDelete: (node: StructureNode) => void;
-  onMoveTo: (node: StructureNode) => void;
   onReorder: (nodeId: string, targetNodeId: string, position: DropPosition) => void;
-  onBatchPublish?: (node: StructureNode) => void;
-  onImportFolder?: (node: StructureNode) => void;
 };
 
 /* ---------- Node list item ---------- */
@@ -63,11 +51,6 @@ function NodeItem({
   dropTarget,
   onSelect,
   onEnterFolder,
-  onEdit,
-  onDelete,
-  onMoveTo,
-  onBatchPublish,
-  onImportFolder,
   onDragStart,
   onDragOver,
   onDragEnd,
@@ -79,11 +62,6 @@ function NodeItem({
   dropTarget: DropTarget | null;
   onSelect: (node: StructureNode) => void;
   onEnterFolder: (node: StructureNode) => void;
-  onEdit: (node: StructureNode) => void;
-  onDelete: (node: StructureNode) => void;
-  onMoveTo: (node: StructureNode) => void;
-  onBatchPublish?: (node: StructureNode) => void;
-  onImportFolder?: (node: StructureNode) => void;
   onDragStart: (nodeId: string) => void;
   onDragOver: (e: React.DragEvent, nodeId: string) => void;
   onDragEnd: () => void;
@@ -148,88 +126,21 @@ function NodeItem({
         )}
 
         <span
-          className="min-w-0 flex-1 truncate pr-7 text-base"
+          className="min-w-0 flex-1 truncate text-base"
           style={{ fontWeight: isSelected ? 500 : 400 }}
         >
           {node.name}
         </span>
 
-        {/* Hover actions — absolute 脱离文档流，单个 ··· 触发 DropdownMenu，不占文字宽度 */}
-        <div
-          className="absolute inset-y-0 right-1 flex items-center opacity-0 transition-opacity duration-100 group-hover:opacity-100"
-          style={{ background: 'linear-gradient(to right, transparent, var(--shelf) 20px)' }}
-        >
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className="flex h-6 w-6 items-center justify-center rounded-md transition-colors duration-100 hover:bg-[var(--paper-dark)]"
-                style={{ color: 'var(--ink-ghost)' }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <MoreHorizontal size={13} strokeWidth={2} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              sideOffset={4}
-              style={{
-                border: 'none',
-                background: 'var(--sidebar-bg)',
-                borderRadius: 'var(--radius-lg)',
-                boxShadow:
-                  '0 2px 8px rgba(0,0,0,0.12), 0 8px 24px rgba(0,0,0,0.1), 0 0 0 0.5px rgba(0,0,0,0.06)',
-                minWidth: 140,
-              }}
-            >
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit(node);
-                }}
-              >
-                重命名
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onMoveTo(node);
-                }}
-              >
-                移动到...
-              </DropdownMenuItem>
-              {isFolder && onImportFolder && (
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onImportFolder(node);
-                  }}
-                >
-                  导入文件夹
-                </DropdownMenuItem>
-              )}
-              {isFolder && onBatchPublish && (
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onBatchPublish(node);
-                  }}
-                >
-                  发布全部
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(node);
-                }}
-                style={{ color: 'var(--mark-red)' }}
-              >
-                删除
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        {/* 文件夹用 chevron 提示可展开 */}
+        {isFolder && (
+          <ChevronRight
+            size={12}
+            strokeWidth={1.5}
+            className="shrink-0"
+            style={{ color: 'var(--ink-ghost)' }}
+          />
+        )}
       </div>
 
       {/* After drop indicator */}
@@ -262,12 +173,7 @@ export function AdminStructurePanel({
   onEnterFolder,
   onGoToBreadcrumb,
   onAddChild,
-  onEdit,
-  onDelete,
-  onMoveTo,
   onReorder,
-  onBatchPublish,
-  onImportFolder,
 }: AdminStructurePanelProps) {
   const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
@@ -482,11 +388,6 @@ export function AdminStructurePanel({
                   dropTarget={dropTarget}
                   onSelect={onSelect}
                   onEnterFolder={onEnterFolder}
-                  onEdit={onEdit}
-                  onDelete={onDelete}
-                  onMoveTo={onMoveTo}
-                  onBatchPublish={onBatchPublish}
-                  onImportFolder={onImportFolder}
                   onDragStart={handleDragStart}
                   onDragOver={handleDragOver}
                   onDragEnd={handleDragEnd}

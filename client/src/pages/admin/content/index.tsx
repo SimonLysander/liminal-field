@@ -9,9 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 // 编辑页跳转统一用 window.location.href（Plate inputRules 在 SPA 导航后不生效）
 import { smoothBounce } from '@/lib/motion';
-import { toast } from 'sonner';
 import { useConfirm } from '@/contexts/ConfirmContext';
-import { structureApi } from '@/services/structure';
 import { notesApi as contentItemsApi } from '@/services/workspace';
 import Topbar from '@/components/global/Topbar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -115,15 +113,7 @@ const ContentAdmin = () => {
         onEnterFolder={workspace.enterFolder}
         onGoToBreadcrumb={workspace.goToBreadcrumb}
         onAddChild={workspace.openCreate}
-        onEdit={workspace.openEdit}
-        onDelete={workspace.setDeleteTarget}
-        onMoveTo={workspace.setMoveTarget}
         onReorder={workspace.reorderNodes}
-        onBatchPublish={async (node) => {
-          const result = await structureApi.batchPublish(node.id);
-          toast.success(`已发布 ${result.successCount} 篇，跳过 ${result.skippedCount} 篇`);
-          workspace.reloadLevel();
-        }}
       />
 
       {/* Main content area */}
@@ -168,6 +158,9 @@ const ContentAdmin = () => {
                       onSelectNode={workspace.selectNode}
                       onEnterFolder={workspace.enterFolder}
                       onReload={workspace.reloadLevel}
+                      onEdit={workspace.openEdit}
+                      onDelete={workspace.setDeleteTarget}
+                      onMoveTo={workspace.setMoveTarget}
                     />
                   ) : (
                     <EmptyState title="未选择节点" subtitle="从左侧列表中选择一个文件夹或文档开始。" />

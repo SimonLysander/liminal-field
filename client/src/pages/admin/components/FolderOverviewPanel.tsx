@@ -28,6 +28,9 @@ interface FolderOverviewPanelProps {
   onSelectNode: (node: StructureNode) => void;
   onEnterFolder: (node: StructureNode) => void;
   onReload: () => void;
+  onEdit: (node: StructureNode) => void;
+  onDelete: (node: StructureNode) => void;
+  onMoveTo: (node: StructureNode) => void;
 }
 
 /* ---- 发布状态点标记 ---- */
@@ -60,11 +63,28 @@ function formatPublishSuffix(published: number | undefined, total: number): stri
   return ` · ${published} 篇已发布`;
 }
 
+function formatRelativeTime(iso: string | undefined): string {
+  if (!iso) return '';
+  const diff = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 1) return '刚刚';
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} 天前`;
+  const months = Math.floor(days / 30);
+  return `${months} 个月前`;
+}
+
 export function FolderOverviewPanel({
   node,
   onSelectNode,
   onEnterFolder,
   onReload,
+  onEdit,
+  onDelete,
+  onMoveTo,
 }: FolderOverviewPanelProps) {
   const navigate = useNavigate();
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -180,7 +200,7 @@ export function FolderOverviewPanel({
       )}
 
       {/* ---- 操作按钮 ---- */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           className="rounded-lg px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-80"
           style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
@@ -195,7 +215,7 @@ export function FolderOverviewPanel({
               className="rounded-lg px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-80"
               style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
             >
-              发布全部 ▾
+              发布 ▾
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="min-w-[120px]">
@@ -218,6 +238,31 @@ export function FolderOverviewPanel({
               }}
             >
               取消全部发布
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="rounded-lg px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-80"
+              style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
+            >
+              管理 ▾
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="min-w-[120px]">
+            <DropdownMenuItem onClick={() => onEdit(node)}>
+              重命名
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onMoveTo(node)}>
+              移动到...
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => onDelete(node)}
+              style={{ color: 'var(--mark-red)' }}
+            >
+              删除
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -253,9 +298,11 @@ export function FolderOverviewPanel({
                   {formatPublishSuffix(child.childPublishedCount, child.childDocCount!)}
                 </p>
               )}
-              {child.type === 'DOC' && child.summary && (
+              {child.type === 'DOC' && (child.summary || child.updatedAt) && (
                 <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--ink-ghost)' }}>
                   {child.summary}
+                  {child.summary && child.updatedAt && ' · '}
+                  {child.updatedAt && formatRelativeTime(child.updatedAt)}
                 </p>
               )}
             </div>
