@@ -213,10 +213,13 @@ export class OssService implements OnModuleInit, MinioDraftStorageStatus {
    * 生成 OSS 公开访问 URL（走外网域名，客户端直连）。
    * @param key OSS 对象 key
    * @param process 可选的图片处理参数（如 IMAGE_PRESETS.cover）
+   * @param expires 签名有效期秒数，默认 1 小时
    */
-  getPublicUrl(key: string, process?: string): string {
-    const base = `https://${this.bucketName}.${this.region}.aliyuncs.com/${key}`;
-    return process ? `${base}?x-oss-process=${process}` : base;
+  getPublicUrl(key: string, process?: string, expires = 3600): string {
+    return this.client.signatureUrl(key, {
+      expires,
+      process: process || undefined,
+    });
   }
 
   /**
