@@ -21,7 +21,7 @@ import JSZip from 'jszip';
 import { importApi } from '@/services/import';
 import type { BatchParsedItem } from '@/services/import';
 import MarkdownBody from '@/components/shared/MarkdownBody';
-import { useSessionCountdown } from './hooks/useSessionCountdown';
+import { useSessionCountdown, markSessionStart, clearSessionStart } from './hooks/useSessionCountdown';
 import { getPendingImportFiles, clearPendingImportFiles } from './batch-import-store';
 
 /* ---- 本地文件条目（解析前） ---- */
@@ -195,6 +195,13 @@ export default function BatchImportPage() {
   const [confirming, setConfirming] = useState(false);
   const countdown = useSessionCountdown();
 
+  // 会话过期时 toast 提醒（只触发一次）
+  useEffect(() => {
+    if (countdown.expired && parseComplete) {
+      toast.error('导入会话已过期，请重新上传文件夹');
+    }
+  }, [countdown.expired, parseComplete]);
+
   // Phase 2: JSZip 打包文件夹 → 上传到服务端（资源匹配由后端完成）
   useEffect(() => {
     if (!incomingFiles || initialEntries.length === 0 || parseComplete) return;
@@ -244,6 +251,12 @@ export default function BatchImportPage() {
         setParseComplete(true);
 
         sessionStorage.setItem(`batch-import-${result.batchId}`, JSON.stringify(result.items));
+        markSessionStart();
+
+        // 将 batchId 写入 URL，刷新后可从 sessionStorage 恢复
+        const url = new URL(window.location.href);
+        url.searchParams.set('batchId', result.batchId);
+        window.history.replaceState(null, '', url.toString());
       } catch (err) {
         toast.error(`解析失败: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -307,8 +320,8 @@ export default function BatchImportPage() {
       setParseComplete(true);
       setParseProgress({ done: session.items.length, total: session.items.length });
     }).catch(() => {
-      toast.error('会话已过期');
-      navigate(`/admin/notes?topic=${parentId}`);
+      // 会话已不存在（已完成/已过期），静默跳回
+      navigate(`/admin/notes?topic=${parentId}`, { replace: true });
     });
   }, [urlBatchId, incomingFiles, restoredFromStorage, navigate, parentId]);
 
@@ -409,6 +422,7 @@ export default function BatchImportPage() {
     try {
       const result = await importApi.batchConfirm({ batchId, parentId, selectedPaths: [...checked] });
       clearPendingImportFiles();
+      clearSessionStart();
       sessionStorage.removeItem(`batch-import-${batchId}`);
 
       // 开始轮询后台进度
@@ -421,15 +435,15 @@ export default function BatchImportPage() {
           if (progress.status === 'done') {
             clearInterval(poll);
             toast.success(`导入完成：${result.foldersCreated} 个文件夹，${progress.completed} 篇文档`);
-            navigate(`/admin/notes?topic=${parentId}`);
+            navigate(`/admin/notes?topic=${parentId}`, { replace: true });
           } else if (progress.status === 'failed') {
             clearInterval(poll);
             toast.error('部分文档导入失败');
-            navigate(`/admin/notes?topic=${parentId}`);
+            navigate(`/admin/notes?topic=${parentId}`, { replace: true });
           }
         } catch {
           clearInterval(poll);
-          navigate(`/admin/notes?topic=${parentId}`);
+          navigate(`/admin/notes?topic=${parentId}`, { replace: true });
         }
       }, 800);
     } catch (err) {
@@ -440,9 +454,10 @@ export default function BatchImportPage() {
 
   const handleCancel = useCallback(async () => {
     clearPendingImportFiles();
+    clearSessionStart();
     if (batchId) await importApi.cancelBatch(batchId).catch(() => {});
     sessionStorage.removeItem(`batch-import-${batchId}`);
-    navigate(`/admin/notes?topic=${parentId}`);
+    navigate(`/admin/notes?topic=${parentId}`, { replace: true });
   }, [batchId, parentId, navigate]);
 
   // 进度条百分比

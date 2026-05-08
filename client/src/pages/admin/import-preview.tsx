@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import MarkdownBody from '@/components/shared/MarkdownBody';
 import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
 import { importApi, type AssetRef, type ParseResult } from '@/services/import';
-import { useSessionCountdown } from './hooks/useSessionCountdown';
+import { useSessionCountdown, clearSessionStart } from './hooks/useSessionCountdown';
 import { parseError } from './helpers';
 
 /**
@@ -157,7 +157,7 @@ export default function ImportPreviewPage() {
   };
 
   const handleCancel = () => {
-    // 立即清理服务端临时文件
+    clearSessionStart();
     if (parseId) importApi.cancelParse(parseId).catch(() => {});
     const backUrl = parentId ? `/admin/notes?topic=${parentId}` : '/admin/notes';
     navigate(backUrl);

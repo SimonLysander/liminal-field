@@ -1,22 +1,35 @@
 /**
  * useSessionCountdown — 导入会话倒计时 hook。
  *
- * 从页面挂载起倒数 duration 秒（默认 30 分钟 = 1800s），
- * 返回格式化文本和是否过期标志。
+ * 基于 sessionStorage 存储的创建时间计算剩余秒数，
+ * 刷新后继续倒数（不重新开始）。
  */
 import { useEffect, useState } from 'react';
 
 const SESSION_TTL_SECONDS = 30 * 60;
+const STORAGE_KEY = 'batch-import-start';
 
-export function useSessionCountdown(duration = SESSION_TTL_SECONDS) {
-  const [remaining, setRemaining] = useState(duration);
+/** 记录会话开始时间（batchParse 完成时调用） */
+export function markSessionStart() {
+  sessionStorage.setItem(STORAGE_KEY, String(Date.now()));
+}
+
+/** 清除会话开始时间（取消/完成时调用） */
+export function clearSessionStart() {
+  sessionStorage.removeItem(STORAGE_KEY);
+}
+
+export function useSessionCountdown() {
+  const [remaining, setRemaining] = useState(() => {
+    const start = sessionStorage.getItem(STORAGE_KEY);
+    if (!start) return SESSION_TTL_SECONDS;
+    const elapsed = Math.floor((Date.now() - Number(start)) / 1000);
+    return Math.max(0, SESSION_TTL_SECONDS - elapsed);
+  });
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setRemaining((prev) => {
-        if (prev <= 0) return 0;
-        return prev - 1;
-      });
+      setRemaining((prev) => (prev <= 0 ? 0 : prev - 1));
     }, 1000);
     return () => clearInterval(timer);
   }, []);
@@ -25,7 +38,7 @@ export function useSessionCountdown(duration = SESSION_TTL_SECONDS) {
   const seconds = remaining % 60;
   const display = `${minutes}:${seconds.toString().padStart(2, '0')}`;
   const expired = remaining <= 0;
-  const urgent = remaining <= 120; // 最后 2 分钟变红
+  const urgent = remaining <= 120;
 
   return { display, expired, urgent, remaining };
 }

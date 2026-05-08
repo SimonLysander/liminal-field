@@ -702,17 +702,20 @@ export const TableElement = withHOC(
             <table
               ref={tableRef}
               className={cn(
-                'mr-0 ml-px table h-px table-fixed border-collapse',
+                'mr-0 ml-px table h-px border-collapse',
+                // 编辑模式 table-fixed 支持拖拽列宽；只读模式 table-auto 让公式自适应
+                readOnly ? 'table-auto' : 'table-fixed',
                 'data-[table-selecting=true]:[&_*::selection]:!bg-transparent',
                 'data-[table-selecting=true]:[&_*::selection]:!text-inherit',
                 'data-[table-selecting=true]:[&_*::-moz-selection]:!bg-transparent',
                 'data-[table-selecting=true]:[&_*::-moz-selection]:!text-inherit',
                 'data-[table-selecting=true]:[&_*]:!caret-transparent'
               )}
-              style={tableStyle}
+              style={readOnly ? undefined : tableStyle}
               {...tableProps}
             >
-              {resolvedColSizes.length > 0 && (
+              {/* 只读模式跳过 colgroup（table-auto 让浏览器按内容分配列宽） */}
+              {!readOnly && resolvedColSizes.length > 0 && (
                 <colgroup>
                   {hasControls && (
                     <col
@@ -1319,8 +1322,7 @@ export function TableCellElement({
       style={
         {
           '--cellBackground': element.background,
-          maxWidth: width,
-          minWidth: width,
+          ...(readOnly ? {} : { maxWidth: width, minWidth: width }),
         } as React.CSSProperties
       }
       attributes={{
