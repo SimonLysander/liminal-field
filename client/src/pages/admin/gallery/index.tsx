@@ -245,8 +245,8 @@ export default function GalleryAdmin() {
       toast.success('已删除');
       if (selectedId === id) setSelectedId(null);
       void loadPosts();
-    } catch {
-      toast.error('删除失败');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '删除失败');
     }
   };
 

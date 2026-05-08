@@ -351,11 +351,13 @@ export class GalleryViewService {
     hasFrontmatter: boolean,
   ): GalleryPhotoDto[] {
     // frontmatter 中登记的照片（按 frontmatter 顺序）
+    // OSS 就绪时信任 frontmatter（资源已在 OSS 永久 key 上），不要求磁盘存在
+    const useOss = this.minioService.isDraftStorageReady();
     const registeredPhotos: GalleryPhotoDto[] = parsedPhotos
       .map((p) => {
         const asset = imageAssets.find((a) => a.fileName === p.file);
-        // frontmatter 登记但 assets 目录不存在（已被删除），跳过
-        if (!asset) return null;
+        // 磁盘和 OSS 都不可用时才跳过
+        if (!asset && !useOss) return null;
         return {
           id: p.file,
           url: this.buildPhotoUrl(
@@ -364,7 +366,7 @@ export class GalleryViewService {
             OssService.IMAGE_PRESETS.detail,
           ),
           fileName: p.file,
-          size: asset.size,
+          size: asset?.size ?? 0,
           caption: p.caption,
           tags: p.tags,
         } satisfies GalleryPhotoDto;
@@ -802,7 +804,10 @@ export class GalleryViewService {
       action: ContentSaveAction.commit,
     });
 
-    // 3. 后台：下载草稿照片到磁盘 + Git 归档 + 清理 OSS
+    // 3. OSS 内部拷贝到永久位置（同步，确保返回 DTO 时 URL 可访问）
+    await this.minioService.promoteDraftAssets(contentItemId).catch(() => {});
+
+    // 4. 后台：下载到磁盘 + Git 归档 + 清理 OSS draft
     void this.archiveDraftAssets(contentItemId).catch((err: unknown) => {
       this.logger.warn(
         `archiveDraftAssets failed for ${contentItemId}: ${err instanceof Error ? err.message : String(err)}`,
