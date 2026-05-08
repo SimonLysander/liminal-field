@@ -162,46 +162,46 @@ export function FolderOverviewPanel({
 
   return (
     <div className="space-y-6">
-      {/* ---- 标题 + 统计 ---- */}
-      <div>
-        <h2
-          className="text-2xl font-semibold"
-          style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}
-        >
-          {node.name}
-        </h2>
-        <p className="text-xs mt-1" style={{ color: 'var(--ink-faded)' }}>
-          {stats.folderCount > 0 && `${stats.folderCount} 个子文件夹 · `}
-          {stats.docCount} 篇文档
-        </p>
-      </div>
-
-      {/* ---- 发布状态分布 ---- */}
-      {stats.docCount > 0 && (
-        <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--ink-faded)' }}>
-          {stats.published > 0 && (
-            <span className="flex items-center gap-1.5">
-              <StatusDot status="published" />
-              {stats.published} 已发布
-            </span>
-          )}
-          {stats.updated > 0 && (
-            <span className="flex items-center gap-1.5">
-              <StatusDot status="updated" />
-              {stats.updated} 有更新
-            </span>
-          )}
-          {stats.unpublished > 0 && (
-            <span className="flex items-center gap-1.5">
-              <StatusDot status="unpublished" />
-              {stats.unpublished} 未发布
-            </span>
+      {/* ---- 标题行：左标题 + 右操作（与 ContentVersionView 对齐） ---- */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h2
+            className="text-2xl font-semibold"
+            style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}
+          >
+            {node.name}
+          </h2>
+          <p className="text-xs mt-1" style={{ color: 'var(--ink-faded)' }}>
+            {stats.folderCount > 0 && `${stats.folderCount} 个子文件夹 · `}
+            {stats.docCount} 篇文档
+          </p>
+          {/* 发布状态分布 */}
+          {stats.docCount > 0 && (
+            <div className="mt-2 flex items-center gap-4 text-xs" style={{ color: 'var(--ink-faded)' }}>
+              {stats.published > 0 && (
+                <span className="flex items-center gap-1.5">
+                  <StatusDot status="published" />
+                  {stats.published} 已发布
+                </span>
+              )}
+              {stats.updated > 0 && (
+                <span className="flex items-center gap-1.5">
+                  <StatusDot status="updated" />
+                  {stats.updated} 有更新
+                </span>
+              )}
+              {stats.unpublished > 0 && (
+                <span className="flex items-center gap-1.5">
+                  <StatusDot status="unpublished" />
+                  {stats.unpublished} 未发布
+                </span>
+              )}
+            </div>
           )}
         </div>
-      )}
 
-      {/* ---- 操作：高频平铺 + 低频收纳在 ··· ---- */}
-      <div className="flex items-center gap-2">
+        {/* 操作：高频平铺 + 低频 ··· */}
+        <div className="flex items-center gap-2 pt-1">
         <button
           className="rounded-lg px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-80"
           style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
@@ -258,6 +258,7 @@ export function FolderOverviewPanel({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        </div>
       </div>
 
       {/* ---- 分隔线 ---- */}
