@@ -374,9 +374,28 @@ export class NavigationNodeService {
       throw new NotFoundException(`NavigationNode ${id} not found`);
     }
 
-    // 级联删除：收集所有后代并一次性删除
+    // 已发布内容不允许直接删除，必须先取消发布
     const descendants = await this.navigationRepository.findAllDescendants(id);
-    const allIds = [id, ...descendants.map((d) => d._id.toString())];
+    const allNodes = [node, ...descendants];
+    for (const n of allNodes) {
+      if (n.nodeType === NavigationNodeType.content && n.contentItemId) {
+        try {
+          const item = await this.contentService.getContentListItem(
+            n.contentItemId,
+          );
+          if (item.publishedVersion) {
+            throw new BadRequestException(
+              `「${item.title}」已发布，请先取消发布再删除`,
+            );
+          }
+        } catch (err) {
+          if (err instanceof BadRequestException) throw err;
+          /* ContentItem 不存在则跳过 */
+        }
+      }
+    }
+
+    const allIds = allNodes.map((n) => n._id.toString());
     await this.navigationRepository.deleteManyByIds(allIds);
   }
 

@@ -10,7 +10,12 @@
  * 依赖关系：ContentService + ContentRepository + ContentRepoService（存储层）
  *          + NavigationRepository（业务索引层）
  */
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { ContentService } from '../content/content.service';
 import { ContentRepository } from '../content/content.repository';
 import { ContentRepoService } from '../content/content-repo.service';
@@ -232,6 +237,11 @@ export class WorkspaceService {
 
   /** 删除条目：移除 Navigation 索引（Content 存储保留，由 Git 管理生命周期）。 */
   async remove(_scope: string, contentItemId: string): Promise<void> {
+    // 已发布内容不允许直接删除
+    const content = await this.contentRepository.findById(contentItemId);
+    if (content?.publishedVersion) {
+      throw new BadRequestException('已发布内容请先取消发布再删除');
+    }
     const navNode =
       await this.navigationRepository.findByContentItemId(contentItemId);
     if (navNode) {
