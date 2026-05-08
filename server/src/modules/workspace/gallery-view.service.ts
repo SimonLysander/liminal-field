@@ -349,6 +349,7 @@ export class GalleryViewService {
     parsedPhotos: FrontmatterPhoto[],
     imageAssets: { fileName: string; size: number }[],
     hasFrontmatter: boolean,
+    preset = OssService.IMAGE_PRESETS.detail,
   ): GalleryPhotoDto[] {
     // frontmatter 中登记的照片（按 frontmatter 顺序）
     // OSS 就绪时信任 frontmatter（资源已在 OSS 永久 key 上），不要求磁盘存在
@@ -363,7 +364,7 @@ export class GalleryViewService {
           url: this.buildPhotoUrl(
             contentItemId,
             p.file,
-            OssService.IMAGE_PRESETS.detail,
+            preset,
           ),
           fileName: p.file,
           size: asset?.size ?? 0,
@@ -384,7 +385,7 @@ export class GalleryViewService {
       url: this.buildPhotoUrl(
         contentItemId,
         asset.fileName,
-        OssService.IMAGE_PRESETS.detail,
+        preset,
       ),
       fileName: asset.fileName,
       size: asset.size,
@@ -519,6 +520,7 @@ export class GalleryViewService {
       parsed.photos,
       imageAssets,
       parsed.hasFrontmatter,
+      OssService.IMAGE_PRESETS.full, // 公开画廊全屏轮播用最高质量
     );
 
     // 展示端照片 URL 带版本号（签名 URL 已有 ? 时用 &v=）
