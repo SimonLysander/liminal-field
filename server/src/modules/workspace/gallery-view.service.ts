@@ -361,11 +361,8 @@ export class GalleryViewService {
         if (!asset && !useOss) return null;
         return {
           id: p.file,
-          url: this.buildPhotoUrl(
-            contentItemId,
-            p.file,
-            preset,
-          ),
+          url: this.buildPhotoUrl(contentItemId, p.file, preset),
+          originalUrl: this.buildPhotoUrl(contentItemId, p.file),
           fileName: p.file,
           size: asset?.size ?? 0,
           caption: p.caption,
@@ -387,6 +384,7 @@ export class GalleryViewService {
         asset.fileName,
         preset,
       ),
+      originalUrl: this.buildPhotoUrl(contentItemId, asset.fileName),
       fileName: asset.fileName,
       size: asset.size,
       caption: '',

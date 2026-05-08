@@ -12,7 +12,10 @@
 export class GalleryPhotoDto {
   /** 照片唯一标识，等同于 fileName。 */
   id: string;
+  /** 展示用 URL（带图片处理，缩放 + WebP） */
   url: string;
+  /** 原图 URL（无处理参数，完整分辨率，Lightbox / 下载用） */
+  originalUrl?: string;
   fileName: string;
   /** 文件大小（字节） */
   size: number;
