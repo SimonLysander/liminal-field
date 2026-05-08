@@ -521,11 +521,11 @@ export class GalleryViewService {
       parsed.hasFrontmatter,
     );
 
-    // 展示端照片 URL 带版本号（versionId 作缓存破坏参数）
+    // 展示端照片 URL 带版本号（签名 URL 已有 ? 时用 &v=）
     const versionedPhotos = publishedVersionId
       ? photos.map((p) => ({
           ...p,
-          url: `${p.url}?v=${publishedVersionId}`,
+          url: this.appendVersion(p.url, publishedVersionId),
         }))
       : photos;
 
