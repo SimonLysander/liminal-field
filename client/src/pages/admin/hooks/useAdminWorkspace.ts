@@ -177,7 +177,13 @@ export function useAdminWorkspace() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    await structureApi.deleteNode(deleteTarget.id);
+    try {
+      await structureApi.deleteNode(deleteTarget.id);
+    } catch (err) {
+      toast.error(parseError(err, '删除失败'));
+      setDeleteTarget(null);
+      return;
+    }
 
     /* 如果删的是当前选中的，清除 URL 中的 contentItemId */
     if (selectedNode?.id === deleteTarget.id) {
