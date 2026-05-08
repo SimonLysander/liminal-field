@@ -613,15 +613,16 @@ export class GalleryViewService {
 
       const photos: GalleryEditorPhotoDto[] = parsed.photos.map((p) => {
         const gitSize = gitAssetMap.get(p.file);
-        // 已提交到 Git 的照片用 Git URL，刚上传的草稿照片用 MinIO 代理 URL
-        const url =
-          gitSize !== undefined
-            ? this.buildPhotoUrl(
-                contentItemId,
-                p.file,
-                OssService.IMAGE_PRESETS.detail,
-              )
-            : this.buildDraftPhotoUrl(contentItemId, p.file);
+        const isOnDiskOrOss =
+          gitSize !== undefined || this.minioService.isDraftStorageReady();
+        // 已在 OSS 永久位置或磁盘的照片用 committed URL，仅存在于草稿的用 draft URL
+        const url = isOnDiskOrOss
+          ? this.buildPhotoUrl(
+              contentItemId,
+              p.file,
+              OssService.IMAGE_PRESETS.detail,
+            )
+          : this.buildDraftPhotoUrl(contentItemId, p.file);
         return {
           file: p.file,
           url,
@@ -666,8 +667,9 @@ export class GalleryViewService {
       }
     }
 
+    const useOss = this.minioService.isDraftStorageReady();
     const photos: GalleryEditorPhotoDto[] = parsed.photos
-      .filter((p) => gitAssetMap.has(p.file)) // 过滤掉 assets 中不存在的条目
+      .filter((p) => gitAssetMap.has(p.file) || useOss)
       .map((p) => ({
         file: p.file,
         url: this.buildPhotoUrl(
