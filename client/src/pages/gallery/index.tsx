@@ -106,6 +106,33 @@ function PhotoFrameBar({ photo }: { photo: GalleryPhoto }) {
   );
 }
 
+// ─── ProgressiveImage ─────────────────────────────────────────────────────────
+// 先显示缩放版（previewSrc），后台加载原图（originalSrc），就绪后无缝替换。
+
+function ProgressiveImage({
+  previewSrc,
+  originalSrc,
+  alt,
+  ...motionProps
+}: {
+  previewSrc: string;
+  originalSrc?: string;
+  alt: string;
+} & React.ComponentProps<typeof motion.img>) {
+  const [src, setSrc] = useState(previewSrc);
+
+  useEffect(() => {
+    setSrc(previewSrc);
+    if (!originalSrc || originalSrc === previewSrc) return;
+    const img = new Image();
+    img.onload = () => setSrc(originalSrc);
+    img.src = originalSrc;
+    return () => { img.onload = null; };
+  }, [previewSrc, originalSrc]);
+
+  return <motion.img {...motionProps} src={src} alt={alt} />;
+}
+
 // ─── PhotoCarousel ─────────────────────────────────────────────────────────────
 
 /*
@@ -176,9 +203,10 @@ function PhotoCarousel({
           >
             {/* 滑动 + 交叉淡入：新图从移动方向滑入，旧图反向滑出 */}
             <AnimatePresence initial={false}>
-              <motion.img
+              <ProgressiveImage
                 key={photo.id}
-                src={photo.url}
+                previewSrc={photo.url}
+                originalSrc={isCenter ? photo.originalUrl : undefined}
                 alt={photo.caption || photo.fileName}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}

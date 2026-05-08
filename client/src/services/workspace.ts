@@ -211,6 +211,8 @@ export interface GalleryEditorState {
 export interface GalleryPhoto {
   id: string;
   url: string;
+  /** 原图 URL（无处理参数，Lightbox / 下载用） */
+  originalUrl?: string;
   fileName: string;
   /** 文件大小（字节） */
   size: number;
