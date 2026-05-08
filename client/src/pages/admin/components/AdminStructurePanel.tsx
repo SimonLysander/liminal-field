@@ -50,6 +50,8 @@ type AdminStructurePanelProps = {
   onDelete: (node: StructureNode) => void;
   onMoveTo: (node: StructureNode) => void;
   onReorder: (nodeId: string, targetNodeId: string, position: DropPosition) => void;
+  onBatchPublish?: (node: StructureNode) => void;
+  onImportFolder?: (node: StructureNode) => void;
 };
 
 /* ---------- Node list item ---------- */
@@ -64,6 +66,8 @@ function NodeItem({
   onEdit,
   onDelete,
   onMoveTo,
+  onBatchPublish,
+  onImportFolder,
   onDragStart,
   onDragOver,
   onDragEnd,
@@ -78,6 +82,8 @@ function NodeItem({
   onEdit: (node: StructureNode) => void;
   onDelete: (node: StructureNode) => void;
   onMoveTo: (node: StructureNode) => void;
+  onBatchPublish?: (node: StructureNode) => void;
+  onImportFolder?: (node: StructureNode) => void;
   onDragStart: (nodeId: string) => void;
   onDragOver: (e: React.DragEvent, nodeId: string) => void;
   onDragEnd: () => void;
@@ -191,6 +197,26 @@ function NodeItem({
               >
                 移动到...
               </DropdownMenuItem>
+              {isFolder && onImportFolder && (
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onImportFolder(node);
+                  }}
+                >
+                  导入文件夹
+                </DropdownMenuItem>
+              )}
+              {isFolder && onBatchPublish && (
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onBatchPublish(node);
+                  }}
+                >
+                  发布全部
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={(e) => {
@@ -240,6 +266,8 @@ export function AdminStructurePanel({
   onDelete,
   onMoveTo,
   onReorder,
+  onBatchPublish,
+  onImportFolder,
 }: AdminStructurePanelProps) {
   const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
@@ -457,6 +485,8 @@ export function AdminStructurePanel({
                   onEdit={onEdit}
                   onDelete={onDelete}
                   onMoveTo={onMoveTo}
+                  onBatchPublish={onBatchPublish}
+                  onImportFolder={onImportFolder}
                   onDragStart={handleDragStart}
                   onDragOver={handleDragOver}
                   onDragEnd={handleDragEnd}

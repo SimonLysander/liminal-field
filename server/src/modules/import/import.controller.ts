@@ -1,5 +1,6 @@
 import {
   Controller,
+  Delete,
   Post,
   Get,
   Param,
@@ -115,5 +116,135 @@ export class ImportController {
   @Post('confirm')
   async confirm(@Body() dto: ConfirmImportDto) {
     return this.importService.confirm(dto);
+  }
+
+  // ─── 批量导入 ───
+
+  /**
+   * 批量解析：接收 zip 文件（保留完整目录结构）+ parentId。
+   *
+   * 前端用 JSZip 把 webkitdirectory 选中的文件夹打包上传，
+   * 后端解压后识别 .md 和资源文件，按相对路径匹配资源引用。
+   */
+  @Post('batch-parse')
+  async batchParse(@Req() request: MultipartIterableRequest) {
+    let parentId = '';
+    let archiveBuffer: Buffer | null = null;
+
+    for await (const part of request.parts()) {
+      if (part.type === 'field') {
+        if (part.fieldname === 'parentId' && part.value) {
+          parentId = part.value;
+        }
+      } else if (part.type === 'file' && part.fieldname === 'archive') {
+        archiveBuffer = await part.toBuffer();
+      }
+    }
+
+    if (!parentId) throw new BadRequestException('parentId 不能为空');
+    if (!archiveBuffer) throw new BadRequestException('未收到 zip 文件');
+
+    // 解压 zip，按相对路径建立文件索引
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(archiveBuffer);
+    const allFilesByPath = new Map<string, Buffer>(); // relativePath → buffer
+
+    await Promise.all(
+      Object.entries(zip.files).map(async ([path, entry]) => {
+        if (entry.dir) return;
+        const buffer = await entry.async('nodebuffer');
+        allFilesByPath.set(path, buffer);
+      }),
+    );
+
+    // 分离 .md 文件和资源文件
+    const mdEntries: Array<{ relativePath: string; buffer: Buffer }> = [];
+    for (const [path, buffer] of allFilesByPath) {
+      if (path.endsWith('.md')) {
+        mdEntries.push({ relativePath: path, buffer });
+      }
+    }
+
+    if (mdEntries.length === 0)
+      throw new BadRequestException('zip 中未找到 .md 文件');
+
+    // 对每个 .md 解析图片引用，从 zip 内按相对路径匹配资源
+    const resolveRef = (mdDir: string, ref: string): string => {
+      const clean = ref.split('?')[0].split('#')[0];
+      const segments = mdDir ? mdDir.split('/') : [];
+      for (const p of clean.split('/')) {
+        if (p === '.' || p === '') continue;
+        if (p === '..') segments.pop();
+        else segments.push(p);
+      }
+      return segments.join('/');
+    };
+
+    const imageRefRegex = /!\[[^\]]*\]\(((?!https?:\/\/)[^)]+)\)/g;
+    const files = mdEntries.map(({ relativePath, buffer }) => {
+      const mdDir = relativePath.split('/').slice(0, -1).join('/');
+      const markdown = buffer.toString('utf-8');
+      const matchedAssets: Array<{ filename: string; buffer: Buffer }> = [];
+      const seen = new Set<string>();
+
+      let match: RegExpExecArray | null;
+      while ((match = imageRefRegex.exec(markdown)) !== null) {
+        const ref = match[1];
+        const resolvedPath = resolveRef(mdDir, ref);
+        if (seen.has(resolvedPath)) continue;
+        seen.add(resolvedPath);
+        const assetBuf = allFilesByPath.get(resolvedPath);
+        if (assetBuf) {
+          const filename = resolvedPath.split('/').pop() ?? resolvedPath;
+          matchedAssets.push({ filename, buffer: assetBuf });
+        }
+      }
+      // 重置 regex lastIndex（g flag 跨字符串不自动重置）
+      imageRefRegex.lastIndex = 0;
+
+      return { relativePath, buffer, assets: matchedAssets };
+    });
+
+    return this.importService.batchParse(parentId, files);
+  }
+
+  /** 批量确认导入 */
+  @Post('batch-confirm')
+  async batchConfirm(
+    @Body() dto: { batchId: string; parentId: string; selectedPaths: string[] },
+  ) {
+    return this.importService.batchConfirm(dto);
+  }
+
+  /** 获取批量会话信息（预览页刷新恢复） */
+  @Get('batch/:batchId')
+  async getBatch(@Param('batchId') batchId: string) {
+    return this.importService.getBatchSession(batchId);
+  }
+
+  /** 取消批量导入，立即清理临时文件 */
+  @Delete('batch/:batchId')
+  async cancelBatch(@Param('batchId') batchId: string) {
+    await this.importService.cancelBatch(batchId);
+  }
+
+  /** 取消单文件导入，立即清理临时文件 */
+  @Delete('parse/:parseId')
+  async cancelParse(@Param('parseId') parseId: string) {
+    await this.importService.cancelParse(parseId);
+  }
+
+  /** 查询批量导入任务的实时进度 */
+  @Get('batch-job/:jobId')
+  getBatchJobProgress(@Param('jobId') jobId: string) {
+    const progress = this.importService.getBatchJobProgress(jobId);
+    if (!progress)
+      return {
+        total: 0,
+        completed: 0,
+        status: 'done' as const,
+        foldersCreated: 0,
+      };
+    return progress;
   }
 }

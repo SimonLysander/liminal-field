@@ -257,6 +257,74 @@ export class WorkspaceService {
     await this.contentService.unpublishVersion(contentItemId);
   }
 
+  /**
+   * 批量发布：递归发布 folderId 下所有 DOC 节点。
+   * 发布是纯 MongoDB 指针操作（不写 Git），并行安全。
+   * 跳过无 versionId（未提交）和已是最新的文档。
+   */
+  async batchPublish(
+    folderId: string,
+  ): Promise<{ successCount: number; skippedCount: number }> {
+    const descendants =
+      await this.navigationRepository.findAllDescendants(folderId);
+    const docNodes = descendants.filter(
+      (n) => n.nodeType === NavigationNodeType.content && n.contentItemId,
+    );
+
+    let successCount = 0;
+    let skippedCount = 0;
+
+    const results = await Promise.allSettled(
+      docNodes.map(async (node) => {
+        try {
+          await this.contentService.publishVersion(node.contentItemId!);
+          successCount++;
+        } catch {
+          // publishVersion 对已发布且无变更的项抛异常，视为跳过
+          skippedCount++;
+        }
+      }),
+    );
+
+    // 记录意外失败
+    for (const r of results) {
+      if (r.status === 'rejected') {
+        this.logger.warn(`Batch publish item failed: ${r.reason}`);
+      }
+    }
+
+    return { successCount, skippedCount };
+  }
+
+  /**
+   * 批量取消发布：递归取消发布 folderId 下所有 DOC 节点。
+   */
+  async batchUnpublish(
+    folderId: string,
+  ): Promise<{ successCount: number; skippedCount: number }> {
+    const descendants =
+      await this.navigationRepository.findAllDescendants(folderId);
+    const docNodes = descendants.filter(
+      (n) => n.nodeType === NavigationNodeType.content && n.contentItemId,
+    );
+
+    let successCount = 0;
+    let skippedCount = 0;
+
+    await Promise.allSettled(
+      docNodes.map(async (node) => {
+        try {
+          await this.contentService.unpublishVersion(node.contentItemId!);
+          successCount++;
+        } catch {
+          skippedCount++;
+        }
+      }),
+    );
+
+    return { successCount, skippedCount };
+  }
+
   /** 上传附件到 Content 存储层。 */
   async uploadAsset(
     _scope: string,

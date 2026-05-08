@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import MarkdownBody from '@/components/shared/MarkdownBody';
 import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
 import { importApi, type AssetRef, type ParseResult } from '@/services/import';
+import { useSessionCountdown } from './hooks/useSessionCountdown';
 import { parseError } from './helpers';
 
 /**
@@ -31,6 +32,7 @@ export default function ImportPreviewPage() {
   const [assets, setAssets] = useState<AssetRef[]>([]);
   const [confirming, setConfirming] = useState(false);
   const [resolving, setResolving] = useState(false);
+  const countdown = useSessionCountdown();
   const [toc, setToc] = useState<{ level: number; text: string; id: string }[]>([]);
   const [activeToc, setActiveToc] = useState('');
   /** PlateReadOnly 异步就绪后才打上 data-heading-id，用计数触发 TOC 重新收集 */
@@ -155,11 +157,19 @@ export default function ImportPreviewPage() {
   };
 
   const handleCancel = () => {
+    // 立即清理服务端临时文件
+    if (parseId) importApi.cancelParse(parseId).catch(() => {});
     const backUrl = parentId ? `/admin/notes?topic=${parentId}` : '/admin/notes';
     navigate(backUrl);
   };
 
   const missingCount = assets.filter((a) => a.status === 'missing').length;
+
+  function getConfirmLabel(): string {
+    if (confirming) return '导入中...';
+    if (missingCount > 0) return `确认导入 (${missingCount} 项缺失)`;
+    return '确认导入';
+  }
 
   if (loading || !data) return <ThresholdOverlay visible label="正在加载预览..." />;
 
@@ -186,6 +196,12 @@ export default function ImportPreviewPage() {
         >
           导入预览
         </h1>
+        <span
+          className="text-2xs tabular-nums"
+          style={{ color: countdown.urgent ? 'var(--mark-red)' : 'var(--ink-ghost)' }}
+        >
+          {countdown.expired ? '会话已过期' : countdown.display}
+        </span>
       </header>
 
       {/* Body — 双栏 */}
@@ -293,11 +309,11 @@ export default function ImportPreviewPage() {
             </button>
             <button
               onClick={handleConfirm}
-              disabled={confirming}
+              disabled={confirming || countdown.expired}
               className="flex-1 rounded-lg py-2.5 font-medium transition-opacity disabled:opacity-50"
               style={{ background: 'var(--accent)', color: 'var(--accent-contrast)', fontSize: 'var(--text-sm)' }}
             >
-              {confirming ? '导入中...' : missingCount > 0 ? `确认导入 (${missingCount} 项缺失)` : '确认导入'}
+              {getConfirmLabel()}
             </button>
           </div>
         </aside>

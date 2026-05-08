@@ -51,6 +51,8 @@ export function useAdminWorkspace() {
    * ================================================================ */
 
   const [breadcrumb, setBreadcrumb] = useState<BreadcrumbItem[]>([]);
+  /* 完整的路径节点（StructureNode[]），用于派生当前文件夹节点 */
+  const [pathNodes, setPathNodes] = useState<StructureNode[]>([]);
 
   /* ================================================================
    * 节点列表 + 面包屑：一次请求同时获取 path 和 children
@@ -68,13 +70,12 @@ export function useAdminWorkspace() {
         ? await structureApi.getChildren(parentId, { visibility: 'all', scope: 'notes' })
         : await structureApi.getRootNodes({ visibility: 'all', scope: 'notes' });
       setNodes(result.children);
-      setBreadcrumb(
-        result.path
-          .filter((n) => n.type === 'FOLDER')
-          .map((n) => ({ id: n.id, name: n.name })),
-      );
+      const folderPath = result.path.filter((n) => n.type === 'FOLDER');
+      setPathNodes(folderPath);
+      setBreadcrumb(folderPath.map((n) => ({ id: n.id, name: n.name })));
     } catch (loadError) {
       setError(parseError(loadError, '加载内容列表失败'));
+      setPathNodes([]);
       setBreadcrumb([]);
     } finally {
       setLoading(false);
@@ -101,6 +102,12 @@ export function useAdminWorkspace() {
     if (!urlContentItemId || loading) return null;
     return nodes.find((n) => n.contentItemId === urlContentItemId) ?? null;
   }, [nodes, urlContentItemId, loading]);
+
+  /* 当前浏览的文件夹节点（进入文件夹但未选中文档时有值） */
+  const currentFolderNode = useMemo<StructureNode | null>(() => {
+    if (!urlFolderId || loading) return null;
+    return pathNodes[pathNodes.length - 1] ?? null;
+  }, [urlFolderId, loading, pathNodes]);
 
   /* ================================================================
    * 导航操作：只改 URL，状态自动派生
@@ -612,6 +619,7 @@ export function useAdminWorkspace() {
     loading,
     error,
     currentParentId: urlFolderId,
+    currentFolderNode,
     enterFolder,
     goToBreadcrumb,
     reloadLevel,

@@ -15,6 +15,10 @@ import {
   StructureListResultDto,
   DeleteStatsDto,
 } from './dto/structure-node.dto';
+import {
+  FolderOverviewDto,
+  FolderOverviewChildDto,
+} from './dto/folder-overview.dto';
 import { UpdateNavigationNodeDto } from './dto/update-navigation-node.dto';
 import { UpdateStructureNodeDto } from './dto/update-structure-node.dto';
 import { NavigationNode, NavigationNodeType } from './navigation.entity';
@@ -556,6 +560,128 @@ export class NavigationNodeService {
     }));
 
     await this.navigationRepository.bulkUpdateOrder(updates);
+  }
+
+  /**
+   * 文件夹着陆页概览：返回子项列表（带发布状态/摘要）+ 聚合统计。
+   *
+   * 对 FOLDER 子项递归统计子树 DOC 数和已发布数；
+   * 对 DOC 子项查 ContentService 取发布状态和 summary。
+   * 个人 KB 规模下 N+1 查询可接受，无需提前优化。
+   */
+  async getFolderOverview(folderId: string): Promise<FolderOverviewDto> {
+    const folder = await this.navigationRepository.findById(folderId);
+    if (!folder || folder.nodeType !== NavigationNodeType.subject) {
+      throw new NotFoundException(`Folder ${folderId} not found`);
+    }
+
+    const children = await this.navigationRepository.findChildrenByParentId(
+      folderId,
+      folder.scope,
+    );
+
+    let totalPublished = 0;
+    let totalUpdated = 0;
+    let totalUnpublished = 0;
+    let totalDocCount = 0;
+    let directFolderCount = 0;
+
+    const childDtos: FolderOverviewChildDto[] = [];
+
+    for (const child of children) {
+      const dto = new FolderOverviewChildDto();
+      dto.id = child._id.toString();
+      dto.name = child.name;
+
+      if (child.nodeType === NavigationNodeType.subject) {
+        // FOLDER 子节点：递归统计子树
+        dto.type = 'FOLDER';
+        directFolderCount++;
+        const descendants = await this.navigationRepository.findAllDescendants(
+          dto.id,
+        );
+        const docDescendants = descendants.filter(
+          (d) => d.nodeType === NavigationNodeType.content,
+        );
+        dto.childDocCount = docDescendants.length;
+        // 统计子树中已发布的 DOC 数
+        let pubCount = 0;
+        for (const doc of docDescendants) {
+          if (doc.contentItemId) {
+            try {
+              const item = await this.contentService.getContentListItem(
+                doc.contentItemId,
+              );
+              if (item.publishedVersion) pubCount++;
+            } catch {
+              /* 内容不存在则跳过 */
+            }
+          }
+        }
+        dto.childPublishedCount = pubCount;
+        // 子树的 DOC 计入总统计
+        totalDocCount += docDescendants.length;
+        for (const doc of docDescendants) {
+          if (!doc.contentItemId) {
+            totalUnpublished++;
+            continue;
+          }
+          try {
+            const item = await this.contentService.getContentListItem(
+              doc.contentItemId,
+            );
+            if (!item.publishedVersion) totalUnpublished++;
+            else if (item.hasUnpublishedChanges) totalUpdated++;
+            else totalPublished++;
+          } catch {
+            totalUnpublished++;
+          }
+        }
+      } else {
+        // DOC 子节点：查发布状态和摘要
+        dto.type = 'DOC';
+        dto.contentItemId = child.contentItemId?.toString();
+        totalDocCount++;
+        if (dto.contentItemId) {
+          try {
+            const item = await this.contentService.getContentListItem(
+              dto.contentItemId,
+            );
+            dto.summary = item.summary;
+            if (!item.publishedVersion) {
+              dto.publishStatus = 'unpublished';
+              totalUnpublished++;
+            } else if (item.hasUnpublishedChanges) {
+              dto.publishStatus = 'updated';
+              totalUpdated++;
+            } else {
+              dto.publishStatus = 'published';
+              totalPublished++;
+            }
+          } catch {
+            dto.publishStatus = 'unpublished';
+            totalUnpublished++;
+          }
+        } else {
+          dto.publishStatus = 'unpublished';
+          totalUnpublished++;
+        }
+      }
+
+      childDtos.push(dto);
+    }
+
+    return {
+      folder: { id: folderId, name: folder.name },
+      stats: {
+        folderCount: directFolderCount,
+        docCount: totalDocCount,
+        published: totalPublished,
+        updated: totalUpdated,
+        unpublished: totalUnpublished,
+      },
+      children: childDtos,
+    };
   }
 
   async findStructurePathByContentItemId(

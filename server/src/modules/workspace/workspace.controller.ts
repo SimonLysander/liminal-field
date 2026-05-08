@@ -100,6 +100,24 @@ export class WorkspaceController {
     return this.noteViewService.getByVersion(id, commitHash);
   }
 
+  // ─── Notes 批量操作（静态路由，在通用 :scope 之前）───
+
+  /** 递归发布文件夹下所有文档（纯指针操作，不写 Git）。 */
+  @Post('notes/batch/publish')
+  async batchPublish(
+    @Body() body: { folderId: string },
+  ): Promise<{ successCount: number; skippedCount: number }> {
+    return this.workspaceService.batchPublish(body.folderId);
+  }
+
+  /** 递归取消发布文件夹下所有文档。 */
+  @Post('notes/batch/unpublish')
+  async batchUnpublish(
+    @Body() body: { folderId: string },
+  ): Promise<{ successCount: number; skippedCount: number }> {
+    return this.workspaceService.batchUnpublish(body.folderId);
+  }
+
   // ─── Gallery 特有路由（必须在通用 :scope 路由之前注册）───
 
   /**

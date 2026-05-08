@@ -251,11 +251,15 @@ export class ContentGitService implements OnModuleInit {
       '-m',
       `archive: merge ${branch} into main`,
     ]);
-    const pushResult = await this.tryRun(() =>
-      this.git.raw(['push', 'origin', 'main']),
-    );
-    if (pushResult === null) {
-      this.logger.warn('Failed to push main to origin after archive');
+    if (await this.hasOriginRemote()) {
+      const pushResult = await this.tryRun(() =>
+        this.git.raw(['push', 'origin', 'main']),
+      );
+      if (pushResult === null) {
+        this.logger.warn('Failed to push main to origin after archive');
+      }
+    } else {
+      this.logger.debug('No origin remote, skipping push after archive');
     }
     this.logger.log(`Archived ${branch} to main`);
   }
@@ -343,6 +347,48 @@ export class ContentGitService implements OnModuleInit {
     });
   }
 
+  /**
+   * 批量导入专用：在一次 writeLock 内 stage 多个 content 目录并做单次 commit。
+   * 避免 N 个文件 N 次 lock 的性能问题。
+   */
+  async recordBatchCommit(
+    contentIds: string[],
+    note: string,
+  ): Promise<string | null> {
+    return this.writeLock.runExclusive(async () => {
+      await this.prepareWritableWorkspace();
+
+      // Stage all content directories
+      for (const contentId of contentIds) {
+        const trackedPath = this.resolveTrackedContentPath(contentId);
+        if (trackedPath) {
+          await this.run(() => this.git.add(['--', trackedPath]));
+        }
+      }
+
+      // Check if anything was staged
+      const stagedFiles = await this.run(() =>
+        this.git.raw(['diff', '--cached', '--name-only']),
+      );
+      if (!stagedFiles) return null;
+
+      const summary =
+        note.length > 48 ? `${note.slice(0, 45).trimEnd()}...` : note;
+      const commitMsg = `batch-import: ${summary} (${contentIds.length} files)`;
+
+      await this.git
+        .env({
+          GIT_AUTHOR_NAME: this.resolveAuthorName(),
+          GIT_AUTHOR_EMAIL: this.resolveAuthorEmail(),
+          GIT_COMMITTER_NAME: this.resolveAuthorName(),
+          GIT_COMMITTER_EMAIL: this.resolveAuthorEmail(),
+        })
+        .raw(['commit', '-m', commitMsg]);
+
+      return this.run(() => this.git.revparse(['HEAD']));
+    });
+  }
+
   /** 查询当前仓库同步状态，供前端弹窗展示 */
   async getSyncStatus(): Promise<{
     branch: string;
@@ -422,11 +468,25 @@ export class ContentGitService implements OnModuleInit {
     });
   }
 
+  /** 检查 origin remote 是否配置 */
+  private async hasOriginRemote(): Promise<boolean> {
+    const remoteUrl = await this.tryRun(() =>
+      this.git.raw(['remote', 'get-url', 'origin']),
+    );
+    return !!remoteUrl;
+  }
+
   /**
    * Push 当前工作分支到远程。
    * 纯基础设施操作——只推送已 commit 的内容，不做 add/commit。
+   * 无 remote 时静默跳过，避免日志噪音。
    */
   async pushCurrentBranch(): Promise<{ success: boolean; message: string }> {
+    if (!(await this.hasOriginRemote())) {
+      this.logger.debug('No origin remote configured, skipping push');
+      return { success: true, message: '未配置远程仓库，跳过推送' };
+    }
+
     const currentBranch = await this.tryRun(() =>
       this.git.raw(['symbolic-ref', '--quiet', '--short', 'HEAD']),
     );

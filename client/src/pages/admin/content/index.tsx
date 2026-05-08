@@ -9,12 +9,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 // 编辑页跳转统一用 window.location.href（Plate inputRules 在 SPA 导航后不生效）
 import { smoothBounce } from '@/lib/motion';
+import { toast } from 'sonner';
 import { useConfirm } from '@/contexts/ConfirmContext';
+import { structureApi } from '@/services/structure';
 import { notesApi as contentItemsApi } from '@/services/workspace';
 import Topbar from '@/components/global/Topbar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ContentVersionView } from '../components/ContentVersionView';
-import { FolderDetailPanel } from '../components/FolderDetailPanel';
+import { FolderOverviewPanel } from '../components/FolderOverviewPanel';
 import { NodeFormModal } from '../components/NodeFormModal';
 import { AdminStructurePanel } from '../components/AdminStructurePanel';
 import { MoveToDialog } from '../components/MoveToDialog';
@@ -71,7 +73,6 @@ const ContentAdmin = () => {
     return () => el.removeEventListener('scroll', handlePreviewScroll);
   }, [handlePreviewScroll]);
 
-
   /* 点击跳转 + 高亮 */
   const scrollToHeading = useCallback((index: number) => {
     const els = getHeadingEls();
@@ -118,6 +119,11 @@ const ContentAdmin = () => {
         onDelete={workspace.setDeleteTarget}
         onMoveTo={workspace.setMoveTarget}
         onReorder={workspace.reorderNodes}
+        onBatchPublish={async (node) => {
+          const result = await structureApi.batchPublish(node.id);
+          toast.success(`已发布 ${result.successCount} 篇，跳过 ${result.skippedCount} 篇`);
+          workspace.reloadLevel();
+        }}
       />
 
       {/* Main content area */}
@@ -136,17 +142,13 @@ const ContentAdmin = () => {
               <div className="mx-auto w-full max-w-[var(--layout-reading-max)]">
               <AnimatePresence mode="wait">
                 <motion.div
-                  key={workspace.selectedNode?.id ?? 'empty'}
+                  key={workspace.selectedNode?.id ?? workspace.currentFolderNode?.id ?? 'empty'}
                   initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -2 }}
                   transition={{ duration: 0.2, ease: smoothBounce }}
                 >
-                  {!workspace.selectedNode ? (
-                    <EmptyState title="未选择节点" subtitle="从左侧列表中选择一个文件夹或文档开始。" />
-                  ) : workspace.selectedNode.type === 'FOLDER' ? (
-                    <FolderDetailPanel node={workspace.selectedNode} />
-                  ) : workspace.selectedNode.contentItemId ? (
+                  {workspace.selectedNode?.contentItemId ? (
                     <ContentVersionView
                       node={workspace.selectedNode}
                       content={workspace.formalContent}
@@ -160,8 +162,15 @@ const ContentAdmin = () => {
                       onExitPreview={workspace.exitPreview}
                       onPublishPreview={workspace.publishPreview}
                     />
+                  ) : workspace.currentFolderNode ? (
+                    <FolderOverviewPanel
+                      node={workspace.currentFolderNode}
+                      onSelectNode={workspace.selectNode}
+                      onEnterFolder={workspace.enterFolder}
+                      onReload={workspace.reloadLevel}
+                    />
                   ) : (
-                    <EmptyState title="DOC 绑定异常" subtitle="该 DOC 节点没有关联的内容项，请重新创建。" />
+                    <EmptyState title="未选择节点" subtitle="从左侧列表中选择一个文件夹或文档开始。" />
                   )}
                 </motion.div>
               </AnimatePresence>
@@ -379,8 +388,6 @@ function EmptyState({ title, subtitle }: { title: string; subtitle: string }) {
     </div>
   );
 }
-
-
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (

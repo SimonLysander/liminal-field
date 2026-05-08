@@ -19,6 +19,7 @@ import {
   StructureListResultDto,
   DeleteStatsDto,
 } from './dto/structure-node.dto';
+import { FolderOverviewDto } from './dto/folder-overview.dto';
 import { NavigationNodeService } from './navigation.service';
 import { UpdateStructureNodeDto } from './dto/update-structure-node.dto';
 
@@ -68,6 +69,12 @@ export class NavigationNodeController {
       visibility,
       scope,
     );
+  }
+
+  /** 文件夹着陆页概览：子项列表（含发布状态/摘要）+ 聚合统计 */
+  @Get('structure-nodes/:id/overview')
+  async getFolderOverview(@Param('id') id: string): Promise<FolderOverviewDto> {
+    return this.navigationNodeService.getFolderOverview(id);
   }
 
   @Get('structure-nodes/:id/delete-stats')
