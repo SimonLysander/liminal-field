@@ -597,7 +597,18 @@ export class ImportService {
         }
       }
 
-      // 2. 有限并发处理文件内容（避免同时打开过多 OSS 连接 / 磁盘 I/O）
+      // 2. 预计算每个文件在父目录内的 sortOrder（并行处理不影响最终顺序）
+      const sortOrderByIdx = new Map<number, number>();
+      const parentOrderCounter = new Map<string, number>();
+      for (let i = 0; i < items.length; i++) {
+        const parts = items[i].relativePath.split('/');
+        const parentPath = parts.slice(0, -1).join('/');
+        const order = parentOrderCounter.get(parentPath) ?? 0;
+        sortOrderByIdx.set(i, order);
+        parentOrderCounter.set(parentPath, order + 1);
+      }
+
+      // 3. 有限并发处理文件内容（避免同时打开过多 OSS 连接 / 磁盘 I/O）
       await this.contentGitService.prepareWritableWorkspace();
       const now = new Date();
       const contentIds: string[] = Array.from(
@@ -623,6 +634,7 @@ export class ImportService {
                 type: 'DOC',
                 parentId: parentNodeId,
                 contentItemId: contentId,
+                sortOrder: sortOrderByIdx.get(idx) ?? idx,
               });
             } catch (err) {
               this.logger.warn(

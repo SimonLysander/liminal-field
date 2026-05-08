@@ -122,19 +122,59 @@ const rules: PostProcessRule[] = [
 
   {
     name: 'isolateBlockMathFences',
-    description: 'remark-math 要求 $$ 独占一行；拆分 $$ 与内容粘连的情况',
-    transform: (md) =>
-      md
-        // $$content（$$ 开头但同行有内容，且行尾无 $$）→ $$\ncontent
-        .replace(/^\$\$([^\n$].+)$/gm, (match: string, content: string) => {
-          if (content.endsWith('$$')) return match;
-          return '$$\n' + content;
-        })
-        // content$$（行尾 $$ 但行首不是 $$）→ content\n$$
-        .replace(/^([^\n]+[^$])\$\$$/gm, (match: string, content: string) => {
-          if (content.startsWith('$$')) return match;
-          return content + '\n$$';
-        }),
+    description:
+      'remark-math 要求 $$ 独占一行且开闭在同一层级；修复 blockquote 内的粘连和层级不匹配',
+    transform: (md) => {
+      const lines = md.split('\n');
+      const result: string[] = [];
+      let openPrefix: string | null = null; // 当前未闭合 $$ 所在的 blockquote 层级前缀
+
+      for (const line of lines) {
+        // 提取 blockquote 前缀（如 "> " 或 "> > "）
+        const prefixMatch = line.match(/^((?:>\s*)*)/);
+        const prefix = prefixMatch ? prefixMatch[1] : '';
+        const content = line.slice(prefix.length);
+
+        if (openPrefix === null) {
+          // 未在 $$ 块内
+          if (content.startsWith('$$')) {
+            const afterDollar = content.slice(2);
+            if (afterDollar.trim() === '' || afterDollar.trim() === '') {
+              // 独立的 $$ 开头行
+              openPrefix = prefix;
+              result.push(line);
+            } else if (afterDollar.endsWith('$$')) {
+              // $$content$$ 单行完整块，不拆
+              result.push(line);
+            } else {
+              // $$content（粘连）→ 拆为 prefix+$$ 和 prefix+content
+              openPrefix = prefix;
+              result.push(prefix + '$$');
+              result.push(prefix + afterDollar);
+            }
+          } else {
+            result.push(line);
+          }
+        } else {
+          // 在 $$ 块内，寻找闭合 $$
+          if (content.trimEnd() === '$$') {
+            // 闭合 $$：确保与开头同级前缀
+            result.push(openPrefix + '$$');
+            openPrefix = null;
+          } else if (content.endsWith('$$')) {
+            // content$$（粘连闭合）→ 拆为 prefix+content 和 prefix+$$
+            result.push(openPrefix + content.slice(0, -2));
+            result.push(openPrefix + '$$');
+            openPrefix = null;
+          } else {
+            // 块内内容行：统一使用开头的前缀
+            result.push(openPrefix + content);
+          }
+        }
+      }
+
+      return result.join('\n');
+    },
   },
 
   {
