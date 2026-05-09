@@ -169,11 +169,13 @@ export class TestContext {
             const base = `/mock-oss/${key}`;
             return process ? `${base}?x-oss-process=${process}` : base;
           }),
-        copyObject: jest.fn().mockImplementation((src: string, dest: string) => {
-          const buf = store.get(src);
-          if (buf) store.set(dest, buf);
-          return Promise.resolve();
-        }),
+        copyObject: jest
+          .fn()
+          .mockImplementation((src: string, dest: string) => {
+            const buf = store.get(src);
+            if (buf) store.set(dest, buf);
+            return Promise.resolve();
+          }),
         promoteDraftAssets: jest
           .fn()
           .mockImplementation((contentItemId: string) => {

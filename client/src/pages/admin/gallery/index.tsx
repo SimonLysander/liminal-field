@@ -105,7 +105,7 @@ export default function GalleryAdmin() {
 
   /* 版本预览：点击历史版本时加载该版本的内容 */
   const [preview, setPreview] = useState<{
-    commitHash: string;
+    versionId: string;
     title: string;
     prose: string;
     photos: Array<{ file: string; caption: string; tags: Record<string, string> }>;
@@ -161,17 +161,17 @@ export default function GalleryAdmin() {
   // ─── 操作处理 ───
 
   /** 切换版本预览：点击历史版本节点 */
-  const handlePreviewVersion = async (commitHash: string) => {
+  const handlePreviewVersion = async (versionId: string) => {
     if (!selectedId) return;
-    /* 如果点的是最新版本，退出预览模式 */
-    if (history[0]?.commitHash === commitHash) {
+    /* 如果点的是最新版本（history[0] 的 versionId），退出预览模式 */
+    if (history[0]?.versionId === versionId) {
       setPreview(null);
       return;
     }
     try {
-      const ver = await galleryApi.getByVersion(selectedId, commitHash);
+      const ver = await galleryApi.getByVersion(selectedId, versionId);
       setPreview({
-        commitHash: ver.commitHash,
+        versionId: ver.versionId,
         title: ver.title,
         prose: ver.prose,
         photos: ver.photos,
@@ -209,12 +209,12 @@ export default function GalleryAdmin() {
 
   /** 发布当前展示的版本：preview 模式发布历史版本，否则发布最新版 */
   const handlePublish = async (id: string) => {
-    const commitHash = preview?.commitHash;
-    const label = commitHash ? `版本 ${commitHash.slice(0, 8)}` : '最新版本';
+    const versionId = preview?.versionId;
+    const label = versionId ? `版本 ${versionId.slice(0, 8)}` : '最新版本';
     const ok = await confirm({ title: '发布', message: `立即发布${label}？`, confirmLabel: '发布' });
     if (!ok) return;
     try {
-      await galleryApi.publish(id, commitHash);
+      await galleryApi.publish(id, versionId);
       toast.success(`${label}已发布`);
       // 不清除 preview，保持停留在当前版本
       void loadPosts();
@@ -366,9 +366,9 @@ export default function GalleryAdmin() {
                    * - 有 preview → 用 commitHash 对比
                    */
                   const isViewingHistory = !!preview;
-                  const viewingHash = preview?.commitHash ?? history[0]?.commitHash ?? '';
+                  const viewingVersionId = preview?.versionId ?? history[0]?.versionId ?? '';
                   const isViewingPublished = preview
-                    ? preview.commitHash === detail.publishedCommitHash
+                    ? preview.versionId === detail.publishedVersionId
                     : detail.status === 'published' && !detail.hasUnpublishedChanges;
 
                   /* 构建当前展示的帖子数据 */
@@ -381,7 +381,7 @@ export default function GalleryAdmin() {
                       return {
                         id: p.file,
                         fileName: p.file,
-                        url: existing?.url ?? `/api/v1/spaces/gallery/items/${detail.id}/assets/${p.file}?v=${preview.commitHash}`,
+                        url: existing?.url ?? `/api/v1/spaces/gallery/items/${detail.id}/assets/${p.file}?v=${preview.versionId}`,
                         size: existing?.size ?? 0,
                         caption: p.caption,
                         tags: p.tags,
@@ -395,7 +395,7 @@ export default function GalleryAdmin() {
                       post={displayPost}
                       isViewingHistory={isViewingHistory}
                       isViewingPublished={isViewingPublished}
-                      viewingHash={viewingHash ?? ''}
+                      viewingHash={viewingVersionId ?? ''}
                       onExitPreview={() => setPreview(null)}
                       onPhotoClick={preview ? undefined : (index) => { setModalPhotoIndex(index); setModalOpen(true); }}
                       onPublish={() => void handlePublish(detail.id)}
@@ -482,9 +482,9 @@ export default function GalleryAdmin() {
                   ) : (
                     <VersionTimeline
                       history={history}
-                      publishedHash={detail.publishedCommitHash ?? null}
-                      activePreviewHash={preview?.commitHash ?? null}
-                      onSelect={(hash) => void handlePreviewVersion(hash)}
+                      publishedVersionId={detail.publishedVersionId ?? null}
+                      activeVersionId={preview?.versionId ?? null}
+                      onSelect={(versionId) => void handlePreviewVersion(versionId)}
                     />
                   )}
                 </div>

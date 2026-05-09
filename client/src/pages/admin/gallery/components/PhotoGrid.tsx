@@ -26,13 +26,14 @@ import {
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { X } from 'lucide-react';
-import type { GalleryPhoto } from '@/services/workspace';
+import { X, Loader2 } from 'lucide-react';
+import type { LocalEditorPhoto, UploadProgress } from '../hooks/useGalleryEditor';
 
 // ---------- Props ----------
 
 interface PhotoGridProps {
-  photos: GalleryPhoto[];
+  photos: LocalEditorPhoto[];
+  uploadProgress: UploadProgress | null;
   onReorder: (fromIndex: number, toIndex: number) => void;
   onPhotoClick: (index: number) => void;
   onDelete: (photoId: string) => void;
@@ -54,7 +55,7 @@ function SortablePhoto({
   onClick,
   onDelete,
 }: {
-  photo: GalleryPhoto;
+  photo: LocalEditorPhoto;
   index: number;
   onClick: (index: number) => void;
   onDelete: (photoId: string) => void;
@@ -86,6 +87,13 @@ function SortablePhoto({
         draggable={false}
       />
 
+      {/* 上传中遮罩 */}
+      {photo.uploading && (
+        <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.35)' }}>
+          <Loader2 size={20} className="animate-spin text-white" />
+        </div>
+      )}
+
       {/* 删除按钮 — hover 时右上角出现（Apple Photos 风格） */}
       <button
         className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full opacity-0 transition-opacity duration-150 group-hover:opacity-100"
@@ -111,7 +119,8 @@ function SortablePhoto({
 
 // ---------- PhotoGrid ----------
 
-export function PhotoGrid({ photos, onReorder, onPhotoClick, onDelete, onUpload }: PhotoGridProps) {
+export function PhotoGrid({ photos, uploadProgress, onReorder, onPhotoClick, onDelete, onUpload }: PhotoGridProps) {
+  const uploading = uploadProgress !== null;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   /* 5px 移动距离才激活拖拽，防止干扰点击事件 */
@@ -166,15 +175,18 @@ export function PhotoGrid({ photos, onReorder, onPhotoClick, onDelete, onUpload 
               />
             ))}
 
-            {/* Upload button — 始终显示在网格末尾 */}
+            {/* Upload button — 上传中禁用 */}
             <button
               className="flex aspect-square items-center justify-center rounded-md transition-colors duration-150"
               style={{
                 border: '1.5px dashed var(--separator)',
                 color: 'var(--ink-ghost)',
                 fontSize: 'var(--text-lg)',
+                opacity: uploading ? 0.3 : 1,
+                pointerEvents: uploading ? 'none' : undefined,
               }}
               onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
             >
               +
             </button>

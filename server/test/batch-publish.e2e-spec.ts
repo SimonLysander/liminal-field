@@ -18,11 +18,7 @@
  *  但 commit 后再发布语义更清晰，且 hasUnpublishedChanges 更易预测）。
  */
 import supertest from 'supertest';
-import {
-  TestContext,
-  login,
-  commitNoteContent,
-} from './helpers';
+import { TestContext, login, commitNoteContent } from './helpers';
 
 describe('Batch Publish (e2e)', () => {
   let ctx: TestContext;

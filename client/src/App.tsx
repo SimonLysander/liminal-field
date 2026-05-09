@@ -191,7 +191,6 @@ function App() {
           <Route index element={<Navigate to="/admin/notes" replace />} />
           <Route path="notes" element={<Suspense fallback={<LoadingState variant="full" />}><ContentAdmin /></Suspense>} />
           <Route path="gallery" element={<Suspense fallback={<LoadingState variant="full" />}><GalleryAdmin /></Suspense>} />
-          <Route path="gallery/:id/edit" element={<Suspense fallback={<LoadingState variant="full" />}><GalleryEditPage /></Suspense>} />
           <Route path="settings" element={<Suspense fallback={<LoadingState variant="full" />}><SettingsPage /></Suspense>} />
         </Route>
         <Route
@@ -200,6 +199,16 @@ function App() {
             <AuthGuard>
               <Suspense fallback={<LoadingState variant="full" />}>
                 <DraftEditPage />
+              </Suspense>
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/admin/gallery/:id/edit"
+          element={
+            <AuthGuard>
+              <Suspense fallback={<LoadingState variant="full" />}>
+                <GalleryEditPage />
               </Suspense>
             </AuthGuard>
           }

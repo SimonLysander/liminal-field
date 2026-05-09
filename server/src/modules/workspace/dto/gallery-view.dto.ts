@@ -118,7 +118,7 @@ export class GalleryEditorDto {
 // ── 版本查看 ──
 
 export class GalleryVersionDto {
-  commitHash: string;
+  versionId: string;
   title: string;
   prose: string;
   photos: { file: string; caption: string; tags: Record<string, string> }[];

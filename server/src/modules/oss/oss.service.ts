@@ -37,8 +37,8 @@ export class OssService implements OnModuleInit, MinioDraftStorageStatus {
       accessKeyId: config.getOrThrow<string>('oss.accessKeyId'),
       accessKeySecret: config.getOrThrow<string>('oss.accessKeySecret'),
       bucket: this.bucketName,
-      // 生产环境走内网 endpoint 免流量费；本地开发走外网
-      internal: this.isProduction,
+      // OSS_INTERNAL=true 走内网 endpoint（ECS 部署免流量费），否则走外网
+      internal: process.env.OSS_INTERNAL === 'true',
     });
   }
 
@@ -62,7 +62,8 @@ export class OssService implements OnModuleInit, MinioDraftStorageStatus {
     bucket: string;
     useSSL: boolean;
   } {
-    const endpoint = this.isProduction
+    const useInternal = process.env.OSS_INTERNAL === 'true';
+    const endpoint = useInternal
       ? `${this.region}-internal.aliyuncs.com`
       : `${this.region}.aliyuncs.com`;
     return {

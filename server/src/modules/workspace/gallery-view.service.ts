@@ -262,29 +262,21 @@ export class GalleryViewService {
   }
 
   /**
-   * 发布前校验：目标版本的 frontmatter 中必须有照片才能发布。
-   * @param commitHash 要发布的历史版本（仍走 Git 读取），不传则检查最新版本快照。
+   * V2 发布前校验：从 ContentSnapshot 读取目标版本，检查是否有照片。
+   * @param versionId 要发布的版本（nanoid），不传则检查最新版本。
    */
   async assertPublishable(
     contentItemId: string,
-    commitHash?: string,
+    versionId?: string,
   ): Promise<void> {
-    let parsed: ParsedGalleryContent;
-    if (commitHash) {
-      // 历史版本校验：仍从 Git 读取，V2 快照不覆盖历史版本的发布校验路径
-      const source = await this.contentRepoService.readContentSource(
-        contentItemId,
-        { commitHash, scope: 'gallery' },
-      );
-      parsed = parseGalleryContent(source.bodyMarkdown);
-    } else {
-      // V2: 无 commitHash 时从最新版本快照读取，不再读磁盘
-      const content = await this.contentRepository.findById(contentItemId);
-      ({ parsed } = await this.loadParsedContent(
-        contentItemId,
-        content?.latestVersion?.versionId,
-      ));
-    }
+    const content = await this.contentRepository.findById(contentItemId);
+    const targetVersionId =
+      versionId ?? content?.latestVersion?.versionId;
+
+    const { parsed } = await this.loadParsedContent(
+      contentItemId,
+      targetVersionId,
+    );
 
     if (parsed.hasFrontmatter && parsed.photos.length === 0) {
       throw new BadRequestException('无法发布：相册中没有照片');
@@ -379,11 +371,7 @@ export class GalleryViewService {
     // 无 frontmatter（旧数据）→ 从 assets 目录推断完整列表
     return imageAssets.map((asset) => ({
       id: asset.fileName,
-      url: this.buildPhotoUrl(
-        contentItemId,
-        asset.fileName,
-        preset,
-      ),
+      url: this.buildPhotoUrl(contentItemId, asset.fileName, preset),
       originalUrl: this.buildPhotoUrl(contentItemId, asset.fileName),
       fileName: asset.fileName,
       size: asset.size,
@@ -613,10 +601,8 @@ export class GalleryViewService {
 
       const photos: GalleryEditorPhotoDto[] = parsed.photos.map((p) => {
         const gitSize = gitAssetMap.get(p.file);
-        const isOnDiskOrOss =
-          gitSize !== undefined || this.minioService.isDraftStorageReady();
-        // 已在 OSS 永久位置或磁盘的照片用 committed URL，仅存在于草稿的用 draft URL
-        const url = isOnDiskOrOss
+        // 已提交到 Git/磁盘的照片用永久 URL；草稿新增的照片用 draft URL（OSS 草稿路径）
+        const url = gitSize !== undefined
           ? this.buildPhotoUrl(
               contentItemId,
               p.file,
@@ -696,28 +682,41 @@ export class GalleryViewService {
   }
 
   /**
-   * 读取指定历史版本的画廊内容，返回结构化 GalleryVersionDto（解析 frontmatter）。
-   * 用于版本预览——前端不需要知道 frontmatter 格式。
+   * V2: 从 ContentSnapshot 读取历史版本，返回结构化 GalleryVersionDto。
+   * versionOrHash 可以是 versionId（nanoid）或 commitHash（兼容旧数据）。
    */
   async getByVersion(
     contentItemId: string,
-    commitHash: string,
+    versionOrHash: string,
   ): Promise<GalleryVersionDto> {
-    const source = await this.contentRepoService.readContentSource(
-      contentItemId,
-      { commitHash, scope: 'gallery' },
-    );
-    const parsed = parseGalleryContent(source.bodyMarkdown);
+    // 优先按 versionId 查 snapshot
+    let snapshot = await this.snapshotRepository.findByVersionId(versionOrHash);
+    if (!snapshot) {
+      const snapshots =
+        await this.snapshotRepository.listByContentItemId(contentItemId);
+      snapshot = snapshots.find((s) => s.commitHash === versionOrHash) ?? null;
+    }
 
-    /* 标题从 MongoDB changeLogs 里找（commitHash 匹配的那条），否则回退 latestVersion */
-    const content = await this.contentRepository.findById(contentItemId);
-    const changeLog = content?.changeLogs.find(
-      (c) => c.commitHash === commitHash,
-    );
-    const title = changeLog?.title ?? content?.latestVersion?.title ?? '';
+    let bodyMarkdown: string;
+    let title: string;
 
+    if (snapshot) {
+      bodyMarkdown = snapshot.bodyMarkdown;
+      title = snapshot.title;
+    } else {
+      // 最终 fallback：Git（兼容旧数据）
+      const source = await this.contentRepoService.readContentSource(
+        contentItemId,
+        { commitHash: versionOrHash, scope: 'gallery' },
+      );
+      bodyMarkdown = source.bodyMarkdown;
+      const content = await this.contentRepository.findById(contentItemId);
+      title = content?.latestVersion?.title ?? '';
+    }
+
+    const parsed = parseGalleryContent(bodyMarkdown);
     return {
-      commitHash,
+      versionId: snapshot?.versionId ?? versionOrHash,
       title,
       prose: parsed.prose,
       photos: parsed.photos,

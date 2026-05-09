@@ -44,6 +44,8 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
+      // 拒绝 DTO 中未声明的字段，防止意外传参被后续代码消费
+      forbidNonWhitelisted: true,
       transform: true,
     }),
   );
@@ -63,8 +65,10 @@ async function bootstrap() {
 
   // 2. 服务和路由
   app.setGlobalPrefix('api/v1');
+  // Graceful shutdown：容器停止时等待进行中的请求完成
+  app.enableShutdownHooks();
   const port = parseInt(process.env.PORT ?? '4398', 10);
-  await app.listen(port, '0.0.0.0');
+  await app.listen({ port, host: '0.0.0.0' });
 
   console.log(`Server is running on: ${await app.getUrl()}`);
 }

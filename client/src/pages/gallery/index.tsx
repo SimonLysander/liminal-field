@@ -119,13 +119,14 @@ function ProgressiveImage({
   originalSrc?: string;
   alt: string;
 } & React.ComponentProps<typeof motion.img>) {
-  const [src, setSrc] = useState(previewSrc);
+  // 仅追踪原图是否已加载完成，display src 由 props 派生，避免 effect 内同步 setState
+  const [loadedOriginal, setLoadedOriginal] = useState<string | null>(null);
+  const src = (loadedOriginal && loadedOriginal === originalSrc) ? loadedOriginal : previewSrc;
 
   useEffect(() => {
-    setSrc(previewSrc);
     if (!originalSrc || originalSrc === previewSrc) return;
     const img = new Image();
-    img.onload = () => setSrc(originalSrc);
+    img.onload = () => setLoadedOriginal(originalSrc);
     img.src = originalSrc;
     return () => { img.onload = null; };
   }, [previewSrc, originalSrc]);

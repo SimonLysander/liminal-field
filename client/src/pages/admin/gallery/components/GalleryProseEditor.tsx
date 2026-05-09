@@ -8,20 +8,28 @@
  *   - 最小高度 100px，适合画廊随笔输入场景
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   BoldIcon,
+  Heading1Icon,
+  Heading2Icon,
+  Heading3Icon,
   ItalicIcon,
   ListIcon,
   ListOrderedIcon,
+  MinusIcon,
+  PilcrowIcon,
+  QuoteIcon,
   StrikethroughIcon,
   UnderlineIcon,
 } from 'lucide-react';
-import { NodeApi } from 'platejs';
+import { KEYS, NodeApi, type TElement } from 'platejs';
 import { Plate, usePlateEditor } from 'platejs/react';
 import { deserializeMd, serializeMd } from '@platejs/markdown';
 import { ListStyleType, toggleList, someList } from '@platejs/list';
-import { useEditorRef, useEditorSelector } from 'platejs/react';
+import { useEditorRef, useEditorSelector, useSelectionFragmentProp } from 'platejs/react';
+import { getBlockType, insertBlock, setBlockType } from '@/components/editor/transforms';
 
 import { GalleryEditorKit } from '@/components/editor/gallery-editor-kit';
 import { Editor, EditorContainer } from '@/components/ui/editor';
@@ -29,8 +37,9 @@ import { LinkToolbarButton } from '@/components/ui/link-toolbar-button';
 import { MarkToolbarButton } from '@/components/ui/mark-toolbar-button';
 import { Toolbar, ToolbarButton, ToolbarGroup } from '@/components/ui/toolbar';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { RedoToolbarButton, UndoToolbarButton } from '@/components/ui/history-toolbar-button';
 
-const CHAR_LIMIT = 300;
+const CHAR_LIMIT = 500;
 
 /* 从 editor.children 提取所有纯文本，用于字符计数 */
 function getEditorPlainText(editor: ReturnType<typeof usePlateEditor>): string {
@@ -40,12 +49,20 @@ function getEditorPlainText(editor: ReturnType<typeof usePlateEditor>): string {
     .join('');
 }
 
+export const PROSE_CHAR_LIMIT = CHAR_LIMIT;
+
 export function GalleryProseEditor({
   initialMarkdown,
   onChange,
+  toolbarContainer,
+  onCharCountChange,
 }: {
   initialMarkdown: string;
   onChange: (markdown: string) => void;
+  /** 工具栏 Portal 目标；不传时内联显示 */
+  toolbarContainer?: HTMLElement | null;
+  /** 字符数变化回调，供外部渲染固定位置的计数器 */
+  onCharCountChange?: (count: number) => void;
 }) {
   const [editorId] = useState(() => `plate-gallery-${Math.random().toString(36).slice(2)}`);
 
@@ -64,14 +81,19 @@ export function GalleryProseEditor({
     [],
   );
 
-  /* 每次内容变更时序列化回 Markdown，并通知父组件 */
+  /* 每次内容变更时序列化回 Markdown，超限时撤销 */
   const handleChange = useCallback(() => {
     if (!editor) return;
+    // 超限阻止：撤销本次输入
+    const plainText = getEditorPlainText(editor);
+    if (plainText.length > CHAR_LIMIT) {
+      editor.undo();
+      return;
+    }
     try {
       const md = serializeMd(editor);
       onChange(md);
     } catch (err) {
-      /* 快速编辑时序列化偶尔失败，跳过本次，下次变更会补上 */
       if (import.meta.env.DEV) console.warn('[GalleryProseEditor] 序列化失败 (通常为暂态):', err);
     }
   }, [editor, onChange]);
@@ -81,76 +103,99 @@ export function GalleryProseEditor({
   return (
     <TooltipProvider>
       <Plate key={editorId} editor={editor} onValueChange={handleChange}>
-        <GalleryProseEditorInner />
+        <GalleryProseEditorInner toolbarContainer={toolbarContainer} onCharCountChange={onCharCountChange} />
       </Plate>
     </TooltipProvider>
   );
 }
 
-/* 内层组件：在 Plate 上下文内读取 editor，以便 charCount 响应编辑变化 */
-function GalleryProseEditorInner() {
-  /* useEditorSelector 在每次 editor 状态更新后重新计算字符数 */
+/* 内层组件：工具栏 Portal 到 topbar，编辑区留在原位 */
+function GalleryProseEditorInner({ toolbarContainer, onCharCountChange }: { toolbarContainer?: HTMLElement | null; onCharCountChange?: (count: number) => void }) {
   const charCount = useEditorSelector(
     (editor) => getEditorPlainText(editor).length,
     [],
   );
 
-  const isOverLimit = charCount > CHAR_LIMIT;
+  // 通知外部字符数变化
+  useEffect(() => { onCharCountChange?.(charCount); }, [charCount, onCharCountChange]);
+
+  const toolbar = (
+    <Toolbar className="flex items-center gap-0 px-1 py-0.5">
+      <ToolbarGroup>
+        <UndoToolbarButton />
+        <RedoToolbarButton />
+      </ToolbarGroup>
+      <ToolbarGroup>
+        <HeadingButton level="h1" icon={<Heading1Icon />} tooltip="标题 1 (⌘⌥1)" />
+        <HeadingButton level="h2" icon={<Heading2Icon />} tooltip="标题 2 (⌘⌥2)" />
+        <HeadingButton level="h3" icon={<Heading3Icon />} tooltip="标题 3 (⌘⌥3)" />
+        <HeadingButton level={KEYS.p} icon={<PilcrowIcon />} tooltip="正文" />
+      </ToolbarGroup>
+      <ToolbarGroup>
+        <MarkToolbarButton nodeType="bold" tooltip="粗体 (⌘B)">
+          <BoldIcon />
+        </MarkToolbarButton>
+        <MarkToolbarButton nodeType="italic" tooltip="斜体 (⌘I)">
+          <ItalicIcon />
+        </MarkToolbarButton>
+        <MarkToolbarButton nodeType="underline" tooltip="下划线 (⌘U)">
+          <UnderlineIcon />
+        </MarkToolbarButton>
+        <MarkToolbarButton nodeType="strikethrough" tooltip="删除线">
+          <StrikethroughIcon />
+        </MarkToolbarButton>
+      </ToolbarGroup>
+      <ToolbarGroup>
+        <LinkToolbarButton tooltip="链接" />
+        <BlockquoteButton />
+        <HorizontalRuleButton />
+      </ToolbarGroup>
+      <ToolbarGroup>
+        <BulletedListButton />
+        <NumberedListButton />
+      </ToolbarGroup>
+    </Toolbar>
+  );
 
   return (
-    <div className="flex flex-col">
-      {/* 标签行：左侧"随笔"，右侧字符计数 */}
-      <div className="mb-1 flex items-center justify-between px-0.5">
-        <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>
-          随笔
-        </span>
-        <span
-          className="text-2xs"
-          style={{ color: isOverLimit ? 'var(--mark-red)' : 'var(--ink-ghost)' }}
-        >
-          {charCount} / {CHAR_LIMIT}
-        </span>
-      </div>
-
-      {/* 编辑器外框：工具栏（圆角上方）+ 编辑区（圆角下方）共用边框 */}
-      <div className="rounded-md border border-border">
-        {/* 工具栏：贴顶，圆角上方 */}
-        <Toolbar className="flex w-full items-center gap-0 rounded-t-md border-b border-border bg-muted/40 px-2 py-0.5">
-          <ToolbarGroup>
-            <MarkToolbarButton nodeType="bold" tooltip="粗体 (⌘B)">
-              <BoldIcon />
-            </MarkToolbarButton>
-            <MarkToolbarButton nodeType="italic" tooltip="斜体 (⌘I)">
-              <ItalicIcon />
-            </MarkToolbarButton>
-            <MarkToolbarButton nodeType="underline" tooltip="下划线 (⌘U)">
-              <UnderlineIcon />
-            </MarkToolbarButton>
-            <MarkToolbarButton nodeType="strikethrough" tooltip="删除线">
-              <StrikethroughIcon />
-            </MarkToolbarButton>
-          </ToolbarGroup>
-
-          <ToolbarGroup>
-            <LinkToolbarButton tooltip="链接" />
-          </ToolbarGroup>
-
-          <ToolbarGroup>
-            <BulletedListButton />
-            <NumberedListButton />
-          </ToolbarGroup>
-        </Toolbar>
-
-        {/* 编辑区：贴底，圆角下方，样式与 note 编辑器对齐 */}
-        <EditorContainer className="rounded-b-md">
-          <Editor
-            variant="none"
-            className="min-h-[120px] w-full px-4 pt-3 pb-8 text-base"
-            placeholder="写点什么…"
-          />
-        </EditorContainer>
-      </div>
+    <div className="relative">
+      {toolbarContainer ? createPortal(toolbar, toolbarContainer) : toolbar}
+      <EditorContainer>
+        <Editor
+          variant="none"
+          className="w-full px-4 py-2 pb-6 text-base"
+          style={{ minHeight: 36 }}
+          placeholder="写点什么…"
+        />
+      </EditorContainer>
+      <span
+        className="absolute bottom-1 right-1 text-2xs pointer-events-none"
+        style={{ color: charCount > CHAR_LIMIT ? 'var(--mark-red)' : 'var(--ink-ghost)' }}
+      >
+        {charCount} / {CHAR_LIMIT}
+      </span>
     </div>
+  );
+}
+
+/* 引用块按钮 */
+function BlockquoteButton() {
+  const editor = useEditorRef();
+  const blockType = useSelectionFragmentProp({
+    defaultValue: KEYS.p,
+    getProp: (node) => getBlockType(node as TElement),
+  });
+  return (
+    <ToolbarButton
+      tooltip="引用"
+      pressed={blockType === KEYS.blockquote}
+      onMouseDown={(e) => {
+        e.preventDefault();
+        setBlockType(editor, KEYS.blockquote);
+      }}
+    >
+      <QuoteIcon />
+    </ToolbarButton>
   );
 }
 
@@ -194,6 +239,43 @@ function NumberedListButton() {
       }}
     >
       <ListOrderedIcon />
+    </ToolbarButton>
+  );
+}
+
+/* 标题切换按钮（H1/H2/H3/正文） */
+function HeadingButton({ level, icon, tooltip }: { level: string; icon: React.ReactNode; tooltip: string }) {
+  const editor = useEditorRef();
+  const blockType = useSelectionFragmentProp({
+    defaultValue: KEYS.p,
+    getProp: (node) => getBlockType(node as TElement),
+  });
+  return (
+    <ToolbarButton
+      tooltip={tooltip}
+      pressed={blockType === level}
+      onMouseDown={(e) => {
+        e.preventDefault();
+        setBlockType(editor, level);
+      }}
+    >
+      {icon}
+    </ToolbarButton>
+  );
+}
+
+/* 分割线插入按钮 */
+function HorizontalRuleButton() {
+  const editor = useEditorRef();
+  return (
+    <ToolbarButton
+      tooltip="分割线"
+      onMouseDown={(e) => {
+        e.preventDefault();
+        insertBlock(editor, KEYS.hr);
+      }}
+    >
+      <MinusIcon />
     </ToolbarButton>
   );
 }

@@ -10,7 +10,7 @@
  * 所有编辑通过 draft 自动保存，"提交"触发首次/新版本 Git commit。
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Sun, Moon } from 'lucide-react';
 import { useTheme } from '@/hooks/use-theme';
@@ -68,6 +68,7 @@ export default function GalleryEditPage() {
     updateCaption,
     updatePhotoTags,
     uploadPhotos,
+    uploadProgress,
     deletePhoto,
     setCover,
     updateDate,
@@ -76,6 +77,38 @@ export default function GalleryEditPage() {
     commit,
   } = useGalleryEditor(id);
 
+  const uploading = uploadProgress !== null;
+
+  // 上传中阻止离开：beforeunload（刷新/关闭）+ popstate（浏览器后退）+ safeNavigate（返回按钮）
+  useEffect(() => {
+    if (!uploading) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    // 压入一条 history 条目，后退时触发 popstate 而不是真正离开
+    window.history.pushState(null, '', window.location.href);
+    const handlePopState = () => {
+      if (window.confirm('照片正在上传中，离开将中断上传。确认离开？')) {
+        window.history.back();
+      } else {
+        window.history.pushState(null, '', window.location.href);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [uploading]);
+
+  const safeNavigate = (to: string) => {
+    if (uploading && !window.confirm('照片正在上传中，离开将中断上传。确认离开？')) return;
+    navigate(to);
+  };
+
+  // Portal 目标：随笔工具栏渲染到 topbar 中间
+  const [toolbarPortal, setToolbarPortal] = useState<HTMLDivElement | null>(null);
   // 照片编辑弹窗状态
   const [modalOpen, setModalOpen] = useState(false);
   const [modalPhotoIndex, setModalPhotoIndex] = useState(0);
@@ -98,12 +131,15 @@ export default function GalleryEditPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      {/* 顶栏：两组胶囊左右分布 */}
-      <div className="flex shrink-0 items-center justify-between px-4" style={{ height: 48 }}>
+    <div className="flex h-screen flex-col overflow-hidden">
+      {/* 顶栏：1fr | auto | 1fr 工具栏居中（与 notes 编辑器一致） */}
+      <header
+        className="grid shrink-0 items-center"
+        style={{ height: 48, padding: '8px 16px', gridTemplateColumns: '1fr auto 1fr', columnGap: 12 }}
+      >
         {/* 左侧胶囊：← 返回 / 标题输入 */}
         <div
-          className="flex items-center gap-2 px-3 py-1"
+          className="flex min-w-0 shrink-0 items-center justify-self-start gap-2 px-3 py-1"
           style={{
             background: 'var(--glass-bg)',
             backdropFilter: 'blur(12px) saturate(180%)',
@@ -116,7 +152,7 @@ export default function GalleryEditPage() {
           <button
             className="hover-shelf shrink-0 rounded-full px-1.5 py-0.5 transition-colors duration-150"
             style={{ color: 'var(--ink-faded)' }}
-            onClick={() => navigate(`/admin/gallery?post=${id}`)}
+            onClick={() => safeNavigate(`/admin/gallery?post=${id}`)}
             aria-label="返回画廊列表"
           >
             ←
@@ -132,9 +168,15 @@ export default function GalleryEditPage() {
           />
         </div>
 
+        {/* 工具栏 Portal 挂在中列 */}
+        <div
+          ref={setToolbarPortal}
+          className="flex min-w-0 max-w-full justify-center justify-self-center overflow-x-auto"
+        />
+
         {/* 右侧胶囊：保存状态 + 主题切换 + 操作按钮 */}
         <div
-          className="flex items-center gap-3 px-3 py-1"
+          className="flex min-w-0 shrink-0 items-center justify-self-end gap-3 px-3 py-1"
           style={{
             background: 'var(--glass-bg)',
             backdropFilter: 'blur(12px) saturate(180%)',
@@ -159,20 +201,35 @@ export default function GalleryEditPage() {
 
           <button
             className="rounded-full px-3 py-1 text-sm transition-colors duration-150"
-            style={{ color: 'var(--ink-faded)', border: '0.5px solid var(--separator)' }}
+            style={{ color: 'var(--ink-faded)', border: '0.5px solid var(--separator)', opacity: uploading ? 0.4 : 1 }}
             onClick={() => void save()}
+            disabled={uploading}
           >
             保存草稿
           </button>
           <button
             className="rounded-full px-3 py-1 text-sm font-medium transition-colors duration-150"
-            style={{ background: 'var(--ink)', color: 'var(--paper)' }}
+            style={{ background: 'var(--ink)', color: 'var(--paper)', opacity: uploading ? 0.4 : 1 }}
             onClick={() => setCommitModalOpen(true)}
+            disabled={uploading}
           >
             提交
           </button>
         </div>
-      </div>
+      </header>
+
+      {/* 上传进度条 — 2px 细线贴在 topbar 底部 */}
+      {uploading && (
+        <div className="h-0.5 shrink-0" style={{ background: 'var(--separator)' }}>
+          <div
+            className="h-full transition-all duration-300"
+            style={{
+              width: `${Math.round((uploadProgress.uploaded / uploadProgress.total) * 100)}%`,
+              background: 'var(--ink)',
+            }}
+          />
+        </div>
+      )}
 
       {/* 滚动内容区 */}
       <div className="flex-1 overflow-y-auto">
@@ -180,13 +237,14 @@ export default function GalleryEditPage() {
           {/* 照片网格 */}
           <PhotoGrid
             photos={photos}
+            uploadProgress={uploadProgress}
             onReorder={reorderPhotos}
             onPhotoClick={handlePhotoClick}
             onDelete={deletePhoto}
             onUpload={(files) => void uploadPhotos(files)}
           />
 
-          {/* 日期 + 地点：网格下方 */}
+          {/* 日期 + 地点 */}
           <MetadataFields
             date={date}
             location={location}
@@ -194,10 +252,11 @@ export default function GalleryEditPage() {
             onLocationChange={updateLocation}
           />
 
-          {/* 随笔编辑器 */}
+          {/* 随笔编辑区（无框，工具栏已 Portal 到 topbar） */}
           <GalleryProseEditor
             initialMarkdown={prose}
             onChange={updateProse}
+            toolbarContainer={toolbarPortal}
           />
         </div>
       </div>

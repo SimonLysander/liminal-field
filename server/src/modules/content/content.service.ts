@@ -556,48 +556,34 @@ export class ContentService {
   }
 
   /**
-   * 发布指定版本：纯指针操作，publishedVersion 指向目标 commitHash。
-   * 不走 saveContent 流程，不写 Git，不生成 changeLog。
-   * @param commitHash 可选，不传则发布 latestVersion。
-   *
-   * 发布历史版本时，title/summary 从 changeLogs 中查找对应记录，
-   * 而不是直接用 latestVersion.title，避免"发布 A 版本却显示 B 版本标题"。
+   * V2 发布：publishedVersion 指向目标 snapshot（纯指针操作，不写 Git）。
+   * @param versionId 可选 nanoid，不传则发布 latestVersion。
    */
-  async publishVersion(id: string, commitHash?: string): Promise<void> {
+  async publishVersion(id: string, versionId?: string): Promise<void> {
     const content = await this.contentRepository.findById(id);
     if (!content) throw new NotFoundException(`Content ${id} not found`);
 
     const latestVersion = this.resolveLatestVersion(content);
-    // V2: 用 versionId 判断是否有可发布版本（commitHash 可能异步回填中）
     if (!latestVersion.versionId) {
       throw new BadRequestException(
         'Cannot publish: no committed version exists yet',
       );
     }
 
-    const targetHash = commitHash ?? latestVersion.commitHash;
-
-    // 发布历史版本时，从 changeLogs 中找到该版本对应的 title/summary，
-    // 避免用 latestVersion 的元数据覆盖历史版本的真实标题。
-    const changeLog = commitHash
-      ? content.changeLogs.find((c) => c.commitHash === commitHash)
-      : null;
-    const title = changeLog?.title ?? latestVersion.title;
-    const summary = changeLog?.summary ?? latestVersion.summary ?? '';
-
-    // V2: 发布时需要关联 versionId，优先从 latestVersion 继承（默认发布最新版），
-    // 发布历史版本时按 commitHash 查找对应的 snapshot。
-    let targetVersionId = latestVersion.versionId;
-    if (commitHash) {
-      const snapshots = await this.snapshotRepository.listByContentItemId(id);
-      const matched = snapshots.find((s) => s.commitHash === commitHash);
-      targetVersionId = matched?.versionId;
+    // 目标 snapshot：不传 versionId 则发布最新版
+    const targetVersionId = versionId ?? latestVersion.versionId!;
+    const snapshot =
+      await this.snapshotRepository.findByVersionId(targetVersionId);
+    if (!snapshot) {
+      throw new NotFoundException(
+        `Version ${targetVersionId} not found`,
+      );
     }
 
     const publishedVersion = this.buildVersionSnapshot(
-      targetHash,
-      title,
-      summary,
+      snapshot.commitHash ?? '',
+      snapshot.title,
+      snapshot.summary ?? '',
       targetVersionId,
     );
 
@@ -689,9 +675,13 @@ export class ContentService {
     );
   }
 
+  /**
+   * V2: 优先从 ContentSnapshot 读取历史版本，Git 作为 fallback。
+   * versionOrHash 可以是 versionId（nanoid）或 commitHash（git sha）。
+   */
   async getContentByVersion(
     id: string,
-    commitHash: string,
+    versionOrHash: string,
     options?: { scope?: string },
   ): Promise<ContentDetailDto> {
     const content = await this.contentRepository.findById(id);
@@ -699,17 +689,54 @@ export class ContentService {
       throw new NotFoundException(`Content ${id} not found`);
     }
 
+    // 优先按 versionId 查 snapshot
+    let snapshot = await this.snapshotRepository.findByVersionId(versionOrHash);
+
+    // 找不到则按 commitHash 在 snapshot 表中反查
+    if (!snapshot) {
+      const snapshots = await this.snapshotRepository.listByContentItemId(id);
+      snapshot = snapshots.find((s) => s.commitHash === versionOrHash) ?? null;
+    }
+
+    if (snapshot) {
+      return this.toDetailDto(content, {
+        bodyMarkdown: snapshot.bodyMarkdown,
+        plainText: snapshot.bodyMarkdown.replace(/[#*_\[\]()>`~\\|]/g, ''),
+      });
+    }
+
+    // 最终 fallback：Git（兼容旧数据）
     const source = await this.contentRepoService.readContentSource(id, {
-      commitHash,
+      commitHash: versionOrHash,
       scope: options?.scope,
     });
-
     return this.toDetailDto(content, source);
   }
 
+  /**
+   * V2 版本历史：从 ContentSnapshot 读取，不依赖 Git log。
+   * 每个 snapshot 即一个版本条目，commitHash 可能为空（异步归档未完成）。
+   */
   async getContentHistory(id: string): Promise<ContentHistoryEntryDto[]> {
-    await this.assertContentItemExists(id);
-    return this.contentGitService.listContentHistory(id);
+    const content = await this.contentRepository.findById(id);
+    if (!content) throw new NotFoundException(`Content ${id} not found`);
+
+    const snapshots = await this.snapshotRepository.listByContentItemId(id);
+
+    return snapshots.map((snap) => {
+      // 从 changeLogs 中匹配该 snapshot 的变更说明
+      const log = content.changeLogs.find(
+        (c) => c.createdAt.getTime() === snap.createdAt.getTime(),
+      );
+      return {
+        versionId: snap.versionId,
+        commitHash: snap.commitHash ?? '',
+        committedAt: snap.createdAt.toISOString(),
+        changeType: log?.changeType ?? 'patch',
+        changeNote: log?.changeNote ?? snap.changeNote ?? '',
+        title: snap.title,
+      };
+    });
   }
 
   async listContents(query: ContentQueryDto): Promise<ContentListItemDto[]> {
@@ -742,53 +769,58 @@ export class ContentService {
       );
   }
 
+  /**
+   * 全局搜索：标题/摘要 + 正文全文，全部下推到 MongoDB。
+   *
+   * 两阶段搜索：先按标题/摘要匹配（$regex），再按 ContentSnapshot.bodyMarkdown
+   * 匹配（aggregation），合并去重。避免全量加载内存和逐条读磁盘。
+   */
   async searchContents(query: ContentQueryDto): Promise<ContentListItemDto[]> {
-    const contents = (await this.contentRepository.listAll()).filter(
-      (content) => this.isReadableInQuery(content, query),
-    );
-    const keyword = query.q?.trim().toLowerCase();
+    const keyword = query.q?.trim();
+    const pageSize = query.pageSize ?? 20;
+    const publicView = query.visibility !== ContentVisibility.all;
 
     if (!keyword) {
-      return contents.map((content) =>
-        this.toListItemDto(content, {
-          publicView: query.visibility !== ContentVisibility.all,
-        }),
-      );
+      const contents = await this.contentRepository.list({
+        page: query.page,
+        pageSize,
+      });
+      return contents
+        .filter((content) => this.isReadableInQuery(content, query))
+        .map((content) => this.toListItemDto(content, { publicView }));
     }
 
-    const matched: ContentItem[] = [];
-    for (const content of contents) {
-      const latestVersion = this.resolveLatestVersion(content);
-      const publishedVersion = this.resolvePublishedVersion(content);
-      const title =
-        query.visibility !== ContentVisibility.all && publishedVersion
-          ? publishedVersion.title
-          : latestVersion.title;
-      const summary =
-        query.visibility !== ContentVisibility.all && publishedVersion
-          ? publishedVersion.summary
-          : latestVersion.summary;
-      const basicHaystack = `${title} ${summary}`.toLowerCase();
-      if (basicHaystack.includes(keyword)) {
-        matched.push(content);
-        continue;
-      }
+    // 阶段 1：标题/摘要搜索（MongoDB $regex）
+    const titleMatches = await this.contentRepository.searchByKeyword(keyword, {
+      page: 1,
+      pageSize,
+    });
 
-      // Title and summary stay as the cheap first-pass filter. Only when those
-      // miss do we read canonical Markdown and search its extracted plain text.
-      const source = await this.contentRepoService.readContentSource(
-        content.id,
+    // 阶段 2：正文全文搜索（ContentSnapshot aggregation）
+    const bodyMatchIds =
+      await this.snapshotRepository.searchContentIdsByBodyKeyword(
+        keyword,
+        pageSize,
       );
-      if (source.plainText.toLowerCase().includes(keyword)) {
-        matched.push(content);
-      }
-    }
 
-    return matched.map((content) =>
-      this.toListItemDto(content, {
-        publicView: query.visibility !== ContentVisibility.all,
-      }),
+    // 合并去重：标题匹配的 ID 集合 + 正文匹配的 ID 集合
+    const seenIds = new Set(titleMatches.map((c) => c.id));
+    const bodyOnlyIds = bodyMatchIds.filter((id) => !seenIds.has(id));
+
+    // 补充加载正文匹配但标题未匹配的 ContentItem
+    const bodyOnlyItems = await Promise.all(
+      bodyOnlyIds.map((id) => this.contentRepository.findById(id)),
     );
+
+    const allMatches = [
+      ...titleMatches,
+      ...bodyOnlyItems.filter((c): c is ContentItem => c !== null),
+    ];
+
+    return allMatches
+      .filter((content) => this.isReadableInQuery(content, query))
+      .slice(0, pageSize)
+      .map((content) => this.toListItemDto(content, { publicView }));
   }
 
   /** 最近 N 条已发布内容（供首页使用）。 */

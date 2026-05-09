@@ -41,7 +41,7 @@ import type { BreadcrumbItem } from '../components/AdminStructurePanel';
 
 export function useAdminWorkspace() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const confirm = useConfirm();
   const urlFolderId = searchParams.get('topic') ?? undefined;
   const urlContentItemId = searchParams.get('doc') ?? undefined;
@@ -74,13 +74,20 @@ export function useAdminWorkspace() {
       setPathNodes(folderPath);
       setBreadcrumb(folderPath.map((n) => ({ id: n.id, name: n.name })));
     } catch (loadError) {
+      // parentId 不存在（404）→ 清掉无效 topic，fallback 到根节点
+      const { isApiError } = await import('@/services/request');
+      if (parentId && isApiError(loadError, 404)) {
+        searchParams.delete('topic');
+        setSearchParams(searchParams, { replace: true });
+        return;
+      }
       setError(parseError(loadError, '加载内容列表失败'));
       setPathNodes([]);
       setBreadcrumb([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [searchParams, setSearchParams]);
 
   /* urlFolderId 变化 → 重新加载当前层级 */
   useEffect(() => {
@@ -471,29 +478,32 @@ export function useAdminWorkspace() {
 
   const commitDraft = useCallback(async () => {
     if (!activeContentItemId) return;
+    try {
+      const saved = await contentItemsApi.save(activeContentItemId, {
+        title: draftState.title,
+        summary: draftState.summary,
+        status: 'committed',
+        bodyMarkdown: draftState.bodyMarkdown,
+        changeNote: draftState.changeNote,
+        changeType: draftState.changeType,
+        action: 'commit',
+      });
 
-    const saved = await contentItemsApi.save(activeContentItemId, {
-      title: draftState.title,
-      summary: draftState.summary,
-      status: 'committed',
-      bodyMarkdown: draftState.bodyMarkdown,
-      changeNote: draftState.changeNote,
-      changeType: draftState.changeType,
-      action: 'commit',
-    });
+      await contentItemsApi.deleteDraft(activeContentItemId);
 
-    await contentItemsApi.deleteDraft(activeContentItemId);
-
-    setFormalContent(toFormalContentState(saved));
-    setDraftPresence(EMPTY_DRAFT_PRESENCE);
-    setDraftState(toDraftEditorStateFromDetail(saved));
-    setDraftInfo('');
-    setIsDirty(false);
-    setLastDraftSavedAt('');
-    setAutosaveError('');
-    setWorkspaceMode('formal');
-    toast.success(`新版本已提交 ${new Date(saved.updatedAt).toLocaleString('zh-CN')}`);
-    setHistory(await contentItemsApi.getHistory(activeContentItemId));
+      setFormalContent(toFormalContentState(saved));
+      setDraftPresence(EMPTY_DRAFT_PRESENCE);
+      setDraftState(toDraftEditorStateFromDetail(saved));
+      setDraftInfo('');
+      setIsDirty(false);
+      setLastDraftSavedAt('');
+      setAutosaveError('');
+      setWorkspaceMode('formal');
+      toast.success(`新版本已提交 ${new Date(saved.updatedAt).toLocaleString('zh-CN')}`);
+      setHistory(await contentItemsApi.getHistory(activeContentItemId));
+    } catch (err) {
+      toast.error(`提交失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }, [
     draftState.bodyMarkdown,
     draftState.changeNote,
@@ -505,29 +515,32 @@ export function useAdminWorkspace() {
 
   const discardDraft = useCallback(async () => {
     if (!activeContentItemId) return;
-
-    await contentItemsApi.deleteDraft(activeContentItemId);
-    setDraftPresence(EMPTY_DRAFT_PRESENCE);
-    setDraftState(toDraftEditorStateFromDetail({
-      id: formalContent.id,
-      title: formalContent.latestVersion.title,
-      summary: formalContent.latestVersion.summary,
-      status: formalContent.status,
-      latestVersion: formalContent.latestVersion,
-      publishedVersion: formalContent.publishedVersion,
-      hasUnpublishedChanges: formalContent.hasUnpublishedChanges,
-      bodyMarkdown: formalContent.bodyMarkdown,
-      headings: formalContent.headings,
-      changeLogs: [],
-      createdAt: '',
-      updatedAt: formalContent.updatedAt,
-    }));
-    setDraftInfo('');
-    setLastDraftSavedAt('');
-    setAutosaveError('');
-    setIsDirty(false);
-    setWorkspaceMode('formal');
-    toast.success('草稿已丢弃');
+    try {
+      await contentItemsApi.deleteDraft(activeContentItemId);
+      setDraftPresence(EMPTY_DRAFT_PRESENCE);
+      setDraftState(toDraftEditorStateFromDetail({
+        id: formalContent.id,
+        title: formalContent.latestVersion.title,
+        summary: formalContent.latestVersion.summary,
+        status: formalContent.status,
+        latestVersion: formalContent.latestVersion,
+        publishedVersion: formalContent.publishedVersion,
+        hasUnpublishedChanges: formalContent.hasUnpublishedChanges,
+        bodyMarkdown: formalContent.bodyMarkdown,
+        headings: formalContent.headings,
+        changeLogs: [],
+        createdAt: '',
+        updatedAt: formalContent.updatedAt,
+      }));
+      setDraftInfo('');
+      setLastDraftSavedAt('');
+      setAutosaveError('');
+      setIsDirty(false);
+      setWorkspaceMode('formal');
+      toast.success('草稿已丢弃');
+    } catch (err) {
+      toast.error(`丢弃草稿失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }, [formalContent, activeContentItemId]);
 
   /* ================================================================
@@ -536,16 +549,24 @@ export function useAdminWorkspace() {
 
   const publishContent = useCallback(async () => {
     if (!activeContentItemId) return;
-    const saved = await contentItemsApi.publish(activeContentItemId);
-    setFormalContent(toFormalContentState(saved));
-    toast.success(`内容已发布 ${new Date(saved.updatedAt).toLocaleString('zh-CN')}`);
+    try {
+      const saved = await contentItemsApi.publish(activeContentItemId);
+      setFormalContent(toFormalContentState(saved));
+      toast.success(`内容已发布 ${new Date(saved.updatedAt).toLocaleString('zh-CN')}`);
+    } catch (err) {
+      toast.error(`发布失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }, [activeContentItemId]);
 
   const unpublishContent = useCallback(async () => {
     if (!activeContentItemId) return;
-    const saved = await contentItemsApi.unpublish(activeContentItemId);
-    setFormalContent(toFormalContentState(saved));
-    toast.success(`已取消发布 ${new Date(saved.updatedAt).toLocaleString('zh-CN')}`);
+    try {
+      const saved = await contentItemsApi.unpublish(activeContentItemId);
+      setFormalContent(toFormalContentState(saved));
+      toast.success(`已取消发布 ${new Date(saved.updatedAt).toLocaleString('zh-CN')}`);
+    } catch (err) {
+      toast.error(`取消发布失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }, [activeContentItemId]);
 
   /* ================================================================
@@ -553,19 +574,20 @@ export function useAdminWorkspace() {
    * ================================================================ */
 
   const previewVersion = useCallback(
-    async (commitHash: string) => {
+    async (versionId: string) => {
       if (!activeContentItemId) return;
-      if (preview?.commitHash === commitHash) return;
-      if (commitHash === formalContent.latestVersion.commitHash) {
+      if (preview?.versionId === versionId) return;
+      // 点击最新版本时退出预览（用 versionId 对比）
+      if (versionId === formalContent.latestVersion.versionId) {
         setPreview(null);
         return;
       }
 
       setPreviewLoading(true);
       try {
-        const detail = await contentItemsApi.getByVersion(activeContentItemId, commitHash);
+        const detail = await contentItemsApi.getByVersion(activeContentItemId, versionId);
         setPreview({
-          commitHash,
+          versionId,
           title: detail.title,
           bodyMarkdown: detail.bodyMarkdown,
           headings: detail.headings,
@@ -577,25 +599,22 @@ export function useAdminWorkspace() {
         setPreviewLoading(false);
       }
     },
-    [activeContentItemId, preview?.commitHash, formalContent.latestVersion.commitHash],
+    [activeContentItemId, preview?.versionId, formalContent.latestVersion.versionId],
   );
 
   const exitPreview = useCallback(() => { setPreview(null); }, []);
 
   const publishPreview = useCallback(async () => {
     if (!activeContentItemId || !preview) return;
-
-    const ok = await confirm({ title: '发布版本', message: `发布版本 ${preview.commitHash.slice(0, 8)} ？`, confirmLabel: '发布' });
-    if (!ok) return;
-
-    // 发布指定历史版本，只传 commitHash，不传 bodyMarkdown
-    const saved = await contentItemsApi.publish(activeContentItemId, preview.commitHash);
-
-    setFormalContent(toFormalContentState(saved));
-    // 不清除 preview，保持停留在当前版本，让用户看到"已发布"标记
-    toast.success(`版本 ${preview.commitHash.slice(0, 8)} 已发布`);
-    setHistory(await contentItemsApi.getHistory(activeContentItemId));
-  }, [activeContentItemId, confirm, preview]);
+    try {
+      const saved = await contentItemsApi.publish(activeContentItemId, preview.versionId);
+      setFormalContent(toFormalContentState(saved));
+      toast.success(`版本 ${preview.versionId.slice(0, 8)} 已发布`);
+      setHistory(await contentItemsApi.getHistory(activeContentItemId));
+    } catch (err) {
+      toast.error(`发布失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [activeContentItemId, preview]);
 
   /* ================================================================
    * 自动保存

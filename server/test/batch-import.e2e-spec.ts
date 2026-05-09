@@ -73,7 +73,10 @@ describe('Batch Import (e2e)', () => {
       const zip = new JSZip();
       zip.file('doc1.md', '# Document 1\n\nContent here');
       zip.file('sub/assets/image.png', MINIMAL_PNG);
-      zip.file('sub/doc2.md', '# Document 2\n\n![](assets/image.png)\n\nWith subfolder');
+      zip.file(
+        'sub/doc2.md',
+        '# Document 2\n\n![](assets/image.png)\n\nWith subfolder',
+      );
       const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
 
       // 创建父文件夹

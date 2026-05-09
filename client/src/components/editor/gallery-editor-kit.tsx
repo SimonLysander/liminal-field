@@ -1,31 +1,30 @@
 /**
- * GalleryEditorKit — 画廊散文编辑器的最小化 Plate 插件套件
+ * GalleryEditorKit — 画廊随笔编辑器插件套件
  *
- * 包含：
- *   - ParagraphPlugin           基础段落块
- *   - BoldPlugin / ItalicPlugin / UnderlinePlugin / StrikethroughPlugin  行内标记
- *   - LinkKit                   超链接（含 LinkElement + LinkFloatingToolbar）
- *   - ListPlugin                有序列表 + 无序列表（TaskList 不在 Gallery 场景中需要）
- *   - IndentPlugin              缩进（ListPlugin 依赖，注入目标仅 paragraph）
- *   - MarkdownPlugin            Markdown 序列化 / 反序列化
- *   - TrailingBlockPlugin       末尾始终保留空段落
+ * 与 Notes EditorKit 共享基础块（H1-H3、引用、分割线）和行内标记，
+ * 确保字号系统和渲染组件完全一致。
  *
- * 明确排除（Gallery 场景不需要）：
- *   - 标题 (H1–H6)、代码块、表格、图片/媒体
- *   - 日期组件、拖拽排序、字体颜色
- *   - 引用块 (Blockquote)、分割线 (HorizontalRule)
- *   - 浮动工具栏等 React UI 组件（LinkFloatingToolbar 已包含在 LinkKit 中）
+ * 排除（Gallery 随笔不需要）：
+ *   - H4-H6、代码块、表格、图片/媒体、日期、拖拽、字体颜色、数学公式
  */
 
 import {
+  BlockquoteRules,
   BoldRules,
+  HeadingRules,
+  HorizontalRuleRules,
   ItalicRules,
   MarkComboRules,
   StrikethroughRules,
   UnderlineRules,
 } from '@platejs/basic-nodes';
 import {
+  BlockquotePlugin,
   BoldPlugin,
+  H1Plugin,
+  H2Plugin,
+  H3Plugin,
+  HorizontalRulePlugin,
   ItalicPlugin,
   StrikethroughPlugin,
   UnderlinePlugin,
@@ -42,11 +41,46 @@ import { KEYS, TrailingBlockPlugin } from 'platejs';
 import { ParagraphPlugin } from 'platejs/react';
 import remarkGfm from 'remark-gfm';
 
-export const GalleryEditorKit = [
-  /* 基础段落块 */
-  ParagraphPlugin,
+import { BlockquoteElement } from '@/components/ui/blockquote-node';
+import { H1Element, H2Element, H3Element } from '@/components/ui/heading-node';
+import { HrElement } from '@/components/ui/hr-node';
+import { ParagraphElement } from '@/components/ui/paragraph-node';
 
-  /* 行内标记：粗体 / 斜体 / 下划线 / 删除线 */
+export const GalleryEditorKit = [
+  /* 基础块：段落 + 标题 H1-H3 + 引用 + 分割线（与 Notes 共享渲染组件，字号一致） */
+  ParagraphPlugin.withComponent(ParagraphElement),
+  H1Plugin.configure({
+    inputRules: [HeadingRules.markdown()],
+    node: { component: H1Element },
+    rules: { break: { empty: 'reset' } },
+    shortcuts: { toggle: { keys: 'mod+alt+1' } },
+  }),
+  H2Plugin.configure({
+    inputRules: [HeadingRules.markdown()],
+    node: { component: H2Element },
+    rules: { break: { empty: 'reset' } },
+    shortcuts: { toggle: { keys: 'mod+alt+2' } },
+  }),
+  H3Plugin.configure({
+    inputRules: [HeadingRules.markdown()],
+    node: { component: H3Element },
+    rules: { break: { empty: 'reset' } },
+    shortcuts: { toggle: { keys: 'mod+alt+3' } },
+  }),
+  BlockquotePlugin.configure({
+    inputRules: [BlockquoteRules.markdown()],
+    node: { component: BlockquoteElement },
+    shortcuts: { toggle: { keys: 'mod+shift+period' } },
+  }),
+  HorizontalRulePlugin.configure({
+    inputRules: [
+      HorizontalRuleRules.markdown({ variant: '-' }),
+      HorizontalRuleRules.markdown({ variant: '_' }),
+    ],
+    node: { component: HrElement },
+  }),
+
+  /* 行内标记 */
   BoldPlugin.configure({
     inputRules: [
       BoldRules.markdown({ variant: '*' }),
@@ -70,20 +104,16 @@ export const GalleryEditorKit = [
     inputRules: [StrikethroughRules.markdown()],
   }),
 
-  /* 超链接：复用 LinkKit（含 LinkElement 渲染 + LinkFloatingToolbar 编辑弹窗） */
+  /* 超链接 */
   ...LinkKit,
 
-  /* 缩进：仅注入段落节点（Gallery 场景无标题/代码块） */
+  /* 缩进 */
   IndentPlugin.configure({
-    inject: {
-      targetPlugins: [KEYS.p],
-    },
-    options: {
-      offset: 24,
-    },
+    inject: { targetPlugins: [KEYS.p] },
+    options: { offset: 24 },
   }),
 
-  /* 列表：无序 + 有序；IndentPlugin 已在上方单独注册 */
+  /* 列表 */
   ListPlugin.configure({
     inputRules: [
       BulletedListRules.markdown({ variant: '-' }),
@@ -91,21 +121,15 @@ export const GalleryEditorKit = [
       OrderedListRules.markdown({ variant: '.' }),
       OrderedListRules.markdown({ variant: ')' }),
     ],
-    inject: {
-      targetPlugins: [KEYS.p],
-    },
+    inject: { targetPlugins: [KEYS.p] },
   }),
 
-  /* Markdown 序列化 / 反序列化，与主编辑器保持相同 remark 插件 */
+  /* Markdown 序列化 */
   MarkdownPlugin.configure({
     options: {
-      remarkPlugins: [
-        remarkGfm,
-        remarkMdx,
-      ],
+      remarkPlugins: [remarkGfm, remarkMdx],
     },
   }),
 
-  /* 末尾始终保留一个空段落，确保可在最后一块后继续输入 */
   TrailingBlockPlugin,
 ];

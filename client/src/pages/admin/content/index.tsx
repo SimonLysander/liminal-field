@@ -187,8 +187,8 @@ const ContentAdmin = () => {
                 draftPresence={workspace.draftPresence}
                 history={workspace.history}
                 historyLoading={workspace.historyLoading}
-                publishedHash={workspace.formalContent.publishedVersion?.commitHash ?? null}
-                activePreviewHash={workspace.preview?.commitHash ?? null}
+                publishedVersionId={workspace.formalContent.publishedVersion?.versionId ?? null}
+                activeVersionId={workspace.preview?.versionId ?? null}
                 onEditDraft={() => {
                   if (editUrl) window.location.href = editUrl;
                 }}
@@ -243,8 +243,8 @@ function FormalSidePanel({
   draftPresence,
   history,
   historyLoading,
-  publishedHash,
-  activePreviewHash,
+  publishedVersionId,
+  activeVersionId,
   onEditDraft,
   onOverwriteDraft,
   onSelectVersion,
@@ -255,11 +255,11 @@ function FormalSidePanel({
   draftPresence: DraftPresence;
   history: ContentHistoryEntry[];
   historyLoading: boolean;
-  publishedHash: string | null;
-  activePreviewHash: string | null;
+  publishedVersionId: string | null;
+  activeVersionId: string | null;
   onEditDraft: () => void;
   onOverwriteDraft: () => Promise<void>;
-  onSelectVersion: (commitHash: string) => Promise<void>;
+  onSelectVersion: (versionId: string) => Promise<void>;
 }) {
   const tocPanelRef = useRef<HTMLDivElement>(null);
 
@@ -362,9 +362,9 @@ function FormalSidePanel({
             ) : (
               <VersionTimeline
                 history={history}
-                publishedHash={publishedHash}
-                activePreviewHash={activePreviewHash}
-                onSelect={(hash) => void onSelectVersion(hash)}
+                publishedVersionId={publishedVersionId}
+                activeVersionId={activeVersionId}
+                onSelect={(versionId) => void onSelectVersion(versionId)}
               />
             )}
           </ContentFade>

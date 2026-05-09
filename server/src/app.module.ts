@@ -19,6 +19,8 @@ import { StartupDiagnosticsService } from './startup-diagnostics.service';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      // 本地 dev 和 Docker 统一读根目录 .env；Docker 中 env 由 compose 注入，此文件可缺失
+      envFilePath: '../.env',
       load: [yamlLoader],
     }),
     TypegooseModule.forRootAsync({

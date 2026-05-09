@@ -429,7 +429,7 @@ export class ContentGitService implements OnModuleInit {
       unpushedCommits: parseInt(unpushed ?? '0', 10),
       lastCommitMessage: lastCommitMessage || '',
       lastCommitTime: lastCommitTime || '',
-      remote: remote ?? '',
+      remote: remote ? redactKbRemoteUrlForLog(remote.trim()) : '',
     };
   }
 

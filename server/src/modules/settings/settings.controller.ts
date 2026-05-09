@@ -16,9 +16,11 @@ import { ContentRepoService } from '../content/content-repo.service';
 import {
   applyKbGitTokenToGithubHttps,
   resolveKbRemoteUrlForGit,
+  redactKbRemoteUrlForLog,
 } from '../../common/kb-remote-url';
 import { ManifestService } from './manifest.service';
 import { RecoveryService, ScanResult, ExecuteResult } from './recovery.service';
+import { KbRemoteDto, ExecuteRecoveryDto } from './dto/settings.dto';
 
 @Controller('settings')
 export class SettingsController {
@@ -38,7 +40,7 @@ export class SettingsController {
    */
   @Post('kb-remote/validate')
   async validateRemote(
-    @Body() dto: { url: string; token?: string },
+    @Body() dto: KbRemoteDto,
   ): Promise<{ valid: boolean; message: string }> {
     const resolvedUrl = applyKbGitTokenToGithubHttps(dto.url, dto.token);
     try {
@@ -48,8 +50,10 @@ export class SettingsController {
       return { valid: true, message: '连接成功' };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`validateRemote 失败: ${msg}`);
-      return { valid: false, message: msg };
+      // 脱敏后再写日志和返回前端，防止 simple-git 的错误消息携带含 PAT token 的完整 URL
+      const redactedMsg = redactKbRemoteUrlForLog(msg);
+      this.logger.warn(`validateRemote 失败: ${redactedMsg}`);
+      return { valid: false, message: redactedMsg };
     }
   }
 
@@ -60,9 +64,7 @@ export class SettingsController {
    * 生产环境通过 docker-compose 环境变量持久化，此接口供运行时热切换使用。
    */
   @Put('kb-remote')
-  async saveRemote(
-    @Body() dto: { url: string; token?: string },
-  ): Promise<{ success: boolean }> {
+  async saveRemote(@Body() dto: KbRemoteDto): Promise<{ success: boolean }> {
     // 更新运行时环境变量
     process.env.KB_REMOTE_URL = dto.url;
     if (dto.token !== undefined) {
@@ -83,8 +85,10 @@ export class SettingsController {
         }
         this.logger.log('KB remote updated');
       } catch (err: unknown) {
+        // 脱敏后写日志，防止 simple-git 错误消息携带含 PAT token 的 URL
+        const rawMsg = err instanceof Error ? err.message : String(err);
         this.logger.warn(
-          `更新 Git remote 失败: ${err instanceof Error ? err.message : String(err)}`,
+          `更新 Git remote 失败: ${redactKbRemoteUrlForLog(rawMsg)}`,
         );
         // Git remote 更新失败不阻断响应，env 已更新
       }
@@ -109,7 +113,7 @@ export class SettingsController {
    */
   @Post('recovery/execute')
   async executeRecovery(
-    @Body() dto: { contentIds?: string[] },
+    @Body() dto: ExecuteRecoveryDto,
   ): Promise<ExecuteResult> {
     return this.recoveryService.execute(dto.contentIds);
   }

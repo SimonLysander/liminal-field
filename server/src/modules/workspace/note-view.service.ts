@@ -160,18 +160,17 @@ export class NoteViewService {
     ]);
   }
 
-  /** 版本历史：从 Git commit 记录中读取。 */
+  /** V2 版本历史：从 ContentSnapshot 读取，不依赖 Git log。 */
   async getHistory(id: string): Promise<ContentHistoryEntryDto[]> {
-    await this.contentService.assertContentItemExists(id);
-    return this.contentGitService.listContentHistory(id);
+    return this.contentService.getContentHistory(id);
   }
 
-  /** 获取指定 Git commit 版本的内容快照。 */
+  /** V2: 获取指定版本的内容快照（versionId 或 commitHash 均可）。 */
   async getByVersion(
     id: string,
-    commitHash: string,
+    versionOrHash: string,
   ): Promise<ContentDetailDto> {
-    return this.contentService.getContentByVersion(id, commitHash, {
+    return this.contentService.getContentByVersion(id, versionOrHash, {
       scope: 'notes',
     });
   }

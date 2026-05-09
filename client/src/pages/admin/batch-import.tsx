@@ -415,6 +415,14 @@ export default function BatchImportPage() {
 
   // 导入进度（确认后轮询）
   const [importProgress, setImportProgress] = useState<{ completed: number; total: number } | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 组件卸载时清理轮询，防止内存泄漏和 unmounted setState
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
 
   const handleConfirm = useCallback(async () => {
     if (checked.size === 0 || !batchId) return;
@@ -428,21 +436,24 @@ export default function BatchImportPage() {
       // 开始轮询后台进度
       setImportProgress({ completed: 0, total: result.docsCreated });
       const jobId = result.jobId;
-      const poll = setInterval(async () => {
+      pollRef.current = setInterval(async () => {
         try {
           const progress = await importApi.getBatchJobProgress(jobId);
           setImportProgress({ completed: progress.completed, total: progress.total });
           if (progress.status === 'done') {
-            clearInterval(poll);
+            clearInterval(pollRef.current!);
+            pollRef.current = null;
             toast.success(`导入完成：${result.foldersCreated} 个文件夹，${progress.completed} 篇文档`);
             navigate(`/admin/notes?topic=${parentId}`, { replace: true });
           } else if (progress.status === 'failed') {
-            clearInterval(poll);
+            clearInterval(pollRef.current!);
+            pollRef.current = null;
             toast.error('部分文档导入失败');
             navigate(`/admin/notes?topic=${parentId}`, { replace: true });
           }
         } catch {
-          clearInterval(poll);
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
           navigate(`/admin/notes?topic=${parentId}`, { replace: true });
         }
       }, 800);

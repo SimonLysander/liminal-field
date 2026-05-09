@@ -7,8 +7,7 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
     volumes:
       - mongo-data:/data/db
-    ports:
-      - "27018:27017"
+    # 不暴露到宿主机，仅通过 Docker 内部网络访问
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
@@ -32,6 +31,7 @@ services:
       MONGO_USER: ${MONGO_USER}
       MONGO_PASSWORD: ${MONGO_PASSWORD}
       MONGO_DATABASE: ${MONGO_DATABASE}
+      OSS_INTERNAL: ${OSS_INTERNAL:-false}
       OSS_REGION: ${OSS_REGION:-oss-cn-beijing}
       OSS_ACCESS_KEY_ID: ${OSS_ACCESS_KEY_ID}
       OSS_ACCESS_KEY_SECRET: ${OSS_ACCESS_KEY_SECRET}
@@ -45,34 +45,16 @@ services:
       GIT_SYNC_CRON: ${GIT_SYNC_CRON:-0 3 * * *}
       CONTENT_GIT_AUTHOR_NAME: ${CONTENT_GIT_AUTHOR_NAME:-Liminal Field}
       CONTENT_GIT_AUTHOR_EMAIL: ${CONTENT_GIT_AUTHOR_EMAIL:-no-reply@liminal-field.local}
-    ports:
-      - "4398:4398"
+    # 不暴露到宿主机，由 nginx (client) 统一代理
 
   client:
     build: ./client
     restart: unless-stopped
     depends_on:
       - server
-    # 不再直接暴露端口，由 Caddy 统一代理
-    # 调试时可取消注释：ports: ["4399:80"]
-
-  caddy:
-    image: docker.1ms.run/caddy:2
-    restart: unless-stopped
-    depends_on:
-      - client
     ports:
       - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy-data:/data
-      - caddy-config:/config
-    environment:
-      SITE_DOMAIN: ${SITE_DOMAIN:-localhost}
 
 volumes:
   mongo-data:
   kb-data:
-  caddy-data:
-  caddy-config:

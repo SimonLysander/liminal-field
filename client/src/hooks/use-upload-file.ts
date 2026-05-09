@@ -62,7 +62,7 @@ export function useUploadFile(props: UseUploadFileProps = {}) {
               const resp = JSON.parse(xhr.responseText);
               const payload = resp.data ?? resp;
               resolve({
-                url: payload.path,
+                url: payload.url,
                 name: payload.fileName,
                 size: payload.size,
                 type: payload.contentType,

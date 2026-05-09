@@ -55,6 +55,11 @@ export function PlateMarkdownEditor({
 
   const handleChange = useCallback(() => {
     if (!editor) return;
+    // 过滤掉上传中的 placeholder 节点再序列化，避免脏 HTML 污染 markdown
+    const hasPlaceholder = editor.children.some(
+      (node) => 'type' in node && (node as { type: string }).type === 'placeholder',
+    );
+    if (hasPlaceholder) return; // 上传中，跳过本次序列化
     try {
       const md = serializeMd(editor);
       onChange(md);

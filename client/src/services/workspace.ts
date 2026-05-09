@@ -22,6 +22,8 @@ export type ContentVisibility = 'public' | 'all';
 export type ContentSaveAction = 'commit' | 'publish' | 'unpublish';
 
 export interface ContentVersion {
+  /** MongoDB snapshot ID，取代原 Git commitHash 成为主键 */
+  versionId: string;
   commitHash: string;
   title: string;
   summary: string;
@@ -119,12 +121,12 @@ export interface ListedAsset {
 }
 
 export interface ContentHistoryEntry {
+  versionId: string;
   commitHash: string;
   committedAt: string;
-  authorName: string;
-  authorEmail: string;
-  message: string;
-  action: 'commit' | 'unknown';
+  changeType: string;
+  changeNote: string;
+  title: string;
 }
 
 // ─── Gallery 类型（按消费场景拆分）───
@@ -177,8 +179,8 @@ export interface GalleryAdminDetail {
   /** 封面照片原始文件名，null 表示未设置 */
   coverPhotoFileName: string | null;
   hasUnpublishedChanges: boolean;
-  /** 已发布版本 commitHash，null 表示未发布 */
-  publishedCommitHash: string | null;
+  /** 已发布版本 versionId（MongoDB snapshot ID），null 表示未发布 */
+  publishedVersionId: string | null;
   date: string | null;
   location: string | null;
   createdAt: string;
@@ -240,7 +242,8 @@ export interface UpdateGalleryPostDto {
 
 /** 画廊历史版本的结构化响应（后端解析 frontmatter 后返回）。 */
 export interface GalleryVersionContent {
-  commitHash: string;
+  /** MongoDB snapshot ID，取代原 Git commitHash 成为主键 */
+  versionId: string;
   title: string;
   prose: string;
   photos: Array<{ file: string; caption: string; tags: Record<string, string> }>;
@@ -362,18 +365,18 @@ export const notesApi = {
   deleteDraft: (id: string) =>
     request<void>(`/spaces/notes/items/${id}/draft`, { method: 'DELETE' }),
 
-  /** 发布。可选传 commitHash 发布指定历史版本，不传则发布 latestVersion。 */
-  publish: (id: string, commitHash?: string) =>
+  /** 发布。可选传 versionId 发布指定历史版本，不传则发布 latestVersion。 */
+  publish: (id: string, versionId?: string) =>
     request<ContentDetail>(`/spaces/notes/items/${id}/publish`, {
       method: 'PUT',
-      body: commitHash ? JSON.stringify({ commitHash }) : undefined,
+      body: versionId ? JSON.stringify({ versionId }) : undefined,
     }),
 
   unpublish: (id: string) =>
     request<ContentDetail>(`/spaces/notes/items/${id}/unpublish`, { method: 'PUT' }),
 
-  getByVersion: (id: string, commitHash: string) =>
-    request<ContentDetail>(`/spaces/notes/items/${id}/versions/${commitHash}`),
+  getByVersion: (id: string, versionId: string) =>
+    request<ContentDetail>(`/spaces/notes/items/${id}/versions/${versionId}`),
 
   getHistory: (id: string) =>
     request<ContentHistoryEntry[]>(`/spaces/notes/items/${id}/history`),
@@ -454,11 +457,11 @@ export const galleryApi = {
     );
   },
 
-  /** 发布。可选传 commitHash 发布指定历史版本，不传则发布 latestVersion。 */
-  publish: (id: string, commitHash?: string) =>
+  /** 发布。可选传 versionId 发布指定历史版本，不传则发布 latestVersion。 */
+  publish: (id: string, versionId?: string) =>
     request<GalleryAdminDetail>(`/spaces/gallery/items/${id}/publish`, {
       method: 'PUT',
-      body: commitHash ? JSON.stringify({ commitHash }) : undefined,
+      body: versionId ? JSON.stringify({ versionId }) : undefined,
     }),
 
   unpublish: (id: string) =>
@@ -489,8 +492,8 @@ export const galleryApi = {
     request<ContentHistoryEntry[]>(`/spaces/gallery/items/${id}/history`),
 
   /** 查看指定历史版本的结构化内容（后端已解析 frontmatter） */
-  getByVersion: (id: string, commitHash: string) =>
-    request<GalleryVersionContent>(`/spaces/gallery/items/${id}/versions/${commitHash}`),
+  getByVersion: (id: string, versionId: string) =>
+    request<GalleryVersionContent>(`/spaces/gallery/items/${id}/versions/${versionId}`),
 };
 
 // ── 首页 ──

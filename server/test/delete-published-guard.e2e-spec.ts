@@ -87,7 +87,11 @@ describe('Delete Published Guard (e2e)', () => {
     });
 
     it('取消发布后可以删除 → 200', async () => {
-      const id = await createNoteItem(ctx.app, cookie, '删除保护测试-取消发布后删');
+      const id = await createNoteItem(
+        ctx.app,
+        cookie,
+        '删除保护测试-取消发布后删',
+      );
       await commitNoteContent(ctx.app, cookie, id);
 
       await supertest(ctx.app.getHttpServer())
@@ -118,7 +122,11 @@ describe('Delete Published Guard (e2e)', () => {
     });
 
     it('未发布笔记可以直接删除 → 200', async () => {
-      const id = await createNoteItem(ctx.app, cookie, '删除保护测试-未发布直接删');
+      const id = await createNoteItem(
+        ctx.app,
+        cookie,
+        '删除保护测试-未发布直接删',
+      );
       await commitNoteContent(ctx.app, cookie, id);
       // 不发布，直接删
 

@@ -13,6 +13,7 @@ import { extname } from 'node:path';
 import { RawResponse } from '../../common/raw-response.decorator';
 import { ImportService } from './import.service';
 import { ConfirmImportDto } from './dto/confirm-import.dto';
+import { BatchConfirmDto } from './dto/batch-confirm.dto';
 import type { FastifyReply } from 'fastify';
 
 /** import 路由用的 multipart 形状（与 @fastify/multipart 一致，避免包类型解析失败） */
@@ -210,9 +211,7 @@ export class ImportController {
 
   /** 批量确认导入 */
   @Post('batch-confirm')
-  async batchConfirm(
-    @Body() dto: { batchId: string; parentId: string; selectedPaths: string[] },
-  ) {
+  async batchConfirm(@Body() dto: BatchConfirmDto) {
     return this.importService.batchConfirm(dto);
   }
 

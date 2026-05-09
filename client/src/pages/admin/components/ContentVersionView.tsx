@@ -41,9 +41,9 @@ export const ContentVersionView = ({
 }: ContentVersionViewProps) => {
   const confirm = useConfirm();
 
-  /* 当前展示的版本是否为已发布版 */
-  const viewingHash = preview?.commitHash ?? content.latestVersion.commitHash;
-  const isViewingPublished = viewingHash === content.publishedVersion?.commitHash;
+  /* 当前展示的版本是否为已发布版（用 versionId 对比） */
+  const viewingVersionId = preview?.versionId ?? content.latestVersion.versionId;
+  const isViewingPublished = viewingVersionId === content.publishedVersion?.versionId;
   const isViewingLatest = !preview;
 
   const handlePublish = async () => {
@@ -51,7 +51,7 @@ export const ContentVersionView = ({
       // 发布历史版本
       const ok = await confirm({
         title: '发布版本',
-        message: `发布版本 ${preview.commitHash.slice(0, 8)} ？`,
+        message: `发布版本 ${preview.versionId.slice(0, 8)} ？`,
         confirmLabel: '发布',
       });
       if (!ok) return;
@@ -104,7 +104,7 @@ export const ContentVersionView = ({
           <div className="mt-2 flex items-center gap-2.5">
             <VersionStatusPill
               isPublished={isViewingPublished}
-              commitHash={viewingHash}
+              commitHash={viewingVersionId}
             />
             {!preview && (
               <span style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)' }}>

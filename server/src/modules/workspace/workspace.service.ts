@@ -251,15 +251,14 @@ export class WorkspaceService {
 
   /**
    * 发布：publishedVersion 指向指定版本（纯指针操作，不写 Git）。
-   * scope 特有校验在此处集中处理（如 gallery 必须有照片才能发布）。
-   * @param commitHash 可选，指定发布哪个历史版本。不传则发布 latestVersion。
+   * @param versionId 可选，指定发布哪个历史版本（nanoid）。不传则发布 latestVersion。
    */
   async publish(
     scope: string,
     contentItemId: string,
-    commitHash?: string,
+    versionId?: string,
   ): Promise<void> {
-    await this.contentService.publishVersion(contentItemId, commitHash);
+    await this.contentService.publishVersion(contentItemId, versionId);
   }
 
   /** 取消发布：清除 publishedVersion 指针（纯指针操作，不写 Git）。 */

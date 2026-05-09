@@ -58,7 +58,8 @@ export type NodeSubmitPayload = {
 };
 
 export type PreviewState = {
-  commitHash: string;
+  /** MongoDB snapshot ID，取代原 commitHash 成为版本主键 */
+  versionId: string;
   title: string;
   bodyMarkdown: string;
   /** 该版本的 TOC 标题列表（来自版本快照，与当前正式版独立） */
@@ -110,6 +111,7 @@ export const EMPTY_FORMAL_CONTENT: FormalContentState = {
   id: '',
   status: 'committed',
   latestVersion: {
+    versionId: '',
     commitHash: '',
     title: '',
     summary: '',

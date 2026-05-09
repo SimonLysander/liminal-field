@@ -44,6 +44,7 @@ import {
   GalleryDraftDto,
 } from './dto/gallery-view.dto';
 import { SaveGalleryPostDto } from './dto/save-gallery-post.dto';
+import { BatchOperationDto } from './dto/batch-operation.dto';
 
 type MultipartRequest = {
   file: () => Promise<MultipartFile | undefined>;
@@ -91,13 +92,12 @@ export class WorkspaceController {
     return this.noteViewService.getHistory(id);
   }
 
-  @Get('notes/items/:id/versions/:commitHash')
+  @Get('notes/items/:id/versions/:versionId')
   async getByVersion(
     @Param('id') id: string,
-    @Param('commitHash') commitHash: string,
+    @Param('versionId') versionId: string,
   ): Promise<ContentDetailDto> {
-    validateCommitHash(commitHash);
-    return this.noteViewService.getByVersion(id, commitHash);
+    return this.noteViewService.getByVersion(id, versionId);
   }
 
   // ─── Notes 批量操作（静态路由，在通用 :scope 之前）───
@@ -105,7 +105,7 @@ export class WorkspaceController {
   /** 递归发布文件夹下所有文档（纯指针操作，不写 Git）。 */
   @Post('notes/batch/publish')
   async batchPublish(
-    @Body() body: { folderId: string },
+    @Body() body: BatchOperationDto,
   ): Promise<{ successCount: number; skippedCount: number }> {
     return this.workspaceService.batchPublish(body.folderId);
   }
@@ -113,7 +113,7 @@ export class WorkspaceController {
   /** 递归取消发布文件夹下所有文档。 */
   @Post('notes/batch/unpublish')
   async batchUnpublish(
-    @Body() body: { folderId: string },
+    @Body() body: BatchOperationDto,
   ): Promise<{ successCount: number; skippedCount: number }> {
     return this.workspaceService.batchUnpublish(body.folderId);
   }
@@ -164,13 +164,12 @@ export class WorkspaceController {
   }
 
   /** 画廊帖子的历史版本内容（返回解析后的结构化数据，不暴露 frontmatter）。 */
-  @Get('gallery/items/:id/versions/:commitHash')
+  @Get('gallery/items/:id/versions/:versionId')
   async getGalleryByVersion(
     @Param('id') id: string,
-    @Param('commitHash') commitHash: string,
+    @Param('versionId') versionId: string,
   ) {
-    validateCommitHash(commitHash);
-    return this.galleryViewService.getByVersion(id, commitHash);
+    return this.galleryViewService.getByVersion(id, versionId);
   }
 
   /**
@@ -357,14 +356,12 @@ export class WorkspaceController {
   async publish(
     @Param('scope') scope: string,
     @Param('id') id: string,
-    @Body() body?: { commitHash?: string },
+    @Body() body?: { versionId?: string },
   ) {
-    // commitHash 是可选参数，仅在传入时校验格式
-    if (body?.commitHash) validateCommitHash(body.commitHash);
     await this.workspaceService.assertScopeMatch(scope, id);
     if (scope === 'gallery')
-      await this.galleryViewService.assertPublishable(id, body?.commitHash);
-    await this.workspaceService.publish(scope, id, body?.commitHash);
+      await this.galleryViewService.assertPublishable(id, body?.versionId);
+    await this.workspaceService.publish(scope, id, body?.versionId);
     if (scope === 'notes') return this.noteViewService.getById(id, 'all');
     if (scope === 'gallery')
       return this.galleryViewService.toAdminDetailDto(id);

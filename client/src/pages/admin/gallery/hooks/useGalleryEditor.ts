@@ -32,13 +32,20 @@ import {
 type SaveStatus = 'saved' | 'dirty' | 'saving';
 
 /** 编辑器本地照片状态（比 GalleryPhoto 多 size，用于 UI 展示文件大小） */
-interface LocalEditorPhoto {
+export interface LocalEditorPhoto {
   id: string;
   url: string;
   fileName: string;
+  /** 上传中标记，网格显示加载遮罩 */
+  uploading?: boolean;
   size: number;
   caption: string;
   tags: Record<string, string>;
+}
+
+export interface UploadProgress {
+  uploaded: number;
+  total: number;
 }
 
 export interface GalleryEditorState {
@@ -54,6 +61,8 @@ export interface GalleryEditorState {
   /** 封面照片文件名，null 表示未设置 */
   coverPhotoFileName: string | null;
   saveStatus: SaveStatus;
+  /** 照片上传进度，null 表示无上传中 */
+  uploadProgress: UploadProgress | null;
 }
 
 
@@ -79,6 +88,7 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
   const [title, setTitle] = useState('');
   const [prose, setProse] = useState('');
   const [photos, setPhotos] = useState<LocalEditorPhoto[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   /** 帖子拍摄/发生日期 */
   const [date, setDate] = useState<string | null>(null);
   /** 帖子地点 */
@@ -246,28 +256,42 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
   const uploadPhotos = useCallback(async (files: File[]) => {
     const id = effectiveIdRef.current;
     if (!id) return;
-    try {
-      const results = await Promise.all(
-        files.map((file) => galleryApi.uploadPhoto(id, file)),
-      );
-      setPhotos((prev) => {
-        // id 用 fileName 作为本地唯一键，与 buildSavePayload 保持一致
-        // 后端返回的 exif 自动作为初始 tags，让用户上传后立即看到拍摄参数
-        const appended: LocalEditorPhoto[] = results.map((r) => ({
-          id: r.fileName,
-          url: r.url,
-          fileName: r.fileName,
-          size: r.size,
-          caption: '',
-          tags: r.exif,
-        }));
-        return [...prev, ...appended];
-      });
-      setSaveStatus('dirty');
-      toast.success(`已上传 ${files.length} 张照片`);
-    } catch {
-      toast.error('照片上传失败');
+
+    // 立即用本地预览插入占位卡片（uploading=true），用户马上看到缩略图+加载态
+    const placeholders: LocalEditorPhoto[] = files.map((file) => ({
+      id: `pending-${file.name}-${Date.now()}`,
+      url: URL.createObjectURL(file),
+      fileName: file.name,
+      size: file.size,
+      caption: '',
+      tags: {},
+      uploading: true,
+    }));
+    setPhotos((prev) => [...prev, ...placeholders]);
+
+    // 逐张上传，完成后用真实数据替换对应占位
+    let failed = 0;
+    setUploadProgress({ uploaded: 0, total: files.length });
+    for (let i = 0; i < files.length; i++) {
+      try {
+        const r = await galleryApi.uploadPhoto(id, files[i]);
+        setPhotos((prev) =>
+          prev.map((p) =>
+            p.id === placeholders[i].id
+              ? { id: r.fileName, url: r.url, fileName: r.fileName, size: r.size, caption: '', tags: r.exif }
+              : p,
+          ),
+        );
+      } catch {
+        setPhotos((prev) => prev.filter((p) => p.id !== placeholders[i].id));
+        failed++;
+      }
+      URL.revokeObjectURL(placeholders[i].url);
+      setUploadProgress({ uploaded: i + 1, total: files.length });
     }
+    setUploadProgress(null);
+    setSaveStatus('dirty');
+    if (failed > 0) toast.error(`${failed} 张照片上传失败`);
   }, []);
 
   /** 删除照片：纯本地操作，从 photos 数组移除 + 标记 dirty。MinIO 清理在 commit/discard 时统一处理。 */
@@ -327,6 +351,7 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     location,
     coverPhotoFileName,
     saveStatus,
+    uploadProgress,
     updateTitle,
     updateProse,
     reorderPhotos,

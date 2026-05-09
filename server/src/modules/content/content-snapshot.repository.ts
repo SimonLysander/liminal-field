@@ -34,6 +34,30 @@ export class ContentSnapshotRepository {
     return this.model.find({ contentItemId }).sort({ createdAt: -1 });
   }
 
+  /**
+   * 按 bodyMarkdown 关键字搜索，返回匹配的 contentItemId 列表（去重）。
+   * 仅搜索每个 content 的最新 snapshot，避免全量扫描。
+   */
+  async searchContentIdsByBodyKeyword(
+    keyword: string,
+    limit = 20,
+  ): Promise<string[]> {
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const results = await this.model.aggregate<{ _id: string }>([
+      // 按 contentItemId 分组取最新 snapshot
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: '$contentItemId',
+          bodyMarkdown: { $first: '$bodyMarkdown' },
+        },
+      },
+      { $match: { bodyMarkdown: { $regex: escaped, $options: 'i' } } },
+      { $limit: limit },
+    ]);
+    return results.map((r) => r._id);
+  }
+
   /** 回填 Git commitHash */
   async backfillCommitHash(
     versionId: string,

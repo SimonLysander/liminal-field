@@ -17,18 +17,20 @@ function formatCommitTime(iso: string): string {
 
 export function VersionTimeline({
   history,
-  publishedHash,
-  activePreviewHash,
+  publishedVersionId,
+  activeVersionId,
   onSelect,
 }: {
   history: ContentHistoryEntry[];
-  publishedHash: string | null;
-  activePreviewHash?: string | null;
-  onSelect?: (commitHash: string) => void;
+  /** 已发布版本的 versionId */
+  publishedVersionId: string | null;
+  /** 当前预览的版本 versionId */
+  activeVersionId?: string | null;
+  onSelect?: (versionId: string) => void;
 }) {
   return (
     <div className="relative" style={{ paddingLeft: 16 }}>
-      {/* 纵线 — 居中对齐圆点（圆点 center = left -12 + 16 + 3.5 = 7.5） */}
+      {/* 纵线 */}
       <div
         className="absolute"
         style={{
@@ -40,25 +42,22 @@ export function VersionTimeline({
         }}
       />
       {history.map((entry, i) => {
-        const isPublished = publishedHash === entry.commitHash;
+        const isPublished = publishedVersionId === entry.versionId;
         const isFirst = i === 0;
-        /* 没有预览旧版本时，默认高亮最新版本 */
-        const isActive = activePreviewHash
-          ? activePreviewHash === entry.commitHash
+        const isActive = activeVersionId
+          ? activeVersionId === entry.versionId
           : isFirst;
-        const title = entry.message.split(' | ')[1]?.trim()
-          || (entry.action === 'commit' ? '正式版本提交' : '版本更新');
 
         return (
           <div
-            key={entry.commitHash}
+            key={entry.versionId}
             className="relative cursor-pointer transition-all duration-150 hover:opacity-80"
             style={{
               padding: '8px 0 8px 12px',
               background: isActive ? 'var(--accent-soft)' : 'transparent',
               borderRadius: isActive ? 'var(--radius-sm)' : 0,
             }}
-            onClick={() => onSelect?.(entry.commitHash)}
+            onClick={() => onSelect?.(entry.versionId)}
           >
             {/* 节点圆点 */}
             <span
@@ -87,14 +86,14 @@ export function VersionTimeline({
               className="font-medium"
               style={{ color: isFirst ? 'var(--ink)' : 'var(--ink-light)', fontSize: 'var(--text-xs)', marginBottom: 3 }}
             >
-              {title}
+              {entry.changeNote || '版本提交'}
             </div>
             <div
               className="flex items-center gap-1.5"
               style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)' }}
             >
               <span style={{ fontFamily: 'var(--font-mono)' }}>
-                {entry.commitHash.slice(0, 8)}
+                {entry.commitHash ? entry.commitHash.slice(0, 8) : entry.versionId.slice(0, 8)}
               </span>
               <span>· {formatCommitTime(entry.committedAt)}</span>
               {isPublished && (
