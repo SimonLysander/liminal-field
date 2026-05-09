@@ -26,7 +26,6 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { Public } from '../auth/decorators/public.decorator';
 import { ContentVisibility } from '../content/dto/content-query.dto';
 import { RawResponse } from '../../common/raw-response.decorator';
-import { validateCommitHash } from '../../common/validate-commit-hash';
 import type { MultipartFile } from '@fastify/multipart';
 import { ContentDetailDto } from '../content/dto/content-detail.dto';
 import { ContentHistoryEntryDto } from '../content/dto/content-history.dto';

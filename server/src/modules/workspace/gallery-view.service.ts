@@ -270,8 +270,7 @@ export class GalleryViewService {
     versionId?: string,
   ): Promise<void> {
     const content = await this.contentRepository.findById(contentItemId);
-    const targetVersionId =
-      versionId ?? content?.latestVersion?.versionId;
+    const targetVersionId = versionId ?? content?.latestVersion?.versionId;
 
     const { parsed } = await this.loadParsedContent(
       contentItemId,
@@ -602,13 +601,14 @@ export class GalleryViewService {
       const photos: GalleryEditorPhotoDto[] = parsed.photos.map((p) => {
         const gitSize = gitAssetMap.get(p.file);
         // 已提交到 Git/磁盘的照片用永久 URL；草稿新增的照片用 draft URL（OSS 草稿路径）
-        const url = gitSize !== undefined
-          ? this.buildPhotoUrl(
-              contentItemId,
-              p.file,
-              OssService.IMAGE_PRESETS.detail,
-            )
-          : this.buildDraftPhotoUrl(contentItemId, p.file);
+        const url =
+          gitSize !== undefined
+            ? this.buildPhotoUrl(
+                contentItemId,
+                p.file,
+                OssService.IMAGE_PRESETS.detail,
+              )
+            : this.buildDraftPhotoUrl(contentItemId, p.file);
         return {
           file: p.file,
           url,

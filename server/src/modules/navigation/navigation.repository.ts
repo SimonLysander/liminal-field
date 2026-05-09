@@ -95,6 +95,16 @@ export class NavigationRepository {
     return Object.fromEntries(rows.map((row) => [String(row._id), row.count]));
   }
 
+  /** 获取目标 parentId 下的最大 order 值，无子节点时返回 -1 */
+  async maxOrder(parentId: string | null): Promise<number> {
+    const doc = await this.navigationModel
+      .findOne({ parentId: parentId ?? null })
+      .sort({ order: -1 })
+      .select('order')
+      .lean();
+    return doc ? (doc as { order: number }).order : -1;
+  }
+
   async hasChildren(parentId: string): Promise<boolean> {
     return (await this.navigationModel.countDocuments({ parentId })) > 0;
   }

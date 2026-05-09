@@ -242,9 +242,13 @@ export function useAdminWorkspace() {
   const moveNodeToFolder = useCallback(
     async (nodeId: string, targetFolderId: string | null) => {
       await structureApi.updateNode(nodeId, { parentId: targetFolderId });
-      void loadLevel(urlFolderId);
+      // 移动成功后跳转到目标文件夹，让用户直接看到节点在新位置
+      const movedNode = nodes.find((n) => n.id === nodeId);
+      navigate(
+        buildUrl(targetFolderId ?? undefined, movedNode?.contentItemId),
+      );
     },
-    [urlFolderId, loadLevel],
+    [nodes, navigate, buildUrl],
   );
 
   /* ================================================================

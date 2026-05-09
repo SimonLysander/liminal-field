@@ -192,4 +192,104 @@ describe('Navigation (e2e)', () => {
       expect(statsRes.body.data.docCount).toBeGreaterThanOrEqual(1);
     });
   });
+
+  describe('移动节点（PUT parentId 变更）', () => {
+    it('正常移动到另一个文件夹 → order 追加到末尾', async () => {
+      // 创建源文件夹和目标文件夹
+      const srcRes = await supertest(ctx.app.getHttpServer())
+        .post('/api/v1/structure-nodes')
+        .set('Cookie', cookie)
+        .send({ name: '移动源', type: 'FOLDER', scope: 'notes' })
+        .expect(201);
+
+      const targetRes = await supertest(ctx.app.getHttpServer())
+        .post('/api/v1/structure-nodes')
+        .set('Cookie', cookie)
+        .send({ name: '移动目标', type: 'FOLDER', scope: 'notes' })
+        .expect(201);
+
+      // 在目标文件夹下先放一个节点（占据 order=0）
+      await supertest(ctx.app.getHttpServer())
+        .post('/api/v1/structure-nodes')
+        .set('Cookie', cookie)
+        .send({ name: '已有子节点', type: 'FOLDER', scope: 'notes', parentId: targetRes.body.data.id })
+        .expect(201);
+
+      // 移动源文件夹到目标文件夹下
+      const moveRes = await supertest(ctx.app.getHttpServer())
+        .put(`/api/v1/structure-nodes/${srcRes.body.data.id}`)
+        .set('Cookie', cookie)
+        .send({ parentId: targetRes.body.data.id })
+        .expect(200);
+
+      // 移动后的 sortOrder 应大于已有子节点的 order（追加到末尾）
+      expect(moveRes.body.data.sortOrder).toBeGreaterThan(0);
+    });
+
+    it('跨 scope 移动 → 400', async () => {
+      const notesFolder = await supertest(ctx.app.getHttpServer())
+        .post('/api/v1/structure-nodes')
+        .set('Cookie', cookie)
+        .send({ name: '跨scope源', type: 'FOLDER', scope: 'notes' })
+        .expect(201);
+
+      const galleryFolder = await supertest(ctx.app.getHttpServer())
+        .post('/api/v1/structure-nodes')
+        .set('Cookie', cookie)
+        .send({ name: '跨scope目标', type: 'FOLDER', scope: 'gallery' })
+        .expect(201);
+
+      // notes 节点移到 gallery 文件夹下应被拒绝
+      await supertest(ctx.app.getHttpServer())
+        .put(`/api/v1/structure-nodes/${notesFolder.body.data.id}`)
+        .set('Cookie', cookie)
+        .send({ parentId: galleryFolder.body.data.id })
+        .expect(400);
+    });
+
+    it('移动到自身后代 → 400（循环引用检测）', async () => {
+      const parentFolder = await supertest(ctx.app.getHttpServer())
+        .post('/api/v1/structure-nodes')
+        .set('Cookie', cookie)
+        .send({ name: '循环父', type: 'FOLDER', scope: 'notes' })
+        .expect(201);
+
+      const childFolder = await supertest(ctx.app.getHttpServer())
+        .post('/api/v1/structure-nodes')
+        .set('Cookie', cookie)
+        .send({ name: '循环子', type: 'FOLDER', scope: 'notes', parentId: parentFolder.body.data.id })
+        .expect(201);
+
+      // 父移到子下面 → 循环引用
+      await supertest(ctx.app.getHttpServer())
+        .put(`/api/v1/structure-nodes/${parentFolder.body.data.id}`)
+        .set('Cookie', cookie)
+        .send({ parentId: childFolder.body.data.id })
+        .expect(400);
+    });
+
+    it('移动到根目录（parentId=null）→ 200', async () => {
+      // 创建一个嵌套节点
+      const folder = await supertest(ctx.app.getHttpServer())
+        .post('/api/v1/structure-nodes')
+        .set('Cookie', cookie)
+        .send({ name: '嵌套文件夹', type: 'FOLDER', scope: 'notes' })
+        .expect(201);
+
+      const child = await supertest(ctx.app.getHttpServer())
+        .post('/api/v1/structure-nodes')
+        .set('Cookie', cookie)
+        .send({ name: '移到根目录', type: 'FOLDER', scope: 'notes', parentId: folder.body.data.id })
+        .expect(201);
+
+      // 移动到根目录
+      const moveRes = await supertest(ctx.app.getHttpServer())
+        .put(`/api/v1/structure-nodes/${child.body.data.id}`)
+        .set('Cookie', cookie)
+        .send({ parentId: null })
+        .expect(200);
+
+      expect(moveRes.body.data.parentId).toBeUndefined();
+    });
+  });
 });

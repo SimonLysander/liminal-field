@@ -452,10 +452,33 @@ export class NavigationNodeService {
 
     const nextContentItemId =
       updateDto.contentItemId ?? current.contentItemId?.toString();
+
+    // parentId 变更时：循环检测 → 父节点类型校验 → scope 一致性 → 追加到末尾
+    const isReparenting =
+      dto.parentId !== undefined &&
+      (dto.parentId ?? null) !== (current.parentId?.toString() ?? null);
     if (dto.parentId !== undefined) {
       await this.assertNoCycle(id, dto.parentId);
-      await this.getParentOrThrow(dto.parentId);
+      const targetParent = await this.getParentOrThrow(dto.parentId);
+      // 跨 scope 移动会污染导航树，必须阻断
+      if (targetParent) {
+        const currentScope = (current.scope as string) ?? 'notes';
+        const targetScope = (targetParent.scope as string) ?? 'notes';
+        if (currentScope !== targetScope) {
+          throw new BadRequestException(
+            '不能跨 scope 移动节点（notes ↔ gallery）',
+          );
+        }
+      }
     }
+    // 移动到新父目录时，order 追加到末尾
+    if (isReparenting) {
+      const maxOrder = await this.navigationRepository.maxOrder(
+        dto.parentId ?? null,
+      );
+      updateDto.order = maxOrder + 1;
+    }
+
     this.validateNodeSemantics(nextType, nextContentItemId);
     if (nextContentItemId) {
       await this.contentService.assertContentItemExists(nextContentItemId);

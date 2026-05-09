@@ -196,7 +196,7 @@ export class ContentGitService implements OnModuleInit {
   private detectHistoryAction(
     contentId: string,
     message: string,
-  ): ContentHistoryEntryDto['action'] {
+  ): 'commit' | 'unknown' {
     if (!message.startsWith(`content(${contentId}):`)) {
       return 'unknown';
     }
@@ -542,8 +542,20 @@ export class ContentGitService implements OnModuleInit {
 
         // 写磁盘前清洗脏 URL：OSS 签名 URL / draft-assets 代理 URL → ./assets/ 相对路径
         const cleanMarkdown = snapshot.bodyMarkdown
-          .replace(new RegExp(`https?://[^/]+/assets/${contentId}/([^?)\\s"]+)[^)\\s"]*`, 'g'), (_m, f) => `./assets/${f}`)
-          .replace(new RegExp(`/api/v1/spaces/[^/]+/items/${contentId}/(?:draft-)?assets/([^?)\\s"]+)[^)\\s"]*`, 'g'), (_m, f) => `./assets/${f}`);
+          .replace(
+            new RegExp(
+              `https?://[^/]+/assets/${contentId}/([^?)\\s"]+)[^)\\s"]*`,
+              'g',
+            ),
+            (_m, f) => `./assets/${f}`,
+          )
+          .replace(
+            new RegExp(
+              `/api/v1/spaces/[^/]+/items/${contentId}/(?:draft-)?assets/([^?)\\s"]+)[^)\\s"]*`,
+              'g',
+            ),
+            (_m, f) => `./assets/${f}`,
+          );
 
         await this.contentRepoService.writeMainMarkdown(
           contentId,
@@ -585,16 +597,18 @@ export class ContentGitService implements OnModuleInit {
 
         const latestPlain =
           latestVersion && latestVersion.versionId === snapshot.versionId
-            ? (JSON.parse(
-                JSON.stringify(latestVersion),
-              ) as Record<string, unknown>)
+            ? (JSON.parse(JSON.stringify(latestVersion)) as Record<
+                string,
+                unknown
+              >)
             : null;
 
         const publishedPlain =
           publishedVersion?.versionId === snapshot.versionId
-            ? (JSON.parse(
-                JSON.stringify(publishedVersion),
-              ) as Record<string, unknown>)
+            ? (JSON.parse(JSON.stringify(publishedVersion)) as Record<
+                string,
+                unknown
+              >)
             : null;
 
         await this.contentRepository.update(contentId, {
@@ -663,9 +677,13 @@ export class ContentGitService implements OnModuleInit {
     return rawHistory
       .split('\n')
       .filter(Boolean)
-      .map((entry) => {
-        const [commitHash, committedAt, authorName, authorEmail, message] =
-          entry.split('\x1f');
+      .map((line) => {
+        const parts = line.split('\x1f');
+        const commitHash = parts[0] ?? '';
+        const committedAt = parts[1] ?? '';
+        const authorName = parts[2] ?? '';
+        const authorEmail = parts[3] ?? '';
+        const message = parts[4] ?? '';
 
         return {
           commitHash,

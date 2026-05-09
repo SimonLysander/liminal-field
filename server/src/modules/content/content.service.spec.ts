@@ -59,7 +59,15 @@ function createMocks() {
   const mockSnapshotRepository = {
     listByContentItemId: jest.fn().mockResolvedValue([]),
     findByVersionId: jest.fn().mockImplementation((vid: string) =>
-      Promise.resolve({ _id: vid, versionId: vid, title: '测试标题', summary: '摘要', bodyMarkdown: '', commitHash: 'latest-hash', createdAt: new Date() }),
+      Promise.resolve({
+        _id: vid,
+        versionId: vid,
+        title: '测试标题',
+        summary: '摘要',
+        bodyMarkdown: '',
+        commitHash: 'latest-hash',
+        createdAt: new Date(),
+      }),
     ),
     // importContent / saveContent / createContent 均调用 snapshotRepository.create
     create: jest.fn().mockResolvedValue(undefined),
@@ -388,10 +396,7 @@ describe('ContentService.getContentByVersion', () => {
       },
     ]);
 
-    const detail = await service.getContentByVersion(
-      'ci_test001',
-      'deadbeef',
-    );
+    const detail = await service.getContentByVersion('ci_test001', 'deadbeef');
 
     expect(detail.bodyMarkdown).toBe('历史正文');
     expect(mockSnapshotRepository.listByContentItemId).toHaveBeenCalledWith(

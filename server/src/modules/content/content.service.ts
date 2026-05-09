@@ -294,7 +294,12 @@ export class ContentService {
 
     await this.contentRepository.create({
       id: contentId,
-      latestVersion: { versionId, commitHash: '', title: params.title, summary: params.title },
+      latestVersion: {
+        versionId,
+        commitHash: '',
+        title: params.title,
+        summary: params.title,
+      },
       publishedVersion: null,
       changeLogs: [changeLog],
       createdAt: now,
@@ -621,13 +626,11 @@ export class ContentService {
     }
 
     // 目标 snapshot：不传 versionId 则发布最新版
-    const targetVersionId = versionId ?? latestVersion.versionId!;
+    const targetVersionId = versionId ?? latestVersion.versionId;
     const snapshot =
       await this.snapshotRepository.findByVersionId(targetVersionId);
     if (!snapshot) {
-      throw new NotFoundException(
-        `Version ${targetVersionId} not found`,
-      );
+      throw new NotFoundException(`Version ${targetVersionId} not found`);
     }
 
     const publishedVersion = this.buildVersionSnapshot(
@@ -721,9 +724,8 @@ export class ContentService {
         return `/api/v1/spaces/${scope}/items/${id}/assets/${fileName}?v=${versionId}`;
       };
       bodyMarkdown = bodyMarkdown
-        .replaceAll(
-          /\.\/assets\/([^)\s"]+)/g,
-          (_match, fileName: string) => buildUrl(fileName),
+        .replaceAll(/\.\/assets\/([^)\s"]+)/g, (_match, fileName: string) =>
+          buildUrl(fileName),
         )
         .replaceAll(
           new RegExp(`https?://[^/]+/assets/${id}/([^?)\\s"]+)[^)\\s"]*`, 'g'),
@@ -731,11 +733,7 @@ export class ContentService {
         );
     }
 
-    return this.toDetailDto(
-      content,
-      { bodyMarkdown },
-      { publicView },
-    );
+    return this.toDetailDto(content, { bodyMarkdown }, { publicView });
   }
 
   /**
@@ -764,7 +762,7 @@ export class ContentService {
     if (snapshot) {
       return this.toDetailDto(content, {
         bodyMarkdown: snapshot.bodyMarkdown,
-        plainText: snapshot.bodyMarkdown.replace(/[#*_\[\]()>`~\\|]/g, ''),
+        plainText: snapshot.bodyMarkdown.replace(/[#*_[\]()>`~\\|]/g, ''),
       });
     }
 

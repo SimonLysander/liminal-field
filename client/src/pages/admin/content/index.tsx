@@ -224,6 +224,7 @@ const ContentAdmin = () => {
       {workspace.moveTarget && (
         <MoveToDialog
           node={workspace.moveTarget}
+          scope="notes"
           onConfirm={(targetFolderId) =>
             workspace.moveNodeToFolder(workspace.moveTarget!.id, targetFolderId)
           }

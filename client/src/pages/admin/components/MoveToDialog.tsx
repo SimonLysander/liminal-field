@@ -20,12 +20,14 @@ type BreadcrumbItem = { id: string; name: string };
 type MoveToDialogProps = {
   /** 正在移动的节点（用于显示标题 + 排除自身） */
   node: StructureNode;
+  /** scope 隔离：只显示同 scope 的文件夹 */
+  scope: string;
   onConfirm: (targetFolderId: string | null) => Promise<void>;
   onClose: () => void;
 };
 
-/** 加载指定层级的文件夹列表 */
-function useFolderLevel(parentId: string | undefined) {
+/** 加载指定层级的文件夹列表（scope 隔离） */
+function useFolderLevel(parentId: string | undefined, scope: string) {
   const [folders, setFolders] = useState<StructureNode[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -37,8 +39,8 @@ function useFolderLevel(parentId: string | undefined) {
       setLoading(true);
 
       const req = parentId
-        ? structureApi.getChildren(parentId, { visibility: 'all' })
-        : structureApi.getRootNodes({ visibility: 'all' });
+        ? structureApi.getChildren(parentId, { visibility: 'all', scope })
+        : structureApi.getRootNodes({ visibility: 'all', scope });
 
       try {
         const result = await req;
@@ -57,21 +59,24 @@ function useFolderLevel(parentId: string | undefined) {
     return () => {
       cancelled = true;
     };
-  }, [parentId]);
+  }, [parentId, scope]);
 
   return { folders, loading };
 }
 
-export function MoveToDialog({ node, onConfirm, onClose }: MoveToDialogProps) {
+export function MoveToDialog({ node, scope, onConfirm, onClose }: MoveToDialogProps) {
   const [breadcrumb, setBreadcrumb] = useState<BreadcrumbItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  const currentParentId = breadcrumb.length > 0
+  const selectedParentId = breadcrumb.length > 0
     ? breadcrumb[breadcrumb.length - 1].id
     : undefined;
 
-  const { folders, loading } = useFolderLevel(currentParentId);
+  const { folders, loading } = useFolderLevel(selectedParentId, scope);
+
+  /* 目标与当前位置相同时禁用确认按钮 */
+  const isSamePosition = (selectedParentId ?? null) === (node.parentId ?? null);
 
   /* 排除正在移动的节点自身（如果它是文件夹，不能移入自己） */
   const filteredFolders = folders.filter((f) => f.id !== node.id);
@@ -92,14 +97,14 @@ export function MoveToDialog({ node, onConfirm, onClose }: MoveToDialogProps) {
     setSubmitting(true);
     setError('');
     try {
-      await onConfirm(currentParentId ?? null);
+      await onConfirm(selectedParentId ?? null);
       onClose();
     } catch (confirmError) {
       setError(confirmError instanceof Error ? confirmError.message : '移动失败');
     } finally {
       setSubmitting(false);
     }
-  }, [currentParentId, onConfirm, onClose]);
+  }, [selectedParentId, onConfirm, onClose]);
 
   /* 目标位置描述 */
   const targetLabel = breadcrumb.length > 0
@@ -201,7 +206,7 @@ export function MoveToDialog({ node, onConfirm, onClose }: MoveToDialogProps) {
 
         {/* Folder list */}
         <div className="flex-1 overflow-y-auto px-4 pb-2" style={{ minHeight: 120 }}>
-          <ContentFade stateKey={loading ? 'loading' : `folders-${currentParentId || 'root'}`}>
+          <ContentFade stateKey={loading ? 'loading' : `folders-${selectedParentId || 'root'}`}>
             {loading ? (
               <LoadingState />
             ) : filteredFolders.length === 0 ? (
@@ -253,12 +258,12 @@ export function MoveToDialog({ node, onConfirm, onClose }: MoveToDialogProps) {
               </button>
               <button
                 type="button"
-                disabled={submitting}
+                disabled={submitting || isSamePosition}
                 className="rounded-lg px-4 py-2 font-medium transition-opacity duration-150 disabled:opacity-50"
                 style={{ background: 'var(--accent)', color: 'var(--accent-contrast)', fontSize: 'var(--text-sm)' }}
                 onClick={() => void handleConfirm()}
               >
-                {submitting ? '移动中...' : '移动到此处'}
+                {submitting ? '移动中...' : isSamePosition ? '已在此位置' : '移动到此处'}
               </button>
             </div>
           </div>
