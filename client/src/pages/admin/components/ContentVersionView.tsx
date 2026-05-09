@@ -11,6 +11,7 @@
  */
 
 import { MoreHorizontal } from 'lucide-react';
+import { ActionButton } from '@/components/ui/action-button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,37 +47,38 @@ export const ContentVersionView = ({
   const isViewingPublished = viewingVersionId === content.publishedVersion?.versionId;
   const isViewingLatest = !preview;
 
-  const handlePublish = async () => {
+  const handlePublish = async (): Promise<boolean> => {
     if (preview) {
-      // 发布历史版本
       const ok = await confirm({
         title: '发布版本',
         message: `发布版本 ${preview.versionId.slice(0, 8)} ？`,
         confirmLabel: '发布',
       });
-      if (!ok) return;
+      if (!ok) return false;
       await onPublishPreview();
+      return true;
     } else {
-      // 发布最新版
       const ok = await confirm({
         title: '发布',
         message: '立即发布最新的已提交版本？',
         confirmLabel: '发布',
       });
-      if (!ok) return;
+      if (!ok) return false;
       await onPublish();
+      return true;
     }
   };
 
-  const handleUnpublish = async () => {
+  const handleUnpublish = async (): Promise<boolean> => {
     const ok = await confirm({
       title: '取消发布',
       message: '立即取消发布此文档？',
       danger: true,
       confirmLabel: '取消发布',
     });
-    if (!ok) return;
+    if (!ok) return false;
     await onUnpublish();
+    return true;
   };
 
   const stateKey = loading ? 'loading' : error ? 'error' : 'content';
@@ -133,11 +135,11 @@ export const ContentVersionView = ({
           {!isViewingLatest && (
             <TextLink label="返回最新" onClick={onExitPreview} />
           )}
-          {isViewingPublished ? (
-            <TextLink label="取消发布" danger onClick={() => void handleUnpublish()} />
-          ) : (
-            <TextLink label="发布" onClick={() => void handlePublish()} />
-          )}
+          <ActionButton
+            label={isViewingPublished ? '取消发布' : '发布'}
+            danger={isViewingPublished}
+            onClick={isViewingPublished ? handleUnpublish : handlePublish}
+          />
 
           {/* 低频管理操作 */}
           {(onEdit || onDelete || onMoveTo) && (

@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { isUrl, KEYS } from 'platejs';
 import { useEditorRef } from 'platejs/react';
-import { toast } from 'sonner';
+import { banner } from '@/components/ui/banner-api';
 import { useFilePicker } from 'use-file-picker';
 
 import {
@@ -173,7 +173,7 @@ function MediaUrlDialogContent({
   const [url, setUrl] = React.useState('');
 
   const embedMedia = React.useCallback(() => {
-    if (!isUrl(url)) return toast.error('Invalid URL');
+    if (!isUrl(url)) return banner.error('Invalid URL');
 
     setOpen(false);
     editor.tf.insertNodes({

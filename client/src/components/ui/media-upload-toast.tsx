@@ -4,7 +4,7 @@ import * as React from 'react';
 
 import { PlaceholderPlugin, UploadErrorCode } from '@platejs/media/react';
 import { usePluginOption } from 'platejs/react';
-import { toast } from 'sonner';
+import { banner } from '@/components/ui/banner-api';
 
 export function MediaUploadToast() {
   useUploadErrorToast();
@@ -22,7 +22,7 @@ const useUploadErrorToast = () => {
 
     switch (code) {
       case UploadErrorCode.INVALID_FILE_SIZE: {
-        toast.error(
+        banner.error(
           `The size of files ${data.files
             .map((f) => f.name)
             .join(', ')} is invalid`
@@ -31,7 +31,7 @@ const useUploadErrorToast = () => {
         break;
       }
       case UploadErrorCode.INVALID_FILE_TYPE: {
-        toast.error(
+        banner.error(
           `The type of files ${data.files
             .map((f) => f.name)
             .join(', ')} is invalid`
@@ -40,7 +40,7 @@ const useUploadErrorToast = () => {
         break;
       }
       case UploadErrorCode.TOO_LARGE: {
-        toast.error(
+        banner.error(
           `The size of files ${data.files
             .map((f) => f.name)
             .join(', ')} is too large than ${data.maxFileSize}`
@@ -49,14 +49,14 @@ const useUploadErrorToast = () => {
         break;
       }
       case UploadErrorCode.TOO_LESS_FILES: {
-        toast.error(
+        banner.error(
           `The mini um number of files is ${data.minFileCount} for ${data.fileType}`
         );
 
         break;
       }
       case UploadErrorCode.TOO_MANY_FILES: {
-        toast.error(
+        banner.error(
           `The maximum number of files is ${data.maxFileCount} ${
             data.fileType ? `for ${data.fileType}` : ''
           }`

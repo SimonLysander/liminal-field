@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { toast } from 'sonner';
+import { banner } from '@/components/ui/banner-api';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { notesApi as contentItemsApi } from '@/services/workspace';
 import type {
@@ -187,7 +187,7 @@ export function useAdminWorkspace() {
     try {
       await structureApi.deleteNode(deleteTarget.id);
     } catch (err) {
-      toast.error(parseError(err, '删除失败'));
+      banner.error(parseError(err, '删除失败'));
       setDeleteTarget(null);
       return;
     }
@@ -309,7 +309,7 @@ export function useAdminWorkspace() {
         // 404（scope 不匹配或不存在）→ 清掉 URL 参数，toast 提示
         const { isApiError } = await import('@/services/request');
         if (isApiError(workspaceError, 404)) {
-          toast.error('该内容不属于当前模块');
+          banner.error('该内容不属于当前模块');
           navigate('/admin/notes', { replace: true });
           return;
         }
@@ -499,10 +499,10 @@ export function useAdminWorkspace() {
       setLastDraftSavedAt('');
       setAutosaveError('');
       setWorkspaceMode('formal');
-      toast.success(`新版本已提交 ${new Date(saved.updatedAt).toLocaleString('zh-CN')}`);
+      // 提交成功，版本历史刷新即为反馈
       setHistory(await contentItemsApi.getHistory(activeContentItemId));
     } catch (err) {
-      toast.error(`提交失败: ${err instanceof Error ? err.message : String(err)}`);
+      banner.error(`提交失败: ${err instanceof Error ? err.message : String(err)}`);
     }
   }, [
     draftState.bodyMarkdown,
@@ -537,9 +537,9 @@ export function useAdminWorkspace() {
       setAutosaveError('');
       setIsDirty(false);
       setWorkspaceMode('formal');
-      toast.success('草稿已丢弃');
+      // 丢弃草稿成功（切回 formal 模式即为反馈）
     } catch (err) {
-      toast.error(`丢弃草稿失败: ${err instanceof Error ? err.message : String(err)}`);
+      banner.error(`丢弃草稿失败: ${err instanceof Error ? err.message : String(err)}`);
     }
   }, [formalContent, activeContentItemId]);
 
@@ -552,9 +552,9 @@ export function useAdminWorkspace() {
     try {
       const saved = await contentItemsApi.publish(activeContentItemId);
       setFormalContent(toFormalContentState(saved));
-      toast.success(`内容已发布 ${new Date(saved.updatedAt).toLocaleString('zh-CN')}`);
+      // 发布成功（状态字段变化即为反馈）
     } catch (err) {
-      toast.error(`发布失败: ${err instanceof Error ? err.message : String(err)}`);
+      banner.error(`发布失败: ${err instanceof Error ? err.message : String(err)}`);
     }
   }, [activeContentItemId]);
 
@@ -563,9 +563,9 @@ export function useAdminWorkspace() {
     try {
       const saved = await contentItemsApi.unpublish(activeContentItemId);
       setFormalContent(toFormalContentState(saved));
-      toast.success(`已取消发布 ${new Date(saved.updatedAt).toLocaleString('zh-CN')}`);
+      // 取消发布成功（状态字段变化即为反馈）
     } catch (err) {
-      toast.error(`取消发布失败: ${err instanceof Error ? err.message : String(err)}`);
+      banner.error(`取消发布失败: ${err instanceof Error ? err.message : String(err)}`);
     }
   }, [activeContentItemId]);
 
@@ -609,10 +609,9 @@ export function useAdminWorkspace() {
     try {
       const saved = await contentItemsApi.publish(activeContentItemId, preview.versionId);
       setFormalContent(toFormalContentState(saved));
-      toast.success(`版本 ${preview.versionId.slice(0, 8)} 已发布`);
       setHistory(await contentItemsApi.getHistory(activeContentItemId));
     } catch (err) {
-      toast.error(`发布失败: ${err instanceof Error ? err.message : String(err)}`);
+      banner.error(`发布失败: ${err instanceof Error ? err.message : String(err)}`);
     }
   }, [activeContentItemId, preview]);
 

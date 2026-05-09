@@ -1,4 +1,4 @@
-import { toast } from 'sonner';
+import { banner } from '@/components/ui/banner-api';
 
 const BASE_URL = '/api/v1';
 
@@ -41,7 +41,7 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
   if (res.status === 401) {
     const serverMsg = json?.msg;
     if (!window.location.pathname.startsWith('/login')) {
-      toast.info('登录已过期，请重新登录');
+      banner.info('登录已过期，请重新登录');
       window.location.href = '/login';
     }
     throw new ApiError(401, serverMsg || '需要登录');

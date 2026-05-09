@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowLeft, Check, FolderOpen, FileText } from 'lucide-react';
-import { toast } from 'sonner';
+import { banner } from '@/components/ui/banner-api';
 import { smoothBounce } from '@/lib/motion';
 import JSZip from 'jszip';
 import { importApi } from '@/services/import';
@@ -195,10 +195,10 @@ export default function BatchImportPage() {
   const [confirming, setConfirming] = useState(false);
   const countdown = useSessionCountdown();
 
-  // 会话过期时 toast 提醒（只触发一次）
+  // 会话过期时 banner 提醒（只触发一次）
   useEffect(() => {
     if (countdown.expired && parseComplete) {
-      toast.error('导入会话已过期，请重新上传文件夹');
+      banner.error('导入会话已过期，请重新上传文件夹');
     }
   }, [countdown.expired, parseComplete]);
 
@@ -258,7 +258,7 @@ export default function BatchImportPage() {
         url.searchParams.set('batchId', result.batchId);
         window.history.replaceState(null, '', url.toString());
       } catch (err) {
-        toast.error(`解析失败: ${err instanceof Error ? err.message : String(err)}`);
+        banner.error(`解析失败: ${err instanceof Error ? err.message : String(err)}`);
       }
     };
 
@@ -408,7 +408,7 @@ export default function BatchImportPage() {
       setParsedMap(newMap);
       setResolving(false);
       const remaining = [...newMap.values()].reduce((s, i) => s + i.missingAssets.length, 0);
-      toast[remaining === 0 ? 'success' : 'info'](remaining === 0 ? '所有缺失资源已补全' : `仍有 ${remaining} 个缺失`);
+      if (remaining > 0) banner.info(`仍有 ${remaining} 个缺失`);
     },
     [parsedMap],
   );
@@ -443,12 +443,11 @@ export default function BatchImportPage() {
           if (progress.status === 'done') {
             clearInterval(pollRef.current!);
             pollRef.current = null;
-            toast.success(`导入完成：${result.foldersCreated} 个文件夹，${progress.completed} 篇文档`);
             navigate(`/admin/notes?topic=${parentId}`, { replace: true });
           } else if (progress.status === 'failed') {
             clearInterval(pollRef.current!);
             pollRef.current = null;
-            toast.error('部分文档导入失败');
+            banner.error('部分文档导入失败');
             navigate(`/admin/notes?topic=${parentId}`, { replace: true });
           }
         } catch {
@@ -458,7 +457,7 @@ export default function BatchImportPage() {
         }
       }, 800);
     } catch (err) {
-      toast.error(`导入失败: ${err instanceof Error ? err.message : String(err)}`);
+      banner.error(`导入失败: ${err instanceof Error ? err.message : String(err)}`);
       setConfirming(false);
     }
   }, [batchId, parentId, checked, navigate]);

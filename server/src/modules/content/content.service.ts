@@ -648,25 +648,33 @@ export class ContentService {
       );
     }
 
-    // 将 ./assets/{fileName} 重写为 OSS 直连 URL（带图片处理 + 版本缓存参数），
-    // OSS 未就绪时降级为 NestJS 代理 URL。
+    // 将图片路径统一重写为新签名的 OSS URL（或代理 URL）。
+    // 匹配两种存储格式：./assets/{fileName}（正常）和完整 OSS URL（历史脏数据）。
     const scope = options?.scope ?? 'notes';
     const useOss = this.ossService.isDraftStorageReady();
-    const resolvedMarkdown = snapshot.bodyMarkdown.replaceAll(
-      /\.\/assets\/([^)\s"]+)/g,
-      (_match, fileName: string) => {
-        if (useOss) {
-          const url = this.ossService.getPublicUrl(
-            `assets/${id}/${fileName}`,
-            OssService.IMAGE_PRESETS.reading,
-          );
-          return url.includes('?')
-            ? `${url}&v=${versionId}`
-            : `${url}?v=${versionId}`;
-        }
-        return `/api/v1/spaces/${scope}/items/${id}/assets/${fileName}?v=${versionId}`;
-      },
-    );
+    const buildUrl = (fileName: string) => {
+      if (useOss) {
+        const url = this.ossService.getPublicUrl(
+          `assets/${id}/${fileName}`,
+          OssService.IMAGE_PRESETS.reading,
+        );
+        return url.includes('?')
+          ? `${url}&v=${versionId}`
+          : `${url}?v=${versionId}`;
+      }
+      return `/api/v1/spaces/${scope}/items/${id}/assets/${fileName}?v=${versionId}`;
+    };
+    const resolvedMarkdown = snapshot.bodyMarkdown
+      // 正常格式：./assets/{fileName}
+      .replaceAll(
+        /\.\/assets\/([^)\s"]+)/g,
+        (_match, fileName: string) => buildUrl(fileName),
+      )
+      // 脏数据兼容：完整 OSS 签名 URL（过期后需重新签名）
+      .replaceAll(
+        new RegExp(`https?://[^/]+/assets/${id}/([^?)\\s"]+)[^)\\s"]*`, 'g'),
+        (_match, fileName: string) => buildUrl(fileName),
+      );
 
     return this.toDetailDto(
       content,

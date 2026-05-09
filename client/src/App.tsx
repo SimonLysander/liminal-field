@@ -19,7 +19,7 @@
 import { lazy, Suspense, useState, useEffect, useLayoutEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { Toaster } from 'sonner';
+import { BannerContainer } from '@/components/ui/banner';
 import { LoadingState } from '@/components/LoadingState';
 import { smoothBounce } from './lib/motion';
 import { authApi } from '@/services/auth';
@@ -236,18 +236,7 @@ function App() {
         <Route path="/*" element={<MainLayout />} />
       </Routes>
       </ConfirmProvider>
-      {/* 全局 toast 容器——样式对齐设计系统 token */}
-      <Toaster
-        position="bottom-right"
-        toastOptions={{
-          style: {
-            background: 'var(--shelf)',
-            color: 'var(--ink)',
-            border: '0.5px solid var(--separator)',
-            borderRadius: 'var(--radius-md)',
-          },
-        }}
-      />
+      <BannerContainer />
     </ErrorBoundary>
   );
 }

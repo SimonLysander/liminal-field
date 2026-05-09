@@ -16,7 +16,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { motion } from 'motion/react';
 import { Sun, Moon } from 'lucide-react';
-import { toast } from 'sonner';
 import { smoothBounce } from '@/lib/motion';
 import { useTheme } from '@/hooks/use-theme';
 import { notesApi as contentItemsApi } from '@/services/workspace';
@@ -203,9 +202,7 @@ const DraftEditPage = () => {
         setLastSavedAt(draft.savedAt);
         setIsAutosaving(false);
 
-        if (!options?.silent) {
-          toast.success('草稿已保存');
-        }
+        // 手动保存成功（inline SaveStatus 已提供视觉反馈，无需弹窗）
       } catch (saveError) {
         setIsAutosaving(false);
         if (options?.silent) {
@@ -242,8 +239,8 @@ const DraftEditPage = () => {
       setContentDetail(saved);
       setIsDirty(false);
       setLastSavedAt('');
-      toast.success('已提交正式版本');
 
+      // 提交成功后立即跳转（页面跳转本身就是成功反馈）
       navigateTimerRef.current = window.setTimeout(() => navigate(-1), 800);
     } catch (commitError) {
       setCommitting(false);

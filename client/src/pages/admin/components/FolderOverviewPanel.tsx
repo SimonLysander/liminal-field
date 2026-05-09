@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight, FolderOpen, FileText, MoreHorizontal } from 'lucide-react';
-import { toast } from 'sonner';
+import { banner } from '@/components/ui/banner-api';
 import { setPendingImportFiles } from '../batch-import-store';
 import {
   DropdownMenu,
@@ -213,8 +213,7 @@ export function FolderOverviewPanel({
           className="rounded-lg px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-80"
           style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
           onClick={async () => {
-            const result = await structureApi.batchPublish(node.id);
-            toast.success(`已发布 ${result.successCount} 篇，跳过 ${result.skippedCount} 篇`);
+            await structureApi.batchPublish(node.id);
             void load();
             onReload();
           }}
@@ -234,8 +233,7 @@ export function FolderOverviewPanel({
           <DropdownMenuContent align="start" className="min-w-[140px]">
             <DropdownMenuItem
               onClick={async () => {
-                const result = await structureApi.batchUnpublish(node.id);
-                toast.success(`已取消发布 ${result.successCount} 篇，跳过 ${result.skippedCount} 篇`);
+                await structureApi.batchUnpublish(node.id);
                 void load();
                 onReload();
               }}
@@ -340,7 +338,7 @@ export function FolderOverviewPanel({
             }
           }
           if (!hasMd) {
-            toast.error('文件夹中未找到 .md 文件');
+            banner.error('文件夹中未找到 .md 文件');
             e.target.value = '';
             return;
           }

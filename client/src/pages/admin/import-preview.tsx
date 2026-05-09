@@ -2,7 +2,7 @@ import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Check, X, FolderOpen, ChevronDown } from 'lucide-react';
 import { motion } from 'motion/react';
-import { toast } from 'sonner';
+import { banner } from '@/components/ui/banner-api';
 import MarkdownBody from '@/components/shared/MarkdownBody';
 import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
 import { importApi, type AssetRef, type ParseResult } from '@/services/import';
@@ -45,7 +45,7 @@ export default function ImportPreviewPage() {
 
   useEffect(() => {
     if (!parseId) {
-      toast.info('导入会话无效');
+      banner.info('导入会话无效');
       navigate('/admin/notes');
       return;
     }
@@ -62,7 +62,7 @@ export default function ImportPreviewPage() {
       .catch((err) => {
         // 导入会话加载失败（通常为过期），记录错误后提示用户重试
         console.error('[ImportPreview] 加载导入会话失败:', err);
-        toast.info('导入会话已过期，请重新上传');
+        banner.info('导入会话已过期，请重新上传');
         navigate('/admin/notes');
       })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -130,9 +130,9 @@ export default function ImportPreviewPage() {
     try {
       const updated = await importApi.resolveAssets(parseId, files);
       setAssets(updated);
-      toast.success('资源匹配完成');
+      // 资源匹配完成（资源状态列表更新即为反馈）
     } catch (err) {
-      toast.error(parseError(err, '资源匹配失败'));
+      banner.error(parseError(err, '资源匹配失败'));
     } finally {
       setResolving(false);
     }
@@ -143,14 +143,13 @@ export default function ImportPreviewPage() {
     setConfirming(true);
     try {
       const result = await importApi.confirm(parseId, parentId, title);
-      toast.success('导入成功');
-      // 跳转到管理预览页
+      // 导入成功后跳转到管理预览页（跳转即为成功反馈）
       const params = new URLSearchParams();
       if (parentId) params.set('topic', parentId);
       params.set('doc', result.contentItemId);
       navigate(`/admin/notes?${params.toString()}`);
     } catch (err) {
-      toast.error(parseError(err, '导入失败'));
+      banner.error(parseError(err, '导入失败'));
     } finally {
       setConfirming(false);
     }

@@ -7,8 +7,7 @@
  */
 import * as React from 'react';
 
-import { toast } from 'sonner';
-
+import { banner } from '@/components/ui/banner-api';
 import { useDraftAssetContext } from '@/contexts/DraftAssetContext';
 
 /** 上传完成后的文件信息，PlaceholderElement 依赖 url 和 name 字段。 */
@@ -80,7 +79,7 @@ export function useUploadFile(props: UseUploadFileProps = {}) {
         onUploadComplete?.(result);
         return result;
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : '上传失败，请重试');
+        banner.error(error instanceof Error ? error.message : '上传失败，请重试');
         onUploadError?.(error);
       } finally {
         setProgress(0);

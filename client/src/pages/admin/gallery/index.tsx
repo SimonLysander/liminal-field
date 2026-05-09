@@ -12,7 +12,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { Plus, RefreshCw } from 'lucide-react';
-import { toast } from 'sonner';
+import { banner } from '@/components/ui/banner-api';
 
 import Topbar from '@/components/global/Topbar';
 import { LoadingState, ContentFade } from '@/components/LoadingState';
@@ -77,7 +77,7 @@ export default function GalleryAdmin() {
         setSelectedId(null);
       }
     } catch {
-      toast.error('加载失败，请重试');
+      banner.error('加载失败，请重试');
     } finally {
       setLoading(false);
     }
@@ -177,7 +177,7 @@ export default function GalleryAdmin() {
         photos: ver.photos,
       });
     } catch {
-      toast.error('加载版本失败');
+      banner.error('加载版本失败');
     }
   };
 
@@ -185,10 +185,9 @@ export default function GalleryAdmin() {
   const handleDiscardDraft = async (id: string) => {
     try {
       await galleryApi.deleteDraft(id);
-      toast.success('草稿已丢弃');
       setDraftInfo({ exists: false });
     } catch {
-      toast.error('丢弃失败');
+      banner.error('丢弃失败');
     }
   };
 
@@ -215,12 +214,11 @@ export default function GalleryAdmin() {
     if (!ok) return;
     try {
       await galleryApi.publish(id, versionId);
-      toast.success(`${label}已发布`);
-      // 不清除 preview，保持停留在当前版本
+      // 发布成功（列表刷新后 status 变化即为反馈）
       void loadPosts();
       void reloadDetail(id);
     } catch {
-      toast.error('发布失败');
+      banner.error('发布失败');
     }
   };
 
@@ -229,11 +227,10 @@ export default function GalleryAdmin() {
     if (!ok) return;
     try {
       await galleryApi.unpublish(id);
-      toast.success('已取消发布');
       void loadPosts();
       void reloadDetail(id);
     } catch {
-      toast.error('取消发布失败');
+      banner.error('取消发布失败');
     }
   };
 
@@ -242,11 +239,10 @@ export default function GalleryAdmin() {
     if (!ok) return;
     try {
       await galleryApi.remove(id);
-      toast.success('已删除');
       if (selectedId === id) setSelectedId(null);
       void loadPosts();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '删除失败');
+      banner.error(err instanceof Error ? err.message : '删除失败');
     }
   };
 

@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { toast } from 'sonner';
+import { banner } from '@/components/ui/banner-api';
 import { settingsApi } from '@/services/settings';
 import type { SettingsStatus, ScanResult } from '@/services/settings';
 import { authApi } from '@/services/auth';
@@ -84,9 +84,9 @@ export default function SettingsPage() {
     setSaving(true);
     try {
       await settingsApi.saveRemote(remoteUrl.trim(), token.trim() || undefined);
-      toast.success('远端配置已保存');
+      // 保存成功（验证结果区域更新即为反馈）
     } catch {
-      toast.error('保存失败，请重试');
+      banner.error('保存失败，请重试');
     } finally {
       setSaving(false);
     }
@@ -99,15 +99,14 @@ export default function SettingsPage() {
     try {
       const result = await authApi.sync();
       if (result.success) {
-        toast.success(result.message);
-        // 推送后刷新同步状态
+        // 推送成功（刷新同步状态即为反馈）
         const updated = await authApi.syncStatus().catch(() => null);
         setSyncStatus(updated);
       } else {
-        toast.error(result.message);
+        banner.error(result.message);
       }
     } catch {
-      toast.error('推送失败，请重试');
+      banner.error('推送失败，请重试');
     } finally {
       setPushing(false);
     }
@@ -122,7 +121,7 @@ export default function SettingsPage() {
       const result = await settingsApi.scan();
       setScanResult(result);
     } catch {
-      toast.error('扫描失败，请重试');
+      banner.error('扫描失败，请重试');
     } finally {
       setScanning(false);
     }
@@ -144,16 +143,15 @@ export default function SettingsPage() {
     setRecovering(true);
     try {
       const result = await settingsApi.execute(scanResult.missingInDb);
-      toast.success(`已恢复 ${result.recovered} 个内容项`);
       if (result.errors.length > 0) {
-        toast.error(`${result.errors.length} 个项目恢复失败`);
+        banner.error(`${result.errors.length} 个项目恢复失败`);
       }
-      // 恢复后刷新状态 + 重置扫描结果
+      // 恢复成功后刷新状态 + 重置扫描结果（数量变化即为反馈）
       setScanResult(null);
       const updated = await settingsApi.getStatus().catch(() => null);
       setStatus(updated);
     } catch {
-      toast.error('恢复失败，请重试');
+      banner.error('恢复失败，请重试');
     } finally {
       setRecovering(false);
     }

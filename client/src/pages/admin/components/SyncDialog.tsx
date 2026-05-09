@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { toast } from 'sonner';
+import { banner } from '@/components/ui/banner-api';
 import { smoothBounce } from '@/lib/motion';
 import { authApi } from '@/services/auth';
 import { LoadingState, ContentFade } from '@/components/LoadingState';
@@ -25,15 +25,14 @@ export function SyncDialog({ onClose }: { onClose: () => void }) {
     try {
       const result = await authApi.sync();
       if (result.success) {
-        toast.success(result.message);
         onClose();
       } else {
-        toast.error(result.message);
+        banner.error(result.message);
       }
     } catch (err) {
       // 同步推送失败，记录错误供调试
       console.error('[SyncDialog] 同步失败:', err);
-      toast.error('同步失败');
+      banner.error('同步失败');
     } finally {
       setPushing(false);
     }

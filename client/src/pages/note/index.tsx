@@ -21,7 +21,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { toast } from 'sonner';
+import { banner } from '@/components/ui/banner-api';
 import { smoothBounce } from '@/lib/motion';
 import { notesApi as contentItemsApi } from '@/services/workspace';
 import type { ContentDetail } from '@/services/workspace';
@@ -88,7 +88,7 @@ function NoteReader({ id }: { id: string }) {
         if (!cancelled) setContent(data);
       } catch {
         if (cancelled) return;
-        toast.error('文章不存在');
+        banner.error('文章不存在');
         navigate('/note', { replace: true });
       } finally {
         if (!cancelled) setLoading(false);

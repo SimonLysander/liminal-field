@@ -98,7 +98,8 @@ export class NoteViewService {
       assetsDir,
     );
 
-    // 2. 改写 markdown 中的 API URL 为 git 相对路径（draft-assets 和 assets 两种都要处理）
+    // 2. 改写 markdown 中所有图片 URL 为 git 相对路径 ./assets/{fileName}
+    //    覆盖三种来源：draft-assets 代理 URL、assets 代理 URL、OSS 签名直连 URL
     let { bodyMarkdown } = dto;
     if (bodyMarkdown) {
       const draftUrlPattern = new RegExp(
@@ -109,9 +110,15 @@ export class NoteViewService {
         `/api/v1/spaces/notes/items/${id}/assets/([^)\\s"]+)`,
         'g',
       );
+      // OSS 签名 URL：匹配 assets/{contentId}/{fileName} 部分，忽略查询参数
+      const ossUrlPattern = new RegExp(
+        `https?://[^/]+/assets/${id}/([^?)\\s"]+)[^)\\s"]*`,
+        'g',
+      );
       bodyMarkdown = bodyMarkdown
         .replace(draftUrlPattern, (_match, fileName) => `./assets/${fileName}`)
-        .replace(assetUrlPattern, (_match, fileName) => `./assets/${fileName}`);
+        .replace(assetUrlPattern, (_match, fileName) => `./assets/${fileName}`)
+        .replace(ossUrlPattern, (_match, fileName) => `./assets/${fileName}`);
       dto = { ...dto, bodyMarkdown };
     }
 
