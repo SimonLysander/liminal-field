@@ -143,10 +143,21 @@ export function toFormalContentState(detail: ContentDetail): FormalContentState 
     latestVersion: detail.latestVersion,
     publishedVersion: detail.publishedVersion ?? null,
     hasUnpublishedChanges: detail.hasUnpublishedChanges,
-    bodyMarkdown: detail.bodyMarkdown,
+    bodyMarkdown: resolveAssetsForEditor(detail.bodyMarkdown, detail.id),
     headings: detail.headings,
     updatedAt: detail.updatedAt,
   };
+}
+
+/**
+ * 将相对路径 ./assets/ 转为代理 URL（编辑器可访问），
+ * 保存时后端 saveContent 会反向转回相对路径。
+ */
+function resolveAssetsForEditor(bodyMarkdown: string, contentId: string): string {
+  return bodyMarkdown.replace(
+    /\.\/assets\/([^)\s"]+)/g,
+    (_match, fileName) => `/api/v1/spaces/notes/items/${contentId}/assets/${fileName}`,
+  );
 }
 
 export function toDraftEditorStateFromDetail(
@@ -155,7 +166,7 @@ export function toDraftEditorStateFromDetail(
   return {
     title: detail.latestVersion.title,
     summary: detail.latestVersion.summary,
-    bodyMarkdown: detail.bodyMarkdown,
+    bodyMarkdown: resolveAssetsForEditor(detail.bodyMarkdown, detail.id),
     changeNote: '更新内容',
     changeType: 'patch',
   };

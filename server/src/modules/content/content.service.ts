@@ -666,10 +666,13 @@ export class ContentService {
     });
   }
 
+  /**
+   * @param options.rawAssets true 时不做 URL 重写，返回 ./assets/ 相对路径（编辑器上下文）
+   */
   async getContentById(
     id: string,
     query?: ContentQueryDto,
-    options?: { scope?: string },
+    options?: { scope?: string; rawAssets?: boolean },
   ): Promise<ContentDetailDto> {
     const content = await this.contentRepository.findById(id);
     if (!content) {
@@ -698,37 +701,39 @@ export class ContentService {
       );
     }
 
-    // 将图片路径统一重写为新签名的 OSS URL（或代理 URL）。
-    // 匹配两种存储格式：./assets/{fileName}（正常）和完整 OSS URL（历史脏数据）。
-    const scope = options?.scope ?? 'notes';
-    const useOss = this.ossService.isDraftStorageReady();
-    const buildUrl = (fileName: string) => {
-      if (useOss) {
-        const url = this.ossService.getPublicUrl(
-          `assets/${id}/${fileName}`,
-          OssService.IMAGE_PRESETS.reading,
+    // 编辑器上下文：保持 ./assets/ 相对路径，不做 URL 重写（防止往返污染）
+    // 展示端上下文：重写为 OSS 签名 URL 或代理 URL
+    let bodyMarkdown = snapshot.bodyMarkdown;
+
+    if (!options?.rawAssets) {
+      const scope = options?.scope ?? 'notes';
+      const useOss = this.ossService.isDraftStorageReady();
+      const buildUrl = (fileName: string) => {
+        if (useOss) {
+          const url = this.ossService.getPublicUrl(
+            `assets/${id}/${fileName}`,
+            OssService.IMAGE_PRESETS.reading,
+          );
+          return url.includes('?')
+            ? `${url}&v=${versionId}`
+            : `${url}?v=${versionId}`;
+        }
+        return `/api/v1/spaces/${scope}/items/${id}/assets/${fileName}?v=${versionId}`;
+      };
+      bodyMarkdown = bodyMarkdown
+        .replaceAll(
+          /\.\/assets\/([^)\s"]+)/g,
+          (_match, fileName: string) => buildUrl(fileName),
+        )
+        .replaceAll(
+          new RegExp(`https?://[^/]+/assets/${id}/([^?)\\s"]+)[^)\\s"]*`, 'g'),
+          (_match, fileName: string) => buildUrl(fileName),
         );
-        return url.includes('?')
-          ? `${url}&v=${versionId}`
-          : `${url}?v=${versionId}`;
-      }
-      return `/api/v1/spaces/${scope}/items/${id}/assets/${fileName}?v=${versionId}`;
-    };
-    const resolvedMarkdown = snapshot.bodyMarkdown
-      // 正常格式：./assets/{fileName}
-      .replaceAll(
-        /\.\/assets\/([^)\s"]+)/g,
-        (_match, fileName: string) => buildUrl(fileName),
-      )
-      // 脏数据兼容：完整 OSS 签名 URL（过期后需重新签名）
-      .replaceAll(
-        new RegExp(`https?://[^/]+/assets/${id}/([^?)\\s"]+)[^)\\s"]*`, 'g'),
-        (_match, fileName: string) => buildUrl(fileName),
-      );
+    }
 
     return this.toDetailDto(
       content,
-      { bodyMarkdown: resolvedMarkdown },
+      { bodyMarkdown },
       { publicView },
     );
   }

@@ -540,10 +540,14 @@ export class ContentGitService implements OnModuleInit {
           continue;
         }
 
-        // 写 markdown 到磁盘
+        // 写磁盘前清洗脏 URL：OSS 签名 URL / draft-assets 代理 URL → ./assets/ 相对路径
+        const cleanMarkdown = snapshot.bodyMarkdown
+          .replace(new RegExp(`https?://[^/]+/assets/${contentId}/([^?)\\s"]+)[^)\\s"]*`, 'g'), (_m, f) => `./assets/${f}`)
+          .replace(new RegExp(`/api/v1/spaces/[^/]+/items/${contentId}/(?:draft-)?assets/([^?)\\s"]+)[^)\\s"]*`, 'g'), (_m, f) => `./assets/${f}`);
+
         await this.contentRepoService.writeMainMarkdown(
           contentId,
-          snapshot.bodyMarkdown,
+          cleanMarkdown,
         );
 
         // Git commit（内部持有 writeLock，串行调用安全）

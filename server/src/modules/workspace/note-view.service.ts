@@ -63,10 +63,12 @@ export class NoteViewService {
   async getById(id: string, visibility?: string): Promise<ContentDetailDto> {
     const vis =
       visibility === 'all' ? ContentVisibility.all : ContentVisibility.public;
+    // 管理视图（visibility=all）返回原始相对路径，防止编辑器保存时 OSS URL 污染 snapshot
+    const rawAssets = vis === ContentVisibility.all;
     return this.contentService.getContentById(
       id,
       { visibility: vis },
-      { scope: 'notes' },
+      { scope: 'notes', rawAssets },
     );
   }
 
