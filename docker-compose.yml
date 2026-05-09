@@ -71,14 +71,33 @@ services:
       - server
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      # Let's Encrypt 证书 + ACME 验证目录
+      - certbot-certs:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
     # nginx 轻量，不加内存限制
     # 仅接入前端网络，无法直连 mongo
     networks:
       - frontend
 
+  # 证书自动续期：每 12 小时检查一次，到期前 30 天自动续期
+  certbot:
+    image: docker.1ms.run/certbot/certbot
+    volumes:
+      - certbot-certs:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
+    # 每 12 小时尝试续期，续期成功后 nginx 会在下次 reload 时加载新证书
+    entrypoint: /bin/sh -c 'trap exit TERM; while :; do certbot renew --quiet; sleep 12h & wait $${!}; done'
+    depends_on:
+      - client
+    networks: []
+
 volumes:
   mongo-data:
   kb-data:
+  certbot-certs:
+  certbot-webroot:
 
 # frontend：client ↔ server 通信
 # backend：server ↔ mongo 通信（client 与 mongo 完全隔离）
