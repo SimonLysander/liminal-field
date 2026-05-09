@@ -1049,12 +1049,22 @@ export class GalleryViewService {
     }
   }
 
-  /** 上传草稿照片到 MinIO，提取 EXIF 元数据，返回代理预览 URL + 自动提取的 tags。 */
+  /**
+   * 上传草稿照片到 OSS，提取 EXIF 元数据，返回预览 URL + 自动提取的 tags。
+   *
+   * URL 策略（减少网格流量）：
+   * - OSS 就绪时：url = 400px 缩略图签名 URL（直连 OSS，网格使用）；
+   *               originalUrl = 代理 URL（走 NestJS，供编辑器大图预览）
+   * - OSS 未就绪：url = originalUrl = 代理 URL（本地开发降级）
+   *
+   * 草稿对象在 OSS 的 key 格式：{contentItemId}/{fileName}（无 draft/ 前缀）。
+   */
   async uploadDraftPhoto(
     contentItemId: string,
     input: { originalFileName: string; contentType: string; buffer: Buffer },
   ): Promise<{
     url: string;
+    originalUrl: string;
     fileName: string;
     size: number;
     exif: Record<string, string>;
@@ -1062,7 +1072,7 @@ export class GalleryViewService {
     await this.contentService.assertContentItemExists(contentItemId);
     const fileName = this.sanitizeFileName(input.originalFileName);
 
-    // 并行：上传 MinIO + 提取 EXIF
+    // 并行：上传 OSS + 提取 EXIF
     const [, exif] = await Promise.all([
       this.minioService.uploadDraftAsset(
         contentItemId,
@@ -1073,8 +1083,20 @@ export class GalleryViewService {
       this.extractExif(input.buffer),
     ]);
 
+    // 代理 URL（无论 OSS 是否就绪，originalUrl 始终是安全的代理地址）
+    const proxyUrl = `/api/v1/spaces/gallery/items/${contentItemId}/draft-assets/${fileName}`;
+
+    // 网格缩略图 URL：OSS 就绪时返回 400px 直连签名 URL，否则降级代理
+    const thumbnailUrl = this.minioService.isDraftStorageReady()
+      ? this.minioService.getPublicUrl(
+          `${contentItemId}/${fileName}`,
+          OssService.IMAGE_PRESETS.cover, // image/resize,w_400/format,webp
+        )
+      : proxyUrl;
+
     return {
-      url: `/api/v1/spaces/gallery/items/${contentItemId}/draft-assets/${fileName}`,
+      url: thumbnailUrl,
+      originalUrl: proxyUrl,
       fileName,
       size: input.buffer.byteLength,
       exif,

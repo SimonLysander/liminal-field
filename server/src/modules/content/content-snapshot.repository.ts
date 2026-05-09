@@ -65,4 +65,18 @@ export class ContentSnapshotRepository {
   ): Promise<void> {
     await this.model.findByIdAndUpdate(versionId, { $set: { commitHash } });
   }
+
+  /**
+   * 查询 commitHash 尚未回填的 snapshot（Git 归档失败待重试）。
+   * 排除 bodyMarkdown 为空的初始 snapshot（createContent 产生，无需 Git commit）。
+   */
+  async findPendingArchive(limit = 20): Promise<ContentSnapshot[]> {
+    return this.model
+      .find({
+        $or: [{ commitHash: { $exists: false } }, { commitHash: '' }],
+        bodyMarkdown: { $ne: '' },
+      })
+      .sort({ createdAt: 1 })
+      .limit(limit);
+  }
 }

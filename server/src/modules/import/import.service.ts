@@ -12,7 +12,7 @@ import { ContentRepoService } from '../content/content-repo.service';
 import { ContentGitService } from '../content/content-git.service';
 import { ContentRepository } from '../content/content.repository';
 import { ContentSnapshotRepository } from '../content/content-snapshot.repository';
-import { ContentChangeType } from '../content/content-item.entity';
+import { ContentService } from '../content/content.service';
 import { nanoid } from 'nanoid';
 import { NavigationNodeService } from '../navigation/navigation.service';
 import { MineruService } from './mineru.service';
@@ -24,9 +24,10 @@ import type { FastifyReply } from 'fastify';
 import { processMarkdown } from './markdown-post-processor';
 import { NavigationRepository } from '../navigation/navigation.repository';
 import { NavigationNodeType } from '../navigation/navigation.entity';
-import type {
-  ContentVersion,
-  ContentChangeLog,
+import {
+  ContentChangeType,
+  type ContentVersion,
+  type ContentChangeLog,
 } from '../content/content-item.entity';
 
 /** 需要通过 MinerU 转换的文件扩展名 */
@@ -55,8 +56,11 @@ export class ImportService {
     private readonly batchSessionRepo: BatchImportSessionRepository,
     private readonly contentRepoService: ContentRepoService,
     private readonly contentGitService: ContentGitService,
+    // contentRepository 保留：archiveBatchToGit 中需要查询/更新 ContentItem 回填 commitHash
     private readonly contentRepository: ContentRepository,
+    // snapshotRepository 保留：archiveBatchToGit 中需要回填 snapshot.commitHash
     private readonly snapshotRepository: ContentSnapshotRepository,
+    private readonly contentService: ContentService,
     private readonly navigationNodeService: NavigationNodeService,
     private readonly navigationRepository: NavigationRepository,
   ) {}
@@ -309,31 +313,18 @@ export class ImportService {
       source.assetRefs,
     );
 
-    // V2: 生成 versionId，创建 ContentSnapshot + ContentItem
-    const versionId = nanoid(16);
-
-    await this.snapshotRepository.create({
-      versionId,
-      contentItemId: contentId,
+    // V2: 通过 ContentService 公共 API 创建 ContentSnapshot + ContentItem，
+    // 避免绕过版本管理协议直接操作底层 Repository。
+    // contentId 由外部提前生成（第 252 行），以便在此之前完成资源迁移和磁盘写入。
+    const { versionId } = await this.contentService.importContent({
+      contentId,
       title,
-      summary: title,
       bodyMarkdown: body,
+      changeNote,
       assetRefs: this.contentRepoService
         .extractAssetRefs(body)
         .map((ref) => ref.path),
       createdAt: now,
-      changeNote,
-    });
-
-    // 先创建 MongoDB 记录（占位，commitHash 稍后回填），
-    // 再执行 Git commit。若 Git 失败，删除 MongoDB 记录回滚，避免产生孤立 commit。
-    await this.contentRepository.create({
-      id: contentId,
-      latestVersion: { versionId, commitHash: '', title, summary: title },
-      publishedVersion: null,
-      changeLogs: [{ ...changeLog, commitHash: '' }],
-      createdAt: now,
-      updatedAt: now,
     });
 
     // TODO: Phase 3 后续优化——import confirm 当前仍同步执行 Git commit，
@@ -756,28 +747,17 @@ export class ImportService {
       source.assetRefs,
     );
 
-    // 创建 ContentSnapshot + ContentItem
-    const versionId = nanoid(16);
-    await this.snapshotRepository.create({
-      versionId,
-      contentItemId: contentId,
+    // V2: 通过 ContentService 公共 API 创建 ContentSnapshot + ContentItem，
+    // contentId 由外部提前生成，以便在此之前完成资源迁移和磁盘写入。
+    await this.contentService.importContent({
+      contentId,
       title,
-      summary: title,
       bodyMarkdown: body,
+      changeNote,
       assetRefs: this.contentRepoService
         .extractAssetRefs(body)
         .map((ref) => ref.path),
       createdAt: now,
-      changeNote,
-    });
-
-    await this.contentRepository.create({
-      id: contentId,
-      latestVersion: { versionId, commitHash: '', title, summary: title },
-      publishedVersion: null,
-      changeLogs: [{ ...changeLog, commitHash: '' }],
-      createdAt: now,
-      updatedAt: now,
     });
 
     return contentId;

@@ -255,6 +255,56 @@ export class ContentService {
   }
 
   /**
+   * 导入创建内容：一次性创建 ContentItem + Snapshot（含 bodyMarkdown）。
+   * 供 ImportService 调用，避免绕过版本管理协议直接操作底层 Repository。
+   *
+   * contentId 可由调用方提前传入（场景：调用前已用 contentId 执行磁盘写入/资源迁移），
+   * 不传则内部自动生成。
+   */
+  async importContent(params: {
+    contentId?: string;
+    title: string;
+    bodyMarkdown: string;
+    changeNote: string;
+    assetRefs?: string[];
+    createdAt?: Date;
+  }): Promise<{ contentId: string; versionId: string }> {
+    const contentId = params.contentId ?? this.buildContentId();
+    const versionId = this.generateVersionId();
+    const now = params.createdAt ?? new Date();
+
+    await this.snapshotRepository.create({
+      versionId,
+      contentItemId: contentId,
+      title: params.title,
+      summary: params.title,
+      bodyMarkdown: params.bodyMarkdown,
+      assetRefs: params.assetRefs ?? [],
+      createdAt: now,
+      changeNote: params.changeNote,
+    });
+
+    const changeLog = this.buildChangeLog(
+      params.title,
+      params.title,
+      params.changeNote,
+      ContentChangeType.major,
+      now,
+    );
+
+    await this.contentRepository.create({
+      id: contentId,
+      latestVersion: { versionId, commitHash: '', title: params.title, summary: params.title },
+      publishedVersion: null,
+      changeLogs: [changeLog],
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return { contentId, versionId };
+  }
+
+  /**
    * 创建内容条目：只建 MongoDB 记录，不写 Git。
    *
    * 第一次真正的 saveContent(action=commit) 才会写 main.md + git commit，

@@ -447,11 +447,15 @@ export const galleryApi = {
   remove: (id: string) =>
     request<void>(`/spaces/gallery/items/${id}`, { method: 'DELETE' }),
 
-  /** 上传照片到 MinIO 草稿存储，返回代理预览 URL + 自动提取的 EXIF。 */
+  /**
+   * 上传照片到 OSS 草稿存储，返回缩略图 URL + 原图 URL + EXIF。
+   * url：OSS 就绪时为 400px 缩略图签名 URL，否则降级为代理 URL（网格直接使用）。
+   * originalUrl：代理 URL，供编辑器大图预览。
+   */
   uploadPhoto: (id: string, file: File) => {
     const formData = new FormData();
     formData.append('file', file);
-    return request<{ url: string; fileName: string; size: number; exif: Record<string, string> }>(
+    return request<{ url: string; originalUrl: string; fileName: string; size: number; exif: Record<string, string> }>(
       `/spaces/gallery/items/${id}/draft-assets`,
       { method: 'POST', body: formData },
     );

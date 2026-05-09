@@ -85,6 +85,7 @@ function SortablePhoto({
         alt={photo.fileName}
         className="h-full w-full object-cover"
         draggable={false}
+        loading="lazy"
       />
 
       {/* 上传中遮罩 */}

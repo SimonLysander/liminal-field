@@ -9,6 +9,9 @@ import {
   redactKbRemoteUrlForLog,
   resolveKbRemoteUrlForGit,
 } from '../../common/kb-remote-url';
+import { ContentVersion } from './content-item.entity';
+import { ContentSnapshotRepository } from './content-snapshot.repository';
+import { ContentRepository } from './content.repository';
 import { ContentRepoService } from './content-repo.service';
 import { ContentHistoryEntryDto } from './dto/content-history.dto';
 
@@ -26,7 +29,11 @@ export class ContentGitService implements OnModuleInit {
   /** init 结束后写入，供 StartupDiagnostics 打出与原先单行日志同等粒度的一行摘要 */
   private kbGitSummaryLine: string | null = null;
 
-  constructor(private readonly contentRepoService: ContentRepoService) {
+  constructor(
+    private readonly contentRepoService: ContentRepoService,
+    private readonly snapshotRepository: ContentSnapshotRepository,
+    private readonly contentRepository: ContentRepository,
+  ) {
     // 与 ContentRepoService 共用已解析的绝对路径（含相对配置、目录已 ensure）
     this.repoRoot = this.contentRepoService.repoRoot;
     this.git = simpleGit(this.repoRoot);
@@ -502,6 +509,109 @@ export class ContentGitService implements OnModuleInit {
       const msg = error instanceof Error ? error.message : String(error);
       this.logger.error(`Failed to push ${currentBranch}: ${msg}`);
       return { success: false, message: `同步失败: ${msg}` };
+    }
+  }
+
+  /**
+   * 定时扫描 commitHash 未回填的 snapshot，重试 Git 归档。
+   * 每 5 分钟执行一次，每次最多处理 20 条，串行避免 writeLock 争抢。
+   * cron 表达式通过 GIT_ARCHIVE_RETRY_CRON 环境变量配置。
+   *
+   * 注意：recordCommittedContentChange 内部已持有 writeLock，
+   * 此方法不能在锁内调用它，串行逐条处理即可。
+   */
+  @Cron(process.env.GIT_ARCHIVE_RETRY_CRON?.trim() || '*/5 * * * *')
+  async retryPendingArchives(): Promise<void> {
+    if (this.writeLock.isLocked()) return;
+
+    const pending = await this.snapshotRepository.findPendingArchive(20);
+    if (pending.length === 0) return;
+
+    this.logger.log(`Archive retry: ${pending.length} pending snapshots`);
+
+    for (const snapshot of pending) {
+      try {
+        const contentId = snapshot.contentItemId;
+        const content = await this.contentRepository.findById(contentId);
+        if (!content) {
+          this.logger.warn(
+            `Archive retry: content ${contentId} not found, skipping`,
+          );
+          continue;
+        }
+
+        // 写 markdown 到磁盘
+        await this.contentRepoService.writeMainMarkdown(
+          contentId,
+          snapshot.bodyMarkdown,
+        );
+
+        // Git commit（内部持有 writeLock，串行调用安全）
+        const commitHash = await this.recordCommittedContentChange(
+          contentId,
+          snapshot.changeNote || 'archive retry',
+        );
+
+        // commitHash 为 null 表示无变更（文件已归档过），直接跳过
+        if (!commitHash) {
+          this.logger.debug(
+            `Archive retry: ${contentId} no diff, already archived`,
+          );
+          continue;
+        }
+
+        // 回填 snapshot.commitHash
+        await this.snapshotRepository.backfillCommitHash(
+          snapshot.versionId,
+          commitHash,
+        );
+
+        // 回填 ContentItem 的 latestVersion.commitHash 和 changeLogs[0]
+        // 使用 JSON 序列化避免 Mongoose 子文档 spread 丢失字段
+        const latestVersion = content.latestVersion;
+        const publishedVersion = content.publishedVersion;
+
+        const updatedChangeLogs = content.changeLogs.map((log, index) => {
+          // 最新 changeLog（index 0）尚无 commitHash，对应本次 Git commit
+          if (index === 0 && !log.commitHash) {
+            return { ...log, commitHash };
+          }
+          return log;
+        });
+
+        const latestPlain =
+          latestVersion && latestVersion.versionId === snapshot.versionId
+            ? (JSON.parse(
+                JSON.stringify(latestVersion),
+              ) as Record<string, unknown>)
+            : null;
+
+        const publishedPlain =
+          publishedVersion?.versionId === snapshot.versionId
+            ? (JSON.parse(
+                JSON.stringify(publishedVersion),
+              ) as Record<string, unknown>)
+            : null;
+
+        await this.contentRepository.update(contentId, {
+          latestVersion: latestPlain
+            ? ({ ...latestPlain, commitHash } as ContentVersion)
+            : (latestVersion ?? { title: '', commitHash: '' }),
+          publishedVersion: publishedPlain
+            ? ({ ...publishedPlain, commitHash } as ContentVersion)
+            : (publishedVersion ?? null),
+          changeLogs: updatedChangeLogs,
+          updatedAt: content.updatedAt,
+        });
+
+        this.logger.log(
+          `Archive retry: ${contentId} → ${commitHash.slice(0, 8)}`,
+        );
+      } catch (err: unknown) {
+        this.logger.warn(
+          `Archive retry failed for ${snapshot.contentItemId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
   }
 
