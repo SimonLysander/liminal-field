@@ -1,4 +1,4 @@
-import { modelOptions, prop, Severity } from '@typegoose/typegoose';
+import { index, modelOptions, prop, Severity } from '@typegoose/typegoose';
 import { Types } from 'mongoose';
 
 export enum NavigationNodeType {
@@ -16,6 +16,8 @@ export enum NavigationScope {
   gallery = 'gallery',
 }
 
+// 覆盖 listByParentId 和 findRootNodes 的查询+排序：{ parentId, scope, order }
+@index({ parentId: 1, scope: 1, order: 1 })
 @modelOptions({
   schemaOptions: { collection: 'navigation_nodes' },
   options: { allowMixed: Severity.ERROR },

@@ -1,4 +1,4 @@
-import { modelOptions, prop, Severity } from '@typegoose/typegoose';
+import { index, modelOptions, prop, Severity } from '@typegoose/typegoose';
 
 export enum ContentStatus {
   committed = 'committed',
@@ -46,6 +46,8 @@ export class ContentVersion {
   summary?: string;
 }
 
+// 覆盖 countPublished() 查询 { publishedVersion: { $ne: null } }
+@index({ publishedVersion: 1 })
 @modelOptions({
   schemaOptions: {
     collection: 'content_items',

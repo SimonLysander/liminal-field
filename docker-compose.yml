@@ -13,6 +13,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    # 防止单容器吃光宿主机内存
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    # 隔离在后端网络，client 无法直连 mongo
+    networks:
+      - backend
 
   server:
     build: ./server
@@ -46,6 +54,15 @@ services:
       CONTENT_GIT_AUTHOR_NAME: ${CONTENT_GIT_AUTHOR_NAME:-Liminal Field}
       CONTENT_GIT_AUTHOR_EMAIL: ${CONTENT_GIT_AUTHOR_EMAIL:-no-reply@liminal-field.local}
     # 不暴露到宿主机，由 nginx (client) 统一代理
+    # 防止单容器吃光宿主机内存
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    # 同时接入两个网络：与 client 通信 + 与 mongo 通信
+    networks:
+      - frontend
+      - backend
 
   client:
     build: ./client
@@ -54,7 +71,17 @@ services:
       - server
     ports:
       - "80:80"
+    # nginx 轻量，不加内存限制
+    # 仅接入前端网络，无法直连 mongo
+    networks:
+      - frontend
 
 volumes:
   mongo-data:
   kb-data:
+
+# frontend：client ↔ server 通信
+# backend：server ↔ mongo 通信（client 与 mongo 完全隔离）
+networks:
+  frontend:
+  backend:
