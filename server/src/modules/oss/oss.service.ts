@@ -217,12 +217,13 @@ export class OssService implements OnModuleInit, MinioDraftStorageStatus {
    * @param expires 签名有效期秒数，默认 1 小时
    */
   getPublicUrl(key: string, process?: string, expires = 3600): string {
-    // secure: true 强制生成 https:// URL，避免 HTTPS 页面加载 HTTP 资源触发 Mixed Content
-    return this.client.signatureUrl(key, {
+    const url = this.client.signatureUrl(key, {
       expires,
       process: process || undefined,
       secure: true,
     });
+    // internal endpoint（-internal.aliyuncs.com）浏览器不可达，替换为外网域名
+    return url.replace('-internal.aliyuncs.com', '.aliyuncs.com');
   }
 
   /**
