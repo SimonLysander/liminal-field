@@ -7,12 +7,16 @@
  * - kb-remote：KB Git 远程仓库配置（验证 / 保存）
  * - recovery：灾难恢复（扫描差异 / 执行恢复）
  * - status：系统状态快照（DB 条数 / Git 条数 / 清单）
+ * - sync：远端同步（推送 / 拉取，从 AuthController 迁移）
  */
 import { Body, Controller, Get, Logger, Post, Put } from '@nestjs/common';
+import { rm } from 'fs/promises';
+import { join } from 'path';
 import simpleGit from 'simple-git';
 import { ContentRepository } from '../content/content.repository';
 import { ContentSnapshotRepository } from '../content/content-snapshot.repository';
 import { ContentRepoService } from '../content/content-repo.service';
+import { ContentGitService } from '../content/content-git.service';
 import {
   applyKbGitTokenToGithubHttps,
   resolveKbRemoteUrlForGit,
@@ -21,6 +25,7 @@ import {
 import { ManifestService } from './manifest.service';
 import { RecoveryService, ScanResult, ExecuteResult } from './recovery.service';
 import { KbRemoteDto, ExecuteRecoveryDto } from './dto/settings.dto';
+import { NavigationRepository } from '../navigation/navigation.repository';
 
 @Controller('settings')
 export class SettingsController {
@@ -32,6 +37,8 @@ export class SettingsController {
     private readonly contentRepoService: ContentRepoService,
     private readonly manifestService: ManifestService,
     private readonly recoveryService: RecoveryService,
+    private readonly contentGitService: ContentGitService,
+    private readonly navigationRepository: NavigationRepository,
   ) {}
 
   /**
@@ -129,17 +136,106 @@ export class SettingsController {
     gitItemCount: number;
     hasManifest: boolean;
   }> {
-    const [scanResult, hasManifest] = await Promise.all([
+    const [scanResult, hasManifest, dbSnapshotCount] = await Promise.all([
       this.recoveryService.scan(),
       this.manifestService.manifestExists(),
+      this.contentSnapshotRepository.countAll(),
     ]);
 
     return {
       dbItemCount: scanResult.dbItems.length,
-      // ContentSnapshotRepository 没有 countAll，用 listAll 的长度（snapshot 数量通常不大）
-      dbSnapshotCount: 0,
+      dbSnapshotCount,
       gitItemCount: scanResult.gitItems.length,
       hasManifest,
+    };
+  }
+
+  /**
+   * 同步状态查询（从 AuthController 迁移）。
+   */
+  @Get('sync-status')
+  async getSyncStatus() {
+    return this.contentGitService.getSyncStatus();
+  }
+
+  /**
+   * 推送本地数据到远端。
+   * 写 manifest → commit → push，一步完成。
+   */
+  @Post('push-to-remote')
+  async pushToRemote(): Promise<{ success: boolean; message: string }> {
+    // 推送前写入清单
+    try {
+      await this.manifestService.writeManifest();
+      await this.contentGitService.commitManifestIfChanged();
+    } catch (err: unknown) {
+      this.logger.warn(
+        `写入清单失败，继续推送: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    return this.contentGitService.pushCurrentBranch();
+  }
+
+  /**
+   * 从远端同步：清空本地 → pull → 自动恢复 MongoDB。
+   * 破坏性操作，前端需二次确认。
+   */
+  @Post('sync-from-remote')
+  async syncFromRemote(): Promise<{
+    success: boolean;
+    recovered: number;
+    errors: string[];
+    message: string;
+  }> {
+    // 1. 清空 MongoDB
+    const deletedItems = await this.contentRepository.deleteAll();
+    await this.contentSnapshotRepository.deleteAll();
+    await this.navigationRepository.deleteAll();
+    this.logger.log(`Cleared MongoDB: ${deletedItems} content items`);
+
+    // 2. 清空 Git content/ 目录 + 清单文件
+    const contentDir = join(this.contentRepoService.repoRoot, 'content');
+    try {
+      await rm(contentDir, { recursive: true, force: true });
+    } catch { /* 目录不存在，忽略 */ }
+    const manifestPath = join(
+      this.contentRepoService.repoRoot,
+      '.liminal-field.yaml',
+    );
+    try {
+      await rm(manifestPath, { force: true });
+    } catch { /* 文件不存在，忽略 */ }
+
+    // 3. 从远端拉取
+    const pullResult = await this.contentGitService.pullFromRemote();
+    if (!pullResult.success) {
+      return {
+        success: false,
+        recovered: 0,
+        errors: [pullResult.message],
+        message: pullResult.message,
+      };
+    }
+
+    // 4. 扫描并恢复
+    const scanResult = await this.recoveryService.scan();
+    if (scanResult.missingInDb.length === 0) {
+      return {
+        success: true,
+        recovered: 0,
+        errors: [],
+        message: '远端仓库无内容可恢复',
+      };
+    }
+
+    const execResult = await this.recoveryService.execute(
+      scanResult.missingInDb,
+    );
+    return {
+      success: execResult.errors.length === 0,
+      recovered: execResult.recovered,
+      errors: execResult.errors,
+      message: `已恢复 ${execResult.recovered} 个内容项`,
     };
   }
 }
