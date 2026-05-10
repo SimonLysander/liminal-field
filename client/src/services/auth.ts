@@ -14,19 +14,4 @@ export const authApi = {
 
   check: () =>
     request<{ authenticated: boolean }>('/auth/check'),
-
-  syncStatus: () =>
-    request<{
-      branch: string;
-      totalCommits: number;
-      unpushedCommits: number;
-      lastCommitMessage: string;
-      lastCommitTime: string;
-      remote: string;
-    } | null>('/auth/sync-status'),
-
-  sync: () =>
-    request<{ success: boolean; message: string }>('/auth/sync', {
-      method: 'POST',
-    }),
 };

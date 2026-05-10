@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { banner } from '@/components/ui/banner-api';
 import { smoothBounce } from '@/lib/motion';
-import { authApi } from '@/services/auth';
+import { settingsApi } from '@/services/settings';
 import { LoadingState, ContentFade } from '@/components/LoadingState';
 
-type SyncStatus = Awaited<ReturnType<typeof authApi.syncStatus>>;
+type SyncStatus = Awaited<ReturnType<typeof settingsApi.getSyncStatus>>;
 
 export function SyncDialog({ onClose }: { onClose: () => void }) {
   const [status, setStatus] = useState<SyncStatus>(null);
@@ -14,7 +14,7 @@ export function SyncDialog({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    authApi.syncStatus()
+    settingsApi.getSyncStatus()
       .then(setStatus)
       .catch(() => setError('获取同步状态失败'))
       .finally(() => setLoading(false));
@@ -23,7 +23,7 @@ export function SyncDialog({ onClose }: { onClose: () => void }) {
   const handlePush = useCallback(async () => {
     setPushing(true);
     try {
-      const result = await authApi.sync();
+      const result = await settingsApi.pushToRemote();
       if (result.success) {
         onClose();
       } else {

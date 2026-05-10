@@ -45,4 +45,30 @@ export const settingsApi = {
       method: 'POST',
       body: JSON.stringify({ contentIds }),
     }),
+
+  // 获取 Git 远程同步状态（分支、提交数、待推送数等）
+  getSyncStatus: () =>
+    request<{
+      branch: string;
+      totalCommits: number;
+      unpushedCommits: number;
+      lastCommitMessage: string;
+      lastCommitTime: string;
+      remote: string;
+    } | null>('/settings/sync-status'),
+
+  // 将本地提交推送到远程仓库
+  pushToRemote: () =>
+    request<{ success: boolean; message: string }>('/settings/push-to-remote', {
+      method: 'POST',
+    }),
+
+  // 从远程仓库同步恢复数据
+  syncFromRemote: () =>
+    request<{
+      success: boolean;
+      recovered: number;
+      errors: string[];
+      message: string;
+    }>('/settings/sync-from-remote', { method: 'POST' }),
 };
