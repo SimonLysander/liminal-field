@@ -1,4 +1,3 @@
 {$SITE_DOMAIN:localhost} {
     reverse_proxy client:80
-    tls {$TLS_MODE:internal}
 }

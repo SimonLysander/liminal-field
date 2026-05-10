@@ -59,7 +59,8 @@ export class AuthController {
     asCookieReply(reply).setCookie(COOKIE_NAME, token, {
       httpOnly: true,
       sameSite: 'strict',
-      secure: process.env.NODE_ENV === 'production',
+      // HTTPS 可用时设 Secure；备案期间 HTTP 裸跑需关闭（COOKIE_SECURE=false）
+      secure: process.env.COOKIE_SECURE !== 'false' && process.env.NODE_ENV === 'production',
       path: COOKIE_PATH,
       maxAge: 7 * 24 * 60 * 60,
     });
