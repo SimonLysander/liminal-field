@@ -41,19 +41,63 @@ export function GardenTickProvider({ children }: { children: React.ReactNode }) 
   return <TickCtx.Provider value={{ tick, getP }}>{children}</TickCtx.Provider>;
 }
 
-/* ═══════════ 颜色常量 ═══════════ */
+/* ═══════════ 配色方案 —— 替换整个 PALETTE 即可切换主题 ═══════════ */
+
+const PALETTE = {
+  // ── 土壤 — 深沃土 ──
+  soil: '#6a5040',
+
+  // ── 草地 / 茎 — 极深绿，高饱和 ──
+  grass: '#0f5518',
+  stemDark: '#082e0a',
+  leafLight: '#1e7a20',
+
+  // ── 藤蔓 — 与草同色系 ──
+  vine: '#0f5518',
+  vineLeaf: '#0f5518',
+  vineVein: '#082e0a',
+
+  // ── 玫瑰 — 鲜粉，绿底下更跳 ──
+  roseLight: '#f8d8e0',
+  roseMid: '#f0a0b8',
+  roseDeep: '#d86888',
+  roseInnerLight: '#fce8f0',
+  roseInner: '#f0bcd0',
+  roseCenter: '#e8c040',
+
+  // ── 雏菊 — 暖白 ──
+  daisyLight: '#f5f0e4',
+  daisyShadow: '#e8e0cc',
+  daisyCenter: '#d8a828',
+
+  // ── 薰衣草 — 浓紫 ──
+  lavender: '#7860a0',
+
+  // ── 风铃花 — 矢车菊蓝 ──
+  bellPetal: '#5868b0',
+  bellCenter: '#e8d060',
+
+  // ── 蕨类 — 深林绿 ──
+  fernLeaf: '#0e4c14',
+
+  // ── 蒲公英 — 暖调 ──
+  dandelionStem: '#1a4c18',
+  puffCore: '#e0d8b8',
+  puffRay: '#b8a878',
+  puffTip: '#d0c890',
+};
 
 /* ═══════════ 可调参数 ═══════════ */
 
-const GRASS = '#3a6a2e';          // 草色
-const SOIL = '#96806a';           // 土壤色
-const SOIL_INSET = 30;            // 土壤上底比下底每侧窄多少
-const STEM_WIDTH = 3;             // 所有植物根茎宽度（px）
-const STEM_COLOR = GRASS;         // 根茎颜色跟草一致
-const PLANT_SCALE = 1.5;          // 花的整体缩放
-const PLANT_COUNT = 24;           // 花的数量
-const FLOWER_GROW_FRAMES = 5;     // 花生长帧数
-const LEAN_RANGE = 12;            // 弯曲范围（±LEAN_RANGE/2）
+const GRASS = PALETTE.grass;
+const SOIL = PALETTE.soil;
+const SOIL_INSET = 30;
+const STEM_WIDTH = 3;
+const STEM_COLOR = PALETTE.grass;
+const PLANT_SCALE = 1.5;
+const PLANT_COUNT = 24;
+const FLOWER_GROW_FRAMES = 5;
+const LEAN_RANGE = 12;
 
 /* ═══════════ 渐变 defs ═══════════ */
 
@@ -61,19 +105,19 @@ function Defs() {
   return (
     <defs>
       <radialGradient id="gRose" cx="30%" cy="25%">
-        <stop offset="0%" stopColor="#f8dce4" /><stop offset="40%" stopColor="#f0b8c8" /><stop offset="100%" stopColor="#d8849c" />
+        <stop offset="0%" stopColor={PALETTE.roseLight} /><stop offset="40%" stopColor={PALETTE.roseMid} /><stop offset="100%" stopColor={PALETTE.roseDeep} />
       </radialGradient>
       <radialGradient id="gRoseIn" cx="50%" cy="40%">
-        <stop offset="0%" stopColor="#fdeef0" /><stop offset="100%" stopColor="#f0c8d4" />
+        <stop offset="0%" stopColor={PALETTE.roseInnerLight} /><stop offset="100%" stopColor={PALETTE.roseInner} />
       </radialGradient>
       <radialGradient id="gDaisy" cx="50%" cy="50%">
-        <stop offset="0%" stopColor="#f4f0ea" /><stop offset="100%" stopColor="#e8e0d4" />
+        <stop offset="0%" stopColor={PALETTE.daisyLight} /><stop offset="100%" stopColor={PALETTE.daisyShadow} />
       </radialGradient>
       <linearGradient id="gLeaf" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stopColor="#3a6a2e" /><stop offset="100%" stopColor="#2a5420" />
+        <stop offset="0%" stopColor={PALETTE.grass} /><stop offset="100%" stopColor={PALETTE.leafLight} />
       </linearGradient>
       <linearGradient id="gStem" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%" stopColor="#2a5020" /><stop offset="50%" stopColor="#3a6a2e" /><stop offset="100%" stopColor="#2a5020" />
+        <stop offset="0%" stopColor={PALETTE.stemDark} /><stop offset="50%" stopColor={PALETTE.grass} /><stop offset="100%" stopColor={PALETTE.stemDark} />
       </linearGradient>
     </defs>
   );
@@ -163,7 +207,7 @@ function Rose({ progress: p, lean = 0 }: { progress: number; lean?: number }) {
         <g transform={`translate(${2 + b * 0.5},${-h}) rotate(${b * 1.2})`}>
           <g opacity="0.85">{[0, 72, 144, 216, 288].map((a) => <path key={a} d={`M 0,-1 C -4,${-8 * fp} -10,${-12 * fp} -11,${-7 * fp} C -10,${-2 * fp} -5,1 0,-1 Z`} fill="url(#gRose)" transform={`rotate(${a})`} />)}</g>
           <g opacity="0.9">{[36, 108, 180, 252, 324].map((a) => <path key={a} d={`M 0,0 C -3,${-5 * fp} -7,${-7 * fp} -7,${-4 * fp} C -6,${-1 * fp} -3,0 0,0 Z`} fill="url(#gRoseIn)" transform={`rotate(${a})`} />)}</g>
-          <circle cx="0" cy="0" r={1.5 + fp} fill="#ecc850" opacity="0.5" />
+          <circle cx="0" cy="0" r={1.5 + fp} fill={PALETTE.roseCenter} opacity="0.5" />
         </g>
       )}
     </g>
@@ -182,7 +226,7 @@ function Daisy({ progress: p, lean = 0 }: { progress: number; lean?: number }) {
       {fp > 0 && (
         <g transform={`translate(${b * 0.6},${-h}) rotate(${b * 1.2})`}>
           <g opacity="0.88">{Array.from({ length: 10 }).map((_, i) => <ellipse key={i} cx="0" cy={-6 * fp} rx={1.8 * fp} ry={5 * fp} fill="url(#gDaisy)" transform={`rotate(${i * 36})`} />)}</g>
-          <circle cx="0" cy="0" r={2.5 * fp} fill="#d8a830" />
+          <circle cx="0" cy="0" r={2.5 * fp} fill={PALETTE.daisyCenter} />
         </g>
       )}
     </g>
@@ -198,7 +242,7 @@ function Lavender({ progress: p, lean = 0 }: { progress: number; lean?: number }
   return (
     <g>
       <path d={stemPath(h, b)} fill={STEM_COLOR} />
-      {fp > 0 && <g transform={`translate(${b * 0.6},${-h}) rotate(${b * 1.5})`}>{[0, -4.5, -9, -13, -16.5, -19.5].map((y, i) => <ellipse key={i} cx={i % 2 === 0 ? -0.5 : 0.5} cy={y * fp} rx={3.5 - i * 0.3} ry={2.2 - i * 0.15} fill="#8070a0" opacity={0.7 * fp} />)}</g>}
+      {fp > 0 && <g transform={`translate(${b * 0.6},${-h}) rotate(${b * 1.5})`}>{[0, -4.5, -9, -13, -16.5, -19.5].map((y, i) => <ellipse key={i} cx={i % 2 === 0 ? -0.5 : 0.5} cy={y * fp} rx={3.5 - i * 0.3} ry={2.2 - i * 0.15} fill={PALETTE.lavender} opacity={0.7 * fp} />)}</g>}
     </g>
   );
 }
@@ -214,8 +258,8 @@ function Bellflower({ progress: p, lean = 0 }: { progress: number; lean?: number
       <path d={stemPath(h, b)} fill={STEM_COLOR} />
       {fp > 0 && (
         <g transform={`translate(${b * 0.6},${-h}) rotate(${b * 1.2})`}>
-          <g opacity="0.8">{[0, 72, 144, 216, 288].map((a) => <path key={a} d={`M 0,-1 C -3,${-6 * fp} -7,${-10 * fp} -8,${-6 * fp} C -8,${-2 * fp} -4,0 0,-1 Z`} fill="#7080b8" transform={`rotate(${a})`} />)}</g>
-          <circle cx="0" cy="0" r={2.2 * fp} fill="#e8d880" opacity="0.55" />
+          <g opacity="0.8">{[0, 72, 144, 216, 288].map((a) => <path key={a} d={`M 0,-1 C -3,${-6 * fp} -7,${-10 * fp} -8,${-6 * fp} C -8,${-2 * fp} -4,0 0,-1 Z`} fill={PALETTE.bellPetal} transform={`rotate(${a})`} />)}</g>
+          <circle cx="0" cy="0" r={2.2 * fp} fill={PALETTE.bellCenter} opacity="0.55" />
         </g>
       )}
     </g>
@@ -230,7 +274,7 @@ function Fern({ progress: p, lean = 0 }: { progress: number; lean?: number }) {
   return (
     <g>
       <path d={stemPath(h, lean)} fill={STEM_COLOR} />
-      {Array.from({ length: lc }).map((_, i) => { const y = -h * (0.2 + i * 0.1); return (<g key={i}><path d={`M 1,${y} C ${-7 - i * 0.7},${y - 4} ${-11 - i * 0.4},${y + 1.5} -8,${y + 3} C -5,${y + 1.5} 0,${y} 1,${y} Z`} fill="#3a5a2a" opacity="0.6" /><path d={`M 1,${y} C ${7 + i * 0.7},${y - 4} ${11 + i * 0.4},${y + 1.5} 8,${y + 3} C 5,${y + 1.5} 2,${y} 1,${y} Z`} fill="#3a5a2a" opacity="0.55" /></g>); })}
+      {Array.from({ length: lc }).map((_, i) => { const y = -h * (0.2 + i * 0.1); return (<g key={i}><path d={`M 1,${y} C ${-7 - i * 0.7},${y - 4} ${-11 - i * 0.4},${y + 1.5} -8,${y + 3} C -5,${y + 1.5} 0,${y} 1,${y} Z`} fill={PALETTE.fernLeaf} opacity="0.6" /><path d={`M 1,${y} C ${7 + i * 0.7},${y - 4} ${11 + i * 0.4},${y + 1.5} 8,${y + 3} C 5,${y + 1.5} 2,${y} 1,${y} Z`} fill={PALETTE.fernLeaf} opacity="0.55" /></g>); })}
     </g>
   );
 }
@@ -242,11 +286,11 @@ function Dandelion({ progress: p, lean = 0 }: { progress: number; lean?: number 
   if (h <= 0) return null;
   return (
     <g>
-      <path d={stemPath(h, lean)} fill="#5a6a3a" />
+      <path d={stemPath(h, lean)} fill={PALETTE.dandelionStem} />
       {pp > 0 && (
         <g transform={`translate(${lean * 0.6},${-h}) rotate(${lean * 1.2})`}>
-          <circle cx="0" cy="0" r={3 * pp} fill="#d8d0b8" opacity="0.8" />
-          {Array.from({ length: 12 }).map((_, i) => { const a = i * 30 * Math.PI / 180; const len = 10 * pp; return (<g key={i}><line x1="0" y1="0" x2={Math.cos(a) * len} y2={Math.sin(a) * len} stroke="#a8a088" strokeWidth="0.4" opacity="0.7" /><circle cx={Math.cos(a) * len} cy={Math.sin(a) * len} r={1 * pp} fill="#c8c0a0" opacity="0.7" /></g>); })}
+          <circle cx="0" cy="0" r={3 * pp} fill={PALETTE.puffCore} opacity="0.8" />
+          {Array.from({ length: 12 }).map((_, i) => { const a = i * 30 * Math.PI / 180; const len = 10 * pp; return (<g key={i}><line x1="0" y1="0" x2={Math.cos(a) * len} y2={Math.sin(a) * len} stroke={PALETTE.puffRay} strokeWidth="0.4" opacity="0.7" /><circle cx={Math.cos(a) * len} cy={Math.sin(a) * len} r={1 * pp} fill={PALETTE.puffTip} opacity="0.7" /></g>); })}
         </g>
       )}
     </g>
@@ -290,17 +334,14 @@ export function HeroGarden() {
           <rect x={SOIL_INSET} y={0} width={vw - SOIL_INSET * 2} height={svgH} />
         </clipPath>
 
-        {/* ═══ 帧 1：铺土（浅色） ═══ */}
-        {tick >= 1 && (
-          <SoilTrapezoid w={vw} topY={soilTopY} bottomY={soilBotY} opacity={0.5} />
-        )}
+        {/* ═══ 帧 1-3：土壤从草地线往下沉淀出厚度 ═══ */}
+        {tick >= 1 && (() => {
+          const soilP = Math.min((tick - 1) / 2, 1);
+          const currentBotY = soilTopY + soilH * soilP;
+          return <SoilTrapezoid w={vw} topY={soilTopY} bottomY={currentBotY} />;
+        })()}
 
-        {/* ═══ 帧 2：土壤颜色加深 ═══ */}
-        {tick >= 2 && (
-          <SoilTrapezoid w={vw} topY={soilTopY} bottomY={soilBotY} opacity={1} />
-        )}
-
-        {/* ═══ 帧 5-9：花（画在草下面，根被草盖住） ═══ */}
+        {/* ═══ 帧 5+：花（画在草下面，根被草盖住） ═══ */}
         {tick >= 5 && plants.map((p, i) => {
           const Comp = PLANTS[p.type];
           const flowerProgress = Math.min(Math.max(0, tick - 5 - p.delay * 0.4) / FLOWER_GROW_FRAMES, 1);
@@ -311,15 +352,20 @@ export function HeroGarden() {
           );
         })}
 
-        {/* ═══ 帧 3：草 + 绿条（画在花上面，遮住花的根部） ═══ */}
-        {tick >= 3 && (
-          <g opacity={tick >= 4 ? 1 : 0.5}>
+        {/* ═══ 帧 3-5：草叶从地面往上冒 ═══ */}
+        {tick >= 3 && (() => {
+          const grassP = Math.min((tick - 3) / 2, 1);
+          return (
             <g clipPath="url(#grassClip)">
+              {/* 绿色基底 — 地表变绿 */}
               <rect x={0} y={grassY - 2} width={vw} height={soilTopY - grassY + 4} fill={GRASS} />
-              <GrassBlades w={vw} groundY={grassY} />
+              {/* 草叶 — 从 groundY 向上缩放生长 */}
+              <g transform={`translate(0 ${grassY}) scale(1 ${grassP}) translate(0 ${-grassY})`}>
+                <GrassBlades w={vw} groundY={grassY} />
+              </g>
             </g>
-          </g>
-        )}
+          );
+        })()}
       </svg>
     </div>
   );
@@ -332,7 +378,7 @@ export function HeroGarden() {
 const VINE_WIDTH = 24;       // 藤蔓容器宽度（窄，装饰用）
 const VINE_AMPLITUDE = 14;   // S 形曲线幅度
 const VINE_PERIOD = 120;     // 每个 S 弯的高度间距
-const VINE_STROKE = 2.5;     // 藤蔓粗细
+const VINE_STROKE = 3.5;     // 藤蔓粗细
 const LEAF_SIZE = 24;        // 叶子大小
 
 export function GardenVines({ side }: { side: 'left' | 'right' }) {
@@ -340,7 +386,7 @@ export function GardenVines({ side }: { side: 'left' | 'right' }) {
 
   // 帧 4 开始（跟花完全同步），每帧多长一个 S 弯
   const elapsed = Math.max(0, tick - 4);
-  const visibleBends = Math.min(elapsed, 8); // 最多 8 个弯（8 帧长完）
+  const visibleBends = Math.min(elapsed, 4); // 最多 4 个弯
 
   const isRight = side === 'right';
   const cx = isRight ? VINE_WIDTH - 8 : 8;
@@ -365,23 +411,49 @@ export function GardenVines({ side }: { side: 'left' | 'right' }) {
 
   // 容器始终占位，内容根据 progress 显示
   return (
-    <div className="shrink-0" style={{ width: VINE_WIDTH }}>
-      <svg width={VINE_WIDTH} style={{ height: '100%' }} className="pointer-events-none">
+    <div className="shrink-0" style={{ width: VINE_WIDTH, overflow: 'visible' }}>
+      <svg width={VINE_WIDTH} style={{ height: '100%', overflow: 'visible' }} className="pointer-events-none">
         {visibleBends > 0 && (
           <g>
-            <path d={d} fill="none" stroke={GRASS} strokeWidth={VINE_STROKE} strokeLinecap="round" opacity="0.55" />
-            {leafPositions.map((lp, i) => (
-              <g key={i} transform={`translate(${lp.x},${lp.y})`}>
-                <path
-                  d={`M 0,0 C ${lp.side * -3},${-LEAF_SIZE * 0.5} ${lp.side * -LEAF_SIZE},${-LEAF_SIZE * 0.7} ${lp.side * -LEAF_SIZE},${-LEAF_SIZE * 0.3} C ${lp.side * -LEAF_SIZE},0 ${lp.side * -5},${LEAF_SIZE * 0.2} 0,0 Z`}
-                  fill={GRASS} opacity="0.4"
-                />
-                <path
-                  d={`M 0,0 C ${lp.side * -4},${-LEAF_SIZE * 0.3} ${lp.side * -LEAF_SIZE * 0.8},${-LEAF_SIZE * 0.5} ${lp.side * -LEAF_SIZE * 0.9},${-LEAF_SIZE * 0.3}`}
-                  fill="none" stroke={GRASS} strokeWidth="0.5" opacity="0.3"
-                />
-              </g>
-            ))}
+            <path d={d} fill="none" stroke={PALETTE.vine} strokeWidth={VINE_STROKE} strokeLinecap="round" opacity="0.55" />
+            {leafPositions.map((lp, i) => {
+              const s = lp.side;
+              const sz = LEAF_SIZE;
+              return (
+                <g key={i} transform={`translate(${lp.x},${lp.y})`}>
+                  {/* 叶身 */}
+                  <path
+                    d={`M 0,0 C ${s * -3},${-sz * 0.5} ${s * -sz},${-sz * 0.7} ${s * -sz},${-sz * 0.3} C ${s * -sz},0 ${s * -5},${sz * 0.2} 0,0 Z`}
+                    fill={PALETTE.vineLeaf} opacity="0.55"
+                  />
+                  {/* 主脉 */}
+                  <path
+                    d={`M 0,0 Q ${s * -sz * 0.4},${-sz * 0.28} ${s * -sz * 0.85},${-sz * 0.3}`}
+                    fill="none" stroke={PALETTE.vineVein} strokeWidth="0.9" opacity="0.45"
+                  />
+                  {/* 侧脉 ×3 — 从主脉分叉向叶缘 */}
+                  <path
+                    d={`M ${s * -sz * 0.18},${-sz * 0.1} Q ${s * -sz * 0.35},${-sz * 0.36} ${s * -sz * 0.5},${-sz * 0.46}`}
+                    fill="none" stroke={PALETTE.vineVein} strokeWidth="0.5" opacity="0.3"
+                  />
+                  <path
+                    d={`M ${s * -sz * 0.38},${-sz * 0.18} Q ${s * -sz * 0.56},${-sz * 0.4} ${s * -sz * 0.72},${-sz * 0.46}`}
+                    fill="none" stroke={PALETTE.vineVein} strokeWidth="0.5" opacity="0.25"
+                  />
+                  <path
+                    d={`M ${s * -sz * 0.55},${-sz * 0.24} Q ${s * -sz * 0.68},${-sz * 0.36} ${s * -sz * 0.82},${-sz * 0.38}`}
+                    fill="none" stroke={PALETTE.vineVein} strokeWidth="0.4" opacity="0.2"
+                  />
+                  {/* 卷须 — 隔一片叶子出一根，叶片对侧 */}
+                  {i % 2 === 0 && (
+                    <path
+                      d={`M 0,6 C ${-s * 5},3 ${-s * 10},9 ${-s * 7},15 C ${-s * 4},19 ${-s * 8},21 ${-s * 6},17`}
+                      fill="none" stroke={PALETTE.vine} strokeWidth="0.7" opacity="0.3" strokeLinecap="round"
+                    />
+                  )}
+                </g>
+              );
+            })}
           </g>
         )}
       </svg>
