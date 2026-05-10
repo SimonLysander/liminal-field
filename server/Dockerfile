@@ -4,7 +4,7 @@ RUN sed -i 's#https://dl-cdn.alpinelinux.org#https://mirrors.aliyun.com#g' /etc/
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 COPY package.json pnpm-lock.yaml .npmrc* ./
-RUN pnpm install --frozen-lockfile --registry https://registry.npmmirror.com
+RUN pnpm install --frozen-lockfile --ignore-scripts --registry https://registry.npmmirror.com
 COPY . .
 RUN pnpm build
 
