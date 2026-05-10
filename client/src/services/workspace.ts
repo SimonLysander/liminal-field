@@ -137,6 +137,8 @@ export interface GalleryPublicListItem {
   title: string;
   /** 封面图 URL，null 表示未设置。 */
   coverUrl: string | null;
+  /** 照片数量 */
+  photoCount: number;
   /** 帖子拍摄/发生日期（ISO 8601），null 表示未设置。 */
   date: string | null;
   /** 帖子地点，null 表示未设置。 */
@@ -502,19 +504,15 @@ export const galleryApi = {
 
 // ── 首页 ──
 
-/** 首页统计数字 */
-export interface HomeStats {
-  noteCount: number;
-  galleryCount: number;
+/** 首页笔记条目（含字数） */
+export interface HomeNoteItem extends ContentListItem {
+  wordCount: number;
 }
 
 /** GET /home 返回结构 */
 export interface HomeData {
-  stats: HomeStats;
-  /** 最近有变更记录的文稿列表（含 latestChange） */
-  latest: ContentListItem[];
-  /** 最近更新的已发布图集列表（含 coverUrl） */
-  recentGallery: GalleryPublicListItem[];
+  notes: HomeNoteItem[];
+  gallery: GalleryPublicListItem[];
 }
 
 export const homeApi = {

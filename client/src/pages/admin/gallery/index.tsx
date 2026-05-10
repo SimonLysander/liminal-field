@@ -206,31 +206,34 @@ export default function GalleryAdmin() {
     }
   };
 
-  /** 发布当前展示的版本：preview 模式发布历史版本，否则发布最新版 */
-  const handlePublish = async (id: string) => {
+  /** 发布当前展示的版本，返回 true 表示成功（ActionButton ✓ 反馈） */
+  const handlePublish = async (id: string): Promise<boolean> => {
     const versionId = preview?.versionId;
     const label = versionId ? `版本 ${versionId.slice(0, 8)}` : '最新版本';
     const ok = await confirm({ title: '发布', message: `立即发布${label}？`, confirmLabel: '发布' });
-    if (!ok) return;
+    if (!ok) return false;
     try {
       await galleryApi.publish(id, versionId);
-      // 发布成功（列表刷新后 status 变化即为反馈）
       void loadPosts();
       void reloadDetail(id);
+      return true;
     } catch {
       banner.error('发布失败');
+      return false;
     }
   };
 
-  const handleUnpublish = async (id: string) => {
+  const handleUnpublish = async (id: string): Promise<boolean> => {
     const ok = await confirm({ title: '取消发布', message: '立即取消发布？', danger: true, confirmLabel: '取消发布' });
-    if (!ok) return;
+    if (!ok) return false;
     try {
       await galleryApi.unpublish(id);
       void loadPosts();
       void reloadDetail(id);
+      return true;
     } catch {
       banner.error('取消发布失败');
+      return false;
     }
   };
 
@@ -394,8 +397,8 @@ export default function GalleryAdmin() {
                       viewingHash={viewingVersionId ?? ''}
                       onExitPreview={() => setPreview(null)}
                       onPhotoClick={preview ? undefined : (index) => { setModalPhotoIndex(index); setModalOpen(true); }}
-                      onPublish={() => void handlePublish(detail.id)}
-                      onUnpublish={() => void handleUnpublish(detail.id)}
+                      onPublish={() => handlePublish(detail.id)}
+                      onUnpublish={() => handleUnpublish(detail.id)}
                       onDelete={preview ? undefined : () => void handleDelete(detail.id)}
                     />
                   );

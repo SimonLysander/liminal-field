@@ -884,13 +884,34 @@ export class ContentService {
       .map((content) => this.toListItemDto(content, { publicView }));
   }
 
-  /** 最近 N 条已发布内容（供首页使用）。 */
-  async getPublishedLatest(limit: number): Promise<ContentListItemDto[]> {
-    // 多取一些候选条目再过滤，避免 limit*2 内已发布条目不足的边缘情况
-    const contents = (
-      await this.contentRepository.list({ page: 1, pageSize: limit * 2 })
-    ).filter((content) => this.isPublished(content));
-    return contents
+  /**
+   * 最近 N 条已发布内容（供首页使用）。
+   * @param contentIds 可选白名单，传入时只返回这些 ID 中已发布的条目（用于 scope 过滤）。
+   */
+  async getPublishedLatest(
+    limit: number,
+    contentIds?: string[],
+  ): Promise<ContentListItemDto[]> {
+    let candidates: ContentItem[];
+    if (contentIds) {
+      // scope 过滤：只查指定 ID 集合
+      candidates = (
+        await Promise.all(
+          contentIds.map((id) => this.contentRepository.findById(id)),
+        )
+      )
+        .filter((c): c is ContentItem => c !== null && this.isPublished(c))
+        .sort(
+          (a, b) =>
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+        );
+    } else {
+      // 无 scope 限制：取最新的一批再过滤
+      candidates = (
+        await this.contentRepository.list({ page: 1, pageSize: limit * 2 })
+      ).filter((content) => this.isPublished(content));
+    }
+    return candidates
       .slice(0, limit)
       .map((content) => this.toListItemDto(content, { publicView: true }));
   }

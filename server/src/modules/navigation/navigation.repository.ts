@@ -105,6 +105,11 @@ export class NavigationRepository {
     return doc ? (doc as { order: number }).order : -1;
   }
 
+  /** 获取指定 scope 下所有导航节点（不分层级） */
+  async listByScope(scope: string): Promise<NavigationNode[]> {
+    return this.navigationModel.find({ scope });
+  }
+
   async hasChildren(parentId: string): Promise<boolean> {
     return (await this.navigationModel.countDocuments({ parentId })) > 0;
   }

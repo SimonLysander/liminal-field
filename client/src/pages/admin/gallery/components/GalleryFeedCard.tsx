@@ -10,6 +10,7 @@
 import { MapPin } from 'lucide-react';
 import type { GalleryAdminListItem, GalleryAdminDetail } from '@/services/workspace';
 import MarkdownBody from '@/components/shared/MarkdownBody';
+import { ActionButton } from '@/components/ui/action-button';
 
 // ─── 工具：相对时间（不依赖外部库）───
 
@@ -118,8 +119,8 @@ interface GalleryPostPreviewProps {
   viewingHash?: string;
   onExitPreview?: () => void;
   onPhotoClick?: (index: number) => void;
-  onPublish?: () => void;
-  onUnpublish?: () => void;
+  onPublish?: () => Promise<boolean>;
+  onUnpublish?: () => Promise<boolean>;
   onDelete?: () => void;
 }
 
@@ -176,8 +177,8 @@ export function GalleryPostPreview({
             <TextLink label="返回最新" onClick={onExitPreview} />
           )}
           {isViewingPublished
-            ? onUnpublish && <TextLink label="取消发布" danger onClick={onUnpublish} />
-            : onPublish && <TextLink label="发布" onClick={onPublish} />
+            ? onUnpublish && <ActionButton label="取消发布" danger onClick={onUnpublish} />
+            : onPublish && <ActionButton label="发布" onClick={onPublish} />
           }
           {onDelete && <TextLink label="删除" danger onClick={onDelete} />}
         </div>

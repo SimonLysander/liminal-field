@@ -255,6 +255,20 @@ export class GalleryViewService {
     return `/api/v1/spaces/gallery/items/${contentItemId}/assets/${fileName}`;
   }
 
+  /**
+   * 封面文件名解析：frontmatter.cover > 磁盘 assets 首图 > frontmatter photos 首图。
+   * 第三级 fallback 解决 OSS 有文件但磁盘归档未完成时 coverUrl 为 null 的问题。
+   */
+  private resolveCoverFileName(
+    parsed: ParsedGalleryContent,
+    imageAssets: { fileName: string }[],
+  ): string | null {
+    if (parsed.cover) return parsed.cover;
+    if (imageAssets.length > 0) return imageAssets[0].fileName;
+    if (parsed.photos.length > 0) return parsed.photos[0].file;
+    return null;
+  }
+
   /** 拼接版本号用于缓存破坏（兼容 OSS URL 已有 ? 的情况） */
   private appendVersion(url: string, version?: string | null): string {
     if (!version) return url;
@@ -400,28 +414,23 @@ export class GalleryViewService {
       publishedVersionId,
     );
 
-    // 封面优先级：frontmatter.cover 指定的文件 > assets 首图；与 toAdminListItemDto 逻辑保持一致
-    const coverFileName = parsed.cover ?? null;
-    const coverAsset = coverFileName
-      ? (imageAssets.find((a) => a.fileName === coverFileName) ??
-        imageAssets[0])
-      : imageAssets[0];
-
+    const coverFileName = this.resolveCoverFileName(parsed, imageAssets);
     const version = content.publishedVersion;
 
     return {
       id: contentItemId,
       title: version.title,
-      coverUrl: coverAsset
+      coverUrl: coverFileName
         ? this.appendVersion(
             this.buildPhotoUrl(
               contentItemId,
-              coverAsset.fileName,
+              coverFileName,
               OssService.IMAGE_PRESETS.cover,
             ),
             publishedVersionId,
           )
         : null,
+      photoCount: parsed.photos.length || imageAssets.length,
       date: parsed.date,
       location: parsed.location,
       createdAt: content.createdAt.toISOString(),
@@ -446,23 +455,17 @@ export class GalleryViewService {
       content.latestVersion?.versionId,
     );
 
-    // 封面图：frontmatter.cover 指定的文件必须存在于 assets，否则退化为首图
-    const coverFileName = parsed.cover ?? null;
-    const coverAsset = coverFileName
-      ? (imageAssets.find((a) => a.fileName === coverFileName) ??
-        imageAssets[0])
-      : imageAssets[0];
-
+    const coverFileName = this.resolveCoverFileName(parsed, imageAssets);
     const version = content.latestVersion!;
 
     return {
       id: contentItemId,
       title: version.title,
       status: content.publishedVersion ? 'published' : 'committed',
-      coverUrl: coverAsset
+      coverUrl: coverFileName
         ? this.buildPhotoUrl(
             contentItemId,
-            coverAsset.fileName,
+            coverFileName,
             OssService.IMAGE_PRESETS.thumbnail,
           )
         : null,

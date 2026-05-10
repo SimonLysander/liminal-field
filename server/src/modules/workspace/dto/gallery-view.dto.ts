@@ -31,6 +31,8 @@ export class GalleryPublicListItemDto {
   title: string;
   /** 封面图 URL，null 表示无照片。 */
   coverUrl: string | null;
+  /** 照片数量 */
+  photoCount: number;
   /** 帖子拍摄/发生日期（ISO 8601 日期字符串），null 表示未设置。 */
   date: string | null;
   /** 帖子地点，null 表示未设置。 */
