@@ -3,7 +3,7 @@ FROM docker.1ms.run/node:22-alpine AS build
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 COPY package.json pnpm-lock.yaml .npmrc* ./
-RUN pnpm install --frozen-lockfile --registry https://registry.npmmirror.com
+RUN pnpm install --frozen-lockfile --ignore-scripts --registry https://registry.npmmirror.com
 COPY . .
 RUN pnpm build
 
