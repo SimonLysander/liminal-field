@@ -43,6 +43,7 @@ services:
       CONTENT_REPO_ROOT: /data/liminal-field-kb
       JWT_SECRET: ${JWT_SECRET}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      COOKIE_SECURE: ${COOKIE_SECURE:-}
       MINERU_TOKEN: ${MINERU_TOKEN:-}
       KB_REMOTE_URL: ${KB_REMOTE_URL:-}
       KB_GIT_TOKEN: ${KB_GIT_TOKEN:-}
