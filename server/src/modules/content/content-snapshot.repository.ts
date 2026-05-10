@@ -79,4 +79,15 @@ export class ContentSnapshotRepository {
       .sort({ createdAt: 1 })
       .limit(limit);
   }
+
+  /** 统计全部 snapshot 数量 */
+  async countAll(): Promise<number> {
+    return this.model.countDocuments({});
+  }
+
+  /** 清空全部 snapshot */
+  async deleteAll(): Promise<number> {
+    const result = await this.model.deleteMany({});
+    return result.deletedCount ?? 0;
+  }
 }

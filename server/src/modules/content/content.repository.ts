@@ -113,6 +113,12 @@ export class ContentRepository {
     await this.contentItemModel.findByIdAndDelete(id);
   }
 
+  /** 清空全部 ContentItem（灾难恢复 / 远端同步前清空用） */
+  async deleteAll(): Promise<number> {
+    const result = await this.contentItemModel.deleteMany({});
+    return result.deletedCount ?? 0;
+  }
+
   /** 已发布内容总数（MongoDB countDocuments，不加载文档到内存）。 */
   async countPublished(): Promise<number> {
     return this.contentItemModel.countDocuments({

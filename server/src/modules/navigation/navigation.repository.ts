@@ -202,4 +202,10 @@ export class NavigationRepository {
       _id: { $in: ids.map((id) => new Types.ObjectId(id)) },
     });
   }
+
+  /** 清空全部导航节点 */
+  async deleteAll(): Promise<number> {
+    const result = await this.navigationModel.deleteMany({});
+    return result.deletedCount ?? 0;
+  }
 }
