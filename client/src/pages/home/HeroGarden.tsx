@@ -327,7 +327,64 @@ export function HeroGarden() {
 
 /* ═══════════ 藤蔓占位 ═══════════ */
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function GardenVines(_props: { height: number }) {
-  return null; // TODO
+/* ═══════════ 藤蔓相框 ═══════════ */
+
+const VINE_WIDTH = 24;       // 藤蔓容器宽度（窄，装饰用）
+const VINE_AMPLITUDE = 14;   // S 形曲线幅度
+const VINE_PERIOD = 120;     // 每个 S 弯的高度间距
+const VINE_STROKE = 2.5;     // 藤蔓粗细
+const LEAF_SIZE = 24;        // 叶子大小
+
+export function GardenVines({ side }: { side: 'left' | 'right' }) {
+  const { tick } = useContext(TickCtx);
+
+  // 帧 4 开始（跟花完全同步），每帧多长一个 S 弯
+  const elapsed = Math.max(0, tick - 4);
+  const visibleBends = Math.min(elapsed, 8); // 最多 8 个弯（8 帧长完）
+
+  const isRight = side === 'right';
+  const cx = isRight ? VINE_WIDTH - 8 : 8;
+  const dir = isRight ? -1 : 1;
+
+  const bends = visibleBends;
+  let d = `M ${cx},0`;
+  const leafPositions: Array<{ x: number; y: number; side: number }> = [];
+
+  for (let i = 0; i < bends; i++) {
+    const y0 = i * VINE_PERIOD;
+    const y1 = (i + 1) * VINE_PERIOD;
+    const yMid = (y0 + y1) / 2;
+    const s = (i % 2 === 0 ? 1 : -1) * dir;
+    const peakX = cx + s * VINE_AMPLITUDE;
+
+    d += ` C ${cx},${y0 + (y1 - y0) * 0.25} ${peakX},${yMid - 15} ${peakX},${yMid}`;
+    d += ` C ${peakX},${yMid + 15} ${cx},${y1 - (y1 - y0) * 0.25} ${cx},${y1}`;
+
+    leafPositions.push({ x: peakX, y: yMid, side: s });
+  }
+
+  // 容器始终占位，内容根据 progress 显示
+  return (
+    <div className="shrink-0" style={{ width: VINE_WIDTH }}>
+      <svg width={VINE_WIDTH} style={{ height: '100%' }} className="pointer-events-none">
+        {visibleBends > 0 && (
+          <g>
+            <path d={d} fill="none" stroke={GRASS} strokeWidth={VINE_STROKE} strokeLinecap="round" opacity="0.55" />
+            {leafPositions.map((lp, i) => (
+              <g key={i} transform={`translate(${lp.x},${lp.y})`}>
+                <path
+                  d={`M 0,0 C ${lp.side * -3},${-LEAF_SIZE * 0.5} ${lp.side * -LEAF_SIZE},${-LEAF_SIZE * 0.7} ${lp.side * -LEAF_SIZE},${-LEAF_SIZE * 0.3} C ${lp.side * -LEAF_SIZE},0 ${lp.side * -5},${LEAF_SIZE * 0.2} 0,0 Z`}
+                  fill={GRASS} opacity="0.4"
+                />
+                <path
+                  d={`M 0,0 C ${lp.side * -4},${-LEAF_SIZE * 0.3} ${lp.side * -LEAF_SIZE * 0.8},${-LEAF_SIZE * 0.5} ${lp.side * -LEAF_SIZE * 0.9},${-LEAF_SIZE * 0.3}`}
+                  fill="none" stroke={GRASS} strokeWidth="0.5" opacity="0.3"
+                />
+              </g>
+            ))}
+          </g>
+        )}
+      </svg>
+    </div>
+  );
 }

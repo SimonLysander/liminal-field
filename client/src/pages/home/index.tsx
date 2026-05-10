@@ -4,7 +4,6 @@ import { motion } from 'motion/react';
 import { appleEase } from '@/lib/motion';
 import { homeApi } from '@/services/workspace';
 import type { HomeData } from '@/services/workspace';
-import { useRef } from 'react';
 import { HeroGarden, GardenVines, GardenTickProvider } from './HeroGarden';
 
 /* ---------- Helpers ---------- */
@@ -76,32 +75,23 @@ export default function HomePage() {
   const notes = data?.notes ?? [];
   const galleries = data?.gallery ?? [];
 
-  const contentRef = useRef<HTMLDivElement>(null);
-  const [contentHeight, setContentHeight] = useState(800);
-
-  // 内容区高度变化时更新藤蔓高度
-  useEffect(() => {
-    if (!contentRef.current) return;
-    const ro = new ResizeObserver(([entry]) => {
-      setContentHeight(entry.contentRect.height);
-    });
-    ro.observe(contentRef.current);
-    return () => ro.disconnect();
-  }, []);
 
   if (loading) return null;
 
   return (
     <GardenTickProvider>
-    <div className="relative flex flex-1 flex-col overflow-y-auto px-12 py-10" ref={contentRef}>
-      {/* 藤蔓装饰（绝对定位，不遮挡文字） */}
-      <GardenVines height={contentHeight} />
+    <div className="flex flex-1 flex-col overflow-y-auto px-4 py-10">
 
       {/* ── Hero：定格动画小花圃 ── */}
-      <div className="mb-9">
+      <div>
         <HeroGarden />
       </div>
 
+      {/* ── 三栏：左藤蔓 | 内容 | 右藤蔓（紧贴花圃，无间距） ── */}
+      <div className="flex">
+      <GardenVines side="left" />
+
+      <div className="mx-6 min-w-0 flex-1 pt-9">
       {/* ── 最近笔记 ── */}
       {notes.length > 0 && (
         <div className="mb-10">
@@ -279,6 +269,10 @@ export default function HomePage() {
           </div>
         </div>
       )}
+      </div> {/* end flex-1 content */}
+      <GardenVines side="right" />
+      </div>
+
     </div>
     </GardenTickProvider>
   );
