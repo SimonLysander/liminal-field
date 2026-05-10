@@ -13,8 +13,6 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AuthService } from './auth.service';
 import { Public } from './decorators/public.decorator';
 import { LoginDto } from './dto/login.dto';
-import { ContentGitService } from '../content/content-git.service';
-import { ManifestService } from '../settings/manifest.service';
 
 const COOKIE_NAME = 'auth_token';
 const COOKIE_PATH = '/api';
@@ -40,8 +38,6 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly jwtService: JwtService,
-    private readonly contentGitService: ContentGitService,
-    private readonly manifestService: ManifestService,
   ) {}
 
   @Public()
@@ -80,27 +76,5 @@ export class AuthController {
   @Get('check')
   check(@Req() request: FastifyRequest) {
     return { authenticated: !!request.user };
-  }
-
-  @Get('sync-status')
-  async getSyncStatus() {
-    return this.contentGitService.getSyncStatus();
-  }
-
-  @Post('sync')
-  async syncToRemote() {
-    // 推送前先写入清单，确保 .liminal-field.yaml 随本次 push 一起到达远程
-    try {
-      await this.manifestService.writeManifest();
-      // 将清单加入 Git 暂存区并提交（若有变更）
-      const git = this.contentGitService;
-      await git.commitManifestIfChanged();
-    } catch (err: unknown) {
-      // 清单写入失败不阻断同步，记录警告后继续推送
-      this.logger.warn(
-        `写入清单失败，继续推送: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-    return this.contentGitService.pushCurrentBranch();
   }
 }
