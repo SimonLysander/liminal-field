@@ -513,6 +513,45 @@ export class ContentGitService implements OnModuleInit {
   }
 
   /**
+   * 从远端拉取数据到本地。
+   * 前提：本地 MongoDB 和 content/ 已清空。
+   * 执行：fetch → reset --hard origin/main → 重建 workspace 分支。
+   */
+  async pullFromRemote(): Promise<{ success: boolean; message: string }> {
+    return this.writeLock.runExclusive(async () => {
+      if (!(await this.hasOriginRemote())) {
+        return { success: false, message: '未配置远程仓库' };
+      }
+
+      try {
+        await this.git.fetch('origin');
+
+        // 检查 origin/main 是否存在
+        const remoteRefs = await this.tryRun(() =>
+          this.git.raw(['branch', '-r', '--list', 'origin/main']),
+        );
+        if (!remoteRefs) {
+          return { success: false, message: '远端仓库没有 main 分支' };
+        }
+
+        // 切到 main 并重置为远端状态
+        await this.git.checkout('main');
+        await this.git.reset(['--hard', 'origin/main']);
+
+        // 重建当月工作分支
+        await this.ensureWorkspaceBranchReady();
+
+        this.logger.log('Pulled from remote and reset to origin/main');
+        return { success: true, message: '已从远端拉取数据' };
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Pull from remote failed: ${msg}`);
+        return { success: false, message: `拉取失败: ${msg}` };
+      }
+    });
+  }
+
+  /**
    * 定时扫描 commitHash 未回填的 snapshot，重试 Git 归档。
    * 每 5 分钟执行一次，每次最多处理 20 条，串行避免 writeLock 争抢。
    * cron 表达式通过 GIT_ARCHIVE_RETRY_CRON 环境变量配置。
