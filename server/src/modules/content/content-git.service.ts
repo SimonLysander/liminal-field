@@ -623,57 +623,55 @@ export class ContentGitService implements OnModuleInit {
   }
 
   /**
-   * 从远端恢复：删除本地仓库 → 从远端 clone 全新副本 → 重建 workspace。
-   * 不做 fetch/reset/merge，直接用干净的 clone 避免一切历史冲突。
+   * 从远端恢复：fetch → 找最新远端分支 → 硬重置全部本地分支 → 重建 workspace。
+   * 完全用 git 命令操作，不删仓库（进程锁着目录无法 rm）。
    */
   async pullFromRemote(): Promise<{ success: boolean; message: string }> {
     return this.writeLock.runExclusive(async () => {
-      const remoteUrl = resolveKbRemoteUrlForGit();
-      if (!remoteUrl) {
+      if (!(await this.hasOriginRemote())) {
         return { success: false, message: '未配置远程仓库' };
       }
 
       try {
-        // 删除旧仓库
-        await rm(this.repoRoot, { recursive: true, force: true });
-        this.logger.log('Deleted local repo for fresh clone');
+        // 1. fetch 全部远端分支
+        await this.git.fetch(['origin', '--prune']);
 
-        // 从远端 clone
-        await simpleGit().clone(remoteUrl, this.repoRoot);
-        this.logger.log('Cloned from remote');
+        // 2. 找远端最新分支
+        const remoteBranchList = await this.run(() =>
+          this.git.raw(['branch', '-r', '--list', 'origin/*']),
+        );
+        if (!remoteBranchList.trim()) {
+          return { success: false, message: '远端仓库没有任何分支' };
+        }
+        const refs = remoteBranchList
+          .split('\n')
+          .map((b) => b.trim())
+          .filter((b) => b && !b.includes('->'));
+        const targetRef =
+          refs.filter((r) => r.startsWith('origin/workspace/')).sort().pop()
+          ?? refs.find((r) => r === 'origin/main')
+          ?? refs[0];
 
-        // 重新初始化 git 实例指向新仓库
-        const freshGit = simpleGit(this.repoRoot);
+        this.logger.log(`Restoring from ${targetRef}`);
 
-        // 确保 git config
-        await freshGit.addConfig('user.name', this.resolveAuthorName(), false, 'local');
-        await freshGit.addConfig('user.email', this.resolveAuthorEmail(), false, 'local');
+        // 3. 切到 main，硬重置到远端最新
+        await this.git.checkout('main');
+        await this.git.reset(['--hard', targetRef]);
+        // 清除未追踪文件（旧内容残留）
+        await this.git.clean('f', ['-d']);
 
-        // 确保 main 分支存在
-        const branches = await freshGit.branchLocal();
-        if (!branches.all.includes('main')) {
-          // clone 可能 checkout 了 workspace 分支，确保 main 存在
-          const remoteBranches = await freshGit.branch(['-r']);
-          if (remoteBranches.all.includes('origin/main')) {
-            await freshGit.branch(['main', 'origin/main']);
+        // 4. 删除所有旧 workspace 分支
+        const localBranches = await this.git.branchLocal();
+        for (const b of localBranches.all) {
+          if (b !== 'main') {
+            await this.git.deleteLocalBranch(b, true);
+            this.logger.log(`Deleted branch ${b}`);
           }
         }
 
-        // 切到最新的 workspace 分支（clone 后可能已在上面）
+        // 5. 从 main 创建新的当月 workspace
         const targetBranch = this.resolveWorkBranch();
-        const updated = await freshGit.branchLocal();
-        if (!updated.all.includes(targetBranch)) {
-          // 如果远端有对应 workspace 分支，track 它；否则从 main 创建
-          const remoteTarget = `origin/${targetBranch}`;
-          const allRemote = await freshGit.branch(['-r']);
-          if (allRemote.all.includes(remoteTarget)) {
-            await freshGit.checkout(['-b', targetBranch, remoteTarget]);
-          } else {
-            await freshGit.checkout(['-b', targetBranch, 'main']);
-          }
-        } else if (updated.current !== targetBranch) {
-          await freshGit.checkout(targetBranch);
-        }
+        await this.git.checkout(['-b', targetBranch, 'main']);
 
         this.logger.log(`Pull complete, on branch ${targetBranch}`);
         return { success: true, message: '已从远端拉取数据' };
