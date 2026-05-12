@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Mutex } from 'async-mutex';
 import { existsSync } from 'fs';
-import { mkdir } from 'fs/promises';
+import { mkdir, rm } from 'fs/promises';
 import { isAbsolute, join, relative } from 'path';
 import simpleGit, { SimpleGit } from 'simple-git';
 import {
@@ -623,58 +623,59 @@ export class ContentGitService implements OnModuleInit {
   }
 
   /**
-   * 从远端拉取数据到本地。
-   * 前提：本地 MongoDB 和 content/ 已清空。
-   * 流程：fetch → 找远端最新分支（优先 workspace，其次 main）→ reset --hard → 重建 workspace。
+   * 从远端恢复：删除本地仓库 → 从远端 clone 全新副本 → 重建 workspace。
+   * 不做 fetch/reset/merge，直接用干净的 clone 避免一切历史冲突。
    */
   async pullFromRemote(): Promise<{ success: boolean; message: string }> {
     return this.writeLock.runExclusive(async () => {
-      if (!(await this.hasOriginRemote())) {
+      const remoteUrl = resolveKbRemoteUrlForGit();
+      if (!remoteUrl) {
         return { success: false, message: '未配置远程仓库' };
       }
 
       try {
-        await this.git.fetch('origin');
+        // 删除旧仓库
+        await rm(this.repoRoot, { recursive: true, force: true });
+        this.logger.log('Deleted local repo for fresh clone');
 
-        // 找远端最新分支：优先 workspace（数据最新），其次 main
-        const remoteBranches = await this.run(() =>
-          this.git.raw(['branch', '-r', '--list', 'origin/*']),
-        );
-        if (!remoteBranches.trim()) {
-          return { success: false, message: '远端仓库没有任何分支' };
-        }
+        // 从远端 clone
+        await simpleGit().clone(remoteUrl, this.repoRoot);
+        this.logger.log('Cloned from remote');
 
-        const branches = remoteBranches
-          .split('\n')
-          .map((b) => b.trim())
-          .filter(Boolean);
+        // 重新初始化 git 实例指向新仓库
+        const freshGit = simpleGit(this.repoRoot);
 
-        // 优先选最新的 workspace 分支（按名称排序，最大的最新）
-        const workspaceBranch = branches
-          .filter((b) => b.startsWith('origin/workspace/'))
-          .sort()
-          .pop();
-        const targetRef = workspaceBranch || 'origin/main';
+        // 确保 git config
+        await freshGit.addConfig('user.name', this.resolveAuthorName(), false, 'local');
+        await freshGit.addConfig('user.email', this.resolveAuthorEmail(), false, 'local');
 
-        this.logger.log(`Restoring from ${targetRef}`);
-
-        // 切到 main 并重置为远端最新状态
-        await this.git.checkout('main');
-        await this.git.reset(['--hard', targetRef]);
-
-        // 删除所有旧 workspace 分支（历史不一致，不能复用）
-        const localBranches = await this.git.branchLocal();
-        for (const b of localBranches.all) {
-          if (b.startsWith('workspace/')) {
-            await this.git.deleteLocalBranch(b, true);
-            this.logger.log(`Deleted old branch ${b}`);
+        // 确保 main 分支存在
+        const branches = await freshGit.branchLocal();
+        if (!branches.all.includes('main')) {
+          // clone 可能 checkout 了 workspace 分支，确保 main 存在
+          const remoteBranches = await freshGit.branch(['-r']);
+          if (remoteBranches.all.includes('origin/main')) {
+            await freshGit.branch(['main', 'origin/main']);
           }
         }
 
-        // 从 main 创建新的当月工作分支
-        await this.ensureWorkspaceBranchReady();
+        // 切到最新的 workspace 分支（clone 后可能已在上面）
+        const targetBranch = this.resolveWorkBranch();
+        const updated = await freshGit.branchLocal();
+        if (!updated.all.includes(targetBranch)) {
+          // 如果远端有对应 workspace 分支，track 它；否则从 main 创建
+          const remoteTarget = `origin/${targetBranch}`;
+          const allRemote = await freshGit.branch(['-r']);
+          if (allRemote.all.includes(remoteTarget)) {
+            await freshGit.checkout(['-b', targetBranch, remoteTarget]);
+          } else {
+            await freshGit.checkout(['-b', targetBranch, 'main']);
+          }
+        } else if (updated.current !== targetBranch) {
+          await freshGit.checkout(targetBranch);
+        }
 
-        this.logger.log(`Pulled from remote: ${targetRef}`);
+        this.logger.log(`Pull complete, on branch ${targetBranch}`);
         return { success: true, message: '已从远端拉取数据' };
       } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);
