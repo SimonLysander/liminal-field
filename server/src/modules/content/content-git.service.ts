@@ -382,14 +382,30 @@ export class ContentGitService implements OnModuleInit {
     });
   }
 
-  /** 查询当前仓库同步状态，供前端展示 */
+  /**
+   * 查询同步状态（fetch + merge-base 精确判断）。
+   *
+   * syncState 取值：
+   * - 'no_remote'：未配置远端
+   * - 'remote_empty'：远端为空，可推送
+   * - 'synced'：已同步（本地 = 远端）
+   * - 'ahead'：本地领先，有待推送提交
+   * - 'diverged'：本地与远端历史不一致（不同源），只能恢复
+   * - 'behind'：本地落后或为空，可恢复
+   */
   async getSyncStatus(): Promise<{
     branch: string;
     totalCommits: number;
     unpushedCommits: number;
+    syncState:
+      | 'no_remote'
+      | 'remote_empty'
+      | 'synced'
+      | 'ahead'
+      | 'diverged'
+      | 'behind';
     lastCommitMessage: string;
     lastCommitTime: string;
-    remote: string;
   } | null> {
     const branch = await this.tryRun(() =>
       this.git.raw(['symbolic-ref', '--quiet', '--short', 'HEAD']),
@@ -400,17 +416,6 @@ export class ContentGitService implements OnModuleInit {
       this.git.raw(['rev-list', '--count', 'HEAD']),
     );
 
-    // 比较 origin/${当前分支}。push 成功后远端追踪引用自动更新
-    // 不存在（从未推送过）→ 全部视为待推送
-    const hasRemoteBranch = await this.tryRun(() =>
-      this.git.raw(['rev-parse', '--verify', `origin/${branch}`]),
-    );
-    const unpushed = hasRemoteBranch
-      ? await this.tryRun(() =>
-          this.git.raw(['rev-list', '--count', `origin/${branch}..HEAD`]),
-        )
-      : totalCommits;
-
     const lastLog = await this.tryRun(() =>
       this.git.raw(['log', '-1', '--format=%s%x1f%aI']),
     );
@@ -419,18 +424,83 @@ export class ContentGitService implements OnModuleInit {
       '',
     ];
 
-    const remote = await this.tryRun(() =>
-      this.git.raw(['remote', 'get-url', 'origin']),
-    );
-
-    return {
+    const base = {
       branch,
       totalCommits: parseInt(totalCommits ?? '0', 10),
-      unpushedCommits: parseInt(unpushed ?? '0', 10),
       lastCommitMessage: lastCommitMessage || '',
       lastCommitTime: lastCommitTime || '',
-      remote: remote ? redactKbRemoteUrlForLog(remote.trim()) : '',
     };
+
+    // 无远端
+    if (!(await this.hasOriginRemote())) {
+      return { ...base, unpushedCommits: 0, syncState: 'no_remote' };
+    }
+
+    // fetch 更新远端引用
+    await this.tryRun(() => this.git.raw(['fetch', 'origin', '--quiet']));
+
+    // 远端为空（fetch 后无任何远端分支）
+    const remoteBranches = await this.tryRun(() =>
+      this.git.raw(['branch', '-r', '--list', 'origin/*']),
+    );
+    if (!remoteBranches?.trim()) {
+      return {
+        ...base,
+        unpushedCommits: base.totalCommits,
+        syncState: 'remote_empty',
+      };
+    }
+
+    // 找远端对应分支（优先同名，其次最新 workspace，最后 main）
+    const refs = remoteBranches
+      .split('\n')
+      .map((b) => b.trim())
+      .filter(Boolean);
+    const remoteBranch =
+      refs.find((r) => r === `origin/${branch}`) ??
+      refs
+        .filter((r) => r.startsWith('origin/workspace/'))
+        .sort()
+        .pop() ??
+      refs.find((r) => r === 'origin/main');
+
+    if (!remoteBranch) {
+      return {
+        ...base,
+        unpushedCommits: base.totalCommits,
+        syncState: 'remote_empty',
+      };
+    }
+
+    // merge-base 检测是否同源
+    const mergeBase = await this.tryRun(() =>
+      this.git.raw(['merge-base', 'HEAD', remoteBranch]),
+    );
+
+    if (!mergeBase) {
+      // 无公共祖先 → 不同源
+      return { ...base, unpushedCommits: 0, syncState: 'diverged' };
+    }
+
+    // 同源：计算领先/落后
+    const ahead = await this.tryRun(() =>
+      this.git.raw(['rev-list', '--count', `${remoteBranch}..HEAD`]),
+    );
+    const behind = await this.tryRun(() =>
+      this.git.raw(['rev-list', '--count', `HEAD..${remoteBranch}`]),
+    );
+
+    const aheadCount = parseInt(ahead ?? '0', 10);
+    const behindCount = parseInt(behind ?? '0', 10);
+
+    if (aheadCount === 0 && behindCount === 0) {
+      return { ...base, unpushedCommits: 0, syncState: 'synced' };
+    }
+    if (aheadCount > 0 && behindCount === 0) {
+      return { ...base, unpushedCommits: aheadCount, syncState: 'ahead' };
+    }
+    // 远端领先或双向分叉都视为需要恢复
+    return { ...base, unpushedCommits: 0, syncState: 'behind' };
   }
 
   /**

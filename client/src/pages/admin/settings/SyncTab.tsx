@@ -139,17 +139,22 @@ export function SyncTab({ config, status, storageStatus, loading, onRefresh }: S
 
   const isConfigured = status?.remote.configured ?? false;
   const isConnected = status?.remote.connected ?? false;
-  const remoteIsEmpty = status?.remote.isEmpty ?? null;
   const localIsEmpty = (status?.local.contentCount ?? 0) === 0;
-  const hasUnpushed = (storageStatus?.git?.unpushedCommits ?? 0) > 0;
-  const canPush = isConnected && hasUnpushed;
-  const canSync = isConnected && remoteIsEmpty === false;
+  const syncState = storageStatus?.git?.syncState ?? 'no_remote';
+  const unpushedCount = storageStatus?.git?.unpushedCommits ?? 0;
+
+  // 推送：只在同源且本地领先 或 远端为空时可用
+  const canPush = isConnected && (syncState === 'ahead' || syncState === 'remote_empty');
+  // 恢复：远端有数据时可用（同源落后、不同源、或本地空）
+  const canSync = isConnected && (syncState === 'behind' || syncState === 'diverged');
 
   const handlePush = async () => {
-    const unpushedCount = storageStatus?.git?.unpushedCommits ?? 0;
+    const msg = syncState === 'remote_empty'
+      ? '首次推送，将本地数据推送到空远端仓库。'
+      : `将推送 ${unpushedCount} 个本地提交到远端仓库。`;
     const ok = await confirm({
       title: '推送到远端',
-      message: `将推送 ${unpushedCount} 个本地提交到远端仓库。`,
+      message: msg,
       confirmLabel: '确认推送',
     });
     if (!ok) return;
@@ -294,48 +299,52 @@ export function SyncTab({ config, status, storageStatus, loading, onRefresh }: S
           <div className="space-y-4">
             <div className="space-y-2">
               {storageStatus?.git && (
-                <StatusRow
-                  label="同步分支"
-                  value={storageStatus.git.branch}
-                />
+                <StatusRow label="同步分支" value={storageStatus.git.branch} />
               )}
               <StatusRow
                 label="本地内容"
                 value={localIsEmpty ? '空' : `${status!.local.contentCount} 个内容项`}
               />
-              <StatusRow
-                label="远端状态"
-                value={remoteIsEmpty ? '空仓库' : '有数据'}
-              />
-              {storageStatus?.git && storageStatus.git.unpushedCommits > 0 && (
-                <StatusRow
-                  label="同步状态"
-                  value={`${storageStatus.git.unpushedCommits} 个提交待推送`}
-                  highlight
-                />
-              )}
-              {storageStatus?.git && storageStatus.git.unpushedCommits === 0 && !remoteIsEmpty && (
-                <StatusRow label="同步状态" value="已同步" />
-              )}
+              <SyncStateRow syncState={syncState} unpushedCount={unpushedCount} />
             </div>
             <div className="space-y-3 pt-1">
               <SyncAction
                 title="推送到远端"
-                description={hasUnpushed ? `${storageStatus!.git!.unpushedCommits} 个提交待推送` : '已是最新'}
+                description={
+                  syncState === 'ahead'
+                    ? `${unpushedCount} 个提交待推送`
+                    : syncState === 'remote_empty'
+                      ? '首次推送到空仓库'
+                      : syncState === 'diverged'
+                        ? '历史不一致，无法推送'
+                        : '已是最新'
+                }
                 buttonLabel={pushing ? '推送中...' : '推送'}
                 onClick={() => void handlePush()}
                 disabled={busy || !canPush}
-                disabledReason={!canPush && !hasUnpushed ? '没有待推送的提交' : undefined}
+                disabledReason={
+                  syncState === 'diverged' ? '本地与远端历史不一致' : undefined
+                }
               />
               <Divider />
               <SyncAction
                 title="从远端恢复"
-                description={localIsEmpty ? '从远端拉取数据恢复到本地' : '归档本地数据后，从远端重新恢复'}
+                description={
+                  syncState === 'diverged'
+                    ? '本地与远端历史不一致，恢复将覆盖本地数据'
+                    : localIsEmpty
+                      ? '从远端拉取数据恢复到本地'
+                      : '归档本地数据后，从远端重新恢复'
+                }
                 buttonLabel={syncing ? '恢复中...' : '恢复'}
                 onClick={() => void handleSync()}
                 disabled={busy || !canSync}
-                disabledReason={!canSync && remoteIsEmpty === true ? '远端为空' : undefined}
-                danger
+                disabledReason={
+                  syncState === 'remote_empty' ? '远端为空' :
+                  syncState === 'synced' ? '已同步，无需恢复' :
+                  syncState === 'ahead' ? '本地领先，无需恢复' : undefined
+                }
+                danger={canSync}
               />
             </div>
           </div>
@@ -381,6 +390,30 @@ export function SyncTab({ config, status, storageStatus, loading, onRefresh }: S
         }
       />}
     </div>
+  );
+}
+
+const SYNC_STATE_DISPLAY: Record<string, { text: string; highlight?: boolean }> = {
+  no_remote: { text: '未配置远端' },
+  remote_empty: { text: '远端为空，可推送' },
+  synced: { text: '已同步' },
+  ahead: { text: '待推送', highlight: true },
+  diverged: { text: '本地与远端历史不一致', highlight: true },
+  behind: { text: '远端有更新，可恢复', highlight: true },
+};
+
+function SyncStateRow({
+  syncState,
+  unpushedCount,
+}: {
+  syncState: string;
+  unpushedCount: number;
+}) {
+  const display = SYNC_STATE_DISPLAY[syncState] ?? { text: syncState };
+  const value =
+    syncState === 'ahead' ? `${unpushedCount} 个提交待推送` : display.text;
+  return (
+    <StatusRow label="同步状态" value={value} highlight={display.highlight} />
   );
 }
 

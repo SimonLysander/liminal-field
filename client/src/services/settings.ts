@@ -37,9 +37,15 @@ export interface StorageStatus {
     branch: string;
     totalCommits: number;
     unpushedCommits: number;
+    syncState:
+      | 'no_remote'
+      | 'remote_empty'
+      | 'synced'
+      | 'ahead'
+      | 'diverged'
+      | 'behind';
     lastCommitMessage: string;
     lastCommitTime: string;
-    remote: string;
   } | null;
 }
 
@@ -105,8 +111,8 @@ export const settingsApi = {
       branch: string;
       totalCommits: number;
       unpushedCommits: number;
+      syncState: string;
       lastCommitMessage: string;
       lastCommitTime: string;
-      remote: string;
     } | null>('/settings/sync-status'),
 };
