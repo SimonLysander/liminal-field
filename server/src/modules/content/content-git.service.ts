@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Mutex } from 'async-mutex';
 import { existsSync } from 'fs';
-import { mkdir, rm } from 'fs/promises';
+import { mkdir, readdir, rename, rm } from 'fs/promises';
 import { isAbsolute, join, relative } from 'path';
 import simpleGit, { SimpleGit } from 'simple-git';
 import {
@@ -623,55 +623,68 @@ export class ContentGitService implements OnModuleInit {
   }
 
   /**
-   * 从远端恢复：fetch → 找最新远端分支 → 硬重置全部本地分支 → 重建 workspace。
-   * 完全用 git 命令操作，不删仓库（进程锁着目录无法 rm）。
+   * 从远端恢复：清空仓库目录内容 → 全新 clone → 重建 workspace。
+   * 目录本身是 Docker volume 挂载点不能删，但内容可以清空后重新 clone。
    */
   async pullFromRemote(): Promise<{ success: boolean; message: string }> {
     return this.writeLock.runExclusive(async () => {
-      if (!(await this.hasOriginRemote())) {
+      const remoteUrl = resolveKbRemoteUrlForGit();
+      if (!remoteUrl) {
         return { success: false, message: '未配置远程仓库' };
       }
 
       try {
-        // 1. fetch 全部远端分支
-        await this.git.fetch(['origin', '--prune']);
-
-        // 2. 找远端最新分支
-        const remoteBranchList = await this.run(() =>
-          this.git.raw(['branch', '-r', '--list', 'origin/*']),
-        );
-        if (!remoteBranchList.trim()) {
-          return { success: false, message: '远端仓库没有任何分支' };
+        // 1. 清空目录内容（保留挂载点）
+        const entries = await readdir(this.repoRoot);
+        for (const entry of entries) {
+          await rm(join(this.repoRoot, entry), {
+            recursive: true,
+            force: true,
+          });
         }
-        const refs = remoteBranchList
-          .split('\n')
-          .map((b) => b.trim())
-          .filter((b) => b && !b.includes('->'));
-        const targetRef =
-          refs.filter((r) => r.startsWith('origin/workspace/')).sort().pop()
-          ?? refs.find((r) => r === 'origin/main')
-          ?? refs[0];
+        this.logger.log('Cleared repo directory');
 
-        this.logger.log(`Restoring from ${targetRef}`);
+        // 2. clone 到临时目录，再移入挂载点
+        const tmpDir = `${this.repoRoot}_clone_tmp`;
+        await rm(tmpDir, { recursive: true, force: true });
+        await simpleGit().clone(remoteUrl, tmpDir);
 
-        // 3. 切到 main，硬重置到远端最新
-        await this.git.checkout('main');
-        await this.git.reset(['--hard', targetRef]);
-        // 清除未追踪文件（旧内容残留）
-        await this.git.clean('f', ['-d']);
+        // 移动 clone 内容到仓库目录
+        const clonedEntries = await readdir(tmpDir, { withFileTypes: true });
+        for (const entry of clonedEntries) {
+          await rename(join(tmpDir, entry.name), join(this.repoRoot, entry.name));
+        }
+        await rm(tmpDir, { recursive: true, force: true });
+        this.logger.log('Cloned from remote');
 
-        // 4. 删除所有旧 workspace 分支
-        const localBranches = await this.git.branchLocal();
-        for (const b of localBranches.all) {
-          if (b !== 'main') {
-            await this.git.deleteLocalBranch(b, true);
-            this.logger.log(`Deleted branch ${b}`);
+        // 3. 重新指向新仓库
+        const freshGit = simpleGit(this.repoRoot);
+        await freshGit.addConfig('user.name', this.resolveAuthorName(), false, 'local');
+        await freshGit.addConfig('user.email', this.resolveAuthorEmail(), false, 'local');
+
+        // 4. 确保 main 存在
+        const branches = await freshGit.branchLocal();
+        if (!branches.all.includes('main')) {
+          const remotes = await freshGit.branch(['-r']);
+          if (remotes.all.includes('origin/main')) {
+            await freshGit.branch(['main', 'origin/main']);
           }
         }
 
-        // 5. 从 main 创建新的当月 workspace
+        // 5. 切到当月 workspace
         const targetBranch = this.resolveWorkBranch();
-        await this.git.checkout(['-b', targetBranch, 'main']);
+        const updated = await freshGit.branchLocal();
+        if (!updated.all.includes(targetBranch)) {
+          const remoteTarget = `origin/${targetBranch}`;
+          const allRemote = await freshGit.branch(['-r']);
+          if (allRemote.all.includes(remoteTarget)) {
+            await freshGit.checkout(['-b', targetBranch, remoteTarget]);
+          } else {
+            await freshGit.checkout(['-b', targetBranch, 'main']);
+          }
+        } else if (updated.current !== targetBranch) {
+          await freshGit.checkout(targetBranch);
+        }
 
         this.logger.log(`Pull complete, on branch ${targetBranch}`);
         return { success: true, message: '已从远端拉取数据' };
