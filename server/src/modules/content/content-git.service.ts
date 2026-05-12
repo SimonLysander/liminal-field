@@ -662,7 +662,16 @@ export class ContentGitService implements OnModuleInit {
         await this.git.checkout('main');
         await this.git.reset(['--hard', targetRef]);
 
-        // 重建当月工作分支
+        // 删除所有旧 workspace 分支（历史不一致，不能复用）
+        const localBranches = await this.git.branchLocal();
+        for (const b of localBranches.all) {
+          if (b.startsWith('workspace/')) {
+            await this.git.deleteLocalBranch(b, true);
+            this.logger.log(`Deleted old branch ${b}`);
+          }
+        }
+
+        // 从 main 创建新的当月工作分支
         await this.ensureWorkspaceBranchReady();
 
         this.logger.log(`Pulled from remote: ${targetRef}`);
