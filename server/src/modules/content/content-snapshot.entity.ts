@@ -39,6 +39,13 @@ export class ContentSnapshot {
   @prop({ trim: true, default: '' })
   changeNote!: string;
 
+  /**
+   * 来源标识：区分谁/什么创建了这个版本。
+   * 'user' | 'system' | 'ai' | 'import'，未设置视为 user。
+   */
+  @prop({ trim: true })
+  source?: string;
+
   /** Git 异步回填，未完成时为 undefined */
   @prop({ trim: true })
   commitHash?: string;

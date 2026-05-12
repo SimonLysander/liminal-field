@@ -203,6 +203,16 @@ export class NavigationRepository {
     });
   }
 
+  /** 统计全部导航节点数量 */
+  async countAll(): Promise<number> {
+    return this.navigationModel.countDocuments({});
+  }
+
+  /** 全量导出（归档用） */
+  async listAll(): Promise<NavigationNode[]> {
+    return this.navigationModel.find({}).sort({ order: 1, _id: 1 });
+  }
+
   /** 清空全部导航节点 */
   async deleteAll(): Promise<number> {
     const result = await this.navigationModel.deleteMany({});

@@ -330,7 +330,8 @@ export class ContentService {
       bodyMarkdown: '',
       assetRefs: [],
       createdAt: now,
-      changeNote: '',
+      changeNote: '自动创建',
+      source: 'system',
     });
 
     const content = await this.contentRepository.create({
@@ -795,6 +796,7 @@ export class ContentService {
         committedAt: snap.createdAt.toISOString(),
         changeType: log?.changeType ?? 'patch',
         changeNote: log?.changeNote ?? snap.changeNote ?? '',
+        source: snap.source ?? 'user',
         title: snap.title,
       };
     });

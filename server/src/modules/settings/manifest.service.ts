@@ -42,7 +42,6 @@ export interface Manifest {
     totalItems: number;
     notes: number;
     gallery: number;
-    lastUpdated: string;
   };
 }
 
@@ -103,7 +102,6 @@ export class ManifestService {
         totalItems: allItems.length,
         notes: notesCount,
         gallery: galleryCount,
-        lastUpdated: new Date().toISOString(),
       },
     };
 

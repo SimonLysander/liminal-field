@@ -219,6 +219,7 @@ export class RecoveryService {
         assetRefs: [],
         createdAt: entry.date ? new Date(entry.date) : now,
         changeNote: entry.message,
+        source: 'system',
         commitHash: entry.hash,
       });
     }
@@ -233,7 +234,8 @@ export class RecoveryService {
         bodyMarkdown,
         assetRefs: [],
         createdAt: now,
-        changeNote: 'recovered from disk',
+        changeNote: '从磁盘恢复',
+        source: 'system',
       });
     }
 
@@ -279,7 +281,8 @@ export class RecoveryService {
   }
 
   /**
-   * 读取指定内容的 Git log，过滤 content(<id>): 前缀，最多返回 maxCount 条。
+   * 读取指定内容的 Git log，最多返回 maxCount 条。
+   * git log --file 已按路径过滤，不再按 commit message 前缀过滤（避免遗漏 batch-import 等非标 commit）。
    */
   private async readGitLog(
     git: ReturnType<typeof simpleGit>,
@@ -291,14 +294,11 @@ export class RecoveryService {
         maxCount: 3,
       });
 
-      const prefix = `content(${contentId}):`;
-      return log.all
-        .filter((entry) => entry.message.startsWith(prefix))
-        .map((entry) => ({
-          hash: entry.hash,
-          date: entry.date,
-          message: entry.message,
-        }));
+      return log.all.map((entry) => ({
+        hash: entry.hash,
+        date: entry.date,
+        message: entry.message,
+      }));
     } catch {
       return [];
     }

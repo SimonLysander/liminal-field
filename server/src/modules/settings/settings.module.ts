@@ -1,26 +1,42 @@
 /**
- * SettingsModule — 系统设置与灾难恢复模块。
+ * SettingsModule — 系统设置模块。
  *
- * 架构定位：顶层聚合模块，与 WorkspaceModule 平行。
- * - 同时依赖 ContentModule（内容存储层）和 NavigationModule（导航索引层）
- * - ManifestService / RecoveryService 放在此模块而非 ContentModule，
- *   因为 NavigationModule 已经导入了 ContentModule，若 ContentModule 再导入
- *   NavigationModule 会产生循环依赖。
- *
- * 导出：
- * - ManifestService：供 AuthModule 在 syncToRemote 前写入清单
+ * 依赖：ContentModule（内容存储层）、NavigationModule（导航层）、OssModule（对象存储）。
+ * SystemConfig 持久化全部系统配置到 MongoDB。
  */
 import { Module } from '@nestjs/common';
+import { TypegooseModule } from 'nestjs-typegoose';
 import { ContentModule } from '../content/content.module';
 import { NavigationModule } from '../navigation/navigation.module';
+import { OssModule } from '../oss/oss.module';
+import { SystemConfig } from './system-config.entity';
+import { SystemConfigRepository } from './system-config.repository';
+import { SystemConfigService } from './system-config.service';
 import { ManifestService } from './manifest.service';
 import { RecoveryService } from './recovery.service';
+import { ArchiveService } from './archive.service';
 import { SettingsController } from './settings.controller';
 
 @Module({
-  imports: [ContentModule, NavigationModule],
+  imports: [
+    TypegooseModule.forFeature([SystemConfig]),
+    ContentModule,
+    NavigationModule,
+    OssModule,
+  ],
   controllers: [SettingsController],
-  providers: [ManifestService, RecoveryService],
-  exports: [ManifestService, RecoveryService],
+  providers: [
+    SystemConfigRepository,
+    SystemConfigService,
+    ManifestService,
+    RecoveryService,
+    ArchiveService,
+  ],
+  exports: [
+    ManifestService,
+    RecoveryService,
+    SystemConfigService,
+    SystemConfigRepository,
+  ],
 })
 export class SettingsModule {}

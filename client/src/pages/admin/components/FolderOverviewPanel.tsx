@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight, FolderOpen, FileText, MoreHorizontal } from 'lucide-react';
 import { banner } from '@/components/ui/banner-api';
+import { useConfirm } from '@/contexts/ConfirmContext';
 import { setPendingImportFiles } from '../batch-import-store';
 import {
   DropdownMenu,
@@ -88,6 +89,7 @@ export function FolderOverviewPanel({
   onMoveTo,
 }: FolderOverviewPanelProps) {
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [overview, setOverview] = useState<FolderOverview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -213,6 +215,17 @@ export function FolderOverviewPanel({
           className="rounded-lg px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-80"
           style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
           onClick={async () => {
+            const willPublish = stats.unpublished + stats.updated;
+            if (willPublish === 0) {
+              banner.success('没有待发布的内容');
+              return;
+            }
+            const ok = await confirm({
+              title: '发布全部',
+              message: `将发布「${node.name}」下 ${willPublish} 篇文档（${stats.unpublished} 未发布 + ${stats.updated} 有更新）。`,
+              confirmLabel: '确认发布',
+            });
+            if (!ok) return;
             await structureApi.batchPublish(node.id);
             void load();
             onReload();
@@ -233,6 +246,17 @@ export function FolderOverviewPanel({
           <DropdownMenuContent align="start" className="min-w-[140px]">
             <DropdownMenuItem
               onClick={async () => {
+                if (stats.published === 0) {
+                  banner.success('没有已发布的内容');
+                  return;
+                }
+                const ok = await confirm({
+                  title: '取消全部发布',
+                  message: `将取消「${node.name}」下 ${stats.published} 篇已发布文档的发布状态。`,
+                  confirmLabel: '确认取消发布',
+                  danger: true,
+                });
+                if (!ok) return;
                 await structureApi.batchUnpublish(node.id);
                 void load();
                 onReload();

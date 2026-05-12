@@ -19,6 +19,7 @@ export class ContentSnapshotRepository {
     assetRefs: string[];
     createdAt: Date;
     changeNote: string;
+    source?: string;
     commitHash?: string;
   }): Promise<ContentSnapshot> {
     return this.model.create({ _id: input.versionId, ...input });
@@ -83,6 +84,11 @@ export class ContentSnapshotRepository {
   /** 统计全部 snapshot 数量 */
   async countAll(): Promise<number> {
     return this.model.countDocuments({});
+  }
+
+  /** 全量导出（归档用） */
+  async listAll(): Promise<ContentSnapshot[]> {
+    return this.model.find({}).sort({ createdAt: -1 });
   }
 
   /** 清空全部 snapshot */

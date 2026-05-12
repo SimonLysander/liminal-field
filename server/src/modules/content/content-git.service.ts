@@ -161,14 +161,9 @@ export class ContentGitService implements OnModuleInit {
     return trackedPath.replace(/\\/g, '/');
   }
 
-  private buildCommitMessage(contentId: string, changeNote: string): string {
-    const normalizedNote = changeNote.replace(/\s+/g, ' ').trim() || 'commit';
-    const summary =
-      normalizedNote.length > 48
-        ? `${normalizedNote.slice(0, 45).trimEnd()}...`
-        : normalizedNote;
-
-    return `content(${contentId}): commit | ${summary}`;
+  private buildCommitMessage(_contentId: string, changeNote: string): string {
+    const note = changeNote.replace(/\s+/g, ' ').trim() || '提交';
+    return note.length > 72 ? `${note.slice(0, 69).trimEnd()}...` : note;
   }
 
   /** 按当前月份生成工作分支名，格式 workspace/YYYY-MM */
@@ -191,17 +186,6 @@ export class ContentGitService implements OnModuleInit {
       process.env.CONTENT_GIT_AUTHOR_EMAIL?.trim() ||
       ContentGitService.defaultAuthorEmail
     );
-  }
-
-  private detectHistoryAction(
-    contentId: string,
-    message: string,
-  ): 'commit' | 'unknown' {
-    if (!message.startsWith(`content(${contentId}):`)) {
-      return 'unknown';
-    }
-
-    return 'commit';
   }
 
   /** 执行 git 命令，失败时抛出；返回值已 trim */
@@ -252,9 +236,11 @@ export class ContentGitService implements OnModuleInit {
   private async archiveMonthBranch(branch: string): Promise<void> {
     this.logger.log(`Archiving ${branch} → main`);
     await this.git.checkout('main');
-    await this.git.merge([
+    await this.git.raw([
+      'merge',
       branch,
       '--no-edit',
+      '--allow-unrelated-histories',
       '-m',
       `archive: merge ${branch} into main`,
     ]);
@@ -381,7 +367,7 @@ export class ContentGitService implements OnModuleInit {
 
       const summary =
         note.length > 48 ? `${note.slice(0, 45).trimEnd()}...` : note;
-      const commitMsg = `batch-import: ${summary} (${contentIds.length} files)`;
+      const commitMsg = summary;
 
       await this.git
         .env({
@@ -396,7 +382,7 @@ export class ContentGitService implements OnModuleInit {
     });
   }
 
-  /** 查询当前仓库同步状态，供前端弹窗展示 */
+  /** 查询当前仓库同步状态，供前端展示 */
   async getSyncStatus(): Promise<{
     branch: string;
     totalCommits: number;
@@ -414,9 +400,16 @@ export class ContentGitService implements OnModuleInit {
       this.git.raw(['rev-list', '--count', 'HEAD']),
     );
 
-    const unpushed = await this.tryRun(() =>
-      this.git.raw(['rev-list', '--count', `origin/${branch}..HEAD`]),
+    // 比较 origin/${当前分支}。push 成功后远端追踪引用自动更新
+    // 不存在（从未推送过）→ 全部视为待推送
+    const hasRemoteBranch = await this.tryRun(() =>
+      this.git.raw(['rev-parse', '--verify', `origin/${branch}`]),
     );
+    const unpushed = hasRemoteBranch
+      ? await this.tryRun(() =>
+          this.git.raw(['rev-list', '--count', `origin/${branch}..HEAD`]),
+        )
+      : totalCommits;
 
     const lastLog = await this.tryRun(() =>
       this.git.raw(['log', '-1', '--format=%s%x1f%aI']),
@@ -463,13 +456,7 @@ export class ContentGitService implements OnModuleInit {
           GIT_COMMITTER_NAME: this.resolveAuthorName(),
           GIT_COMMITTER_EMAIL: this.resolveAuthorEmail(),
         })
-        .raw([
-          'commit',
-          '-m',
-          'chore: update .liminal-field.yaml manifest',
-          '--',
-          manifestFile,
-        ]);
+        .raw(['commit', '-m', '更新清单', '--', manifestFile]);
 
       this.logger.log('Manifest commit created');
     });
@@ -481,6 +468,59 @@ export class ContentGitService implements OnModuleInit {
       this.git.raw(['remote', 'get-url', 'origin']),
     );
     return !!remoteUrl;
+  }
+
+  /**
+   * 检查远端仓库是否为空（无任何 ref）。
+   * 用于 push-to-remote 前置校验：只允许向空仓库推送。
+   */
+  async isRemoteEmpty(): Promise<boolean> {
+    if (!(await this.hasOriginRemote())) return true;
+    try {
+      const remoteUrl = await this.run(() =>
+        this.git.raw(['remote', 'get-url', 'origin']),
+      );
+      const refs = await this.git.listRemote([remoteUrl]);
+      return !refs.trim();
+    } catch {
+      // ls-remote 失败（网络/认证问题）视为非空，阻止推送
+      return false;
+    }
+  }
+
+  /**
+   * 检查远端是否可连通。
+   * 纯连通性检测，不修改本地状态。
+   */
+  async isRemoteConnected(): Promise<boolean> {
+    if (!(await this.hasOriginRemote())) return false;
+    try {
+      const remoteUrl = await this.run(() =>
+        this.git.raw(['remote', 'get-url', 'origin']),
+      );
+      await this.git.listRemote([remoteUrl]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** 推送指定分支到远端（不切换 HEAD） */
+  async pushBranch(
+    branch: string,
+  ): Promise<{ success: boolean; message: string }> {
+    if (!(await this.hasOriginRemote())) {
+      return { success: true, message: '未配置远程仓库，跳过' };
+    }
+    try {
+      await this.git.push('origin', branch);
+      this.logger.log(`Pushed ${branch} to origin`);
+      return { success: true, message: `已推送 ${branch}` };
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Push ${branch} failed: ${msg}`);
+      return { success: false, message: msg };
+    }
   }
 
   /**
@@ -515,7 +555,7 @@ export class ContentGitService implements OnModuleInit {
   /**
    * 从远端拉取数据到本地。
    * 前提：本地 MongoDB 和 content/ 已清空。
-   * 执行：fetch → reset --hard origin/main → 重建 workspace 分支。
+   * 流程：fetch → 找远端最新分支（优先 workspace，其次 main）→ reset --hard → 重建 workspace。
    */
   async pullFromRemote(): Promise<{ success: boolean; message: string }> {
     return this.writeLock.runExclusive(async () => {
@@ -526,22 +566,36 @@ export class ContentGitService implements OnModuleInit {
       try {
         await this.git.fetch('origin');
 
-        // 检查 origin/main 是否存在
-        const remoteRefs = await this.tryRun(() =>
-          this.git.raw(['branch', '-r', '--list', 'origin/main']),
+        // 找远端最新分支：优先 workspace（数据最新），其次 main
+        const remoteBranches = await this.run(() =>
+          this.git.raw(['branch', '-r', '--list', 'origin/*']),
         );
-        if (!remoteRefs) {
-          return { success: false, message: '远端仓库没有 main 分支' };
+        if (!remoteBranches.trim()) {
+          return { success: false, message: '远端仓库没有任何分支' };
         }
 
-        // 切到 main 并重置为远端状态
+        const branches = remoteBranches
+          .split('\n')
+          .map((b) => b.trim())
+          .filter(Boolean);
+
+        // 优先选最新的 workspace 分支（按名称排序，最大的最新）
+        const workspaceBranch = branches
+          .filter((b) => b.startsWith('origin/workspace/'))
+          .sort()
+          .pop();
+        const targetRef = workspaceBranch || 'origin/main';
+
+        this.logger.log(`Restoring from ${targetRef}`);
+
+        // 切到 main 并重置为远端最新状态
         await this.git.checkout('main');
-        await this.git.reset(['--hard', 'origin/main']);
+        await this.git.reset(['--hard', targetRef]);
 
         // 重建当月工作分支
         await this.ensureWorkspaceBranchReady();
 
-        this.logger.log('Pulled from remote and reset to origin/main');
+        this.logger.log(`Pulled from remote: ${targetRef}`);
         return { success: true, message: '已从远端拉取数据' };
       } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);
@@ -710,29 +764,20 @@ export class ContentGitService implements OnModuleInit {
       return [];
     }
 
-    // 只保留属于该 content 的正式 commit（message 以 "content(ci_xxx):" 开头），
-    // 过滤掉维护性 commit（如 README 清理、批量修复等不影响内容的杂项 commit）
-    const contentPrefix = `content(${contentId}):`;
+    // git log --<path> 已按文件路径过滤，不再按 message 前缀二次过滤
     return rawHistory
       .split('\n')
       .filter(Boolean)
       .map((line) => {
         const parts = line.split('\x1f');
-        const commitHash = parts[0] ?? '';
-        const committedAt = parts[1] ?? '';
-        const authorName = parts[2] ?? '';
-        const authorEmail = parts[3] ?? '';
-        const message = parts[4] ?? '';
-
         return {
-          commitHash,
-          committedAt,
-          authorName,
-          authorEmail,
-          message,
-          action: this.detectHistoryAction(contentId, message),
+          commitHash: parts[0] ?? '',
+          committedAt: parts[1] ?? '',
+          authorName: parts[2] ?? '',
+          authorEmail: parts[3] ?? '',
+          message: parts[4] ?? '',
+          action: 'commit' as const,
         };
-      })
-      .filter((entry) => entry.message.startsWith(contentPrefix));
+      });
   }
 }

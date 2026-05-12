@@ -126,6 +126,8 @@ export interface ContentHistoryEntry {
   committedAt: string;
   changeType: string;
   changeNote: string;
+  /** 来源：'user' | 'system' | 'ai' | 'import' */
+  source: string;
   title: string;
 }
 

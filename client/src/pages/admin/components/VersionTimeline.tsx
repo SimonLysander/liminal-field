@@ -2,6 +2,14 @@
 
 import type { ContentHistoryEntry } from '@/services/workspace';
 
+/** 来源标签：文案 + 色彩 */
+const SOURCE_TAG: Record<string, { label: string; color: string; bg: string }> = {
+  user:   { label: 'USER',   color: 'var(--mark-blue)',  bg: 'rgba(10,132,255,0.10)' },
+  system: { label: 'SYSTEM', color: 'var(--ink-ghost)',  bg: 'var(--shelf)' },
+  ai:     { label: 'AI',     color: '#A855F7',          bg: 'rgba(168,85,247,0.10)' },
+  import: { label: 'IMPORT', color: '#F59E0B',          bg: 'rgba(245,158,11,0.10)' },
+};
+
 /** 跨天显示 "M/D HH:mm"，当天只显示 "HH:mm" */
 function formatCommitTime(iso: string): string {
   const d = new Date(iso);
@@ -48,6 +56,10 @@ export function VersionTimeline({
           ? activeVersionId === entry.versionId
           : isFirst;
 
+        const source = entry.source ?? 'user';
+        const isNonUser = source !== 'user';
+        const tag = SOURCE_TAG[source] ?? SOURCE_TAG.user;
+
         return (
           <div
             key={entry.versionId}
@@ -59,7 +71,7 @@ export function VersionTimeline({
             }}
             onClick={() => onSelect?.(entry.versionId)}
           >
-            {/* 节点圆点 */}
+            {/* 节点圆点：非用户来源用空心 */}
             <span
               className="absolute rounded-full"
               style={{
@@ -67,26 +79,51 @@ export function VersionTimeline({
                 top: 12,
                 width: 7,
                 height: 7,
-                background: isActive
-                  ? 'var(--mark-blue)'
-                  : isPublished
-                    ? 'var(--mark-green)'
-                    : isFirst
-                      ? 'var(--ink)'
-                      : 'var(--ink-ghost)',
-                border: '1.5px solid var(--paper-dark)',
-                boxShadow: isActive
-                  ? '0 0 6px rgba(10,132,255,0.4)'
-                  : isPublished
-                    ? '0 0 6px rgba(48,209,88,0.3)'
-                    : 'none',
+                background: isNonUser
+                  ? 'transparent'
+                  : isActive
+                    ? 'var(--mark-blue)'
+                    : isPublished
+                      ? 'var(--mark-green)'
+                      : isFirst
+                        ? 'var(--ink)'
+                        : 'var(--ink-ghost)',
+                border: isNonUser
+                  ? '1.5px solid var(--ink-ghost)'
+                  : '1.5px solid var(--paper-dark)',
+                boxShadow: isNonUser
+                  ? 'none'
+                  : isActive
+                    ? '0 0 6px rgba(10,132,255,0.4)'
+                    : isPublished
+                      ? '0 0 6px rgba(48,209,88,0.3)'
+                      : 'none',
               }}
             />
             <div
-              className="font-medium"
-              style={{ color: isFirst ? 'var(--ink)' : 'var(--ink-light)', fontSize: 'var(--text-xs)', marginBottom: 3 }}
+              className="flex items-center gap-1.5"
+              style={{
+                color: isNonUser
+                  ? 'var(--ink-ghost)'
+                  : isFirst ? 'var(--ink)' : 'var(--ink-light)',
+                fontSize: 'var(--text-xs)',
+                marginBottom: 3,
+              }}
             >
-              {entry.changeNote || '版本提交'}
+              <span
+                className="rounded px-1 py-[1px] font-semibold uppercase"
+                style={{
+                  fontSize: '0.5625rem',
+                  background: tag.bg,
+                  color: tag.color,
+                  letterSpacing: '0.03em',
+                }}
+              >
+                {tag.label}
+              </span>
+              <span className={isNonUser ? '' : 'font-medium'}>
+                {entry.changeNote || '自动创建'}
+              </span>
             </div>
             <div
               className="flex items-center gap-1.5"

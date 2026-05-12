@@ -16,11 +16,14 @@ import type { MinioDraftStorageStatus } from '../minio/minio-draft-storage-statu
 @Injectable()
 export class OssService implements OnModuleInit, MinioDraftStorageStatus {
   private readonly logger = new Logger(OssService.name);
-  private readonly client: OSS;
-  private readonly bucketName: string;
+  /**
+   * OSS client 懒加载：配置变更时自动重建，调用方无感。
+   * 通过 configHash 检测 process.env 是否变化，变了就 new 新实例。
+   */
+  private _client!: OSS;
+  private _configHash = '';
   /** 生产环境（NODE_ENV=production）走内网 endpoint，本地开发走外网 */
   private readonly isProduction: boolean;
-  private readonly region: string;
 
   /** bucketInfo 成功后才为 true；供启动诊断与排障 */
   private draftStorageReady = false;
@@ -29,17 +32,55 @@ export class OssService implements OnModuleInit, MinioDraftStorageStatus {
 
   constructor(private readonly config: ConfigService) {
     this.isProduction = process.env.NODE_ENV === 'production';
-    this.region = config.getOrThrow<string>('oss.region');
-    this.bucketName = config.getOrThrow<string>('oss.bucket');
+    this._client = this.buildClient();
+  }
 
-    this.client = new OSS({
-      region: this.region,
-      accessKeyId: config.getOrThrow<string>('oss.accessKeyId'),
-      accessKeySecret: config.getOrThrow<string>('oss.accessKeySecret'),
-      bucket: this.bucketName,
-      // OSS_INTERNAL=true 走内网 endpoint（ECS 部署免流量费），否则走外网
+  /** 当前配置指纹：env 变了 → hash 变了 → 下次访问自动重建 */
+  private currentConfigHash(): string {
+    return [
+      process.env.OSS_REGION,
+      process.env.OSS_ACCESS_KEY_ID,
+      process.env.OSS_ACCESS_KEY_SECRET,
+      process.env.OSS_BUCKET,
+      process.env.OSS_INTERNAL,
+    ].join(':');
+  }
+
+  private buildClient(): OSS {
+    this._configHash = this.currentConfigHash();
+    return new OSS({
+      region: this.config.getOrThrow<string>('oss.region'),
+      accessKeyId:
+        process.env.OSS_ACCESS_KEY_ID ||
+        this.config.getOrThrow<string>('oss.accessKeyId'),
+      accessKeySecret:
+        process.env.OSS_ACCESS_KEY_SECRET ||
+        this.config.getOrThrow<string>('oss.accessKeySecret'),
+      bucket:
+        process.env.OSS_BUCKET || this.config.getOrThrow<string>('oss.bucket'),
       internal: process.env.OSS_INTERNAL === 'true',
     });
+  }
+
+  /** 获取 client：配置变了自动重建，调用方无感 */
+  private get client(): OSS {
+    if (this.currentConfigHash() !== this._configHash) {
+      this._client = this.buildClient();
+      this.logger.log('OSS client auto-rebuilt (config changed)');
+    }
+    return this._client;
+  }
+
+  private get bucketName(): string {
+    return (
+      process.env.OSS_BUCKET || this.config.getOrThrow<string>('oss.bucket')
+    );
+  }
+
+  private get region(): string {
+    return (
+      process.env.OSS_REGION || this.config.getOrThrow<string>('oss.region')
+    );
   }
 
   /** 草稿桶已连通时为 true；未连通时上传仍会抛错（不在每次请求里重复探测） */

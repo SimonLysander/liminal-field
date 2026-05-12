@@ -119,6 +119,11 @@ export class ContentRepository {
     return result.deletedCount ?? 0;
   }
 
+  /** 全部内容总数 */
+  async countAll(): Promise<number> {
+    return this.contentItemModel.countDocuments({});
+  }
+
   /** 已发布内容总数（MongoDB countDocuments，不加载文档到内存）。 */
   async countPublished(): Promise<number> {
     return this.contentItemModel.countDocuments({
