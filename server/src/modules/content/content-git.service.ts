@@ -85,24 +85,13 @@ export class ContentGitService implements OnModuleInit {
     this.kbGitSummaryLine = `KB Git: OK — branch: ${branch?.trim() ?? '?'}, commits: ${commitCount?.trim() ?? '?'}, remote: ${remoteSafe}`;
   }
 
-  /** Step 1: 获取或创建仓库 */
+  /** Step 1: 仓库不存在则 git init（不自动 clone，clone 只在用户触发恢复时） */
   private async ensureRepo(): Promise<void> {
     if (existsSync(join(this.repoRoot, '.git'))) return;
 
-    const remoteUrl = resolveKbRemoteUrlForGit();
     await mkdir(this.repoRoot, { recursive: true });
-
-    if (remoteUrl) {
-      this.logger.log(
-        `Cloning knowledge-base from ${redactKbRemoteUrlForLog(remoteUrl)}`,
-      );
-      await simpleGit().clone(remoteUrl, this.repoRoot);
-    } else {
-      this.logger.log(
-        'Initializing empty knowledge-base repo (no KB_REMOTE_URL)',
-      );
-      await this.git.init();
-    }
+    this.logger.log('Initializing empty knowledge-base repo');
+    await this.git.init();
   }
 
   /** Step 2: 补设或更新 remote origin */
