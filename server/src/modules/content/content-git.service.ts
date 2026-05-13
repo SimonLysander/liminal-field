@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Mutex } from 'async-mutex';
 import { existsSync } from 'fs';
-import { mkdir, readdir, rename, rm } from 'fs/promises';
+import { mkdir, readdir, rm } from 'fs/promises';
 import { isAbsolute, join, relative } from 'path';
 import simpleGit, { SimpleGit } from 'simple-git';
 import {
@@ -725,20 +725,8 @@ export class ContentGitService implements OnModuleInit {
         }
         this.logger.log('Cleared repo directory');
 
-        // 2. clone 到临时目录，再移入挂载点
-        const tmpDir = `${this.repoRoot}_clone_tmp`;
-        await rm(tmpDir, { recursive: true, force: true });
-        await simpleGit().clone(remoteUrl, tmpDir);
-
-        // 移动 clone 内容到仓库目录
-        const clonedEntries = await readdir(tmpDir, { withFileTypes: true });
-        for (const entry of clonedEntries) {
-          await rename(
-            join(tmpDir, entry.name),
-            join(this.repoRoot, entry.name),
-          );
-        }
-        await rm(tmpDir, { recursive: true, force: true });
+        // 2. 直接 clone 到已清空的目录（不用 temp，避免跨文件系统 rename 失败）
+        await simpleGit().clone(remoteUrl, this.repoRoot);
         this.logger.log('Cloned from remote');
 
         // 3. 重新指向新仓库
