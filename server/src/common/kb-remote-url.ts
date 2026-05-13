@@ -2,6 +2,11 @@
  * KB Git 远程：允许 KB_REMOTE_URL 只写无凭证 HTTPS，凭据放在 KB_GIT_TOKEN（classic / fine-grained PAT 均可）。
  * 自动拼接仅针对 https://github.com/...；其它主机请把账号/token 直接写进 KB_REMOTE_URL。
  */
+/**
+ * 将 PAT token 嵌入 HTTPS Git URL。
+ * GitHub: x-access-token:<token>
+ * Gitee/其他: oauth2:<token>
+ */
 export function applyKbGitTokenToGithubHttps(
   rawUrl: string,
   token: string | undefined,
@@ -12,11 +17,11 @@ export function applyKbGitTokenToGithubHttps(
   try {
     const u = new URL(rawUrl);
     if (u.protocol !== 'https:') return rawUrl;
-    if (u.hostname !== 'github.com') return rawUrl;
     if (u.username || u.password) return rawUrl;
 
+    const username = u.hostname === 'github.com' ? 'x-access-token' : 'oauth2';
     const tail = `${u.pathname}${u.search}${u.hash}`;
-    return `https://x-access-token:${encodeURIComponent(tokenTrim)}@${u.host}${tail}`;
+    return `https://${username}:${encodeURIComponent(tokenTrim)}@${u.host}${tail}`;
   } catch {
     return rawUrl;
   }
