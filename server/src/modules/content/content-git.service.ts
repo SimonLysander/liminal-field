@@ -383,21 +383,27 @@ export class ContentGitService implements OnModuleInit {
   }
 
   /**
-   * 查询同步状态（fetch + merge-base 精确判断）。
+   * 查询同步状态。
+   *
+   * 关键：先检查 repoRoot/.git 是否存在，不存在不跑任何 git 命令
+   * （防止 git 往上级目录查找到应用代码仓库）。
+   * 远端状态用 ls-remote（轻量，不下载对象）。
    *
    * syncState 取值：
+   * - 'no_repo'：本地仓库不存在
    * - 'no_remote'：未配置远端
    * - 'remote_empty'：远端为空，可推送
-   * - 'synced'：已同步（本地 = 远端）
-   * - 'ahead'：本地领先，有待推送提交
-   * - 'diverged'：本地与远端历史不一致（不同源），只能恢复
-   * - 'behind'：本地落后或为空，可恢复
+   * - 'synced'：已同步
+   * - 'ahead'：本地领先，有待推送
+   * - 'diverged'：历史不一致，只能恢复
+   * - 'behind'：远端领先，可恢复
    */
   async getSyncStatus(): Promise<{
     branch: string;
     totalCommits: number;
     unpushedCommits: number;
     syncState:
+      | 'no_repo'
       | 'no_remote'
       | 'remote_empty'
       | 'synced'
@@ -407,6 +413,44 @@ export class ContentGitService implements OnModuleInit {
     lastCommitMessage: string;
     lastCommitTime: string;
   } | null> {
+    // 先检查 .git 是否存在，不存在则本地无仓库
+    if (!existsSync(join(this.repoRoot, '.git'))) {
+      // 即使没有本地仓库，也尝试检查远端（用 SystemConfig 里的 URL）
+      const remoteUrl = resolveKbRemoteUrlForGit();
+      if (!remoteUrl) {
+        return {
+          branch: '',
+          totalCommits: 0,
+          unpushedCommits: 0,
+          syncState: 'no_repo',
+          lastCommitMessage: '',
+          lastCommitTime: '',
+        };
+      }
+      // 检查远端是否有数据
+      try {
+        const refs = await simpleGit().listRemote([remoteUrl]);
+        return {
+          branch: '',
+          totalCommits: 0,
+          unpushedCommits: 0,
+          syncState: refs.trim() ? 'behind' : 'no_repo',
+          lastCommitMessage: '',
+          lastCommitTime: '',
+        };
+      } catch {
+        return {
+          branch: '',
+          totalCommits: 0,
+          unpushedCommits: 0,
+          syncState: 'no_repo',
+          lastCommitMessage: '',
+          lastCommitTime: '',
+        };
+      }
+    }
+
+    // 本地仓库存在，读取基本信息
     const branch = await this.tryRun(() =>
       this.git.raw(['symbolic-ref', '--quiet', '--short', 'HEAD']),
     );
@@ -415,7 +459,6 @@ export class ContentGitService implements OnModuleInit {
     const totalCommits = await this.tryRun(() =>
       this.git.raw(['rev-list', '--count', 'HEAD']),
     );
-
     const lastLog = await this.tryRun(() =>
       this.git.raw(['log', '-1', '--format=%s%x1f%aI']),
     );
@@ -423,7 +466,6 @@ export class ContentGitService implements OnModuleInit {
       '',
       '',
     ];
-
     const base = {
       branch,
       totalCommits: parseInt(totalCommits ?? '0', 10),
@@ -431,19 +473,35 @@ export class ContentGitService implements OnModuleInit {
       lastCommitTime: lastCommitTime || '',
     };
 
-    // 无远端
+    // 检查远端配置——git 仓库没有 origin 时尝试从 env/config 补设
     if (!(await this.hasOriginRemote())) {
+      const configUrl = resolveKbRemoteUrlForGit();
+      if (!configUrl) {
+        return { ...base, unpushedCommits: 0, syncState: 'no_remote' };
+      }
+      // 补设 origin（启动顺序导致初始化时可能漏设）
+      await this.tryRun(() =>
+        this.git.raw(['remote', 'add', 'origin', configUrl]),
+      );
+      this.logger.log('Auto-added origin remote from config');
+    }
+
+    // ls-remote 轻量获取远端 ref
+    const remoteUrl = await this.tryRun(() =>
+      this.git.raw(['remote', 'get-url', 'origin']),
+    );
+    if (!remoteUrl) {
       return { ...base, unpushedCommits: 0, syncState: 'no_remote' };
     }
 
-    // fetch 更新远端引用
-    await this.tryRun(() => this.git.raw(['fetch', 'origin', '--quiet']));
+    let remoteRefs: string;
+    try {
+      remoteRefs = await this.git.raw(['ls-remote', '--heads', remoteUrl]);
+    } catch {
+      return { ...base, unpushedCommits: 0, syncState: 'no_remote' };
+    }
 
-    // 远端为空（fetch 后无任何远端分支）
-    const remoteBranches = await this.tryRun(() =>
-      this.git.raw(['branch', '-r', '--list', 'origin/*']),
-    );
-    if (!remoteBranches?.trim()) {
+    if (!remoteRefs.trim()) {
       return {
         ...base,
         unpushedCommits: base.totalCommits,
@@ -451,20 +509,26 @@ export class ContentGitService implements OnModuleInit {
       };
     }
 
-    // 找远端对应分支（优先同名，其次最新 workspace，最后 main）
-    const refs = remoteBranches
-      .split('\n')
-      .map((b) => b.trim())
-      .filter(Boolean);
-    const remoteBranch =
-      refs.find((r) => r === `origin/${branch}`) ??
-      refs
-        .filter((r) => r.startsWith('origin/workspace/'))
+    // 解析远端 refs
+    const remoteRefMap = new Map<string, string>();
+    for (const line of remoteRefs.trim().split('\n')) {
+      const [hash, ref] = line.split('\t');
+      if (hash && ref) {
+        remoteRefMap.set(ref.replace('refs/heads/', ''), hash);
+      }
+    }
+
+    // 匹配远端分支
+    const remoteKeys = [...remoteRefMap.keys()];
+    const matchedBranch =
+      remoteKeys.find((r) => r === branch) ??
+      remoteKeys
+        .filter((r) => r.startsWith('workspace/'))
         .sort()
         .pop() ??
-      refs.find((r) => r === 'origin/main');
+      remoteKeys.find((r) => r === 'main');
 
-    if (!remoteBranch) {
+    if (!matchedBranch) {
       return {
         ...base,
         unpushedCommits: base.totalCommits,
@@ -472,35 +536,36 @@ export class ContentGitService implements OnModuleInit {
       };
     }
 
-    // merge-base 检测是否同源
-    const mergeBase = await this.tryRun(() =>
-      this.git.raw(['merge-base', 'HEAD', remoteBranch]),
-    );
+    const remoteHash = remoteRefMap.get(matchedBranch)!;
+    const localHash = await this.tryRun(() => this.git.revparse(['HEAD']));
 
-    if (!mergeBase) {
-      // 无公共祖先 → 不同源
-      return { ...base, unpushedCommits: 0, syncState: 'diverged' };
-    }
-
-    // 同源：计算领先/落后
-    const ahead = await this.tryRun(() =>
-      this.git.raw(['rev-list', '--count', `${remoteBranch}..HEAD`]),
-    );
-    const behind = await this.tryRun(() =>
-      this.git.raw(['rev-list', '--count', `HEAD..${remoteBranch}`]),
-    );
-
-    const aheadCount = parseInt(ahead ?? '0', 10);
-    const behindCount = parseInt(behind ?? '0', 10);
-
-    if (aheadCount === 0 && behindCount === 0) {
+    if (localHash === remoteHash) {
       return { ...base, unpushedCommits: 0, syncState: 'synced' };
     }
-    if (aheadCount > 0 && behindCount === 0) {
-      return { ...base, unpushedCommits: aheadCount, syncState: 'ahead' };
+
+    // 检查祖先关系判断 ahead/behind/diverged
+    const isAncestor = await this.tryRun(() =>
+      this.git.raw(['merge-base', '--is-ancestor', remoteHash, 'HEAD']),
+    );
+    if (isAncestor !== null) {
+      const aheadCount = await this.tryRun(() =>
+        this.git.raw(['rev-list', '--count', `${remoteHash}..HEAD`]),
+      );
+      return {
+        ...base,
+        unpushedCommits: parseInt(aheadCount ?? '0', 10),
+        syncState: 'ahead',
+      };
     }
-    // 远端领先或双向分叉都视为需要恢复
-    return { ...base, unpushedCommits: 0, syncState: 'behind' };
+
+    const isBehind = await this.tryRun(() =>
+      this.git.raw(['merge-base', '--is-ancestor', 'HEAD', remoteHash]),
+    );
+    if (isBehind !== null) {
+      return { ...base, unpushedCommits: 0, syncState: 'behind' };
+    }
+
+    return { ...base, unpushedCommits: 0, syncState: 'diverged' };
   }
 
   /**
@@ -573,6 +638,22 @@ export class ContentGitService implements OnModuleInit {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * 清空后重建空仓库（不从远端 clone，只 git init）。
+   * 用户想要远端数据应该手动点"恢复"。
+   */
+  async reinitRepo(): Promise<void> {
+    await mkdir(this.repoRoot, { recursive: true });
+    // 只 git init，不 clone
+    const freshGit = simpleGit(this.repoRoot);
+    await freshGit.init();
+    await this.ensureRemote();
+    await this.ensureGitConfig();
+    await this.ensureMainBranch();
+    await this.ensureWorkspaceBranchReady();
+    this.logger.log('Repo reinitialized (empty)');
   }
 
   /** 推送指定分支到远端（不切换 HEAD） */
@@ -652,15 +733,28 @@ export class ContentGitService implements OnModuleInit {
         // 移动 clone 内容到仓库目录
         const clonedEntries = await readdir(tmpDir, { withFileTypes: true });
         for (const entry of clonedEntries) {
-          await rename(join(tmpDir, entry.name), join(this.repoRoot, entry.name));
+          await rename(
+            join(tmpDir, entry.name),
+            join(this.repoRoot, entry.name),
+          );
         }
         await rm(tmpDir, { recursive: true, force: true });
         this.logger.log('Cloned from remote');
 
         // 3. 重新指向新仓库
         const freshGit = simpleGit(this.repoRoot);
-        await freshGit.addConfig('user.name', this.resolveAuthorName(), false, 'local');
-        await freshGit.addConfig('user.email', this.resolveAuthorEmail(), false, 'local');
+        await freshGit.addConfig(
+          'user.name',
+          this.resolveAuthorName(),
+          false,
+          'local',
+        );
+        await freshGit.addConfig(
+          'user.email',
+          this.resolveAuthorEmail(),
+          false,
+          'local',
+        );
 
         // 4. 确保 main 存在
         const branches = await freshGit.branchLocal();

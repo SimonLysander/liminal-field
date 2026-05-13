@@ -36,6 +36,7 @@ export default function SettingsPage() {
   const [status, setStatus] = useState<SettingsStatus | null>(null);
   const [storageStatus, setStorageStatus] = useState<StorageStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -47,6 +48,7 @@ export default function SettingsPage() {
     setConfig(c);
     setStatus(s);
     setStorageStatus(ss);
+    setLastRefresh(new Date());
     setLoading(false);
   }, []);
 
@@ -97,11 +99,12 @@ export default function SettingsPage() {
                 status={status}
                 storageStatus={storageStatus}
                 loading={loading}
+                lastRefresh={lastRefresh}
                 onRefresh={loadAll}
               />
             )}
             {activeTab === 'storage' && (
-              <StorageTab storageStatus={storageStatus} loading={loading} />
+              <StorageTab storageStatus={storageStatus} loading={loading} lastRefresh={lastRefresh} onRefresh={loadAll} />
             )}
             {activeTab === 'integration' && (
               <IntegrationTab

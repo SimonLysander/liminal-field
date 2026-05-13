@@ -13,7 +13,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { readdir, readFile, stat } from 'fs/promises';
 import { extname, join } from 'path';
 import { nanoid } from 'nanoid';
-import simpleGit from 'simple-git';
 import { ContentRepository } from '../content/content.repository';
 import { ContentSnapshotRepository } from '../content/content-snapshot.repository';
 import { ContentRepoService } from '../content/content-repo.service';
@@ -172,20 +171,15 @@ export class RecoveryService {
     }
     const { title, summary } = this.parseReadme(readmeContent, contentId);
 
-    // 读取 Git log（最多 3 条，过滤 content(<id>): 前缀的 commit）
-    const git = simpleGit(this.repoRoot);
-    const logEntries = await this.readGitLog(git, contentId);
-
-    // 生成最新版本 ID（供资产 OSS 上传用）
     const latestVersionId = nanoid(16);
-
-    // 创建 ContentItem（先建，再建 Snapshot）
     const now = new Date();
+
+    // 创建 ContentItem
     await this.contentRepository.create({
       id: contentId,
       latestVersion: {
         versionId: latestVersionId,
-        commitHash: logEntries[0]?.hash ?? '',
+        commitHash: '',
         title,
         summary,
       },
@@ -195,49 +189,18 @@ export class RecoveryService {
       updatedAt: now,
     });
 
-    // 为每条 Git commit 创建一条 ContentSnapshot（最新的在前）
-    for (const [index, entry] of logEntries.entries()) {
-      const versionId = index === 0 ? latestVersionId : nanoid(16);
-      // 从对应 commit 读取该版本的正文
-      let snapshotBody = bodyMarkdown; // 最新版本直接用磁盘内容
-      if (index > 0) {
-        try {
-          snapshotBody = await git.show([
-            `${entry.hash}:content/${contentId}/main.md`,
-          ]);
-        } catch {
-          snapshotBody = '';
-        }
-      }
-
-      await this.contentSnapshotRepository.create({
-        versionId,
-        contentItemId: contentId,
-        title,
-        summary,
-        bodyMarkdown: snapshotBody,
-        assetRefs: [],
-        createdAt: entry.date ? new Date(entry.date) : now,
-        changeNote: entry.message,
-        source: 'system',
-        commitHash: entry.hash,
-      });
-    }
-
-    // 无 Git log 时也需要建一个初始快照（空内容场景）
-    if (logEntries.length === 0) {
-      await this.contentSnapshotRepository.create({
-        versionId: latestVersionId,
-        contentItemId: contentId,
-        title,
-        summary,
-        bodyMarkdown,
-        assetRefs: [],
-        createdAt: now,
-        changeNote: '从磁盘恢复',
-        source: 'system',
-      });
-    }
+    // 只建一条快照（当前磁盘状态），不翻 git 历史
+    await this.contentSnapshotRepository.create({
+      versionId: latestVersionId,
+      contentItemId: contentId,
+      title,
+      summary,
+      bodyMarkdown,
+      assetRefs: [],
+      createdAt: now,
+      changeNote: '从远端恢复',
+      source: 'system',
+    });
 
     // 上传最新版本资产到 OSS
     await this.uploadAssetsToOss(contentId, latestVersionId, contentDir);
@@ -278,30 +241,6 @@ export class RecoveryService {
     }
 
     return { title, summary };
-  }
-
-  /**
-   * 读取指定内容的 Git log，最多返回 maxCount 条。
-   * git log --file 已按路径过滤，不再按 commit message 前缀过滤（避免遗漏 batch-import 等非标 commit）。
-   */
-  private async readGitLog(
-    git: ReturnType<typeof simpleGit>,
-    contentId: string,
-  ): Promise<Array<{ hash: string; date: string; message: string }>> {
-    try {
-      const log = await git.log({
-        file: `content/${contentId}/main.md`,
-        maxCount: 3,
-      });
-
-      return log.all.map((entry) => ({
-        hash: entry.hash,
-        date: entry.date,
-        message: entry.message,
-      }));
-    } catch {
-      return [];
-    }
   }
 
   /**

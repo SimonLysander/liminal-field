@@ -35,10 +35,11 @@ interface SyncTabProps {
   status: SettingsStatus | null;
   storageStatus: StorageStatus | null;
   loading: boolean;
+  lastRefresh: Date | null;
   onRefresh: () => Promise<void>;
 }
 
-export function SyncTab({ config, status, storageStatus, loading, onRefresh }: SyncTabProps) {
+export function SyncTab({ config, status, storageStatus, loading, lastRefresh, onRefresh }: SyncTabProps) {
   const confirm = useConfirm();
 
   // ─── 远端配置 ───
@@ -137,16 +138,20 @@ export function SyncTab({ config, status, storageStatus, loading, onRefresh }: S
   const [syncing, setSyncing] = useState(false);
   const busy = pushing || syncing;
 
-  const isConfigured = status?.remote.configured ?? false;
-  const isConnected = status?.remote.connected ?? false;
+  const isConfigured = !!config?.remoteUrl;
   const localIsEmpty = (status?.local.contentCount ?? 0) === 0;
   const syncState = storageStatus?.git?.syncState ?? 'no_remote';
   const unpushedCount = storageStatus?.git?.unpushedCommits ?? 0;
+  const isConnected = !['no_remote', 'no_repo'].includes(syncState)
+    || (syncState === 'no_repo' && isConfigured);  // no_repo 但配置了远端 → 可能远端有数据
 
-  // 推送：只在同源且本地领先 或 远端为空时可用
-  const canPush = isConnected && (syncState === 'ahead' || syncState === 'remote_empty');
-  // 恢复：远端有数据时可用（同源落后、不同源、或本地空）
-  const canSync = isConnected && (syncState === 'behind' || syncState === 'diverged');
+  // 推送：本地领先 或 远端为空时
+  const canPush = syncState === 'ahead' || syncState === 'remote_empty';
+  // 恢复：远端有数据时（behind/diverged/no_repo 有远端/synced 但 DB 空）
+  const canSync =
+    syncState === 'behind' ||
+    syncState === 'diverged' ||
+    (localIsEmpty && syncState === 'synced');
 
   const handlePush = async () => {
     const msg = syncState === 'remote_empty'
@@ -290,22 +295,30 @@ export function SyncTab({ config, status, storageStatus, loading, onRefresh }: S
       />
 
       {/* ── 数据同步 ── */}
-      <Section title="数据同步">
-        {!isConfigured ? (
+      <Section
+        title="数据同步"
+        description={lastRefresh ? `最近检测：${lastRefresh.toLocaleTimeString('zh-CN')}` : undefined}
+      >
+        {!isConfigured && syncState !== 'no_repo' ? (
           <Hint>请先配置远端仓库</Hint>
-        ) : !isConnected ? (
+        ) : syncState === 'no_remote' ? (
           <Hint warning>远端连接失败，请检查配置</Hint>
         ) : (
           <div className="space-y-4">
             <div className="space-y-2">
-              {storageStatus?.git && (
+              <StatusRow
+                label="本地仓库"
+                value={syncState === 'no_repo' ? '不存在' : '正常'}
+                highlight={syncState === 'no_repo'}
+              />
+              {storageStatus?.git?.branch && (
                 <StatusRow label="同步分支" value={storageStatus.git.branch} />
               )}
               <StatusRow
                 label="本地内容"
                 value={localIsEmpty ? '空' : `${status!.local.contentCount} 个内容项`}
               />
-              <SyncStateRow syncState={syncState} unpushedCount={unpushedCount} />
+              <SyncStateRow syncState={syncState} unpushedCount={unpushedCount} localIsEmpty={localIsEmpty} />
             </div>
             <div className="space-y-3 pt-1">
               <SyncAction
@@ -394,24 +407,31 @@ export function SyncTab({ config, status, storageStatus, loading, onRefresh }: S
 }
 
 const SYNC_STATE_DISPLAY: Record<string, { text: string; highlight?: boolean }> = {
+  no_repo: { text: '本地仓库不存在' },
   no_remote: { text: '未配置远端' },
   remote_empty: { text: '远端为空，可推送' },
   synced: { text: '已同步' },
+  synced_db_empty: { text: '数据库为空，可从仓库恢复', highlight: true },
   ahead: { text: '待推送', highlight: true },
   diverged: { text: '本地与远端历史不一致', highlight: true },
-  behind: { text: '远端有更新，可恢复', highlight: true },
+  behind: { text: '远端有数据，可恢复', highlight: true },
 };
 
 function SyncStateRow({
   syncState,
   unpushedCount,
+  localIsEmpty,
 }: {
   syncState: string;
   unpushedCount: number;
+  localIsEmpty: boolean;
 }) {
-  const display = SYNC_STATE_DISPLAY[syncState] ?? { text: syncState };
+  // Git 同步但 MongoDB 为空 → 显示特殊状态
+  const effectiveState =
+    localIsEmpty && syncState === 'synced' ? 'synced_db_empty' : syncState;
+  const display = SYNC_STATE_DISPLAY[effectiveState] ?? { text: effectiveState };
   const value =
-    syncState === 'ahead' ? `${unpushedCount} 个提交待推送` : display.text;
+    effectiveState === 'ahead' ? `${unpushedCount} 个提交待推送` : display.text;
   return (
     <StatusRow label="同步状态" value={value} highlight={display.highlight} />
   );

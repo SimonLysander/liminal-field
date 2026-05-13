@@ -11,7 +11,7 @@
  * - push-to-remote / sync-from-remote：数据同步操作
  */
 import { Body, Controller, Get, Logger, Post, Put } from '@nestjs/common';
-import { rm } from 'fs/promises';
+import { readdir, rm } from 'fs/promises';
 import { join } from 'path';
 import simpleGit from 'simple-git';
 import { ContentRepository } from '../content/content.repository';
@@ -108,6 +108,7 @@ export class SettingsController {
 
   // ── 综合状态 ─────────────────────────────────────────────
 
+  /** 本地数据计数（纯 MongoDB 查询，无网络调用） */
   @Get('status')
   async getStatus(): Promise<{
     local: {
@@ -115,34 +116,14 @@ export class SettingsController {
       snapshotCount: number;
       navigationCount: number;
     };
-    remote: {
-      configured: boolean;
-      connected: boolean;
-      isEmpty: boolean | null;
-    };
   }> {
-    const config = await this.systemConfigService.getConfig();
-    const configured = !!config.remoteUrl;
-
     const [contentCount, snapshotCount, navigationCount] = await Promise.all([
       this.contentRepository.countAll(),
       this.contentSnapshotRepository.countAll(),
       this.navigationRepository.countAll(),
     ]);
 
-    let connected = false;
-    let isEmpty: boolean | null = null;
-    if (configured) {
-      connected = await this.contentGitService.isRemoteConnected();
-      if (connected) {
-        isEmpty = await this.contentGitService.isRemoteEmpty();
-      }
-    }
-
-    return {
-      local: { contentCount, snapshotCount, navigationCount },
-      remote: { configured, connected, isEmpty },
-    };
+    return { local: { contentCount, snapshotCount, navigationCount } };
   }
 
   // ── 存储状态（诊断用） ───────────────────────────────────
@@ -276,6 +257,58 @@ export class SettingsController {
           : `恢复完成但有错误: ${execResult.errors[0]}`,
       archived,
       recovered: execResult.recovered,
+    };
+  }
+
+  // ── 一键清空本地 ─────────────────────────────────────────
+
+  /**
+   * 清空所有本地数据：可选先归档 → 清 MongoDB + Git 仓库内容。
+   * archive=true 时先归档到磁盘再清空。
+   */
+  @Post('clear-local')
+  async clearLocal(
+    @Body() dto: { archive?: boolean },
+  ): Promise<{ success: boolean; message: string; archived: boolean }> {
+    let archived = false;
+
+    // 归档
+    if (dto.archive) {
+      const contentCount = await this.contentRepository.countAll();
+      if (contentCount > 0) {
+        const archivePath = await this.archiveService.archive();
+        archived = true;
+        this.logger.log(`归档到 ${archivePath}`);
+      }
+    }
+
+    // 清 MongoDB
+    const [items, snapshots, nav] = await Promise.all([
+      this.contentRepository.deleteAll(),
+      this.contentSnapshotRepository.deleteAll(),
+      this.navigationRepository.deleteAll(),
+    ]);
+    this.logger.log(
+      `Cleared MongoDB: ${items} items, ${snapshots} snapshots, ${nav} nav nodes`,
+    );
+
+    // 清空 Git 仓库（删除目录内所有内容，包括 .git）
+    const repoRoot = this.contentRepoService.repoRoot;
+    const entries = await readdir(repoRoot).catch((): string[] => []);
+    await Promise.all(
+      entries.map((entry: string) =>
+        rm(join(repoRoot, entry), { recursive: true, force: true }),
+      ),
+    );
+
+    // 重新初始化空仓库（不需要重启容器）
+    await this.contentGitService.reinitRepo();
+
+    const note = archived ? '（已归档）' : '';
+    return {
+      success: true,
+      archived,
+      message: `已清空 ${items} 个内容项${note}`,
     };
   }
 

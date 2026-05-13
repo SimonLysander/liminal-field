@@ -1,11 +1,15 @@
 /*
  * StorageTab — 存储 tab
  *
- * 纯只读：OSS 运行状态 + Git 仓库诊断。
- * OSS 配置走 docker-compose env，不提供 UI 编辑。
+ * 1. 本地仓库诊断（只读）
+ * 2. 数据管理（一键清空 / 归档清空）
  */
 
+import { useState } from 'react';
+import { banner } from '@/components/ui/banner-api';
+import { settingsApi } from '@/services/settings';
 import type { StorageStatus } from '@/services/settings';
+import { useConfirm } from '@/contexts/ConfirmContext';
 import {
   PageHeader,
   Section,
@@ -13,16 +17,49 @@ import {
   StatusRow,
   ConnectionDot,
   Divider,
+  DangerButton,
+  SecondaryButton,
 } from './SettingsUI';
 
 interface StorageTabProps {
   storageStatus: StorageStatus | null;
   loading: boolean;
+  lastRefresh: Date | null;
+  onRefresh: () => Promise<void>;
 }
 
-export function StorageTab({ storageStatus, loading }: StorageTabProps) {
+export function StorageTab({ storageStatus, loading, lastRefresh, onRefresh }: StorageTabProps) {
+  const confirm = useConfirm();
   const git = storageStatus?.git;
   const oss = storageStatus?.oss;
+  const [clearing, setClearing] = useState(false);
+
+  const handleClear = async (archive: boolean) => {
+    const msg = archive
+      ? '将归档后清空所有本地数据（MongoDB + Git 内容）。归档文件保留在服务器磁盘上。'
+      : '将直接清空所有本地数据（MongoDB + Git 内容），不可恢复。';
+    const ok = await confirm({
+      title: archive ? '归档并清空' : '清空本地数据',
+      message: msg,
+      confirmLabel: archive ? '归档并清空' : '直接清空',
+      danger: true,
+    });
+    if (!ok) return;
+    setClearing(true);
+    try {
+      const result = await settingsApi.clearLocal(archive);
+      if (result.success) {
+        banner.success(result.message);
+      } else {
+        banner.error(result.message);
+      }
+      await onRefresh();
+    } catch {
+      banner.error('清空失败');
+    } finally {
+      setClearing(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -37,7 +74,10 @@ export function StorageTab({ storageStatus, loading }: StorageTabProps) {
     <div className="space-y-6">
       <PageHeader>存储</PageHeader>
 
-      <Section title="本地仓库诊断">
+      <Section
+        title="本地仓库诊断"
+        description={lastRefresh ? `最近检测：${lastRefresh.toLocaleTimeString('zh-CN')}` : undefined}
+      >
         <div className="space-y-4">
           {/* OSS */}
           <div>
@@ -72,35 +112,48 @@ export function StorageTab({ storageStatus, loading }: StorageTabProps) {
             {git ? (
               <div className="space-y-1.5">
                 <StatusRow label="分支" value={git.branch} />
-                <StatusRow
-                  label="总提交"
-                  value={`${git.totalCommits} 次`}
-                />
+                <StatusRow label="总提交" value={`${git.totalCommits} 次`} />
                 {git.lastCommitMessage && (
-                  <StatusRow
-                    label="最近提交"
-                    value={git.lastCommitMessage}
-                  />
+                  <StatusRow label="最近提交" value={git.lastCommitMessage} />
                 )}
                 {git.lastCommitTime && (
                   <StatusRow
                     label="提交时间"
-                    value={new Date(git.lastCommitTime).toLocaleString(
-                      'zh-CN',
-                    )}
+                    value={new Date(git.lastCommitTime).toLocaleString('zh-CN')}
                   />
                 )}
               </div>
             ) : (
-              <span
-                className="text-xs"
-                style={{ color: 'var(--ink-ghost)' }}
-              >
+              <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
                 未检测到 Git 仓库
               </span>
             )}
           </div>
         </div>
+      </Section>
+
+      {/* 数据管理 */}
+      <Section title="数据管理">
+        <div className="flex items-center gap-2">
+          <SecondaryButton
+            onClick={() => void handleClear(true)}
+            disabled={clearing}
+          >
+            {clearing ? '处理中...' : '归档并清空'}
+          </SecondaryButton>
+          <DangerButton
+            onClick={() => void handleClear(false)}
+            disabled={clearing}
+          >
+            直接清空
+          </DangerButton>
+        </div>
+        <p
+          className="mt-2 text-xs"
+          style={{ color: 'var(--ink-ghost)' }}
+        >
+          清空 MongoDB 全部内容 + Git 仓库文件。归档会先导出到服务器磁盘。
+        </p>
       </Section>
     </div>
   );

@@ -16,17 +16,12 @@ export interface SettingsConfigView {
   };
 }
 
-/** 综合状态 */
+/** 本地数据计数 */
 export interface SettingsStatus {
   local: {
     contentCount: number;
     snapshotCount: number;
     navigationCount: number;
-  };
-  remote: {
-    configured: boolean;
-    connected: boolean;
-    isEmpty: boolean | null;
   };
 }
 
@@ -38,6 +33,7 @@ export interface StorageStatus {
     totalCommits: number;
     unpushedCommits: number;
     syncState:
+      | 'no_repo'
       | 'no_remote'
       | 'remote_empty'
       | 'synced'
@@ -87,6 +83,16 @@ export const settingsApi = {
       {
         method: 'POST',
         body: JSON.stringify({ url, token }),
+      },
+    ),
+
+  // 清空本地
+  clearLocal: (archive?: boolean) =>
+    request<{ success: boolean; message: string; archived: boolean }>(
+      '/settings/clear-local',
+      {
+        method: 'POST',
+        body: JSON.stringify({ archive: archive ?? false }),
       },
     ),
 
