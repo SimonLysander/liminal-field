@@ -23,7 +23,7 @@ export class ContentGitService implements OnModuleInit {
   private static readonly defaultAuthorEmail = 'no-reply@liminal-field.local';
 
   private readonly repoRoot: string;
-  private readonly git: SimpleGit;
+  private git: SimpleGit;
   /** Git 写操作互斥锁：add → diff → commit 必须原子化，防止并发请求交叉污染 staged 区域 */
   private readonly writeLock = new Mutex();
   /** init 结束后写入，供 StartupDiagnostics 打出与原先单行日志同等粒度的一行摘要 */
@@ -642,6 +642,8 @@ export class ContentGitService implements OnModuleInit {
     await this.ensureGitConfig();
     await this.ensureMainBranch();
     await this.ensureWorkspaceBranchReady();
+    // 重建 git 实例，确保指向新的 .git
+    this.git = simpleGit(this.repoRoot);
     this.logger.log('Repo reinitialized (empty)');
   }
 
@@ -757,6 +759,8 @@ export class ContentGitService implements OnModuleInit {
           await freshGit.checkout(targetBranch);
         }
 
+        // 重建 git 实例，确保指向 clone 后的新 .git
+        this.git = simpleGit(this.repoRoot);
         this.logger.log(`Pull complete, on branch ${targetBranch}`);
         return { success: true, message: '已从远端拉取数据' };
       } catch (error: unknown) {

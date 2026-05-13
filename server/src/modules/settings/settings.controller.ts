@@ -162,6 +162,9 @@ export class SettingsController {
    */
   @Post('push-to-remote')
   async pushToRemote(): Promise<{ success: boolean; message: string }> {
+    // 推送前先把所有 pending snapshot 写入 git（不等 cron）
+    await this.contentGitService.retryPendingArchives();
+
     try {
       await this.manifestService.writeManifest();
       await this.contentGitService.commitManifestIfChanged();
