@@ -251,7 +251,7 @@ export default function Sidebar() {
       </button>
 
       {/* Main navigation — 始终显示所有 tab */}
-      <nav className="flex flex-col gap-0.5">
+      <nav className="flex flex-col gap-0.5 px-2">
         {spaces.map((space) => (
           <div
             key={space}
