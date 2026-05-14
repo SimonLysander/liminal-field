@@ -39,6 +39,13 @@ interface PostProcessRule {
  */
 const rules: PostProcessRule[] = [
   {
+    name: 'normalizeLineEndings',
+    description:
+      '统一导入文本行尾为 LF，避免 CRLF 残留的 \\r 干扰公式围栏和块级语法识别',
+    transform: (md) => md.replace(/\r\n?/g, '\n'),
+  },
+
+  {
     name: 'normalizeHeadingLevels',
     description: '标题层级归一化：找到最小级别，整体前移到 h1 开始',
     transform: (md) => {
@@ -54,6 +61,45 @@ const rules: PostProcessRule[] = [
         const newLevel = Math.max(1, hashes.length - shift);
         return '#'.repeat(newLevel) + ' ';
       });
+    },
+  },
+
+  {
+    name: 'unwrapGeneratedBlockquotes',
+    description:
+      '清理批量导入/转换产物中误加在标题、表格、公式、图片前的 >，避免后续内容被整段渲染成引用块',
+    transform: (md) => {
+      const lines = md.split('\n');
+      const nonBlankLines = lines.filter((line) => line.trim().length > 0);
+      const quotedLines = nonBlankLines.filter((line) => /^\s*>\s?/.test(line));
+      if (quotedLines.length < 3 || nonBlankLines.length < 6) return md;
+
+      // 只处理“整篇几乎都被转换器套上 >”的情况；零散引用块是作者语义，必须保留。
+      if (quotedLines.length / nonBlankLines.length < 0.6) return md;
+
+      const structuralQuotedLines = quotedLines.filter((line) => {
+        const content = line.replace(/^\s*>\s?/, '').trimStart();
+        return (
+          /^#{1,6}\s/.test(content) ||
+          /^\|.*\|$/.test(content) ||
+          /^!\[[^\]]*\]\([^)]+\)/.test(content) ||
+          /^\$\$/.test(content) ||
+          /^\d+\.\s/.test(content) ||
+          /^[-*+]\s/.test(content) ||
+          /^```/.test(content)
+        );
+      });
+
+      if (
+        structuralQuotedLines.length < 3 &&
+        structuralQuotedLines.length / quotedLines.length < 0.35
+      ) {
+        return md;
+      }
+
+      return lines
+        .map((line) => line.replace(/^(\s*)>\s?/, '$1'))
+        .join('\n');
     },
   },
 
@@ -90,7 +136,20 @@ const rules: PostProcessRule[] = [
   {
     name: 'obsidianHighlight',
     description: 'Obsidian 风格 ==highlight== → Plate 识别的 <mark> 标签',
-    transform: (md) => md.replace(/==((?:[^=]|=[^=])+)==/g, '<mark>$1</mark>'),
+    transform: (md) => {
+      const lines = md.split('\n');
+      let inCodeBlock = false;
+      return lines
+        .map((line) => {
+          if (/^```/.test(line)) {
+            inCodeBlock = !inCodeBlock;
+            return line;
+          }
+          if (inCodeBlock) return line;
+          return line.replace(/==((?:[^=]|=[^=])+)==/g, '<mark>$1</mark>');
+        })
+        .join('\n');
+    },
   },
 
   /* latexBlockToCodeBlock / latexInlineToCode 已移除：
@@ -134,41 +193,48 @@ const rules: PostProcessRule[] = [
         const prefixMatch = line.match(/^((?:>\s*)*)/);
         const prefix = prefixMatch ? prefixMatch[1] : '';
         const content = line.slice(prefix.length);
+        const trimmedContent = content.trim();
 
         if (openPrefix === null) {
           // 未在 $$ 块内
-          if (content.startsWith('$$')) {
-            const afterDollar = content.slice(2);
-            if (afterDollar.trim() === '' || afterDollar.trim() === '') {
+          if (trimmedContent.startsWith('$$')) {
+            const leadingWhitespace = content.match(/^\s*/)?.[0] ?? '';
+            const mathPrefix = prefix + leadingWhitespace;
+            const afterDollar = content.slice(content.indexOf('$$') + 2);
+            const afterTrimmed = afterDollar.trim();
+            if (afterTrimmed === '') {
               // 独立的 $$ 开头行
-              openPrefix = prefix;
+              openPrefix = mathPrefix;
               result.push(line);
-            } else if (afterDollar.endsWith('$$')) {
-              // $$content$$ 单行完整块，不拆
-              result.push(line);
+            } else if (afterTrimmed.endsWith('$$')) {
+              // $$content$$ 单行块统一拆成三行，避免 Plate/remark 在 CRLF 或前后空格下误吞后续内容。
+              const expression = afterTrimmed.slice(0, -2).trim();
+              result.push(mathPrefix + '$$');
+              if (expression) result.push(mathPrefix + expression);
+              result.push(mathPrefix + '$$');
             } else {
               // $$content（粘连）→ 拆为 prefix+$$ 和 prefix+content
-              openPrefix = prefix;
-              result.push(prefix + '$$');
-              result.push(prefix + afterDollar);
+              openPrefix = mathPrefix;
+              result.push(mathPrefix + '$$');
+              result.push(mathPrefix + afterDollar.trimStart());
             }
           } else {
             result.push(line);
           }
         } else {
           // 在 $$ 块内，寻找闭合 $$
-          if (content.trimEnd() === '$$') {
+          if (trimmedContent === '$$') {
             // 闭合 $$：确保与开头同级前缀
             result.push(openPrefix + '$$');
             openPrefix = null;
-          } else if (content.endsWith('$$')) {
+          } else if (trimmedContent.endsWith('$$')) {
             // content$$（粘连闭合）→ 拆为 prefix+content 和 prefix+$$
-            result.push(openPrefix + content.slice(0, -2));
+            result.push(openPrefix + trimmedContent.slice(0, -2).trimEnd());
             result.push(openPrefix + '$$');
             openPrefix = null;
           } else {
             // 块内内容行：统一使用开头的前缀
-            result.push(openPrefix + content);
+            result.push(openPrefix + content.trimStart());
           }
         }
       }

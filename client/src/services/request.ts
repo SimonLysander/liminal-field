@@ -28,6 +28,7 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
 
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
+    credentials: 'include',
     headers: {
       ...(hasBody && !isFormData ? { 'Content-Type': 'application/json' } : {}),
       ...options?.headers,

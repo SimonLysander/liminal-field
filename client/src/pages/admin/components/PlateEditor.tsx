@@ -9,7 +9,7 @@
  *   - 编辑时 serializeMd 将节点树序列化回 Markdown
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Plate,
@@ -23,6 +23,30 @@ import { Editor, EditorContainer } from '@/components/ui/editor';
 import { FixedToolbar } from '@/components/ui/fixed-toolbar';
 import { FixedToolbarButtons } from '@/components/ui/fixed-toolbar-buttons';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { useDraftAssetContext } from '@/contexts/DraftAssetContext';
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function toEditorAssetUrls(markdown: string, contentItemId: string): string {
+  return markdown.replaceAll(
+    './assets/',
+    `/api/v1/spaces/notes/items/${contentItemId}/assets/`,
+  );
+}
+
+function toStoredAssetPaths(markdown: string, contentItemId: string): string {
+  const id = escapeRegExp(contentItemId);
+  const assetUrlPattern = new RegExp(
+    `(?:https?://[^/]+)?/api/v1/spaces/notes/items/${id}/assets/([^?\\)\\s"]+)(?:\\?[^)\\s"]*)?`,
+    'g',
+  );
+
+  return markdown.replace(assetUrlPattern, (_match, fileName: string) => {
+    return `./assets/${fileName}`;
+  });
+}
 
 export function PlateMarkdownEditor({
   initialMarkdown,
@@ -33,7 +57,12 @@ export function PlateMarkdownEditor({
   onChange: (markdown: string) => void;
   toolbarContainer?: HTMLElement | null;
 }) {
+  const { contentItemId } = useDraftAssetContext();
   const [editorId] = useState(() => `plate-${Math.random().toString(36).slice(2)}`);
+  const editorMarkdown = useMemo(
+    () => toEditorAssetUrls(initialMarkdown || '', contentItemId),
+    [contentItemId, initialMarkdown],
+  );
 
   const editor = usePlateEditor(
     {
@@ -41,7 +70,7 @@ export function PlateMarkdownEditor({
       plugins: EditorKit,
       value: (editor) => {
         try {
-          const nodes = deserializeMd(editor, initialMarkdown || '');
+          const nodes = deserializeMd(editor, editorMarkdown);
           return fixCodeBlockLines(nodes);
         } catch (err) {
           // 反序列化失败时降级为空段落，记录错误供调试
@@ -61,12 +90,12 @@ export function PlateMarkdownEditor({
     );
     if (hasPlaceholder) return; // 上传中，跳过本次序列化
     try {
-      const md = serializeMd(editor);
+      const md = toStoredAssetPaths(serializeMd(editor), contentItemId);
       onChange(md);
     } catch {
       /* Serialize can fail during rapid edits — skip, next change will catch up */
     }
-  }, [editor, onChange]);
+  }, [contentItemId, editor, onChange]);
 
   if (!editor) return null;
 

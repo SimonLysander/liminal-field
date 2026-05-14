@@ -45,6 +45,72 @@ describe('MarkdownPostProcessor', () => {
     });
   });
 
+  describe('unwrapGeneratedBlockquotes', () => {
+    it('unwraps converter-added blockquotes around structural markdown', () => {
+      const input = [
+        '> 当出现不匹配时，模式串向前移动位数：',
+        '',
+        '> | 公式类型 | 表达式 |',
+        '> | --- | --- |',
+        '> | 递归定义 | $Catalan(n)$ |',
+        '',
+        '> $$Catalan(n, m) = C_{n+m}^{m}$$',
+        '',
+        '> 将 PM 表右移 1 位，得到模式串自身的 $next$ 数组。',
+        '',
+        '> ### 表达式求值',
+        '',
+        '> ![](assets/image1.png)',
+      ].join('\n');
+
+      const result = processMarkdown(input);
+
+      expect(result).toContain('| 公式类型 | 表达式 |');
+      expect(result).toContain('$$\nCatalan(n, m) = C_{n+m}^{m}\n$$');
+      expect(result).toContain('将 PM 表右移 1 位');
+      expect(result).toContain('### 表达式求值');
+      expect(result).toContain('![](assets/image1.png)');
+      expect(result).not.toContain('> 当出现不匹配');
+      expect(result).not.toContain('> | 公式类型');
+      expect(result).not.toContain('> 将 PM 表右移');
+      expect(result).not.toContain('> ### 表达式求值');
+    });
+
+    it('keeps sparse author-written blockquotes', () => {
+      const input = [
+        '正文段落',
+        '',
+        '> 这是作者写的提示，不是转换器包装',
+        '',
+        '## 下一节',
+        '',
+        '继续正文',
+      ].join('\r\n');
+
+      const result = processMarkdown(input);
+
+      expect(result).toContain('> 这是作者写的提示，不是转换器包装');
+    });
+  });
+
+  describe('isolateBlockMathFences', () => {
+    it('splits CRLF single-line block math into stable three-line fences', () => {
+      const input = [
+        '当出现不匹配时，模式串向前移动位数：',
+        '',
+        '$$Move = (j - 1) - PM[j - 1]$$',
+        '',
+        '> 后续说明仍然是引用块',
+      ].join('\r\n');
+
+      const result = processMarkdown(input);
+
+      expect(result).toContain('$$\nMove = (j - 1) - PM[j - 1]\n$$');
+      expect(result).toContain('> 后续说明仍然是引用块');
+      expect(result).not.toContain('PM[j - 1]$$');
+    });
+  });
+
   describe('stripHtmlDivs', () => {
     it('removes div wrappers', () => {
       const input =
@@ -97,6 +163,15 @@ describe('MarkdownPostProcessor', () => {
       const input = 'this is ==highlighted== text';
       const result = processMarkdown(input);
       expect(result).toContain('<mark>highlighted</mark>');
+    });
+
+    it('does not convert equality operators inside fenced code blocks', () => {
+      const input = ['```c', 'if (a == b) {', '  return true;', '}', '```'].join(
+        '\n',
+      );
+      const result = processMarkdown(input);
+      expect(result).toContain('if (a == b)');
+      expect(result).not.toContain('<mark>');
     });
 
     it('does not match single = signs', () => {
