@@ -41,6 +41,97 @@ const CARD_POSITIONS = {
 
 type CardSlot = keyof typeof CARD_POSITIONS;
 
+type PhotoOrientation = 'landscape' | 'portrait' | 'square' | 'unknown';
+
+function getPhotoRatio(photo: GalleryPhoto, measuredRatio?: number): number | null {
+  if (measuredRatio && Number.isFinite(measuredRatio)) return measuredRatio;
+
+  const width = Number.parseFloat(photo.tags.width ?? '');
+  const height = Number.parseFloat(photo.tags.height ?? '');
+  if (!Number.isFinite(width) || !Number.isFinite(height) || height <= 0) {
+    return null;
+  }
+  return width / height;
+}
+
+function getPhotoOrientation(
+  photo: GalleryPhoto,
+  measuredRatio?: number,
+): PhotoOrientation {
+  const ratio = getPhotoRatio(photo, measuredRatio);
+  if (!ratio) return 'unknown';
+  if (ratio > 1.25) return 'landscape';
+  if (ratio < 0.8) return 'portrait';
+  return 'square';
+}
+
+function getFrameStyle(
+  photo: GalleryPhoto,
+  isCenter: boolean,
+  measuredRatio?: number,
+): React.CSSProperties {
+  const orientation = getPhotoOrientation(photo, measuredRatio);
+  const ratio = getPhotoRatio(photo, measuredRatio);
+
+  if (isCenter) {
+    if (ratio) {
+      if (orientation === 'portrait') {
+        return {
+          width: `min(52vw, calc(90vh * ${ratio}))`,
+          height: `min(90vh, calc(52vw / ${ratio}))`,
+        };
+      }
+      if (orientation === 'square') {
+        return {
+          width: 'min(76vw, 88vh)',
+          height: 'min(76vw, 88vh)',
+        };
+      }
+      return {
+        width: `min(94vw, 1880px, calc(92vh * ${ratio}))`,
+        height: `min(92vh, calc(94vw / ${ratio}), calc(1880px / ${ratio}))`,
+      };
+    }
+    if (orientation === 'portrait') {
+      return { width: 'min(52vw, 60vh)', height: '90vh' };
+    }
+    if (orientation === 'square') {
+      return { width: 'min(76vw, 88vh)', height: 'min(76vw, 88vh)' };
+    }
+    if (orientation === 'unknown') {
+      return { width: 'min(76vw, 88vh)', height: 'min(76vw, 88vh)' };
+    }
+    return { width: 'min(94vw, 1880px)', height: '92vh' };
+  }
+
+  if (ratio) {
+    if (orientation === 'portrait') {
+      return {
+        width: `min(28vw, calc(76vh * ${ratio}))`,
+        height: `min(76vh, calc(28vw / ${ratio}))`,
+      };
+    }
+    if (orientation === 'square') {
+      return { width: 'min(44vw, 62vh)', height: 'min(44vw, 62vh)' };
+    }
+    return {
+      width: `min(52vw, calc(70vh * ${ratio}))`,
+      height: `min(70vh, calc(52vw / ${ratio}))`,
+    };
+  }
+
+  if (orientation === 'portrait') {
+    return { width: 'min(28vw, 42vh)', height: '76vh' };
+  }
+  if (orientation === 'square') {
+    return { width: 'min(44vw, 62vh)', height: 'min(44vw, 62vh)' };
+  }
+  if (orientation === 'unknown') {
+    return { width: 'min(44vw, 62vh)', height: 'min(44vw, 62vh)' };
+  }
+  return { width: '62%', height: '78%' };
+}
+
 
 // ─── PhotoFrameBar ─────────────────────────────────────────────────────────────
 
@@ -113,11 +204,13 @@ function ProgressiveImage({
   previewSrc,
   originalSrc,
   alt,
+  onNaturalSize,
   ...motionProps
 }: {
   previewSrc: string;
   originalSrc?: string;
   alt: string;
+  onNaturalSize?: (width: number, height: number) => void;
 } & React.ComponentProps<typeof motion.img>) {
   // 仅追踪原图是否已加载完成，display src 由 props 派生，避免 effect 内同步 setState
   const [loadedOriginal, setLoadedOriginal] = useState<string | null>(null);
@@ -131,7 +224,20 @@ function ProgressiveImage({
     return () => { img.onload = null; };
   }, [previewSrc, originalSrc]);
 
-  return <motion.img {...motionProps} src={src} alt={alt} />;
+  return (
+    <motion.img
+      {...motionProps}
+      src={src}
+      alt={alt}
+      onLoad={(event) => {
+        motionProps.onLoad?.(event);
+        const image = event.currentTarget;
+        if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+          onNaturalSize?.(image.naturalWidth, image.naturalHeight);
+        }
+      }}
+    />
+  );
 }
 
 // ─── PhotoCarousel ─────────────────────────────────────────────────────────────
@@ -151,6 +257,16 @@ function PhotoCarousel({
   photoIdx: number;
   onNavigate: (dir: number) => void;
 }) {
+  const [measuredRatios, setMeasuredRatios] = useState<Record<string, number>>({});
+  const [hoveredEdge, setHoveredEdge] = useState<'prev' | 'next' | null>(null);
+  const handleNaturalSize = useCallback((photoId: string, width: number, height: number) => {
+    if (height <= 0) return;
+    const ratio = width / height;
+    setMeasuredRatios((prev) => {
+      if (Math.abs((prev[photoId] ?? 0) - ratio) < 0.001) return prev;
+      return { ...prev, [photoId]: ratio };
+    });
+  }, []);
   if (photos.length === 0) return null;
 
   const total = photos.length;
@@ -169,12 +285,10 @@ function PhotoCarousel({
   const baseStyle: React.CSSProperties = {
     position: 'absolute',
     left: '50%',
-    top: '50%',
+    top: 'calc(50% - 28px)',
     translate: '-50% -50%',
     borderRadius: 8,
-    overflow: 'hidden',
-    width: '70%',
-    height: '88%',
+    overflow: 'visible',
   };
 
   return (
@@ -183,6 +297,7 @@ function PhotoCarousel({
         const pos = CARD_POSITIONS[slot];
         const photo = photos[idx];
         const isCenter = slot === 'center';
+        const frameStyle = getFrameStyle(photo, isCenter, measuredRatios[photo.id]);
 
         return (
           <motion.div
@@ -190,8 +305,12 @@ function PhotoCarousel({
             initial={false}
             style={{
               ...baseStyle,
+              ...frameStyle,
               zIndex: pos.z,
               cursor: isCenter ? 'default' : 'pointer',
+              boxShadow: isCenter
+                ? '0 22px 80px rgba(0,0,0,0.28)'
+                : '0 16px 48px rgba(0,0,0,0.18)',
             }}
             animate={{
               x: pos.tx,
@@ -203,12 +322,20 @@ function PhotoCarousel({
             onClick={isCenter ? undefined : () => onNavigate(slot === 'left' ? -1 : 1)}
           >
             {/* 滑动 + 交叉淡入：新图从移动方向滑入，旧图反向滑出 */}
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              overflow: 'hidden',
+              borderRadius: 8,
+              background: 'rgba(255,255,255,0.06)',
+            }}>
             <AnimatePresence initial={false}>
               <ProgressiveImage
                 key={photo.id}
                 previewSrc={photo.url}
                 originalSrc={isCenter ? photo.originalUrl : undefined}
                 alt={photo.caption || photo.fileName}
+                onNaturalSize={(width, height) => handleNaturalSize(photo.id, width, height)}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -216,11 +343,12 @@ function PhotoCarousel({
                 style={{
                   position: 'absolute', inset: 0,
                   width: '100%', height: '100%',
-                  objectFit: isCenter ? 'cover' : 'contain',
+                  objectFit: 'contain',
                   display: 'block',
                 }}
               />
             </AnimatePresence>
+            </div>
             {isCenter && (
               <>
                 {/* 宝丽来白条——叠在照片底部 5%，奶白色 overlay */}
@@ -230,6 +358,8 @@ function PhotoCarousel({
                   height: '5%', minHeight: 24,
                   display: 'flex', alignItems: 'center',
                   background: 'rgba(255,255,250,0.92)',
+                  borderBottomLeftRadius: 8,
+                  borderBottomRightRadius: 8,
                 }}>
                   <PhotoFrameBar photo={photo} />
                 </div>
@@ -238,26 +368,62 @@ function PhotoCarousel({
                   <div
                     className="gallery-edge-zone"
                     onClick={(e) => { e.stopPropagation(); onNavigate(-1); }}
+                    onMouseEnter={() => setHoveredEdge('prev')}
+                    onMouseLeave={() => setHoveredEdge(null)}
                     style={{
-                      position: 'absolute', left: 0, top: 0, bottom: 0, width: '12%',
+                      position: 'absolute', left: -44, top: '50%', width: 32, height: 64,
+                      transform: 'translateY(-50%)',
                       cursor: 'pointer',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}
                   >
-                    <svg className="gallery-edge-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                    <span style={{
+                      width: 34, height: 34, borderRadius: '50%',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: hoveredEdge === 'prev' ? 'rgba(0,0,0,0.16)' : 'rgba(0,0,0,0.07)',
+                      border: hoveredEdge === 'prev' ? '1px solid rgba(255,255,255,0.14)' : '1px solid rgba(255,255,255,0.06)',
+                      transition: 'background 0.18s ease, border-color 0.18s ease',
+                    }}>
+                      <svg className="gallery-edge-arrow" width="28" height="28" viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{
+                        opacity: hoveredEdge === 'prev' ? 1 : 0.32,
+                        filter: 'drop-shadow(0 2px 7px rgba(0,0,0,0.65))',
+                        transition: 'opacity 0.18s ease',
+                      }}>
+                        <polyline points="15 18 9 12 15 6" stroke="rgba(0,0,0,0.58)" strokeWidth="5" />
+                        <polyline points="15 18 9 12 15 6" stroke="rgba(255,255,255,0.96)" strokeWidth="2.4" />
+                      </svg>
+                    </span>
                   </div>
                 )}
                 {hasNext && (
                   <div
                     className="gallery-edge-zone"
                     onClick={(e) => { e.stopPropagation(); onNavigate(1); }}
+                    onMouseEnter={() => setHoveredEdge('next')}
+                    onMouseLeave={() => setHoveredEdge(null)}
                     style={{
-                      position: 'absolute', right: 0, top: 0, bottom: 0, width: '12%',
+                      position: 'absolute', right: -44, top: '50%', width: 32, height: 64,
+                      transform: 'translateY(-50%)',
                       cursor: 'pointer',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}
                   >
-                    <svg className="gallery-edge-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                    <span style={{
+                      width: 34, height: 34, borderRadius: '50%',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: hoveredEdge === 'next' ? 'rgba(0,0,0,0.16)' : 'rgba(0,0,0,0.07)',
+                      border: hoveredEdge === 'next' ? '1px solid rgba(255,255,255,0.14)' : '1px solid rgba(255,255,255,0.06)',
+                      transition: 'background 0.18s ease, border-color 0.18s ease',
+                    }}>
+                      <svg className="gallery-edge-arrow" width="28" height="28" viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{
+                        opacity: hoveredEdge === 'next' ? 1 : 0.32,
+                        filter: 'drop-shadow(0 2px 7px rgba(0,0,0,0.65))',
+                        transition: 'opacity 0.18s ease',
+                      }}>
+                        <polyline points="9 18 15 12 9 6" stroke="rgba(0,0,0,0.58)" strokeWidth="5" />
+                        <polyline points="9 18 15 12 9 6" stroke="rgba(255,255,255,0.96)" strokeWidth="2.4" />
+                      </svg>
+                    </span>
                   </div>
                 )}
               </>

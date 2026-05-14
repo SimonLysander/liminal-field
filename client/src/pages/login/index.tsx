@@ -40,8 +40,13 @@ export default function LoginPage() {
           cancelLabel: '跳过',
         });
         if (trust) {
-          const { deviceToken } = await authApi.trustDevice();
-          localStorage.setItem(DEVICE_TOKEN_KEY, deviceToken);
+          try {
+            const { deviceToken } = await authApi.trustDevice();
+            localStorage.setItem(DEVICE_TOKEN_KEY, deviceToken);
+            setHasDeviceToken(true);
+          } catch (trustErr) {
+            console.warn('Failed to trust device after login', trustErr);
+          }
         }
       }
 

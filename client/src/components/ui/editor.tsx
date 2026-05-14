@@ -110,6 +110,9 @@ export const Editor = ({
     )}
     disabled={disabled}
     disableDefaultStyles
+    spellCheck={false}
+    autoCorrect="off"
+    autoCapitalize="off"
     {...props}
   />
 );
@@ -124,6 +127,9 @@ export function EditorView({
   return (
     <PlateView
       {...props}
+      spellCheck={false}
+      autoCorrect="off"
+      autoCapitalize="off"
       className={cn(editorVariants({ variant }), className)}
     />
   );
