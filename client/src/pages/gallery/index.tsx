@@ -172,24 +172,31 @@ function PhotoFrameBar({ photo }: { photo: GalleryPhoto }) {
         alignItems: 'center',
         justifyContent: 'space-between',
         width: '100%',
-        padding: '6px 12px',
+        padding: 'clamp(7px, 0.45vw, 10px) clamp(14px, 0.9vw, 20px)',
         fontFamily: FRAME_FONT,
-        fontSize: 10,
-        letterSpacing: '0.02em',
-        color: 'rgba(60,60,60,0.7)',
+        fontSize: 'clamp(10.5px, 0.58vw, 13px)',
+        letterSpacing: '0.03em',
+        color: 'rgba(45,45,45,0.76)',
         lineHeight: 1,
       }}
     >
       {/* 左侧：大小 + 分辨率 + 曝光参数 + 焦距 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(10px, 0.75vw, 16px)', overflow: 'hidden' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, flexShrink: 0, color: 'rgba(45,45,45,0.34)', letterSpacing: '0.12em' }}>
+          <span style={{ width: 16, height: 1, background: 'rgba(45,45,45,0.24)' }} />
+          <span>FRAME</span>
+        </span>
         {segments.map((seg, i) => (
-          <span key={i} style={{ whiteSpace: 'nowrap' }}>{seg}</span>
+          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 'clamp(8px, 0.65vw, 14px)', whiteSpace: 'nowrap' }}>
+            {i > 0 && <span style={{ width: 3, height: 3, borderRadius: '50%', background: 'rgba(45,45,45,0.28)', flexShrink: 0 }} />}
+            <span>{seg}</span>
+          </span>
         ))}
       </div>
 
       {/* 右侧：拍摄日期，贴白条最右边 */}
       {t.shotAt && (
-        <span style={{ whiteSpace: 'nowrap', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+        <span style={{ whiteSpace: 'nowrap', flexShrink: 0, fontVariantNumeric: 'tabular-nums', letterSpacing: '0.08em' }}>
           {t.shotAt}
         </span>
       )}
@@ -355,9 +362,10 @@ function PhotoCarousel({
                 <div style={{
                   position: 'absolute',
                   bottom: 0, left: 0, right: 0,
-                  height: '5%', minHeight: 24,
+                  height: '5%', minHeight: 32,
                   display: 'flex', alignItems: 'center',
-                  background: 'rgba(255,255,250,0.92)',
+                  background: 'linear-gradient(to bottom, rgba(255,255,250,0.96), rgba(255,255,250,0.88))',
+                  borderTop: '1px solid rgba(45,45,45,0.08)',
                   borderBottomLeftRadius: 8,
                   borderBottomRightRadius: 8,
                 }}>
