@@ -109,7 +109,7 @@ export default function AgentPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2, duration: 0.5 }}
             >
-              Liminal Field 助手
+              Lux Stirring 助手
             </motion.h1>
             <motion.p
               className="text-lg"

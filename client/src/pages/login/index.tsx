@@ -4,6 +4,7 @@ import { authApi } from '@/services/auth';
 import { resetAuth } from '@/App';
 import { parseError } from '@/pages/admin/helpers';
 import { useConfirm } from '@/contexts/ConfirmContext';
+import { Logo } from '@/components/Logo';
 
 const DEVICE_TOKEN_KEY = 'liminal_device_token';
 
@@ -79,27 +80,27 @@ export default function LoginPage() {
   return (
     <div
       className="flex min-h-screen items-center justify-center"
-      style={{ background: 'var(--paper)' }}
+      style={{
+        background: [
+          'radial-gradient(ellipse at 30% 20%, rgba(122,143,173,0.07) 0%, transparent 50%)',
+          'radial-gradient(ellipse at 70% 80%, rgba(153,133,163,0.05) 0%, transparent 50%)',
+          'var(--paper)',
+        ].join(', '),
+      }}
     >
       <div className="flex w-72 flex-col items-center gap-5">
-        {/* Logo */}
-        <div
-          className="flex h-9 w-9 items-center justify-center text-xs font-semibold"
+        <Logo size={28} className="enter-rise enter-delay-1" />
+
+        {/* 诗句 — 衬线体，纸墨质感 */}
+        <p
+          className="enter-rise enter-delay-2 max-w-[240px] text-center text-xs leading-relaxed"
           style={{
-            background: 'var(--ink)',
-            color: 'var(--paper)',
-            borderRadius: 'var(--radius-md)',
+            color: 'var(--ink-ghost)',
+            fontFamily: 'var(--font-serif)',
           }}
         >
-          L
-        </div>
-
-        <h1
-          className="text-base font-medium"
-          style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}
-        >
-          Liminal Field
-        </h1>
+          让纸墨见证我斑驳而卑微的期许，如何像云雾升腾一般，生长出生机勃勃、斩钉截铁的现实
+        </p>
 
         {/* 设备登录按钮（有 token 时显示） */}
         {hasDeviceToken && (
@@ -107,7 +108,7 @@ export default function LoginPage() {
             type="button"
             onClick={() => void handleDeviceLogin()}
             disabled={loading}
-            className="h-9 w-full text-sm font-medium transition-opacity disabled:opacity-40"
+            className="enter-rise enter-delay-3 h-9 w-full text-sm font-medium transition-opacity disabled:opacity-40"
             style={{
               background: 'var(--ink)',
               color: 'var(--paper)',
@@ -120,7 +121,7 @@ export default function LoginPage() {
 
         {/* 分隔线（有设备 token 时显示） */}
         {hasDeviceToken && (
-          <div className="flex w-full items-center gap-3">
+          <div className="enter-rise enter-delay-3 flex w-full items-center gap-3">
             <div className="flex-1" style={{ borderTop: '0.5px solid var(--separator)' }} />
             <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
               或输入密码
@@ -130,14 +131,17 @@ export default function LoginPage() {
         )}
 
         {/* 密码登录 */}
-        <form onSubmit={handleSubmit} className="flex w-full flex-col gap-3">
+        <form
+          onSubmit={handleSubmit}
+          className={`flex w-full flex-col gap-3 enter-rise ${hasDeviceToken ? 'enter-delay-4' : 'enter-delay-3'}`}
+        >
           <input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="管理密码"
             autoFocus={!hasDeviceToken}
-            className="h-9 w-full rounded-lg px-3 text-sm outline-none"
+            className="h-9 w-full rounded-lg px-3 text-sm"
             style={{
               background: 'var(--shelf)',
               color: 'var(--ink)',

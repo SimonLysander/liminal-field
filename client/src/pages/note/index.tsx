@@ -179,6 +179,11 @@ function NoteReader({ id }: { id: string }) {
   const wordCount = content?.bodyMarkdown.length || 0;
   const readMin = Math.max(1, Math.ceil(wordCount / 400));
 
+  /* 日期：统一用 updatedAt，兜底 createdAt */
+  const displayDate = content?.updatedAt
+    ? new Date(content.updatedAt)
+    : content?.createdAt ? new Date(content.createdAt) : null;
+
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center">
@@ -200,50 +205,82 @@ function NoteReader({ id }: { id: string }) {
       {/* Center — article body */}
       <div className="flex-1 overflow-y-auto py-12" ref={centerRef}>
        <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 max-[520px]:px-4">
-        <div className="mb-5 flex items-center gap-3">
+        <div className="mb-5">
           <button
-            className="text-md transition-colors duration-150"
+            className="text-md transition-colors duration-150 hover:text-[var(--ink-faded)]"
             style={{ color: 'var(--ink-ghost)' }}
             onClick={() => navigate('/note')}
           >
             ← 返回
           </button>
-          <span
-            className="rounded-md px-2 py-0.5 text-2xs"
-            style={{ color: 'var(--pip-a)', background: 'color-mix(in srgb, var(--pip-a) 8%, transparent)' }}
-          >
-            {wordCount > 1000 ? `${(wordCount / 1000).toFixed(1)}k` : wordCount} 字 · {readMin} min
-          </span>
         </div>
 
-        {/* 文章标题 */}
-        <div
-          className="relative mb-10 text-5xl font-bold leading-snug tracking-tight"
+        {/* 文章标题 — fade+rise 入场 */}
+        <motion.div
+          className="relative mb-4 text-5xl font-bold leading-snug tracking-tight"
           style={{
             fontFamily: 'var(--font-serif)',
             color: 'var(--ink)',
           }}
+          initial={{ opacity: 0, y: 10, filter: 'blur(4px)' }}
+          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+          transition={{ duration: 0.5, ease: smoothBounce }}
         >
           {title}
-          {/* 标题装饰线 — 用 pip-a 雾蓝色，给黑白页面一点色彩呼吸 */}
-          <span
-            className="mt-5 block h-[2px] w-8 rounded-sm"
+        </motion.div>
+
+        {/* 元信息行 */}
+        <motion.div
+          className="mb-10"
+          initial={{ opacity: 0, filter: 'blur(3px)' }}
+          animate={{ opacity: 1, filter: 'blur(0px)' }}
+          transition={{ duration: 0.4, delay: 0.2, ease: smoothBounce }}
+        >
+          <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            {displayDate && `更新于 ${displayDate.getFullYear()}/${displayDate.getMonth() + 1}/${displayDate.getDate()} · `}
+            {wordCount > 1000 ? `${(wordCount / 1000).toFixed(1)}k` : wordCount} 字 · {readMin} min
+          </p>
+          {/* 装饰线 — pip-a 雾蓝 */}
+          <motion.span
+            className="mt-4 block h-[2px] rounded-sm"
             style={{ background: 'var(--pip-a)', opacity: 0.5 }}
+            initial={{ width: 0 }}
+            animate={{ width: 32 }}
+            transition={{ duration: 0.6, delay: 0.3, ease: smoothBounce }}
           />
-        </div>
+        </motion.div>
 
         {summary && (
-          <div
+          <motion.div
             className="mb-8 rounded-lg px-4 py-3 text-lg leading-relaxed"
             style={{ color: 'var(--ink-faded)', fontStyle: 'italic', background: 'var(--shelf)' }}
+            initial={{ opacity: 0, y: 8, filter: 'blur(3px)' }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            transition={{ duration: 0.4, delay: 0.15, ease: smoothBounce }}
           >
             {summary}
-          </div>
+          </motion.div>
         )}
 
-        {/* Markdown 正文 */}
-        <div className="note-prose leading-[1.9]" style={{ color: 'var(--ink-light)', fontSize: 'var(--text-lg)' }}>
+        {/* Markdown 正文 — 延迟浮入 */}
+        <motion.div
+          className="note-prose leading-[1.9]"
+          style={{ color: 'var(--ink-light)', fontSize: 'var(--text-lg)' }}
+          initial={{ opacity: 0, y: 8, filter: 'blur(4px)' }}
+          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+          transition={{ duration: 0.5, delay: 0.25, ease: smoothBounce }}
+        >
           <MarkdownBody markdown={content.bodyMarkdown} contentItemId={id} />
+        </motion.div>
+
+        {/* 文章收束 — 三个墨点，表示阅读结束 */}
+        <div
+          className="flex items-center justify-center gap-2 py-12"
+          style={{ color: 'var(--ink-ghost)', opacity: 0.4 }}
+        >
+          <span className="text-xs">·</span>
+          <span className="text-xs">·</span>
+          <span className="text-xs">·</span>
         </div>
        </div>
       </div>
@@ -266,7 +303,7 @@ function NoteReader({ id }: { id: string }) {
               <motion.div
                 key={item.id}
                 data-toc-id={item.id}
-                className="cursor-pointer border-l-2 py-[5px] text-sm transition-all duration-200"
+                className="cursor-pointer border-l-2 py-[5px] text-sm transition-all duration-200 hover:bg-[var(--shelf)]"
                 style={{
                   color: activeToc === item.id ? 'var(--ink-light)' : 'var(--ink-faded)',
                   fontWeight: activeToc === item.id ? 500 : 400,
@@ -294,7 +331,7 @@ function NoteReader({ id }: { id: string }) {
                 maxHeight: 420,
                 background: 'var(--paper)',
                 borderRadius: 'var(--radius-xl)',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.08), 0 12px 40px rgba(0,0,0,0.06), 0 0 0 0.5px rgba(0,0,0,0.04)',
+                boxShadow: 'var(--shadow-xl)',
               }}
               initial={{ opacity: 0, y: 12, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -306,7 +343,7 @@ function NoteReader({ id }: { id: string }) {
                   {title}
                 </span>
                 <button
-                  className="flex h-6 w-6 items-center justify-center rounded-full"
+                  className="flex h-6 w-6 items-center justify-center rounded-full transition-colors duration-150 hover:bg-[var(--shelf)]"
                   style={{ color: 'var(--ink-ghost)' }}
                   onClick={() => setAiOpen(false)}
                 >
@@ -337,7 +374,7 @@ function NoteReader({ id }: { id: string }) {
           style={{
             background: aiOpen ? 'var(--ink)' : 'var(--paper)',
             color: aiOpen ? 'var(--accent-contrast)' : 'var(--ink-faded)',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.06)',
+            boxShadow: 'var(--shadow-md)',
           }}
           onClick={() => {
             setAiOpen((v) => !v);

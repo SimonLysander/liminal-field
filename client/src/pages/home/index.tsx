@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { appleEase } from '@/lib/motion';
 import { homeApi } from '@/services/workspace';
 import type { HomeData } from '@/services/workspace';
+import { LoadingState } from '@/components/LoadingState';
 import { HeroGarden, GardenVines, GardenTickProvider } from './HeroGarden';
 
 /* ---------- Helpers ---------- */
@@ -39,11 +40,12 @@ function formatWordCount(count: number): string {
 /* ---------- 动画 ---------- */
 
 const fadeUp = {
-  hidden: { opacity: 0, y: 12 },
+  hidden: { opacity: 0, y: 12, filter: 'blur(4px)' },
   show: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { delay: i * 0.05, duration: 0.45, ease: appleEase },
+    filter: 'blur(0px)',
+    transition: { delay: i * 0.05, duration: 0.5, ease: appleEase },
   }),
 };
 
@@ -52,9 +54,12 @@ const fadeUp = {
 export default function HomePage() {
   const [data, setData] = useState<HomeData | null>(null);
   const [loading, setLoading] = useState(true);
+  /* 延迟显示 loading 态，快速加载时避免闪烁 */
+  const [showLoader, setShowLoader] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+    const timer = setTimeout(() => { if (!cancelled) setShowLoader(true); }, 200);
     homeApi
       .get()
       .then((result) => {
@@ -69,18 +74,23 @@ export default function HomePage() {
       });
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, []);
 
   const notes = data?.notes ?? [];
   const galleries = data?.gallery ?? [];
 
-
-  if (loading) return null;
+  if (loading) return showLoader ? <LoadingState variant="full" /> : null;
 
   return (
     <GardenTickProvider>
-    <div className="flex flex-1 flex-col overflow-y-auto px-4 py-10">
+    <motion.div
+      className="flex flex-1 flex-col overflow-y-auto px-4 py-10"
+      initial={{ opacity: 0, filter: 'blur(3px)' }}
+      animate={{ opacity: 1, filter: 'blur(0px)' }}
+      transition={{ duration: 0.4, ease: appleEase }}
+    >
 
       {/* ── Hero：定格动画小花圃 ── */}
       <div>
@@ -107,8 +117,10 @@ export default function HomePage() {
             </h2>
             <Link
               to="/note"
-              className="text-xs"
+              className="text-xs transition-colors duration-150"
               style={{ color: 'var(--ink-ghost)' }}
+              onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink-faded)'; }}
+              onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-ghost)'; }}
             >
               查看全部 →
             </Link>
@@ -116,9 +128,7 @@ export default function HomePage() {
 
           <div className="flex flex-col">
             {notes.map((note, i) => {
-              const { day, month } = parseDayMonth(
-                note.updatedAt || note.createdAt,
-              );
+              const { day, month } = parseDayMonth(note.updatedAt || note.createdAt);
               return (
                 <motion.div
                   key={note.id}
@@ -132,7 +142,7 @@ export default function HomePage() {
                     className="-mx-2 flex items-center gap-5 px-2 py-3.5 transition-colors duration-150"
                     style={{ borderBottom: '0.5px solid var(--separator)' }}
                     onMouseOver={(e) => {
-                      e.currentTarget.style.background = 'rgba(0,0,0,0.025)';
+                      e.currentTarget.style.background = 'var(--shelf)';
                     }}
                     onMouseOut={(e) => {
                       e.currentTarget.style.background = 'transparent';
@@ -206,8 +216,10 @@ export default function HomePage() {
             </h2>
             <Link
               to="/gallery"
-              className="text-xs"
+              className="text-xs transition-colors duration-150"
               style={{ color: 'var(--ink-ghost)' }}
+              onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink-faded)'; }}
+              onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-ghost)'; }}
             >
               查看全部 →
             </Link>
@@ -273,7 +285,7 @@ export default function HomePage() {
       <GardenVines side="right" />
       </div>
 
-    </div>
+    </motion.div>
     </GardenTickProvider>
   );
 }

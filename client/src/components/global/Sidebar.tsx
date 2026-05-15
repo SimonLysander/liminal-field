@@ -15,9 +15,10 @@
  *     directly to extract the active noteId.
  */
 
-import { useEffect, useState } from 'react';
-import { motion } from 'motion/react';
+import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Logo } from '@/components/Logo';
 import { structureApi } from '@/services/structure';
 import type { StructureNode } from '@/services/structure';
 import {
@@ -151,6 +152,8 @@ export default function Sidebar() {
    * useEffect 负责将 URL → breadcrumb state 同步（异步，可接受短暂落后）。
    */
   const [breadcrumb, setBreadcrumb] = useState<BreadcrumbItem[]>([]);
+  /* 导航方向：1 = 进入更深层（右滑入），-1 = 返回上层（左滑入） */
+  const navDirection = useRef(1);
   const currentParentId = activeTopicId ?? undefined;
   const { nodes: currentNodes, loading: notesLoading } = useStructureLevel(currentParentId);
 
@@ -199,12 +202,14 @@ export default function Sidebar() {
 
   /* 进入文件夹：立即追加 breadcrumb（UI 即时反馈），URL 只写 topic */
   const enterFolder = (node: StructureNode) => {
+    navDirection.current = 1;
     setBreadcrumb((prev) => [...prev, { id: node.id, name: node.name }]);
     navigate(`/note?topic=${node.id}`);
   };
 
   /* 面包屑回退：只改 URL，state 由 useEffect 同步 */
   const goToBreadcrumb = (index: number | null) => {
+    navDirection.current = -1;
     if (index === null) {
       navigate('/note');
     } else {
@@ -227,12 +232,7 @@ export default function Sidebar() {
     >
       {/* Header — gallery 沉浸模式隐形占位，保持 tab 位置不偏移 */}
       <div className="px-3 pb-5 pt-2" style={isGallery ? { visibility: 'hidden' } : undefined}>
-        <span
-          className="text-base font-bold"
-          style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}
-        >
-          Liminal Field
-        </span>
+        <Logo size={18} />
       </div>
 
       {/* Search trigger — gallery 沉浸模式隐形占位 */}
@@ -309,7 +309,7 @@ export default function Sidebar() {
                * 2+ 级: ← … / 直接父级（hover … 弹出完整路径可点击） */
               <div className="flex items-center whitespace-nowrap">
                 <span
-                  className="shrink-0 cursor-pointer rounded p-0.5 transition-colors duration-150"
+                  className="shrink-0 cursor-pointer rounded p-0.5 transition-colors duration-150 hover:bg-[var(--shelf)]"
                   style={{ color: 'var(--ink-faded)' }}
                   onClick={() =>
                     breadcrumb.length >= 2
@@ -392,16 +392,21 @@ export default function Sidebar() {
           </div>
 
           {notesLoading ? (
-            <LoadingState />
+            <LoadingState variant="inline" />
           ) : currentNodes.length === 0 ? (
-            <div className="px-3 py-4 text-xs" style={{ color: 'var(--ink-ghost)' }}>空</div>
+            <div className="flex flex-col items-center gap-1.5 px-3 py-6">
+              <FileText size={20} strokeWidth={1.2} style={{ color: 'var(--ink-ghost)', opacity: 0.4 }} />
+              <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>还没有内容</span>
+            </div>
           ) : (
             <div className="px-2.5">
+              <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={currentParentId || 'root'}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.12 }}
+                initial={{ opacity: 0, x: navDirection.current * 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: navDirection.current * -20 }}
+                transition={{ duration: 0.15, ease: [0.25, 0.1, 0.25, 1] }}
               >
                 {currentNodes.map((node) =>
                   node.type === 'FOLDER' ? (
@@ -441,6 +446,7 @@ export default function Sidebar() {
                   ) : null,
                 )}
               </motion.div>
+              </AnimatePresence>
             </div>
           )}
         </div>

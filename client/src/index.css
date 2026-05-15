@@ -10,6 +10,9 @@
 
 @import "tailwindcss";
 
+/* ── Logo 字体 ── */
+@font-face { font-family: 'Alex Brush'; src: url('/fonts/AlexBrush.ttf') format('truetype'); font-display: swap; }
+
 @custom-variant dark (&:is([data-theme="midnight"] *));
 
 /*
@@ -473,6 +476,23 @@ body {
   letter-spacing: -0.01em;
 }
 
+/*
+ * 纸纹 — 全站叠加极淡的噪点纹理，让屏幕有纸的触感。
+ * 呼应箴言"纸墨"与"斑驳"：不完美的、有颗粒的质感。
+ * pointer-events:none 确保不影响交互；z-index 高于内容但低于弹层。
+ */
+body:not(.gallery-immersive)::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9990;
+  pointer-events: none;
+  opacity: 0.08;
+  background-image: url('/noise.png');
+  background-repeat: repeat;
+  background-size: 128px 128px;
+}
+
 /* Hide scrollbars globally — content scrolls without visible tracks */
 * { scrollbar-width: none; }
 ::-webkit-scrollbar { display: none; }
@@ -628,6 +648,41 @@ body.theme-transitioning [data-slate-leaf] {
 @keyframes hint-fade {
   0%, 60% { opacity: 1; }
   100% { opacity: 0; }
+}
+
+/*
+ * 入场动画 — fade + rise + 雾散（blur→清晰）。
+ * 内容从模糊中凝聚成形，呼应箴言"云雾升腾"：
+ * 模糊（斑驳而卑微的期许）→ 清晰（斩钉截铁的现实）。
+ */
+
+@keyframes enter-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+.enter-rise {
+  animation: enter-rise 0.6s var(--ease-spring) both;
+}
+.enter-delay-1 { animation-delay: 0ms; }
+.enter-delay-2 { animation-delay: 80ms; }
+.enter-delay-3 { animation-delay: 160ms; }
+.enter-delay-4 { animation-delay: 240ms; }
+.enter-delay-5 { animation-delay: 320ms; }
+
+/* 表单输入框 focus — macOS 风格柔光环 */
+input:not([type="checkbox"]):not([type="radio"]):focus,
+textarea:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 /* ========== Theme Icon Toggle ========== */

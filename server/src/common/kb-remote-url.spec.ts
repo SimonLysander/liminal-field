@@ -21,9 +21,11 @@ describe('applyKbGitTokenToGithubHttps', () => {
     expect(applyKbGitTokenToGithubHttps(u, 'ghp_new')).toBe(u);
   });
 
-  it('does not inject for non-github host', () => {
+  it('injects oauth2 token for non-github host', () => {
     const u = 'https://gitlab.com/o/r.git';
-    expect(applyKbGitTokenToGithubHttps(u, 'tok')).toBe(u);
+    expect(applyKbGitTokenToGithubHttps(u, 'tok')).toBe(
+      'https://oauth2:tok@gitlab.com/o/r.git',
+    );
   });
 
   it('encodes token for URL', () => {

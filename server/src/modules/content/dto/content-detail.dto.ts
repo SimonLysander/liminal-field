@@ -25,4 +25,5 @@ export class ContentDetailDto {
   changeLogs!: ChangeLogDto[];
   createdAt!: string;
   updatedAt!: string;
+  publishedAt?: string | null;
 }

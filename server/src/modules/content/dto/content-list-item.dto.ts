@@ -13,4 +13,5 @@ export class ContentListItemDto {
   latestChange?: ChangeLogDto;
   createdAt!: string;
   updatedAt!: string;
+  publishedAt?: string | null;
 }

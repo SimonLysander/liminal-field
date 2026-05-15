@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { FileText, Image, RefreshCw, LogOut, Settings } from 'lucide-react';
 import { authApi } from '@/services/auth';
 import { resetAuth } from '@/App';
+import { Logo } from '@/components/Logo';
 import { SyncDialog } from './SyncDialog';
 
 /*
@@ -52,19 +53,7 @@ export function IconRail() {
         }}
       >
         {/* Logo */}
-        <div
-          className="mb-4 flex items-center justify-center rounded-lg"
-          style={{
-            width: 28,
-            height: 28,
-            background: 'var(--ink)',
-            color: 'var(--accent-contrast)',
-            fontSize: 'var(--text-xs)',
-            fontWeight: 700,
-          }}
-        >
-          L
-        </div>
+        <Logo variant="mark" size={22} className="mb-4" />
 
         {/* Nav icons */}
         {NAV_ITEMS.map((item) => {

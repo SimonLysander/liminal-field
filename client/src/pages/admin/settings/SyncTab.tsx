@@ -389,11 +389,11 @@ export function SyncTab({ config, status, storageStatus, loading, lastRefresh, o
           <div className="space-y-3">
             <div>
               <FieldLabel>提交者名称</FieldLabel>
-              <TextInput value={gitName} onChange={setGitName} placeholder="Liminal Field" />
+              <TextInput value={gitName} onChange={setGitName} placeholder="Lux Stirring" />
             </div>
             <div>
               <FieldLabel>提交者邮箱</FieldLabel>
-              <TextInput value={gitEmail} onChange={setGitEmail} placeholder="no-reply@liminal-field.local" />
+              <TextInput value={gitEmail} onChange={setGitEmail} placeholder="no-reply@lux-stirring.local" />
             </div>
             <div>
               <FieldLabel>自动同步频率</FieldLabel>

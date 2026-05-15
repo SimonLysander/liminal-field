@@ -118,6 +118,7 @@ export class ContentService {
         : undefined,
       createdAt: content.createdAt.toISOString(),
       updatedAt: content.updatedAt.toISOString(),
+      publishedAt: content.publishedAt?.toISOString() ?? null,
     };
   }
 
@@ -251,6 +252,7 @@ export class ContentService {
       ),
       createdAt: content.createdAt.toISOString(),
       updatedAt: content.updatedAt.toISOString(),
+      publishedAt: content.publishedAt?.toISOString() ?? null,
     };
   }
 
@@ -483,12 +485,21 @@ export class ContentService {
       );
     }
 
+    /* publishedAt 逻辑：发布时记录（首次），取消发布时清空 */
+    let nextPublishedAt: Date | null | undefined;
+    if (dto.action === ContentSaveAction.publish) {
+      nextPublishedAt = current.publishedAt ?? now;
+    } else if (dto.action === ContentSaveAction.unpublish) {
+      nextPublishedAt = null;
+    }
+
     const updated = await this.contentRepository.update(id, {
       latestVersion: nextLatestVersion,
       publishedVersion: nextPublishedVersion,
       changeLogs: nextChangeLogs,
       updatedAt: now,
       updatedBy: dto.updatedBy,
+      ...(nextPublishedAt !== undefined && { publishedAt: nextPublishedAt }),
     });
 
     if (!updated) {
@@ -646,6 +657,8 @@ export class ContentService {
       publishedVersion,
       changeLogs: content.changeLogs,
       updatedAt: new Date(),
+      /* 首次发布记录时间，已有则保留（重新发布不刷新） */
+      publishedAt: content.publishedAt ?? new Date(),
     });
   }
 
@@ -667,6 +680,7 @@ export class ContentService {
       publishedVersion: null,
       changeLogs: content.changeLogs,
       updatedAt: new Date(),
+      publishedAt: null,
     });
   }
 

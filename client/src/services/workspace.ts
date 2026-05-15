@@ -49,6 +49,7 @@ export interface ContentListItem {
   latestChange?: ChangeLog;
   createdAt: string;
   updatedAt: string;
+  publishedAt?: string | null;
 }
 
 export interface ContentDetail {
@@ -65,6 +66,7 @@ export interface ContentDetail {
   changeLogs: ChangeLog[];
   createdAt: string;
   updatedAt: string;
+  publishedAt?: string | null;
 }
 
 export interface CreateContentDto {

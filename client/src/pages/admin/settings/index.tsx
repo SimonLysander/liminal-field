@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   RefreshCw,
   HardDrive,
@@ -77,43 +78,63 @@ export default function SettingsPage() {
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors duration-100"
+                className="relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium"
                 style={{
-                  background: active ? 'var(--shelf)' : 'transparent',
                   color: active ? 'var(--ink)' : 'var(--ink-faded)',
                 }}
               >
-                <Icon size={16} strokeWidth={1.75} />
-                {tab.label}
+                {/* 选中态背景 — spring 滑动指示器 */}
+                {active && (
+                  <motion.div
+                    layoutId="settings-tab-indicator"
+                    className="absolute inset-0 rounded-lg"
+                    style={{ background: 'var(--shelf)' }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                  />
+                )}
+                <span className="relative flex items-center gap-2.5">
+                  <Icon size={16} strokeWidth={1.75} />
+                  {tab.label}
+                </span>
               </button>
             );
           })}
         </nav>
 
-        {/* 右侧内容区 */}
+        {/* 右侧内容区 — tab 切换 fade 过渡 */}
         <div className="flex flex-1 flex-col overflow-y-auto px-10 py-9">
           <div className="mx-auto w-full max-w-2xl">
-            {activeTab === 'sync' && (
-              <SyncTab
-                config={config?.sync ?? null}
-                status={status}
-                storageStatus={storageStatus}
-                loading={loading}
-                lastRefresh={lastRefresh}
-                onRefresh={loadAll}
-              />
-            )}
-            {activeTab === 'storage' && (
-              <StorageTab storageStatus={storageStatus} loading={loading} lastRefresh={lastRefresh} onRefresh={loadAll} />
-            )}
-            {activeTab === 'integration' && (
-              <IntegrationTab
-                config={config?.integration ?? null}
-                loading={loading}
-                onRefresh={loadAll}
-              />
-            )}
-            {activeTab === 'security' && <SecurityTab />}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+              >
+                {activeTab === 'sync' && (
+                  <SyncTab
+                    config={config?.sync ?? null}
+                    status={status}
+                    storageStatus={storageStatus}
+                    loading={loading}
+                    lastRefresh={lastRefresh}
+                    onRefresh={loadAll}
+                  />
+                )}
+                {activeTab === 'storage' && (
+                  <StorageTab storageStatus={storageStatus} loading={loading} lastRefresh={lastRefresh} onRefresh={loadAll} />
+                )}
+                {activeTab === 'integration' && (
+                  <IntegrationTab
+                    config={config?.integration ?? null}
+                    loading={loading}
+                    onRefresh={loadAll}
+                  />
+                )}
+                {activeTab === 'security' && <SecurityTab />}
+              </motion.div>
+            </AnimatePresence>
           </div>
         </div>
       </div>

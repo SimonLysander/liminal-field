@@ -77,6 +77,10 @@ export class ContentItem {
   @prop({ required: true, type: () => Date })
   updatedAt!: Date;
 
+  /** 首次发布时间，取消发布时清空 */
+  @prop({ type: () => Date })
+  publishedAt?: Date | null;
+
   @prop({ trim: true })
   createdBy?: string;
 

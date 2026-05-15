@@ -474,9 +474,7 @@ const DraftEditPage = () => {
       {showCommitDialog && (
         <CommitDialog
           changeNote={state.changeNote}
-          changeType={state.changeType}
           onChangeNote={(v) => handleChange('changeNote', v)}
-          onChangeType={(v) => handleChange('changeType', v)}
           onConfirm={() => void commitDraft()}
           onCancel={() => setShowCommitDialog(false)}
         />
@@ -489,16 +487,12 @@ const DraftEditPage = () => {
 
 function CommitDialog({
   changeNote,
-  changeType,
   onChangeNote,
-  onChangeType,
   onConfirm,
   onCancel,
 }: {
   changeNote: string;
-  changeType: ContentChangeType;
   onChangeNote: (v: string) => void;
-  onChangeType: (v: ContentChangeType) => void;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -545,18 +539,6 @@ function CommitDialog({
             />
           </label>
 
-          <label className="flex flex-col gap-1.5">
-            <span className="font-medium" style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-base)' }}>变更类型</span>
-            <select
-              value={changeType}
-              onChange={(e) => onChangeType(e.target.value as ContentChangeType)}
-              className="rounded-lg border-none px-3 py-2 outline-none"
-              style={{ background: 'var(--shelf)', color: 'var(--ink)', fontSize: 'var(--text-base)' }}
-            >
-              <option value="patch">patch — 小幅修改</option>
-              <option value="major">major — 重大更新</option>
-            </select>
-          </label>
         </div>
 
         <div className="mt-6 flex items-center justify-end gap-2.5">
