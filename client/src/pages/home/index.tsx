@@ -105,7 +105,13 @@ export default function HomePage() {
       {/* ── 最近笔记 ── */}
       {notes.length > 0 && (
         <div className="mb-10">
-          <div className="mb-3.5 flex items-baseline justify-between">
+          <motion.div
+            className="mb-3.5 flex items-baseline justify-between"
+            initial="hidden"
+            animate="show"
+            variants={fadeUp}
+            custom={0}
+          >
             <h2
               className="text-xl font-bold"
               style={{
@@ -117,14 +123,14 @@ export default function HomePage() {
             </h2>
             <Link
               to="/note"
-              className="text-xs transition-colors duration-150"
+              className="group text-xs transition-colors duration-150"
               style={{ color: 'var(--ink-ghost)' }}
               onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink-faded)'; }}
               onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-ghost)'; }}
             >
-              查看全部 →
+              查看全部 <span className="inline-block transition-transform duration-150 group-hover:translate-x-0.5">→</span>
             </Link>
-          </div>
+          </motion.div>
 
           <div className="flex flex-col">
             {notes.map((note, i) => {
@@ -132,7 +138,7 @@ export default function HomePage() {
               return (
                 <motion.div
                   key={note.id}
-                  custom={i}
+                  custom={i + 1}
                   initial="hidden"
                   animate="show"
                   variants={fadeUp}
@@ -204,7 +210,13 @@ export default function HomePage() {
       {/* ── 近期图集 ── */}
       {galleries.length > 0 && (
         <div>
-          <div className="mb-3.5 flex items-baseline justify-between">
+          <motion.div
+            className="mb-3.5 flex items-baseline justify-between"
+            initial="hidden"
+            animate="show"
+            variants={fadeUp}
+            custom={notes.length}
+          >
             <h2
               className="text-xl font-bold"
               style={{
@@ -216,14 +228,14 @@ export default function HomePage() {
             </h2>
             <Link
               to="/gallery"
-              className="text-xs transition-colors duration-150"
+              className="group text-xs transition-colors duration-150"
               style={{ color: 'var(--ink-ghost)' }}
               onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink-faded)'; }}
               onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-ghost)'; }}
             >
-              查看全部 →
+              查看全部 <span className="inline-block transition-transform duration-150 group-hover:translate-x-0.5">→</span>
             </Link>
-          </div>
+          </motion.div>
 
           <div className="flex gap-3.5">
             {galleries.map((gallery, i) => (
