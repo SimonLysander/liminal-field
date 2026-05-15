@@ -303,7 +303,7 @@ function NoteReader({ id }: { id: string }) {
               <motion.div
                 key={item.id}
                 data-toc-id={item.id}
-                className="cursor-pointer border-l-2 py-[5px] text-sm transition-all duration-200 hover:bg-[var(--shelf)]"
+                className="cursor-pointer border-l-2 rounded-r-lg py-[5px] text-sm transition-all duration-200 hover:bg-[var(--shelf)]"
                 style={{
                   color: activeToc === item.id ? 'var(--ink-light)' : 'var(--ink-faded)',
                   fontWeight: activeToc === item.id ? 500 : 400,

@@ -6,6 +6,8 @@ import { homeApi } from '@/services/workspace';
 import type { HomeData } from '@/services/workspace';
 import { LoadingState } from '@/components/LoadingState';
 import { HeroGarden, GardenVines, GardenTickProvider } from './HeroGarden';
+// TODO: 素材齐了后替换为 PaperGarden
+// import { PaperGarden } from './PaperGarden';
 
 /* ---------- Helpers ---------- */
 
@@ -92,15 +94,13 @@ export default function HomePage() {
       transition={{ duration: 0.4, ease: appleEase }}
     >
 
-      {/* ── Hero：定格动画小花圃 ── */}
+      {/* ── Hero：SVG 花圃（待替换为 PaperGarden） ── */}
       <div>
         <HeroGarden />
       </div>
 
-      {/* ── 三栏：左藤蔓 | 内容 | 右藤蔓（紧贴花圃，无间距） ── */}
       <div className="flex">
       <GardenVines side="left" />
-
       <div className="mx-6 min-w-0 flex-1 pt-9">
       {/* ── 最近笔记 ── */}
       {notes.length > 0 && (
@@ -145,7 +145,7 @@ export default function HomePage() {
                 >
                   <Link
                     to={`/note?doc=${note.id}`}
-                    className="-mx-2 flex items-center gap-5 px-2 py-3.5 transition-colors duration-150"
+                    className="-mx-2 flex items-center gap-5 rounded-lg px-2 py-3.5 transition-colors duration-150"
                     style={{ borderBottom: '0.5px solid var(--separator)' }}
                     onMouseOver={(e) => {
                       e.currentTarget.style.background = 'var(--shelf)';
@@ -293,7 +293,7 @@ export default function HomePage() {
           </div>
         </div>
       )}
-      </div> {/* end flex-1 content */}
+      </div>
       <GardenVines side="right" />
       </div>
 
