@@ -1,5 +1,5 @@
 # Server — NestJS build + production runtime
-FROM docker.1ms.run/node:22-alpine AS build
+FROM node:22-alpine AS build
 RUN sed -i 's#https://dl-cdn.alpinelinux.org#https://mirrors.aliyun.com#g' /etc/apk/repositories
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
@@ -8,7 +8,7 @@ RUN pnpm install --frozen-lockfile --ignore-scripts --registry https://registry.
 COPY . .
 RUN pnpm build
 
-FROM docker.1ms.run/node:22-alpine
+FROM node:22-alpine
 RUN sed -i 's#https://dl-cdn.alpinelinux.org#https://mirrors.aliyun.com#g' /etc/apk/repositories
 RUN apk add --no-cache git openssh-client
 RUN corepack enable && corepack prepare pnpm@latest --activate

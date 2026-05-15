@@ -1,6 +1,6 @@
 services:
   mongo:
-    image: docker.1ms.run/mongo:7
+    image: mongo:7
     restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
@@ -66,7 +66,7 @@ services:
 
   # Caddy 负责 HTTPS 终结 + 自动证书，零配置
   caddy:
-    image: docker.1ms.run/caddy:2
+    image: caddy:2
     restart: unless-stopped
     depends_on:
       - client
