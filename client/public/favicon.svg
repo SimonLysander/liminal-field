@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    text { fill: #1D1D1F; }
+    @media (prefers-color-scheme: dark) { text { fill: #F5F5F7; } }
+  </style>
+  <text x="50%" y="75%" text-anchor="middle" font-family="Georgia, serif" font-size="28" font-style="italic">L</text>
+</svg>
