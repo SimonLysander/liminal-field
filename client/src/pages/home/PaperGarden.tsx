@@ -44,11 +44,11 @@ const FADE_MS = 200;
 
 /* 草叶按生长阶段：age 0=短, 1=中, 2=长/弯 */
 const GRASS_BY_AGE = [
-  { asset: '/garden/grass-short.png', minH: 28, maxH: 36 },
-  { asset: '/garden/grass-mid.png',   minH: 42, maxH: 52 },
-  { asset: '/garden/grass-tall.png',  minH: 55, maxH: 68 },
+  { asset: '/garden/grass-short.webp', minH: 28, maxH: 36 },
+  { asset: '/garden/grass-mid.webp',   minH: 42, maxH: 52 },
+  { asset: '/garden/grass-tall.webp',  minH: 55, maxH: 68 },
 ];
-const GRASS_BENT = { asset: '/garden/grass-bent.png', minH: 50, maxH: 62 };
+const GRASS_BENT = { asset: '/garden/grass-bent.webp', minH: 50, maxH: 62 };
 
 const GRASS_BATCHES = [
   { count: 200, birthFrame: 1 },
@@ -95,34 +95,34 @@ interface FlowerConfig {
  * 即 stage 4 基础高度 ≥ 92。stage 1-2 矮于草（藏着），stage 3-4 露出花头。
  */
 const BELLFLOWER_STAGES: FlowerStage[] = [
-  { asset: '/garden/bellflower-1.png', height: 45 },
-  { asset: '/garden/bellflower-2.png', height: 68 },
-  { asset: '/garden/bellflower-3.png', height: 88 },
-  { asset: '/garden/bellflower-4.png', height: 105 },
+  { asset: '/garden/bellflower-1.webp', height: 45 },
+  { asset: '/garden/bellflower-2.webp', height: 68 },
+  { asset: '/garden/bellflower-3.webp', height: 88 },
+  { asset: '/garden/bellflower-4.webp', height: 105 },
 ];
 const ROSE_STAGES: FlowerStage[] = [
-  { asset: '/garden/rose-1.png', height: 48 },
-  { asset: '/garden/rose-2.png', height: 72 },
-  { asset: '/garden/rose-3.png', height: 92 },
-  { asset: '/garden/rose-4.png', height: 110 },
+  { asset: '/garden/rose-1.webp', height: 48 },
+  { asset: '/garden/rose-2.webp', height: 72 },
+  { asset: '/garden/rose-3.webp', height: 92 },
+  { asset: '/garden/rose-4.webp', height: 110 },
 ];
 const LAVENDER_STAGES: FlowerStage[] = [
-  { asset: '/garden/lavender-1.png', height: 42 },
-  { asset: '/garden/lavender-2.png', height: 66 },
-  { asset: '/garden/lavender-3.png', height: 85 },
-  { asset: '/garden/lavender-4.png', height: 100 },
+  { asset: '/garden/lavender-1.webp', height: 42 },
+  { asset: '/garden/lavender-2.webp', height: 66 },
+  { asset: '/garden/lavender-3.webp', height: 85 },
+  { asset: '/garden/lavender-4.webp', height: 100 },
 ];
 const DAISY_STAGES: FlowerStage[] = [
-  { asset: '/garden/daisy-1.png', height: 42 },
-  { asset: '/garden/daisy-2.png', height: 66 },
-  { asset: '/garden/daisy-3.png', height: 85 },
-  { asset: '/garden/daisy-4.png', height: 100 },
+  { asset: '/garden/daisy-1.webp', height: 42 },
+  { asset: '/garden/daisy-2.webp', height: 66 },
+  { asset: '/garden/daisy-3.webp', height: 85 },
+  { asset: '/garden/daisy-4.webp', height: 100 },
 ];
 const DANDELION_STAGES: FlowerStage[] = [
-  { asset: '/garden/dandelion-1.png', height: 40 },
-  { asset: '/garden/dandelion-2.png', height: 64 },
-  { asset: '/garden/dandelion-3.png', height: 82 },
-  { asset: '/garden/dandelion-4.png', height: 95 },
+  { asset: '/garden/dandelion-1.webp', height: 40 },
+  { asset: '/garden/dandelion-2.webp', height: 64 },
+  { asset: '/garden/dandelion-3.webp', height: 82 },
+  { asset: '/garden/dandelion-4.webp', height: 95 },
 ];
 
 /*
@@ -164,7 +164,7 @@ const MAX_FRAME = Math.max(...FLOWERS.map((f) => f.startFrame + f.stages.length 
 
 /** 收集所有图片路径，用于预加载 */
 const ALL_ASSETS = [
-  '/garden/soil.png',
+  '/garden/soil.webp',
   ...GRASS_BY_AGE.map((g) => g.asset),
   GRASS_BENT.asset,
   ...FLOWERS.flatMap((f) => f.stages.map((s) => s.asset)),
@@ -265,7 +265,7 @@ export function PaperGarden() {
       {/* 土壤 */}
       {frame >= 1 && (
         <img
-          src="/garden/soil.png"
+          src="/garden/soil.webp"
           alt=""
           draggable={false}
           style={{
