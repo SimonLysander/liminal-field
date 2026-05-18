@@ -5,9 +5,7 @@ import { appleEase } from '@/lib/motion';
 import { homeApi } from '@/services/workspace';
 import type { HomeData } from '@/services/workspace';
 import { LoadingState } from '@/components/LoadingState';
-import { HeroGarden, GardenVines, GardenTickProvider } from './HeroGarden';
-// TODO: 素材齐了后替换为 PaperGarden
-// import { PaperGarden } from './PaperGarden';
+import { PaperGarden } from './PaperGarden';
 
 /* ---------- Helpers ---------- */
 
@@ -86,22 +84,18 @@ export default function HomePage() {
   if (loading) return showLoader ? <LoadingState variant="full" /> : null;
 
   return (
-    <GardenTickProvider>
-    <motion.div
-      className="flex flex-1 flex-col overflow-y-auto px-4 py-10"
-      initial={{ opacity: 0, filter: 'blur(3px)' }}
-      animate={{ opacity: 1, filter: 'blur(0px)' }}
-      transition={{ duration: 0.4, ease: appleEase }}
-    >
+    <div className="relative flex min-h-0 flex-1 items-stretch overflow-hidden">
+      <motion.div
+        className="flex-1 overflow-y-auto px-4 py-10"
+        initial={{ opacity: 0, filter: 'blur(3px)' }}
+        animate={{ opacity: 1, filter: 'blur(0px)' }}
+        transition={{ duration: 0.4, ease: appleEase }}
+      >
 
-      {/* ── Hero：SVG 花圃（待替换为 PaperGarden） ── */}
-      <div>
-        <HeroGarden />
-      </div>
+      {/* ── Hero：纸艺花圃 ── */}
+      <PaperGarden />
 
-      <div className="flex">
-      <GardenVines side="left" />
-      <div className="mx-6 min-w-0 flex-1 pt-9">
+      <div className="mx-auto w-full max-w-[var(--layout-reading-max)] pt-9">
       {/* ── 最近笔记 ── */}
       {notes.length > 0 && (
         <div className="mb-10">
@@ -294,10 +288,8 @@ export default function HomePage() {
         </div>
       )}
       </div>
-      <GardenVines side="right" />
-      </div>
 
-    </motion.div>
-    </GardenTickProvider>
+      </motion.div>
+    </div>
   );
 }
