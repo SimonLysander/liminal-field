@@ -169,6 +169,18 @@ export class NoteViewService {
     ]);
   }
 
+  /**
+   * 更新元数据（summary 等），走版本化流程（创建新快照）。
+   * 返回更新后的完整详情 DTO，前端可直接刷新状态。
+   */
+  async patchMeta(
+    id: string,
+    fields: { summary?: string },
+  ): Promise<ContentDetailDto> {
+    await this.contentService.patchMeta(id, fields);
+    return this.getById(id, 'all');
+  }
+
   /** V2 版本历史：从 ContentSnapshot 读取，不依赖 Git log。 */
   async getHistory(id: string): Promise<ContentHistoryEntryDto[]> {
     return this.contentService.getContentHistory(id);

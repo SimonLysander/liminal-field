@@ -217,21 +217,26 @@ export class ContentService {
   private toDetailDto(
     content: ContentItem,
     source: { bodyMarkdown: string },
-    options?: { publicView?: boolean },
+    options?: { publicView?: boolean; snapshotTitle?: string; snapshotSummary?: string },
   ): ContentDetailDto {
     const latestVersion = this.resolveLatestVersion(content);
     const publishedVersion = this.resolvePublishedVersion(content);
     const normalizedStatus = publishedVersion
       ? ContentStatus.published
       : ContentStatus.committed;
+    /* 优先级：snapshot 覆盖 > publicView 用 publishedVersion > 默认 latestVersion */
     const title =
-      options?.publicView && publishedVersion
-        ? publishedVersion.title
-        : latestVersion.title;
+      options?.snapshotTitle !== undefined
+        ? options.snapshotTitle
+        : options?.publicView && publishedVersion
+          ? publishedVersion.title
+          : latestVersion.title;
     const summary =
-      options?.publicView && publishedVersion
-        ? publishedVersion.summary
-        : latestVersion.summary;
+      options?.snapshotSummary !== undefined
+        ? options.snapshotSummary
+        : options?.publicView && publishedVersion
+          ? publishedVersion.summary
+          : latestVersion.summary;
 
     return {
       id: content.id,
@@ -320,7 +325,7 @@ export class ContentService {
   async createContent(dto: CreateContentDto): Promise<ContentDetailDto> {
     const now = new Date();
     const id = this.buildContentId();
-    const summary = dto.summary || dto.title;
+    const summary = dto.summary ?? '';
     const versionId = this.generateVersionId();
 
     // V2: 创建时即生成初始快照（空正文），确保 getContentById 始终能查到 snapshot
@@ -645,10 +650,13 @@ export class ContentService {
       throw new NotFoundException(`Version ${targetVersionId} not found`);
     }
 
+    /* 发布最新版时，用 latestVersion 的 title/summary（可能被 patchMeta 更新过）；
+     * 发布历史版本时，用快照自身的 title/summary。 */
+    const isPublishingLatest = targetVersionId === latestVersion.versionId;
     const publishedVersion = this.buildVersionSnapshot(
       snapshot.commitHash ?? '',
-      snapshot.title,
-      snapshot.summary ?? '',
+      isPublishingLatest ? latestVersion.title : snapshot.title,
+      isPublishingLatest ? (latestVersion.summary ?? '') : (snapshot.summary ?? ''),
       targetVersionId,
     );
 
@@ -775,10 +783,11 @@ export class ContentService {
     }
 
     if (snapshot) {
-      return this.toDetailDto(content, {
-        bodyMarkdown: snapshot.bodyMarkdown,
-        plainText: snapshot.bodyMarkdown.replace(/[#*_[\]()>`~\\|]/g, ''),
-      });
+      return this.toDetailDto(
+        content,
+        { bodyMarkdown: snapshot.bodyMarkdown },
+        { snapshotTitle: snapshot.title, snapshotSummary: snapshot.summary ?? '' },
+      );
     }
 
     // 最终 fallback：Git（兼容旧数据）
@@ -947,6 +956,19 @@ export class ContentService {
       throw new NotFoundException(`Content ${id} not found`);
     }
     return this.toListItemDto(content);
+  }
+
+  /**
+   * 轻量更新元数据（summary 等），不创建新版本。
+   * 只改 ContentItem.latestVersion，不动 ContentSnapshot（快照是不可变的历史记录）。
+   * 下次 commit 时新快照会自然捕获最新的 summary。
+   */
+  async patchMeta(
+    id: string,
+    fields: { title?: string; summary?: string },
+  ): Promise<void> {
+    const updated = await this.contentRepository.patchMeta(id, fields);
+    if (!updated) throw new NotFoundException(`Content ${id} not found`);
   }
 
   async assertContentItemExists(id: string): Promise<void> {

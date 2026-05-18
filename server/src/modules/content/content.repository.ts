@@ -109,6 +109,23 @@ export class ContentRepository {
       .limit(pageSize);
   }
 
+  /** 轻量更新 latestVersion 的元数据字段（title/summary），不创建新快照。 */
+  async patchMeta(
+    id: string,
+    fields: { title?: string; summary?: string },
+  ): Promise<ContentItem | null> {
+    const $set: Record<string, unknown> = { updatedAt: new Date() };
+    if (fields.title !== undefined)
+      $set['latestVersion.title'] = fields.title;
+    if (fields.summary !== undefined)
+      $set['latestVersion.summary'] = fields.summary;
+    return this.contentItemModel.findByIdAndUpdate(
+      id,
+      { $set },
+      { returnDocument: 'after' },
+    );
+  }
+
   async deleteById(id: string): Promise<void> {
     await this.contentItemModel.findByIdAndDelete(id);
   }

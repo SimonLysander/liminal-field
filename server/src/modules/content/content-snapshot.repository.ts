@@ -59,6 +59,19 @@ export class ContentSnapshotRepository {
     return results.map((r) => r._id);
   }
 
+  /** 就地更新快照元数据字段（title/summary），不创建新版本 */
+  async patchFields(
+    versionId: string,
+    fields: { title?: string; summary?: string },
+  ): Promise<void> {
+    const $set: Record<string, unknown> = {};
+    if (fields.title !== undefined) $set.title = fields.title;
+    if (fields.summary !== undefined) $set.summary = fields.summary;
+    if (Object.keys($set).length > 0) {
+      await this.model.findByIdAndUpdate(versionId, { $set });
+    }
+  }
+
   /** 回填 Git commitHash */
   async backfillCommitHash(
     versionId: string,

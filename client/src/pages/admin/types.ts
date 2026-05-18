@@ -61,6 +61,7 @@ export type PreviewState = {
   /** MongoDB snapshot ID，取代原 commitHash 成为版本主键 */
   versionId: string;
   title: string;
+  summary: string;
   bodyMarkdown: string;
   /** 该版本的 TOC 标题列表（来自版本快照，与当前正式版独立） */
   headings: { level: number; text: string }[];
@@ -74,6 +75,7 @@ export type ContentVersionViewProps = {
   error: string;
   preview: PreviewState | null;
   previewLoading: boolean;
+  onSaveSummary: (summary: string) => Promise<void>;
   onReload: () => Promise<void>;
   onPublish: () => Promise<void>;
   onUnpublish: () => Promise<void>;

@@ -146,6 +146,7 @@ const ContentAdmin = () => {
                       error={workspace.contentError}
                       preview={workspace.preview}
                       previewLoading={workspace.previewLoading}
+                      onSaveSummary={workspace.updateSummary}
                       onReload={() => workspace.loadFormalContent(workspace.selectedNode!.contentItemId!)}
                       onPublish={workspace.publishContent}
                       onUnpublish={workspace.unpublishContent}

@@ -174,8 +174,8 @@ function NoteReader({ id }: { id: string }) {
   };
 
   /* 标题信息 */
-  const title = content?.publishedVersion?.title || content?.latestVersion.title || '';
-  const summary = content?.publishedVersion?.summary || content?.latestVersion.summary || '';
+  const title = content?.publishedVersion?.title ?? content?.latestVersion.title ?? '';
+  const summary = content?.publishedVersion?.summary ?? '';
   const wordCount = content?.bodyMarkdown.length || 0;
   const readMin = Math.max(1, Math.ceil(wordCount / 400));
 

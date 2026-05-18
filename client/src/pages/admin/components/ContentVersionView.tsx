@@ -10,7 +10,8 @@
  *   - 正在查看历史版本 → 额外显示"返回最新"
  */
 
-import { MoreHorizontal } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { MoreHorizontal, Pencil } from 'lucide-react';
 import { ActionButton } from '@/components/ui/action-button';
 import {
   DropdownMenu,
@@ -31,6 +32,7 @@ export const ContentVersionView = ({
   error,
   preview,
   previewLoading,
+  onSaveSummary,
   onReload,
   onPublish,
   onUnpublish,
@@ -41,6 +43,35 @@ export const ContentVersionView = ({
   onMoveTo,
 }: ContentVersionViewProps) => {
   const confirm = useConfirm();
+
+  /* 摘要 inline-edit：点击编辑图标进入编辑态，确认/取消退出 */
+  const summary = content.latestVersion.summary;
+  const [editingSummary, setEditingSummary] = useState(false);
+  const [localSummary, setLocalSummary] = useState(summary);
+  const [saving, setSaving] = useState(false);
+
+  /* 外部 summary 变化时（切换文档），同步并退出编辑态 */
+  useEffect(() => {
+    setLocalSummary(summary);
+    setEditingSummary(false);
+  }, [summary]);
+
+  const startEditSummary = useCallback(() => {
+    setLocalSummary(summary);
+    setEditingSummary(true);
+  }, [summary]);
+
+  const cancelEditSummary = useCallback(() => {
+    setLocalSummary(summary);
+    setEditingSummary(false);
+  }, [summary]);
+
+  const confirmSummary = useCallback(async () => {
+    setSaving(true);
+    await onSaveSummary(localSummary);
+    setSaving(false);
+    setEditingSummary(false);
+  }, [localSummary, onSaveSummary]);
 
   /* 当前展示的版本是否为已发布版（用 versionId 对比） */
   const viewingVersionId = preview?.versionId ?? content.latestVersion.versionId;
@@ -92,7 +123,7 @@ export const ContentVersionView = ({
           <p style={{ color: 'var(--mark-red)', fontSize: 'var(--text-sm)' }}>{error}</p>
         </div>
       ) : (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* 不在此重复面包屑：左侧结构面板已表达层级，中间仅保留标题 + 正文 */}
       {/* Header — 始终显示，不因 preview 隐藏 */}
       <div className="flex items-start justify-between">
@@ -180,13 +211,71 @@ export const ContentVersionView = ({
         </div>
       </div>
 
-      {/* 摘要 — 和展示端一致 */}
-      {!preview && content.latestVersion.summary && (
-        <div
-          className="rounded-lg px-4 py-3 text-lg leading-relaxed"
-          style={{ color: 'var(--ink-faded)', fontStyle: 'italic', background: 'var(--shelf)' }}
-        >
-          {content.latestVersion.summary}
+      {/* 摘要 — 当前版本可编辑，历史版本只读 */}
+      {preview ? (
+        preview.summary ? (
+          <div
+            className="rounded-md px-3 py-2 text-sm leading-relaxed"
+            style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
+          >
+            {preview.summary}
+          </div>
+        ) : null
+      ) : (
+        <div className="group relative -mb-1">
+          <textarea
+            value={editingSummary ? localSummary : summary}
+            onChange={(e) => {
+              if (e.target.value.length <= 300) setLocalSummary(e.target.value);
+            }}
+            readOnly={!editingSummary}
+            placeholder="暂无摘要"
+            rows={2}
+            maxLength={300}
+            className="w-full resize-none rounded-md text-sm leading-relaxed outline-none transition-colors duration-150"
+            style={{
+              background: 'var(--shelf)',
+              color: editingSummary ? 'var(--ink-light)' : 'var(--ink-faded)',
+              padding: '8px 10px',
+              border: editingSummary ? '1px solid var(--separator)' : '1px solid transparent',
+              cursor: editingSummary ? 'text' : 'default',
+            }}
+          />
+          <div
+            className="mt-1 flex items-center justify-between"
+            style={{ visibility: editingSummary ? 'visible' : 'hidden' }}
+          >
+            <div className="flex items-center gap-2.5">
+              <button
+                className="text-2xs font-medium transition-opacity hover:opacity-70"
+                style={{ color: 'var(--accent)' }}
+                onClick={() => void confirmSummary()}
+                disabled={saving}
+              >
+                {saving ? '保存中...' : '确认'}
+              </button>
+              <button
+                className="text-2xs transition-opacity hover:opacity-70"
+                style={{ color: 'var(--ink-ghost)' }}
+                onClick={cancelEditSummary}
+              >
+                取消
+              </button>
+            </div>
+            <span className="text-2xs tabular-nums" style={{ color: 'var(--ink-ghost)' }}>
+              {localSummary.length}/300
+            </span>
+          </div>
+          {!editingSummary && (
+            <button
+              className="absolute right-2 top-2 rounded-md p-1 opacity-0 transition-all hover:bg-[var(--paper)] group-hover:opacity-100"
+              style={{ color: 'var(--ink-ghost)' }}
+              onClick={startEditSummary}
+              title="编辑摘要"
+            >
+              <Pencil size={12} strokeWidth={1.5} />
+            </button>
+          )}
         </div>
       )}
 

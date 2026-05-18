@@ -405,29 +405,6 @@ const DraftEditPage = () => {
                 />
               </DraftAssetProvider>
 
-              {/* 文档摘要 — 编辑器下方，对齐 Plate 编辑器内边距（px-16 / sm:px-[max(64px,calc(50%-350px))]） */}
-              <div className="mt-8 px-16 sm:px-[max(64px,calc(50%-350px))]">
-                <hr style={{ border: 'none', borderTop: '1px solid var(--separator)' }} />
-                <div
-                  className="mt-4 mb-2 text-2xs font-semibold uppercase"
-                  style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}
-                >
-                  文档摘要
-                </div>
-                <textarea
-                  value={state.summary}
-                  onChange={(e) => handleChange('summary', e.target.value)}
-                  placeholder="简要描述文档内容..."
-                  rows={3}
-                  className="w-full resize-none rounded-lg border-none px-3 py-2 text-sm outline-none"
-                  style={{
-                    background: 'var(--shelf)',
-                    color: 'var(--ink-light)',
-                    fontFamily: 'var(--font-sans)',
-                    lineHeight: 1.7,
-                  }}
-                />
-              </div>
             </div>
           </div>
 

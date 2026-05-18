@@ -16,6 +16,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -36,6 +37,7 @@ import { GalleryViewService } from './gallery-view.service';
 import { CreateWorkspaceItemDto } from './dto/create-workspace-item.dto';
 import { UpdateWorkspaceItemDto } from './dto/update-workspace-item.dto';
 import { EditorDraftDto } from './dto/editor-draft.dto';
+import { PatchMetaDto } from './dto/patch-meta.dto';
 import { SaveDraftDto } from './dto/save-draft.dto';
 import {
   GalleryAdminDetailDto,
@@ -66,6 +68,15 @@ export class WorkspaceController {
     @Body() dto: SaveContentDto,
   ): Promise<ContentDetailDto> {
     return this.noteViewService.saveContent(id, dto);
+  }
+
+  /** 轻量更新笔记元数据（摘要等），不创建新版本。 */
+  @Patch('notes/items/:id/meta')
+  async patchNoteMeta(
+    @Param('id') id: string,
+    @Body() dto: PatchMetaDto,
+  ): Promise<ContentDetailDto> {
+    return this.noteViewService.patchMeta(id, dto);
   }
 
   @Get('notes/items/:id/draft')

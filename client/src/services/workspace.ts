@@ -384,6 +384,13 @@ export const notesApi = {
   getByVersion: (id: string, versionId: string) =>
     request<ContentDetail>(`/spaces/notes/items/${id}/versions/${versionId}`),
 
+  /** 轻量更新元数据（摘要等），不创建新版本。 */
+  patchMeta: (id: string, dto: { summary?: string }) =>
+    request<ContentDetail>(`/spaces/notes/items/${id}/meta`, {
+      method: 'PATCH',
+      body: JSON.stringify(dto),
+    }),
+
   getHistory: (id: string) =>
     request<ContentHistoryEntry[]>(`/spaces/notes/items/${id}/history`),
 

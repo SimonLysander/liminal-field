@@ -369,6 +369,23 @@ export function useAdminWorkspace() {
   }, [activeContentItemId, loadFormalContent]);
 
   /* ================================================================
+   * 元数据轻量更新（摘要等，不创建新版本）
+   * ================================================================ */
+
+  const updateSummary = useCallback(
+    async (summary: string) => {
+      if (!activeContentItemId) return;
+      try {
+        const detail = await contentItemsApi.patchMeta(activeContentItemId, { summary });
+        setFormalContent(toFormalContentState(detail));
+      } catch (err) {
+        banner.error(`更新摘要失败: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+    [activeContentItemId],
+  );
+
+  /* ================================================================
    * 草稿操作
    * ================================================================ */
 
@@ -593,6 +610,7 @@ export function useAdminWorkspace() {
         setPreview({
           versionId,
           title: detail.title,
+          summary: detail.summary ?? '',
           bodyMarkdown: detail.bodyMarkdown,
           headings: detail.headings,
           committedAt: detail.updatedAt,
@@ -671,6 +689,7 @@ export function useAdminWorkspace() {
     moveNodeToFolder,
 
     /* 内容工作区 */
+    updateSummary,
     /** 同步清空预览内容，立即卸载 PlateReadOnly。导航到编辑页前调用。 */
     clearContent: useCallback(() => {
       setFormalContent(EMPTY_FORMAL_CONTENT);

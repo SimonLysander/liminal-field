@@ -80,7 +80,7 @@ export class WorkspaceService {
     scope: string,
     dto: CreateWorkspaceItemDto,
   ): Promise<WorkspaceItemDetailDto> {
-    const summary = dto.summary || dto.title;
+    const summary = dto.summary ?? '';
 
     // createContent 只建 MongoDB 记录（无 Git commit），内容通过后续 draft/commit 写入
     const detail = await this.contentService.createContent({
