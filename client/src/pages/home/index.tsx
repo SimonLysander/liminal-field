@@ -79,7 +79,7 @@ export default function HomePage() {
   }, []);
 
   const notes = data?.notes ?? [];
-  const galleries = data?.gallery ?? [];
+  const galleries = (data?.gallery ?? []).slice(0, 4);
 
   if (loading) return showLoader ? <LoadingState variant="full" /> : null;
 
