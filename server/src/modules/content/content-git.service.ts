@@ -588,10 +588,15 @@ export class ContentGitService implements OnModuleInit {
 
   /** 检查 origin remote 是否配置 */
   private async hasOriginRemote(): Promise<boolean> {
-    const remoteUrl = await this.tryRun(() =>
+    return !!(await this.getOriginUrl());
+  }
+
+  /** 获取 origin remote URL，未配置时返回 undefined */
+  private async getOriginUrl(): Promise<string | undefined> {
+    const url = await this.tryRun(() =>
       this.git.raw(['remote', 'get-url', 'origin']),
     );
-    return !!remoteUrl;
+    return url?.trim() || undefined;
   }
 
   /**
@@ -700,7 +705,9 @@ export class ContentGitService implements OnModuleInit {
    */
   async pullFromRemote(): Promise<{ success: boolean; message: string }> {
     return this.writeLock.runExclusive(async () => {
-      const remoteUrl = resolveKbRemoteUrlForGit();
+      // 优先从 git remote 取 URL（saveSyncConfig 已同步），env 作 fallback
+      let remoteUrl = await this.getOriginUrl();
+      if (!remoteUrl) remoteUrl = resolveKbRemoteUrlForGit() ?? undefined;
       if (!remoteUrl) {
         return { success: false, message: '未配置远程仓库' };
       }
