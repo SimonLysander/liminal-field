@@ -65,6 +65,8 @@ interface FrontmatterPhoto {
 
 /** parseGalleryContent 的返回结构。 */
 interface ParsedGalleryContent {
+  /** frontmatter 中的 title 字段。旧数据无 title 时为空字符串（兼底）。 */
+  title: string;
   photos: FrontmatterPhoto[];
   cover: string | null;
   /** 帖子拍摄/发生日期（ISO 8601），null 表示未设置。 */
@@ -91,6 +93,7 @@ export function parseGalleryContent(raw: string): ParsedGalleryContent {
   // frontmatter 必须以 "---\n" 开头，否则视为无 frontmatter
   if (!raw.startsWith('---')) {
     return {
+      title: '',
       photos: [],
       cover: null,
       date: null,
@@ -105,6 +108,7 @@ export function parseGalleryContent(raw: string): ParsedGalleryContent {
   if (closingMarkerIndex === -1) {
     // 只有开头的 "---"，没有关闭标记，视为无 frontmatter
     return {
+      title: '',
       photos: [],
       cover: null,
       date: null,
@@ -123,6 +127,7 @@ export function parseGalleryContent(raw: string): ParsedGalleryContent {
   } catch {
     // YAML 解析失败，降级为无 frontmatter
     return {
+      title: '',
       photos: [],
       cover: null,
       date: null,
@@ -131,6 +136,9 @@ export function parseGalleryContent(raw: string): ParsedGalleryContent {
       hasFrontmatter: false,
     };
   }
+
+  // 提取 title（字符串或空字符串兜底；旧数据没有该字段时用空字符串，调用方从 snapshot.title 补全）
+  const title = typeof parsed.title === 'string' ? parsed.title : '';
 
   // 提取 cover（字符串或 null）
   const cover = typeof parsed.cover === 'string' ? parsed.cover : null;
@@ -166,7 +174,7 @@ export function parseGalleryContent(raw: string): ParsedGalleryContent {
     }))
     .filter((p) => p.file !== ''); // 过滤掉 file 字段缺失的条目
 
-  return { photos, cover, date, location, prose, hasFrontmatter: true };
+  return { title, photos, cover, date, location, prose, hasFrontmatter: true };
 }
 
 /**
@@ -197,9 +205,11 @@ function parseTags(raw: unknown): Record<string, string> {
  * 这对于"用户显式清空照片"的场景至关重要——没有 frontmatter 会触发旧数据兼容逻辑，
  * 从 assets 目录推断照片列表，导致已删除的照片重新出现。
  *
- * frontmatter 字段顺序：date → location → cover → photos。
+ * frontmatter 字段顺序：title → date → location → cover → photos。
+ * title 放最前，保持可读性，迁移脚本也依赖此顺序。
  */
 export function serializeGalleryContent(data: {
+  title: string;
   photos: FrontmatterPhoto[];
   cover: string | null;
   date: string | null;
@@ -207,6 +217,8 @@ export function serializeGalleryContent(data: {
   prose: string;
 }): string {
   const frontmatterObj: Record<string, unknown> = {};
+  // title 放最前（新协议要求所有 scope 的 frontmatter 必须含 title）
+  frontmatterObj.title = data.title;
   if (data.date) frontmatterObj.date = data.date;
   if (data.location) frontmatterObj.location = data.location;
   if (data.cover !== null) frontmatterObj.cover = data.cover;
@@ -764,6 +776,7 @@ export class GalleryViewService {
   /**
    * 将画廊保存 DTO 序列化为 main.md 格式（frontmatter + prose）。
    * 集中封装序列化逻辑，commitPost / saveDraft 均调此方法，确保格式一致。
+   * title 写入 frontmatter（新协议要求），便于迁移脚本和文件级解析。
    */
   private serializeDto(dto: SaveGalleryPostDto): string {
     const photos = (dto.photos ?? []).map((p) => ({
@@ -772,6 +785,7 @@ export class GalleryViewService {
       tags: p.tags ?? {},
     }));
     return serializeGalleryContent({
+      title: dto.title,
       photos,
       cover: dto.cover ?? null,
       date: dto.date ?? null,

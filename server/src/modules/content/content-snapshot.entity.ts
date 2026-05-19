@@ -7,6 +7,7 @@
 import { modelOptions, prop, Severity, index } from '@typegoose/typegoose';
 
 @index({ contentItemId: 1, createdAt: -1 })
+@index({ contentItemId: 1, fileName: 1, createdAt: -1 })
 @modelOptions({
   schemaOptions: { collection: 'content_snapshots' },
   options: { allowMixed: Severity.ERROR },
@@ -45,6 +46,13 @@ export class ContentSnapshot {
    */
   @prop({ trim: true })
   source?: string;
+
+  /**
+   * 文件路径标识。null = main.md（默认），非 null = 子文件（如 "entries/e001.md"）。
+   * Notes/Gallery 始终 null。Anthology 用于区分索引和各篇条目。
+   */
+  @prop({ type: String, default: null })
+  fileName?: string | null;
 
   /** Git 异步回填，未完成时为 undefined */
   @prop({ trim: true })

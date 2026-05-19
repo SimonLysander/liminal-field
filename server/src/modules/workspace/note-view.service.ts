@@ -6,6 +6,11 @@
  * - 版本历史查询（基于 Git commit 记录）
  * - 正式内容保存（编辑器提交，通过 ContentService 写入 Git）
  *
+ * frontmatter 协议（新）：
+ * - 保存时（saveContent）：给 bodyMarkdown 加上 frontmatter（title 字段）
+ * - 读取时（getById/getByVersion）：剥掉 frontmatter，只返回正文给前端（PlateJS 不理解 frontmatter）
+ * - 草稿（saveDraft/getDraft）：不加 frontmatter，草稿是编辑器的中间态，不走文件协议
+ *
  * 从原 EditorModule（editor.service.ts）迁移而来。
  */
 import { Injectable } from '@nestjs/common';
@@ -25,6 +30,70 @@ import { SaveDraftDto } from './dto/save-draft.dto';
 import { UploadedAssetDto, ListedAssetDto } from './dto/uploaded-asset.dto';
 import { EditorDraft } from './editor-draft.entity';
 import { EditorDraftRepository } from './editor-draft.repository';
+
+/**
+ * 给 notes bodyMarkdown 加上 frontmatter（只有 title 字段）。
+ *
+ * 调用场景：saveContent 将编辑器发来的纯 markdown 写入 Git 前调用。
+ * 幂等：如果 bodyMarkdown 已经以 "---" 开头，视为已有 frontmatter，直接返回不重复包装。
+ */
+export function addNoteFrontmatter(
+  title: string,
+  bodyMarkdown: string,
+): string {
+  // 已含 frontmatter 的不重复包装（幂等保护）
+  if (bodyMarkdown.startsWith('---')) {
+    return bodyMarkdown;
+  }
+  // 用 JSON.stringify 转义 title 中的特殊字符（冒号、引号、# 等），防止 YAML 解析出错
+  const safeTitle = JSON.stringify(title);
+  return `---\ntitle: ${safeTitle}\n---\n\n${bodyMarkdown}`;
+}
+
+/**
+ * 剥掉 notes bodyMarkdown 的 frontmatter，返回纯正文和 frontmatter 中的 title。
+ *
+ * 调用场景：getById/getByVersion 将 snapshot 里的 bodyMarkdown 返回给前端（PlateJS 不理解 frontmatter）。
+ * 无 frontmatter 的旧数据：直接返回原文，title 为空字符串（兼容）。
+ */
+export function stripNoteFrontmatter(bodyMarkdown: string): {
+  title: string;
+  body: string;
+} {
+  // 没有 frontmatter → 直接返回原文
+  if (!bodyMarkdown.startsWith('---')) {
+    return { title: '', body: bodyMarkdown };
+  }
+
+  // 找关闭标记 "\n---"（跳过开头的 "---"）
+  const closingIndex = bodyMarkdown.indexOf('\n---', 3);
+  if (closingIndex === -1) {
+    return { title: '', body: bodyMarkdown };
+  }
+
+  const yamlContent = bodyMarkdown.slice(4, closingIndex); // "---\n" 之后到关闭 "---" 之前
+
+  // 简单提取 title 行（不引入完整 YAML 解析，notes frontmatter 只有 title 字段）
+  let title = '';
+  for (const line of yamlContent.split('\n')) {
+    const match = line.match(/^title:\s*(.*)$/);
+    if (match) {
+      title = match[1].trim();
+      // 去掉可能存在的引号包裹
+      if (
+        (title.startsWith('"') && title.endsWith('"')) ||
+        (title.startsWith("'") && title.endsWith("'"))
+      ) {
+        title = title.slice(1, -1);
+      }
+      break;
+    }
+  }
+
+  // 关闭 "---\n" 之后的内容是正文
+  const body = bodyMarkdown.slice(closingIndex + 4).trimStart();
+  return { title, body };
+}
 
 export interface UploadAssetInput {
   originalFileName: string;
@@ -59,17 +128,23 @@ export class NoteViewService {
    * 获取笔记详情，返回完整 ContentDetailDto（含 latestVersion/publishedVersion）。
    * 前端 NoteReader 组件依赖嵌套的版本结构来渲染标题、摘要和发布状态，
    * 因此 notes scope 不能使用 WorkspaceService 的扁平 DTO 格式。
+   *
+   * frontmatter 剥离：snapshot 存储的 bodyMarkdown 含 frontmatter，
+   * 返回给前端前剥掉（PlateJS 编辑器不理解 frontmatter）。
    */
   async getById(id: string, visibility?: string): Promise<ContentDetailDto> {
     const vis =
       visibility === 'all' ? ContentVisibility.all : ContentVisibility.public;
     // 管理视图（visibility=all）返回原始相对路径，防止编辑器保存时 OSS URL 污染 snapshot
     const rawAssets = vis === ContentVisibility.all;
-    return this.contentService.getContentById(
+    const detail = await this.contentService.getContentById(
       id,
       { visibility: vis },
       { scope: 'notes', rawAssets },
     );
+    // 剥掉 frontmatter，只把正文返回给前端
+    const { body } = stripNoteFrontmatter(detail.bodyMarkdown);
+    return { ...detail, bodyMarkdown: body };
   }
 
   /**
@@ -121,13 +196,17 @@ export class NoteViewService {
         .replace(draftUrlPattern, (_match, fileName) => `./assets/${fileName}`)
         .replace(assetUrlPattern, (_match, fileName) => `./assets/${fileName}`)
         .replace(ossUrlPattern, (_match, fileName) => `./assets/${fileName}`);
-      dto = { ...dto, bodyMarkdown };
     }
 
-    // 3. 委托 ContentService 写入 Git
+    // 3. 给正文加上 frontmatter（编辑器发来的是纯 markdown，Git 文件协议要求有 frontmatter）
+    //    addNoteFrontmatter 是幂等的：已有 frontmatter 的内容不会重复包装
+    bodyMarkdown = addNoteFrontmatter(dto.title, bodyMarkdown ?? '');
+    dto = { ...dto, bodyMarkdown };
+
+    // 4. 委托 ContentService 写入 Git
     const result = await this.contentService.saveContent(id, dto);
 
-    // 4. commit 成功后清理 MinIO 草稿资源
+    // 5. commit 成功后清理 MinIO 草稿资源
     if (materialized.length > 0) {
       await this.minioService.deleteDraftAssets(id);
     }
@@ -186,14 +265,23 @@ export class NoteViewService {
     return this.contentService.getContentHistory(id);
   }
 
-  /** V2: 获取指定版本的内容快照（versionId 或 commitHash 均可）。 */
+  /**
+   * V2: 获取指定版本的内容快照（versionId 或 commitHash 均可）。
+   *
+   * frontmatter 剥离：snapshot 存储的 bodyMarkdown 含 frontmatter，
+   * 版本预览同样需要剥掉后再返回给前端。
+   */
   async getByVersion(
     id: string,
     versionOrHash: string,
   ): Promise<ContentDetailDto> {
-    return this.contentService.getContentByVersion(id, versionOrHash, {
-      scope: 'notes',
-    });
+    const detail = await this.contentService.getContentByVersion(
+      id,
+      versionOrHash,
+      { scope: 'notes' },
+    );
+    const { body } = stripNoteFrontmatter(detail.bodyMarkdown);
+    return { ...detail, bodyMarkdown: body };
   }
 
   /** 上传附件到内容存储目录。 */

@@ -34,6 +34,7 @@ import { SaveContentDto } from '../content/dto/save-content.dto';
 import { WorkspaceService } from './workspace.service';
 import { NoteViewService } from './note-view.service';
 import { GalleryViewService } from './gallery-view.service';
+import { AnthologyViewService } from './anthology-view.service';
 import { CreateWorkspaceItemDto } from './dto/create-workspace-item.dto';
 import { UpdateWorkspaceItemDto } from './dto/update-workspace-item.dto';
 import { EditorDraftDto } from './dto/editor-draft.dto';
@@ -45,6 +46,14 @@ import {
   GalleryDraftDto,
 } from './dto/gallery-view.dto';
 import { SaveGalleryPostDto } from './dto/save-gallery-post.dto';
+import {
+  AnthologyAdminDetailDto,
+  AnthologyAdminListItemDto,
+  AnthologyEntryDetailDto,
+  AnthologyPublicDetailDto,
+  AnthologyPublicListItemDto,
+} from './dto/anthology-view.dto';
+import { SaveAnthologyEntryDto, ReorderAnthologyEntriesDto } from './dto/save-anthology.dto';
 import { BatchOperationDto } from './dto/batch-operation.dto';
 
 type MultipartRequest = {
@@ -57,6 +66,7 @@ export class WorkspaceController {
     private readonly workspaceService: WorkspaceService,
     private readonly noteViewService: NoteViewService,
     private readonly galleryViewService: GalleryViewService,
+    private readonly anthologyViewService: AnthologyViewService,
   ) {}
 
   // ─── Notes 特有路由（必须在通用 :scope 路由之前注册）───
@@ -261,6 +271,154 @@ export class WorkspaceController {
     reply.send(buffer);
   }
 
+  // ─── Anthology 特有路由（必须在通用 :scope 路由之前注册）───
+  //
+  // 路由优先级说明（双重约束）：
+  // 1. 所有 "anthology/..." 静态路径必须在通用 ":scope/items/:id" 之前注册。
+  // 2. PUT "entries/reorder" 必须在 PUT "entries/:entryKey" 之前注册，
+  //    否则 "reorder" 会被当成 entryKey 参数命中错误 handler。
+  //    NestJS 按注册顺序匹配，此处 reorder 在 :entryKey 之前，安全。
+
+  /**
+   * 重排条目顺序。
+   * Body: { newOrder: string[] }，必须包含且仅包含现有所有 key。
+   * 返回更新后的管理端详情 DTO。
+   *
+   * 必须在 PUT entries/:entryKey 之前注册，避免 "reorder" 被匹配为 entryKey。
+   */
+  @Put('anthology/items/:id/entries/reorder')
+  async reorderAnthologyEntries(
+    @Param('id') id: string,
+    @Body() dto: ReorderAnthologyEntriesDto,
+  ): Promise<AnthologyAdminDetailDto> {
+    await this.workspaceService.assertScopeMatch('anthology', id);
+    return this.anthologyViewService.reorderEntries(id, dto.newOrder);
+  }
+
+  /**
+   * 条目版本历史（按 fileName=entries/eXXX.md 筛选 snapshot 列表）。
+   * 必须在 GET entries/:entryKey 之前注册，避免 "history" 被当成 entryKey 匹配。
+   * 与 notes/gallery 的 /history 路由对称，供管理端版本时间线组件使用。
+   */
+  @Get('anthology/items/:id/entries/:entryKey/history')
+  async getAnthologyEntryHistory(
+    @Param('id') id: string,
+    @Param('entryKey') entryKey: string,
+  ): Promise<ContentHistoryEntryDto[]> {
+    await this.workspaceService.assertScopeMatch('anthology', id);
+    return this.anthologyViewService.getEntryHistory(id, entryKey);
+  }
+
+  /**
+   * 获取条目历史版本内容（按 versionId 精确定位 snapshot）。
+   * 用于管理端版本时间线点击后，在中栏展示历史版本正文。
+   *
+   * 路由优先级：必须在 GET entries/:entryKey 之前注册，
+   * 否则 "versions" 会被匹配为 entryKey 参数。
+   * 同时必须在 GET entries/:entryKey/draft 之前或之后均可（两者不冲突，不同次级路径）。
+   */
+  @Get('anthology/items/:id/entries/:entryKey/versions/:versionId')
+  async getAnthologyEntryByVersion(
+    @Param('id') id: string,
+    @Param('entryKey') entryKey: string,
+    @Param('versionId') versionId: string,
+  ): Promise<AnthologyEntryDetailDto> {
+    await this.workspaceService.assertScopeMatch('anthology', id);
+    return this.anthologyViewService.getEntryByVersion(id, entryKey, versionId);
+  }
+
+  /**
+   * 获取条目草稿。无草稿返回 null（200），避免 404 噪音。
+   * 必须在 GET entries/:entryKey 之前注册，否则 "draft" 会被匹配为 entryKey 参数。
+   */
+  @Get('anthology/items/:id/entries/:entryKey/draft')
+  async getAnthologyEntryDraft(
+    @Param('id') id: string,
+    @Param('entryKey') entryKey: string,
+  ): Promise<EditorDraftDto | null> {
+    await this.workspaceService.assertScopeMatch('anthology', id);
+    return this.anthologyViewService.getEntryDraft(id, entryKey);
+  }
+
+  /** 保存条目草稿（autosave）。只写 MongoDB，不产生 Git snapshot。 */
+  @Put('anthology/items/:id/entries/:entryKey/draft')
+  async saveAnthologyEntryDraft(
+    @Param('id') id: string,
+    @Param('entryKey') entryKey: string,
+    @Body() dto: SaveDraftDto,
+  ): Promise<EditorDraftDto> {
+    await this.workspaceService.assertScopeMatch('anthology', id);
+    return this.anthologyViewService.saveEntryDraft(id, entryKey, dto);
+  }
+
+  /** 丢弃条目草稿。 */
+  @Delete('anthology/items/:id/entries/:entryKey/draft')
+  async deleteAnthologyEntryDraft(
+    @Param('id') id: string,
+    @Param('entryKey') entryKey: string,
+  ): Promise<void> {
+    await this.workspaceService.assertScopeMatch('anthology', id);
+    return this.anthologyViewService.deleteEntryDraft(id, entryKey);
+  }
+
+  /**
+   * 获取单篇条目详情。
+   * 未登录（展示端）读已发布版本的索引 + 条目最新 snapshot，
+   * 已登录（管理端）读最新版本。
+   */
+  @Public()
+  @Get('anthology/items/:id/entries/:entryKey')
+  async getAnthologyEntry(
+    @Param('id') id: string,
+    @Param('entryKey') entryKey: string,
+    @Req() request: FastifyRequest,
+  ): Promise<AnthologyEntryDetailDto> {
+    await this.workspaceService.assertScopeMatch('anthology', id);
+    // 未登录用户（展示端）读已发布版本，管理端读最新版本
+    const usePublished = !request.user;
+    return this.anthologyViewService.getEntryDetail(id, entryKey, usePublished);
+  }
+
+  /**
+   * 添加条目。
+   * 返回更新后的管理端详情 DTO（含完整条目列表）。
+   */
+  @Post('anthology/items/:id/entries')
+  async addAnthologyEntry(
+    @Param('id') id: string,
+    @Body() dto: SaveAnthologyEntryDto,
+  ): Promise<AnthologyAdminDetailDto> {
+    await this.workspaceService.assertScopeMatch('anthology', id);
+    return this.anthologyViewService.addEntry(id, dto);
+  }
+
+  /**
+   * 编辑条目。
+   * 返回更新后的管理端详情 DTO。
+   */
+  @Put('anthology/items/:id/entries/:entryKey')
+  async saveAnthologyEntry(
+    @Param('id') id: string,
+    @Param('entryKey') entryKey: string,
+    @Body() dto: SaveAnthologyEntryDto,
+  ): Promise<AnthologyAdminDetailDto> {
+    await this.workspaceService.assertScopeMatch('anthology', id);
+    return this.anthologyViewService.saveEntry(id, entryKey, dto);
+  }
+
+  /**
+   * 删除条目（仅从索引移除，snapshot 历史保留）。
+   * 返回更新后的管理端详情 DTO。
+   */
+  @Delete('anthology/items/:id/entries/:entryKey')
+  async removeAnthologyEntry(
+    @Param('id') id: string,
+    @Param('entryKey') entryKey: string,
+  ): Promise<AnthologyAdminDetailDto> {
+    await this.workspaceService.assertScopeMatch('anthology', id);
+    return this.anthologyViewService.removeEntry(id, entryKey);
+  }
+
   // ─── 通用 CRUD（所有 scope 共享）───
 
   /**
@@ -289,6 +447,18 @@ export class WorkspaceController {
           isAdmin
             ? this.galleryViewService.toAdminListItemDto(n.id)
             : this.galleryViewService.toPublicListItemDto(n.id),
+        ),
+      );
+    }
+    if (scope === 'anthology') {
+      const items = await this.workspaceService.list(scope, status);
+      const isAdmin = !!request.user;
+      // 管理端返回含状态的 AdminListItemDto，展示端返回精简的 PublicListItemDto
+      return Promise.all(
+        items.map((n) =>
+          isAdmin
+            ? this.anthologyViewService.toAdminListItem(n.id)
+            : this.anthologyViewService.toPublicListItem(n.id),
         ),
       );
     }
@@ -338,6 +508,13 @@ export class WorkspaceController {
       }
       return this.galleryViewService.toPublicDetailDto(id);
     }
+    if (scope === 'anthology') {
+      // 管理端（visibility=all）返回含状态信息的管理详情，展示端返回已发布版本
+      if (visibility === ContentVisibility.all) {
+        return this.anthologyViewService.toAdminDetail(id) as Promise<AnthologyPublicDetailDto | AnthologyAdminDetailDto>;
+      }
+      return this.anthologyViewService.toPublicDetail(id);
+    }
     if (scope === 'notes') {
       return this.noteViewService.getById(id, visibility);
     }
@@ -360,6 +537,49 @@ export class WorkspaceController {
     return this.workspaceService.remove(scope, id);
   }
 
+  // ─── Anthology 条目级发布路由（必须在通用 :scope/items/:id/publish 之前注册）───
+  //
+  // 路由优先级说明：这三个静态路径含 "anthology" 字面量，
+  // 必须在通用 ":scope/items/:id/publish" 之前注册，否则会匹配到通用路由。
+
+  /**
+   * 发布单篇条目：将索引中该条目的 publishedVersionId 指向最新 snapshot。
+   * 如果文集已发布，同步更新 publishedVersion 指向新索引。
+   */
+  @Put('anthology/items/:id/entries/:entryKey/publish')
+  async publishAnthologyEntry(
+    @Param('id') id: string,
+    @Param('entryKey') entryKey: string,
+  ): Promise<AnthologyAdminDetailDto> {
+    await this.workspaceService.assertScopeMatch('anthology', id);
+    return this.anthologyViewService.publishEntry(id, entryKey);
+  }
+
+  /**
+   * 取消发布单篇条目：将索引中该条目的 publishedVersionId 设为 null。
+   * 如果文集已发布，同步更新 publishedVersion 指向新索引。
+   */
+  @Put('anthology/items/:id/entries/:entryKey/unpublish')
+  async unpublishAnthologyEntry(
+    @Param('id') id: string,
+    @Param('entryKey') entryKey: string,
+  ): Promise<AnthologyAdminDetailDto> {
+    await this.workspaceService.assertScopeMatch('anthology', id);
+    return this.anthologyViewService.unpublishEntry(id, entryKey);
+  }
+
+  /**
+   * 批量发布所有条目：一次性将所有有内容的条目 publishedVersionId 设为最新 snapshot versionId，
+   * 只提交一个索引 snapshot（高效）。如果文集已发布，同步更新 publishedVersion。
+   */
+  @Post('anthology/items/:id/entries/publish-all')
+  async publishAllAnthologyEntries(
+    @Param('id') id: string,
+  ): Promise<AnthologyAdminDetailDto> {
+    await this.workspaceService.assertScopeMatch('anthology', id);
+    return this.anthologyViewService.publishAllEntries(id);
+  }
+
   // ─── 发布/取消 ───
 
   @Put(':scope/items/:id/publish')
@@ -371,6 +591,11 @@ export class WorkspaceController {
     await this.workspaceService.assertScopeMatch(scope, id);
     if (scope === 'gallery')
       await this.galleryViewService.assertPublishable(id, body?.versionId);
+    // anthology 文集级发布走独立方法（含已发布条目校验），不再用通用 publish
+    if (scope === 'anthology') {
+      await this.anthologyViewService.publishAnthology(id);
+      return this.anthologyViewService.toAdminDetail(id);
+    }
     await this.workspaceService.publish(scope, id, body?.versionId);
     if (scope === 'notes') return this.noteViewService.getById(id, 'all');
     if (scope === 'gallery')
@@ -381,6 +606,11 @@ export class WorkspaceController {
   @Put(':scope/items/:id/unpublish')
   async unpublish(@Param('scope') scope: string, @Param('id') id: string) {
     await this.workspaceService.assertScopeMatch(scope, id);
+    // anthology 文集级取消发布走独立方法
+    if (scope === 'anthology') {
+      await this.anthologyViewService.unpublishAnthology(id);
+      return this.anthologyViewService.toAdminDetail(id);
+    }
     await this.workspaceService.unpublish(scope, id);
     if (scope === 'notes') return this.noteViewService.getById(id, 'all');
     if (scope === 'gallery')

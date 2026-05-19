@@ -25,6 +25,7 @@ import {
   Home,
   FileText,
   Image,
+  BookOpen,
   Sparkles,
   Search,
   Folder,
@@ -36,12 +37,13 @@ import { LoadingState } from '@/components/LoadingState';
 
 /* ---------- Data ---------- */
 
-type Space = 'home' | 'notes' | 'gallery' | 'agent';
-const spaces: Space[] = ['home', 'notes', 'gallery'];
+type Space = 'home' | 'notes' | 'anthology' | 'gallery' | 'agent';
+const spaces: Space[] = ['home', 'notes', 'anthology', 'gallery'];
 
 const labels: Record<Space, string> = {
   home: '首页',
   notes: '笔记',
+  anthology: '文集',
   gallery: '画廊',
   agent: '助手',
 };
@@ -52,6 +54,7 @@ const NAV_ICON = { size: 16, strokeWidth: 1.5 } as const;
 const icons: Record<Space, React.ReactNode> = {
   home: <Home {...NAV_ICON} />,
   notes: <FileText {...NAV_ICON} />,
+  anthology: <BookOpen {...NAV_ICON} />,
   gallery: <Image {...NAV_ICON} />,
   agent: <Sparkles {...NAV_ICON} />,
 };
@@ -81,6 +84,7 @@ function getAmbientPhrase() {
 function pathToSpace(pathname: string): Space {
   const seg = pathname.split('/')[1];
   if (seg === 'note') return 'notes';
+  if (seg === 'anthology') return 'anthology';
   if (spaces.includes(seg as Space)) return seg as Space;
   return 'notes';
 }

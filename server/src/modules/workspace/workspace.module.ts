@@ -9,6 +9,7 @@
  * - WorkspaceService：scope 驱动的通用 CRUD（所有业务模块共享）
  * - NoteViewService：笔记特有（草稿、版本历史）
  * - GalleryViewService：画廊特有（封面图、照片列表、直出）
+ * - AnthologyViewService：文集特有（索引解析、条目增删改查）
  * - WorkspaceController：统一路由 /spaces/:scope/items/...
  *
  * 新增业务模块只需：追加 NavigationScope 枚举值 + 可选的 ViewService。
@@ -22,6 +23,7 @@ import { EditorDraftRepository } from './editor-draft.repository';
 import { WorkspaceService } from './workspace.service';
 import { NoteViewService } from './note-view.service';
 import { GalleryViewService } from './gallery-view.service';
+import { AnthologyViewService } from './anthology-view.service';
 import { WorkspaceController } from './workspace.controller';
 
 @Module({
@@ -35,8 +37,9 @@ import { WorkspaceController } from './workspace.controller';
     WorkspaceService,
     NoteViewService,
     GalleryViewService,
+    AnthologyViewService,
     EditorDraftRepository,
   ],
-  exports: [WorkspaceService, NoteViewService, GalleryViewService],
+  exports: [WorkspaceService, NoteViewService, GalleryViewService, AnthologyViewService],
 })
 export class WorkspaceModule {}
