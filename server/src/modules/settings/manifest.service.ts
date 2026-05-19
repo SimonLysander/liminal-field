@@ -42,6 +42,7 @@ export interface Manifest {
     totalItems: number;
     notes: number;
     gallery: number;
+    anthology: number;
   };
 }
 
@@ -94,6 +95,9 @@ export class ManifestService {
     const galleryCount = await this.countContentNodesByScope(
       NavigationScope.gallery,
     );
+    const anthologyCount = await this.countContentNodesByScope(
+      NavigationScope.anthology,
+    );
 
     const manifest: Manifest = {
       version: MANIFEST_VERSION,
@@ -102,6 +106,7 @@ export class ManifestService {
         totalItems: allItems.length,
         notes: notesCount,
         gallery: galleryCount,
+        anthology: anthologyCount,
       },
     };
 
