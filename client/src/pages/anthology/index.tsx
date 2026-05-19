@@ -188,7 +188,6 @@ function AnthologyOverview({ id }: { id: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     void anthologyApi.getPublicDetail(id).then((data) => {
       if (!cancelled) { setDetail(data); setLoading(false); }
     }).catch(() => {
@@ -357,7 +356,6 @@ function EntryReader({ id, entryKey }: { id: string; entryKey: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
 
     // 并发拉取：条目正文 + 文集详情（返回按钮标题 + 进度计算）
     void Promise.all([
