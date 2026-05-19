@@ -350,6 +350,22 @@ export class ContentRepoService {
     await writeFile(this.getMainMarkdownPath(contentId), bodyMarkdown, 'utf8');
   }
 
+  /**
+   * 写入指定文件路径的 markdown（anthology 条目等非 main.md 的子文件）。
+   * fileName 是相对于 content/<id>/ 的路径，如 "entries/e001.md"。
+   */
+  async writeFileMarkdown(
+    contentId: string,
+    fileName: string,
+    bodyMarkdown: string,
+  ): Promise<void> {
+    const contentDir = this.getContentDirectory(contentId);
+    const filePath = join(contentDir, fileName);
+    // 确保子目录存在（如 entries/）
+    await mkdir(join(filePath, '..'), { recursive: true });
+    await writeFile(filePath, bodyMarkdown, 'utf8');
+  }
+
   private async readVersionedMainMarkdown(
     contentId: string,
     commitHash: string,

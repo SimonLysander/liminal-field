@@ -816,10 +816,19 @@ export class ContentGitService implements OnModuleInit {
             (_m, f) => `./assets/${f}`,
           );
 
-        await this.contentRepoService.writeMainMarkdown(
-          contentId,
-          cleanMarkdown,
-        );
+        // 根据 snapshot.fileName 决定写入路径：null → main.md，非 null → 子文件
+        if (snapshot.fileName) {
+          await this.contentRepoService.writeFileMarkdown(
+            contentId,
+            snapshot.fileName,
+            cleanMarkdown,
+          );
+        } else {
+          await this.contentRepoService.writeMainMarkdown(
+            contentId,
+            cleanMarkdown,
+          );
+        }
 
         // Git commit（内部持有 writeLock，串行调用安全）
         const commitHash = await this.recordCommittedContentChange(
