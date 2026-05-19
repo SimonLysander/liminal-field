@@ -25,6 +25,7 @@ import {
   Home,
   FileText,
   Image,
+  BookOpen,
   Sparkles,
   Search,
   Folder,
@@ -36,12 +37,13 @@ import { LoadingState } from '@/components/LoadingState';
 
 /* ---------- Data ---------- */
 
-type Space = 'home' | 'notes' | 'gallery' | 'agent';
-const spaces: Space[] = ['home', 'notes', 'gallery'];
+type Space = 'home' | 'notes' | 'anthology' | 'gallery' | 'agent';
+const spaces: Space[] = ['home', 'notes', 'anthology', 'gallery'];
 
 const labels: Record<Space, string> = {
   home: '首页',
   notes: '笔记',
+  anthology: '文集',
   gallery: '画廊',
   agent: '助手',
 };
@@ -52,6 +54,7 @@ const NAV_ICON = { size: 16, strokeWidth: 1.5 } as const;
 const icons: Record<Space, React.ReactNode> = {
   home: <Home {...NAV_ICON} />,
   notes: <FileText {...NAV_ICON} />,
+  anthology: <BookOpen {...NAV_ICON} />,
   gallery: <Image {...NAV_ICON} />,
   agent: <Sparkles {...NAV_ICON} />,
 };
@@ -81,6 +84,7 @@ function getAmbientPhrase() {
 function pathToSpace(pathname: string): Space {
   const seg = pathname.split('/')[1];
   if (seg === 'note') return 'notes';
+  if (seg === 'anthology') return 'anthology';
   if (spaces.includes(seg as Space)) return seg as Space;
   return 'notes';
 }
@@ -408,43 +412,55 @@ export default function Sidebar() {
                 exit={{ opacity: 0, x: navDirection.current * -20 }}
                 transition={{ duration: 0.15, ease: [0.25, 0.1, 0.25, 1] }}
               >
-                {currentNodes.map((node) =>
-                  node.type === 'FOLDER' ? (
-                    <div
-                      key={node.id}
-                      className="hover-shelf flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5 transition-all duration-150"
-                      onClick={() => enterFolder(node)}
-                    >
-                      <Folder size={14} strokeWidth={1.5} className="shrink-0" style={{ color: 'var(--ink-ghost)' }} />
-                      <span className="truncate text-base" style={{ color: 'var(--ink-light)' }}>{node.name}</span>
-                      {node.hasChildren && (
-                        <ChevronRight size={12} strokeWidth={2} className="shrink-0" style={{ color: 'var(--ink-ghost)' }} />
-                      )}
-                    </div>
-                  ) : node.contentItemId ? (
-                    <div
-                      key={node.id}
-                      className="hover-shelf flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5 transition-all duration-150"
-                      style={{ background: activeNoteId === node.contentItemId ? 'var(--shelf)' : undefined }}
-                      onClick={() => navigate(
-                        currentParentId
-                          ? `/note?topic=${currentParentId}&doc=${node.contentItemId}`
-                          : `/note?doc=${node.contentItemId}`,
-                      )}
-                    >
-                      <FileText size={14} strokeWidth={1.5} className="shrink-0" style={{ color: activeNoteId === node.contentItemId ? 'var(--ink)' : 'var(--ink-ghost)' }} />
-                      <span
-                        className="truncate text-base"
-                        style={{
-                          color: activeNoteId === node.contentItemId ? 'var(--ink)' : 'var(--ink-light)',
-                          fontWeight: activeNoteId === node.contentItemId ? 500 : 400,
-                        }}
+                {(() => {
+                  let contentIdx = 0;
+                  return currentNodes.map((node) =>
+                    node.type === 'FOLDER' ? (
+                      <div
+                        key={node.id}
+                        className="hover-shelf flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5 transition-all duration-150"
+                        onClick={() => enterFolder(node)}
                       >
-                        {node.name}
-                      </span>
-                    </div>
-                  ) : null,
-                )}
+                        <Folder size={14} strokeWidth={1.5} className="shrink-0" style={{ color: 'var(--ink-ghost)' }} />
+                        <span className="truncate text-base" style={{ color: 'var(--ink-light)' }}>{node.name}</span>
+                        {node.hasChildren && (
+                          <ChevronRight size={12} strokeWidth={2} className="shrink-0" style={{ color: 'var(--ink-ghost)' }} />
+                        )}
+                      </div>
+                    ) : node.contentItemId ? (
+                      <div
+                        key={node.id}
+                        className="hover-shelf flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5 transition-all duration-150"
+                        style={{ background: activeNoteId === node.contentItemId ? 'var(--shelf)' : undefined }}
+                        onClick={() => navigate(
+                          currentParentId
+                            ? `/note?topic=${currentParentId}&doc=${node.contentItemId}`
+                            : `/note?doc=${node.contentItemId}`,
+                        )}
+                      >
+                        {/* 序号 — 零补位双位数，等宽排列 */}
+                        <span
+                          className="w-5 shrink-0 text-2xs tabular-nums"
+                          style={{
+                            color: activeNoteId === node.contentItemId ? 'var(--ink-faded)' : 'var(--ink-ghost)',
+                            letterSpacing: '0.02em',
+                          }}
+                        >
+                          {String(++contentIdx).padStart(2, '0')}
+                        </span>
+                        <span
+                          className="truncate text-base"
+                          style={{
+                            color: activeNoteId === node.contentItemId ? 'var(--ink)' : 'var(--ink-light)',
+                            fontWeight: activeNoteId === node.contentItemId ? 500 : 400,
+                          }}
+                        >
+                          {node.name}
+                        </span>
+                      </div>
+                    ) : null,
+                  );
+                })()}
               </motion.div>
               </AnimatePresence>
             </div>

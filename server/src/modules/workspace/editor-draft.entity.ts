@@ -1,7 +1,11 @@
 /**
  * 编辑器草稿实体 — 存储在 editor_drafts MongoDB 集合。
- * 每个 contentItem 至多保留一份最近草稿（draft:${contentItemId}），
- * 用于编辑器 autosave，不产生 Git 版本记录。
+ *
+ * 两类草稿共用此实体，通过 _id 格式区分：
+ * - Notes/Gallery 单文件草稿：_id = "draft:{contentItemId}"，fileName = null
+ * - Anthology 条目草稿：_id = "draft:{contentItemId}:{fileName}"，fileName = "entries/eXXX.md"
+ *
+ * fileName 字段为 null 时，兼容原有 notes/gallery 逻辑（findByContentItemId/upsert/deleteByContentItemId）。
  */
 import { modelOptions, prop, Severity } from '@typegoose/typegoose';
 
@@ -35,4 +39,11 @@ export class EditorDraft {
 
   @prop({ trim: true })
   savedBy?: string;
+
+  /**
+   * 关联的文件名（仅 anthology 条目草稿使用）。
+   * null 表示主文档草稿（notes/gallery），"entries/eXXX.md" 表示条目草稿。
+   */
+  @prop({ type: String, default: null })
+  fileName?: string | null;
 }

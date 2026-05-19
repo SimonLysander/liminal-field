@@ -21,6 +21,7 @@ export class ContentSnapshotRepository {
     changeNote: string;
     source?: string;
     commitHash?: string;
+    fileName?: string | null;
   }): Promise<ContentSnapshot> {
     return this.model.create({ _id: input.versionId, ...input });
   }
@@ -30,9 +31,31 @@ export class ContentSnapshotRepository {
     return this.model.findById(versionId);
   }
 
-  /** 按 contentItemId 查询版本列表，最新在前 */
+  /** 按 contentItemId 查询版本列表，最新在前（只查 main.md，即 fileName=null） */
   async listByContentItemId(contentItemId: string): Promise<ContentSnapshot[]> {
-    return this.model.find({ contentItemId }).sort({ createdAt: -1 });
+    return this.model
+      .find({ contentItemId, $or: [{ fileName: null }, { fileName: { $exists: false } }] })
+      .sort({ createdAt: -1 });
+  }
+
+  /** 按 contentItemId + fileName 查询最新 snapshot */
+  async findLatestByFileName(
+    contentItemId: string,
+    fileName: string,
+  ): Promise<ContentSnapshot | null> {
+    return this.model
+      .findOne({ contentItemId, fileName })
+      .sort({ createdAt: -1 });
+  }
+
+  /** 按 contentItemId + fileName 查询版本列表，最新在前 */
+  async listByFileName(
+    contentItemId: string,
+    fileName: string,
+  ): Promise<ContentSnapshot[]> {
+    return this.model
+      .find({ contentItemId, fileName })
+      .sort({ createdAt: -1 });
   }
 
   /**
@@ -102,6 +125,12 @@ export class ContentSnapshotRepository {
   /** 全量导出（归档用） */
   async listAll(): Promise<ContentSnapshot[]> {
     return this.model.find({}).sort({ createdAt: -1 });
+  }
+
+  /** 删除某 contentItemId + fileName 下的所有 snapshot（条目删除时清理） */
+  async deleteByFileName(contentItemId: string, fileName: string): Promise<number> {
+    const result = await this.model.deleteMany({ contentItemId, fileName });
+    return result.deletedCount ?? 0;
   }
 
   /** 清空全部 snapshot */

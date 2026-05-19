@@ -588,10 +588,15 @@ export class ContentGitService implements OnModuleInit {
 
   /** 检查 origin remote 是否配置 */
   private async hasOriginRemote(): Promise<boolean> {
-    const remoteUrl = await this.tryRun(() =>
+    return !!(await this.getOriginUrl());
+  }
+
+  /** 获取 origin remote URL，未配置时返回 undefined */
+  private async getOriginUrl(): Promise<string | undefined> {
+    const url = await this.tryRun(() =>
       this.git.raw(['remote', 'get-url', 'origin']),
     );
-    return !!remoteUrl;
+    return url?.trim() || undefined;
   }
 
   /**
@@ -700,7 +705,9 @@ export class ContentGitService implements OnModuleInit {
    */
   async pullFromRemote(): Promise<{ success: boolean; message: string }> {
     return this.writeLock.runExclusive(async () => {
-      const remoteUrl = resolveKbRemoteUrlForGit();
+      // 优先从 git remote 取 URL（saveSyncConfig 已同步），env 作 fallback
+      let remoteUrl = await this.getOriginUrl();
+      if (!remoteUrl) remoteUrl = resolveKbRemoteUrlForGit() ?? undefined;
       if (!remoteUrl) {
         return { success: false, message: '未配置远程仓库' };
       }
@@ -816,10 +823,19 @@ export class ContentGitService implements OnModuleInit {
             (_m, f) => `./assets/${f}`,
           );
 
-        await this.contentRepoService.writeMainMarkdown(
-          contentId,
-          cleanMarkdown,
-        );
+        // 根据 snapshot.fileName 决定写入路径：null → main.md，非 null → 子文件
+        if (snapshot.fileName) {
+          await this.contentRepoService.writeFileMarkdown(
+            contentId,
+            snapshot.fileName,
+            cleanMarkdown,
+          );
+        } else {
+          await this.contentRepoService.writeMainMarkdown(
+            contentId,
+            cleanMarkdown,
+          );
+        }
 
         // Git commit（内部持有 writeLock，串行调用安全）
         const commitHash = await this.recordCommittedContentChange(

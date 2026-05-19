@@ -513,6 +513,190 @@ export const galleryApi = {
     request<GalleryVersionContent>(`/spaces/gallery/items/${id}/versions/${versionId}`),
 };
 
+// ── Anthology API ──
+
+/** 展示端文集列表项 */
+export interface AnthologyPublicListItem {
+  id: string;
+  title: string;
+  description: string;
+  entryCount: number;
+  updatedAt: string;
+}
+
+/** 文集条目元数据（索引里的冗余字段） */
+export interface AnthologyEntryMeta {
+  key: string;
+  title: string;
+  date: string | null;
+}
+
+/** 展示端文集详情 */
+export interface AnthologyPublicDetail {
+  id: string;
+  title: string;
+  description: string;
+  entries: AnthologyEntryMeta[];
+}
+
+/** 管理端文集列表项 */
+export interface AnthologyAdminListItem extends AnthologyPublicListItem {
+  status: 'committed' | 'published';
+  hasUnpublishedChanges: boolean;
+}
+
+/**
+ * 管理端条目元数据（含两层发布状态字段）。
+ * - publishedVersionId: 已发布的 snapshot versionId，null 表示条目未发布
+ * - hasUnpublishedChanges: 条目有新内容尚未同步到 publishedVersionId
+ */
+export interface AnthologyAdminEntryMeta extends AnthologyEntryMeta {
+  hasContent: boolean;
+  publishedVersionId: string | null;
+  hasUnpublishedChanges: boolean;
+}
+
+/** 管理端文集详情 */
+export interface AnthologyAdminDetail extends AnthologyPublicDetail {
+  status: 'committed' | 'published';
+  hasUnpublishedChanges: boolean;
+  entries: AnthologyAdminEntryMeta[];
+}
+
+/** 条目正文详情 */
+export interface AnthologyEntryDetail {
+  key: string;
+  title: string;
+  date: string | null;
+  /** 最后更新时间（ISO 8601），与 NoteReader 的 updatedAt 同语义。 */
+  updatedAt: string;
+  bodyMarkdown: string;
+  prev: { key: string; title: string } | null;
+  next: { key: string; title: string } | null;
+}
+
+/** 条目草稿保存请求体（复用 SaveDraftDto，summary 可选） */
+export interface AnthologyEntryDraftDto extends EditorDraft {
+  /** anthology 条目草稿无 summary，兼容 EditorDraft 类型 */
+}
+
+export const anthologyApi = {
+  // ── 展示端 ──
+
+  listPublished: () =>
+    request<AnthologyPublicListItem[]>('/spaces/anthology/items?status=published'),
+
+  getPublicDetail: (id: string) =>
+    request<AnthologyPublicDetail>(`/spaces/anthology/items/${id}`),
+
+  getEntry: (id: string, entryKey: string) =>
+    request<AnthologyEntryDetail>(`/spaces/anthology/items/${id}/entries/${entryKey}`),
+
+  /** 获取条目的历史版本内容（按 snapshot versionId） */
+  getEntryByVersion: (id: string, entryKey: string, versionId: string) =>
+    request<AnthologyEntryDetail>(`/spaces/anthology/items/${id}/entries/${entryKey}/versions/${versionId}`),
+
+  // ── 管理端 ──
+
+  list: (status?: string) => {
+    const query = status ? `?status=${status}` : '';
+    return request<AnthologyAdminListItem[]>(`/spaces/anthology/items${query}`);
+  },
+
+  getById: (id: string) =>
+    request<AnthologyAdminDetail>(`/spaces/anthology/items/${id}?visibility=all`),
+
+  create: (dto: { title: string }) =>
+    request<AnthologyAdminListItem>('/spaces/anthology/items', {
+      method: 'POST',
+      body: JSON.stringify({ title: dto.title, bodyMarkdown: '\u200B', changeNote: '创建文集' }),
+    }),
+
+  addEntry: (id: string, dto: { title: string; date?: string; bodyMarkdown: string; changeNote?: string }) =>
+    request<AnthologyAdminDetail>(`/spaces/anthology/items/${id}/entries`, {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    }),
+
+  saveEntry: (id: string, entryKey: string, dto: { title: string; date?: string; bodyMarkdown: string; changeNote?: string }) =>
+    request<AnthologyAdminDetail>(`/spaces/anthology/items/${id}/entries/${entryKey}`, {
+      method: 'PUT',
+      body: JSON.stringify(dto),
+    }),
+
+  removeEntry: (id: string, entryKey: string) =>
+    request<AnthologyAdminDetail>(`/spaces/anthology/items/${id}/entries/${entryKey}`, {
+      method: 'DELETE',
+    }),
+
+  reorderEntries: (id: string, newOrder: string[]) =>
+    request<AnthologyAdminDetail>(`/spaces/anthology/items/${id}/entries/reorder`, {
+      method: 'PUT',
+      body: JSON.stringify({ newOrder }),
+    }),
+
+  // ── 条目草稿 CRUD ──
+
+  /** 获取条目草稿。无草稿返回 null（200）。 */
+  getEntryDraft: (id: string, entryKey: string) =>
+    request<EditorDraft | null>(`/spaces/anthology/items/${id}/entries/${entryKey}/draft`),
+
+  /** 保存条目草稿（autosave）。只写 MongoDB，不产生 Git snapshot。 */
+  saveEntryDraft: (id: string, entryKey: string, dto: SaveDraftDto) =>
+    request<EditorDraft>(`/spaces/anthology/items/${id}/entries/${entryKey}/draft`, {
+      method: 'PUT',
+      body: JSON.stringify(dto),
+    }),
+
+  /** 丢弃条目草稿。 */
+  deleteEntryDraft: (id: string, entryKey: string) =>
+    request<void>(`/spaces/anthology/items/${id}/entries/${entryKey}/draft`, {
+      method: 'DELETE',
+    }),
+
+  /**
+   * 获取单篇条目的版本历史（按 entries/eXXX.md 筛选），供管理端版本时间线使用。
+   * 与 notes/gallery 的 getHistory 语义对等。
+   */
+  getEntryHistory: (id: string, entryKey: string) =>
+    request<ContentHistoryEntry[]>(`/spaces/anthology/items/${id}/entries/${entryKey}/history`),
+
+  // ── 文集级发布（上线/下线整个文集）──
+
+  publish: (id: string) =>
+    request<AnthologyAdminDetail>(`/spaces/anthology/items/${id}/publish`, {
+      method: 'PUT',
+    }),
+
+  unpublish: (id: string) =>
+    request<AnthologyAdminDetail>(`/spaces/anthology/items/${id}/unpublish`, {
+      method: 'PUT',
+    }),
+
+  // ── 条目级发布（单篇独立发布/取消发布）──
+
+  /** 发布单篇条目：将该条目 publishedVersionId 指向最新 snapshot。 */
+  publishEntry: (id: string, entryKey: string) =>
+    request<AnthologyAdminDetail>(`/spaces/anthology/items/${id}/entries/${entryKey}/publish`, {
+      method: 'PUT',
+    }),
+
+  /** 取消发布单篇条目：将该条目 publishedVersionId 设为 null。 */
+  unpublishEntry: (id: string, entryKey: string) =>
+    request<AnthologyAdminDetail>(`/spaces/anthology/items/${id}/entries/${entryKey}/unpublish`, {
+      method: 'PUT',
+    }),
+
+  /** 批量发布所有有内容的条目（一次提交，高效）。 */
+  publishAllEntries: (id: string) =>
+    request<AnthologyAdminDetail>(`/spaces/anthology/items/${id}/entries/publish-all`, {
+      method: 'POST',
+    }),
+
+  remove: (id: string) =>
+    request<void>(`/spaces/anthology/items/${id}`, { method: 'DELETE' }),
+};
+
 // ── 首页 ──
 
 /** 首页笔记条目（含字数） */

@@ -29,6 +29,7 @@ import { ConfirmProvider } from '@/contexts/ConfirmContext';
 import Sidebar from './components/global/Sidebar';
 import Topbar from './components/global/Topbar';
 import AgentPage from './pages/agent';
+import AnthologyPage from './pages/anthology';
 import GalleryPage from './pages/gallery';
 import HomePage from './pages/home';
 import NotePage from './pages/note';
@@ -38,6 +39,8 @@ const AdminShell = lazy(() => import('./pages/admin'));
 const ContentAdmin = lazy(() => import('./pages/admin/content'));
 const GalleryAdmin = lazy(() => import('./pages/admin/gallery'));
 const GalleryEditPage = lazy(() => import('./pages/admin/gallery/edit'));
+const AnthologyAdmin = lazy(() => import('./pages/admin/anthology'));
+const AnthologyEntryEditPage = lazy(() => import('./pages/admin/anthology/edit'));
 const DraftEditPage = lazy(() => import('./pages/admin/edit'));
 const ImportPreviewPage = lazy(() => import('./pages/admin/import-preview'));
 const BatchImportPage = lazy(() => import('./pages/admin/batch-import'));
@@ -153,6 +156,7 @@ function MainLayout() {
             <Routes location={location}>
               <Route path="/home" element={<HomePage />} />
               <Route path="/note" element={<NotePage />} />
+              <Route path="/anthology" element={<AnthologyPage />} />
               <Route path="/gallery" element={<GalleryPage />} />
               <Route path="/agent" element={<AgentPage />} />
               <Route path="*" element={<NotFoundPage />} />
@@ -190,6 +194,7 @@ function App() {
         >
           <Route index element={<Navigate to="/admin/notes" replace />} />
           <Route path="notes" element={<Suspense fallback={<LoadingState variant="full" />}><ContentAdmin /></Suspense>} />
+          <Route path="anthology" element={<Suspense fallback={<LoadingState variant="full" />}><AnthologyAdmin /></Suspense>} />
           <Route path="gallery" element={<Suspense fallback={<LoadingState variant="full" />}><GalleryAdmin /></Suspense>} />
           <Route path="settings" element={<Suspense fallback={<LoadingState variant="full" />}><SettingsPage /></Suspense>} />
         </Route>
@@ -209,6 +214,16 @@ function App() {
             <AuthGuard>
               <Suspense fallback={<LoadingState variant="full" />}>
                 <GalleryEditPage />
+              </Suspense>
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/admin/anthology/:id/entries/:entryKey/edit"
+          element={
+            <AuthGuard>
+              <Suspense fallback={<LoadingState variant="full" />}>
+                <AnthologyEntryEditPage />
               </Suspense>
             </AuthGuard>
           }

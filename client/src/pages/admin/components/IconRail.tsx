@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { FileText, Image, RefreshCw, LogOut, Settings } from 'lucide-react';
+import { FileText, Image, BookOpen, RefreshCw, LogOut, Settings } from 'lucide-react';
 import { authApi } from '@/services/auth';
 import { resetAuth } from '@/App';
 import { Logo } from '@/components/Logo';
@@ -18,6 +18,7 @@ import { SyncDialog } from './SyncDialog';
 
 const NAV_ITEMS = [
   { path: '/admin/notes', icon: FileText, label: '笔记管理' },
+  { path: '/admin/anthology', icon: BookOpen, label: '文集管理' },
   { path: '/admin/gallery', icon: Image, label: '画廊管理' },
   { path: '/admin/settings', icon: Settings, label: '设置' },
 ] as const;

@@ -14,6 +14,7 @@ export enum NavigationNodeType {
 export enum NavigationScope {
   notes = 'notes',
   gallery = 'gallery',
+  anthology = 'anthology',
 }
 
 // 覆盖 listByParentId 和 findRootNodes 的查询+排序：{ parentId, scope, order }

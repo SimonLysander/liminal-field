@@ -14,7 +14,7 @@
 import { ContentFade, LoadingState } from '@/components/LoadingState';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import type { StructureNode } from '@/services/structure';
-import { ChevronLeft, ChevronRight, FileText, Folder, Plus, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Folder, Plus, RefreshCw } from 'lucide-react';
 import { useCallback, useState } from 'react';
 
 /* ---------- Types ---------- */
@@ -46,6 +46,7 @@ type AdminStructurePanelProps = {
 
 function NodeItem({
   node,
+  contentIndex,
   isSelected,
   isDragging,
   dropTarget,
@@ -57,6 +58,8 @@ function NodeItem({
   onDrop,
 }: {
   node: StructureNode;
+  /** 内容项序号（文件夹不参与计数），null 表示文件夹。 */
+  contentIndex: number | null;
   isSelected: boolean;
   isDragging: boolean;
   dropTarget: DropTarget | null;
@@ -108,7 +111,7 @@ function NodeItem({
           }
         }}
       >
-        {/* Icon */}
+        {/* Icon / 序号 */}
         {isFolder ? (
           <Folder
             size={14}
@@ -117,12 +120,15 @@ function NodeItem({
             style={{ color: isSelected ? 'var(--ink)' : 'var(--ink-ghost)' }}
           />
         ) : (
-          <FileText
-            size={14}
-            strokeWidth={1.5}
-            className="shrink-0"
-            style={{ color: isSelected ? 'var(--ink)' : 'var(--ink-ghost)' }}
-          />
+          <span
+            className="w-5 shrink-0 text-2xs tabular-nums"
+            style={{
+              color: isSelected ? 'var(--ink-faded)' : 'var(--ink-ghost)',
+              letterSpacing: '0.02em',
+            }}
+          >
+            {contentIndex !== null ? String(contentIndex).padStart(2, '0') : ''}
+          </span>
         )}
 
         <span
@@ -379,10 +385,13 @@ export function AdminStructurePanel({
             </div>
           ) : (
             <div>
-              {nodes.map((node) => (
+              {(() => {
+                let contentIdx = 0;
+                return nodes.map((node) => (
                 <NodeItem
                   key={node.id}
                   node={node}
+                  contentIndex={node.type !== 'FOLDER' && node.contentItemId ? ++contentIdx : null}
                   isSelected={selectedNodeId === node.id}
                   isDragging={draggedNodeId === node.id}
                   dropTarget={dropTarget}
@@ -393,7 +402,8 @@ export function AdminStructurePanel({
                   onDragEnd={handleDragEnd}
                   onDrop={handleDrop}
                 />
-              ))}
+              ));
+              })()}
             </div>
           )}
         </ContentFade>

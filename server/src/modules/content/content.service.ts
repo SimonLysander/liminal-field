@@ -390,16 +390,20 @@ export class ContentService {
     let nextPublishedVersion = this.resolvePublishedVersion(current);
 
     // V2 Phase 3: 先写 MongoDB（同步），Git 后台异步归档
+    const isSubFile = dto.fileName != null;
+
     if (dto.action === ContentSaveAction.commit) {
       const versionId = this.generateVersionId();
 
-      // commitHash 待异步回填，先用空字符串占位
-      nextLatestVersion = this.buildVersionSnapshot(
-        '',
-        dto.title,
-        summary,
-        versionId,
-      );
+      // fileName 为 null（main.md）时更新 latestVersion，非 null（子文件）时不更新
+      if (!isSubFile) {
+        nextLatestVersion = this.buildVersionSnapshot(
+          '',
+          dto.title,
+          summary,
+          versionId,
+        );
+      }
 
       // V2: 创建版本快照，公开读取将从此处读取而非 git show
       await this.snapshotRepository.create({
@@ -413,19 +417,23 @@ export class ContentService {
           .map((ref) => ref.path),
         createdAt: now,
         changeNote: dto.changeNote ?? '',
+        fileName: dto.fileName ?? null,
+        ...(dto.source ? { source: dto.source } : {}),
         // commitHash 有意省略——异步回填
       });
 
       // 异步归档到 Git，不阻塞请求；错误由 archiveToGit 内部捕获并记录日志
-      void this.archiveToGit(
-        id,
-        versionId,
-        dto.bodyMarkdown,
-        dto.changeNote ?? '',
-        dto.title,
-        summary,
-        nextChangeLogs,
-      );
+      if (!isSubFile) {
+        void this.archiveToGit(
+          id,
+          versionId,
+          dto.bodyMarkdown,
+          dto.changeNote ?? '',
+          dto.title,
+          summary,
+          nextChangeLogs,
+        );
+      }
     }
 
     if (dto.action === ContentSaveAction.publish) {
@@ -459,12 +467,15 @@ export class ContentService {
     // V2 Phase 3: 无 action 的保存（草稿写入），同样先写 MongoDB，再异步写磁盘
     if (!dto.action) {
       const versionId = this.generateVersionId();
-      nextLatestVersion = this.buildVersionSnapshot(
-        nextLatestVersion.commitHash,
-        dto.title,
-        summary,
-        versionId,
-      );
+
+      if (!isSubFile) {
+        nextLatestVersion = this.buildVersionSnapshot(
+          nextLatestVersion.commitHash,
+          dto.title,
+          summary,
+          versionId,
+        );
+      }
 
       // V2: 无 action 的保存也创建快照（写入 Markdown 但不产生 git commit）
       await this.snapshotRepository.create({
@@ -478,16 +489,20 @@ export class ContentService {
           .map((ref) => ref.path),
         createdAt: now,
         changeNote: dto.changeNote ?? '',
+        fileName: dto.fileName ?? null,
+        ...(dto.source ? { source: dto.source } : {}),
       });
 
       // no-action 保存不产生 git commit，但仍写磁盘供后续 commit 使用
-      void this.archiveMarkdownToDisk(id, dto.bodyMarkdown).catch(
-        (err: unknown) => {
-          this.logger.warn(
-            `archiveMarkdownToDisk failed for ${id}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        },
-      );
+      if (!isSubFile) {
+        void this.archiveMarkdownToDisk(id, dto.bodyMarkdown).catch(
+          (err: unknown) => {
+            this.logger.warn(
+              `archiveMarkdownToDisk failed for ${id}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          },
+        );
+      }
     }
 
     /* publishedAt 逻辑：发布时记录（首次），取消发布时清空 */
@@ -969,6 +984,37 @@ export class ContentService {
   ): Promise<void> {
     const updated = await this.contentRepository.patchMeta(id, fields);
     if (!updated) throw new NotFoundException(`Content ${id} not found`);
+  }
+
+  /**
+   * 获取某文件的最新 snapshot。
+   * fileName 不传或 null = main.md，传值 = 子文件（如 "entries/e001.md"）。
+   */
+  async getLatestSnapshot(
+    contentItemId: string,
+    fileName?: string | null,
+  ): Promise<ContentSnapshot | null> {
+    if (fileName) {
+      return this.snapshotRepository.findLatestByFileName(contentItemId, fileName);
+    }
+    // fileName=null: 取 main.md 的最新 snapshot（即 latestVersion 指向的）
+    const item = await this.contentRepository.findById(contentItemId);
+    if (!item?.latestVersion?.versionId) return null;
+    return this.snapshotRepository.findByVersionId(item.latestVersion.versionId);
+  }
+
+  /**
+   * 列出某文件的版本历史。
+   * fileName 不传或 null = main.md 历史，传值 = 子文件历史。
+   */
+  async listVersionsByFileName(
+    contentItemId: string,
+    fileName?: string | null,
+  ): Promise<ContentSnapshot[]> {
+    if (fileName) {
+      return this.snapshotRepository.listByFileName(contentItemId, fileName);
+    }
+    return this.snapshotRepository.listByContentItemId(contentItemId);
   }
 
   async assertContentItemExists(id: string): Promise<void> {

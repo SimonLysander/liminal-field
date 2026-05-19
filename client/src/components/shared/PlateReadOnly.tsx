@@ -55,6 +55,56 @@ const ReadOnlyPlugins = [
   }),
 ];
 
+/**
+ * deserializeMd 不认识 <date value="..."/> 标签。
+ * 处理方式：在传给 deserializeMd 之前，直接在 markdown 字符串里替换。
+ * 把 <date value="YYYY-MM-DD" /> 替换为一个特殊占位符 `%%DATE:YYYY-MM-DD%%`，
+ * deserializeMd 后再递归扫描文本节点，把占位符还原为 Plate date 元素节点。
+ */
+const DATE_TAG_RE = /<date\s+value="([^"]+)"\s*\/>/g;
+const DATE_PLACEHOLDER_RE = /%%DATE:([^%]+)%%/g;
+
+/** 第一步：markdown 字符串里把 <date> HTML 标签替换为纯文本占位符 */
+function replaceDateTags(md: string): string {
+  return md.replace(DATE_TAG_RE, '%%DATE:$1%%');
+}
+
+/** 第二步：Plate 节点树里把占位符还原为 date 元素节点 */
+function restoreDateNodes(nodes: any[]): any[] {
+  return nodes.map((node) => {
+    if (node.children) {
+      const newChildren: any[] = [];
+      for (const child of node.children) {
+        if (child.text != null && DATE_PLACEHOLDER_RE.test(child.text)) {
+          DATE_PLACEHOLDER_RE.lastIndex = 0;
+          let lastIndex = 0;
+          let match: RegExpExecArray | null;
+          while ((match = DATE_PLACEHOLDER_RE.exec(child.text)) !== null) {
+            if (match.index > lastIndex) {
+              newChildren.push({ ...child, text: child.text.slice(lastIndex, match.index) });
+            }
+            newChildren.push({
+              type: 'date',
+              date: match[1],
+              children: [{ text: '' }],
+            });
+            lastIndex = match.index + match[0].length;
+          }
+          if (lastIndex < child.text.length) {
+            newChildren.push({ ...child, text: child.text.slice(lastIndex) });
+          }
+        } else if (child.children) {
+          newChildren.push(restoreDateNodes([child])[0]);
+        } else {
+          newChildren.push(child);
+        }
+      }
+      return { ...node, children: newChildren };
+    }
+    return node;
+  });
+}
+
 /** 骨架屏：模拟文本行的脉冲条，比文字更自然 */
 function ReadOnlySkeleton() {
   const widths = ['85%', '70%', '90%', '60%', '80%', '45%'];
@@ -147,8 +197,11 @@ function PlateReadOnlyInner({ markdown }: { markdown: string }) {
       plugins: ReadOnlyPlugins,
       value: (editor) => {
         try {
-          const nodes = deserializeMd(editor, markdown);
-          return fixCodeBlockLines(nodes);
+          /* 先把 <date value="..."/> 替换为占位符（避免 remark 把它当 HTML 处理），
+           * 反序列化后再把占位符还原为 Plate date 节点 */
+          const preprocessed = replaceDateTags(markdown);
+          const nodes = deserializeMd(editor, preprocessed);
+          return fixCodeBlockLines(restoreDateNodes(nodes));
         } catch (err) {
           console.error('[PlateReadOnly] deserializeMd failed:', err);
           return [{ type: 'p', children: [{ text: markdown }] }];

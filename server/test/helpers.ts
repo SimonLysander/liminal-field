@@ -308,6 +308,79 @@ export async function commitNoteContent(
 }
 
 /**
+ * 创建一个 anthology 内容条目，返回其 ID。
+ */
+export async function createAnthologyItem(
+  app: NestFastifyApplication,
+  cookie: string,
+  title = '测试文集',
+): Promise<string> {
+  const res = await supertest(app.getHttpServer())
+    .post('/api/v1/spaces/anthology/items')
+    .set('Cookie', cookie)
+    .send({ title })
+    .expect(201);
+
+  return res.body.data.id;
+}
+
+/**
+ * 向文集添加一个条目，返回 { entryKey, detail } 对象。
+ *
+ * - entryKey：新增条目的 key（nanoid 格式 `e_xxxxxxxx`），由 API 返回值动态获取
+ * - detail：更新后的 AnthologyAdminDetail（含完整条目列表）
+ *
+ * 两步流程（对应当前业务逻辑）：
+ * 1. POST addEntry → 创建空 system snapshot，更新索引，返回新增条目 key
+ * 2. PUT saveEntry → 提交用户内容（bodyMarkdown），生成用户级 snapshot
+ *
+ * 如果 bodyMarkdown 非空，第二步才有意义。bodyMarkdown 为空时只做第一步。
+ */
+export async function addAnthologyEntry(
+  app: NestFastifyApplication,
+  cookie: string,
+  anthologyId: string,
+  entry: { title: string; date?: string; bodyMarkdown: string },
+): Promise<{ entryKey: string; detail: any }> {
+  // Step 1：addEntry 创建空条目（只传 title/date，bodyMarkdown 传空字符串）
+  const addRes = await supertest(app.getHttpServer())
+    .post(`/api/v1/spaces/anthology/items/${anthologyId}/entries`)
+    .set('Cookie', cookie)
+    .send({
+      title: entry.title,
+      ...(entry.date ? { date: entry.date } : {}),
+      bodyMarkdown: '',
+      changeNote: `添加条目：${entry.title}`,
+    })
+    .expect(201);
+
+  const detail = addRes.body.data;
+
+  // 从返回的条目列表中取最后一个（刚添加的）条目 key
+  // entry key 现在是 nanoid 格式（e_xxxxxxxx），不再是自增序号（e001）
+  const entries: Array<{ key: string }> = detail.entries;
+  const entryKey = entries[entries.length - 1].key;
+
+  // Step 2：如果有正文内容，提交条目内容（生成用户级 snapshot）
+  if (entry.bodyMarkdown) {
+    const saveRes = await supertest(app.getHttpServer())
+      .put(`/api/v1/spaces/anthology/items/${anthologyId}/entries/${entryKey}`)
+      .set('Cookie', cookie)
+      .send({
+        title: entry.title,
+        ...(entry.date ? { date: entry.date } : {}),
+        bodyMarkdown: entry.bodyMarkdown,
+        changeNote: `初稿：${entry.title}`,
+      })
+      .expect(200);
+
+    return { entryKey, detail: saveRes.body.data };
+  }
+
+  return { entryKey, detail };
+}
+
+/**
  * 提交 gallery 内容（写入 frontmatter main.md + git commit）。
  * photos 需要包含至少一张照片（file 字段必须对应 assets 目录中已存在的文件）。
  */

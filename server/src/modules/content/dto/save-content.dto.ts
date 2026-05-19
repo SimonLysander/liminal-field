@@ -45,6 +45,19 @@ export class SaveContentDto {
   @IsOptional()
   updatedBy?: string;
 
+  /** 来源标识（'user'|'system'|'ai'|'import'），不传时 snapshot 无 source 字段 */
+  @IsString()
+  @IsOptional()
+  source?: string;
+
+  /**
+   * 文件路径标识。null/不传 = main.md，非 null = 子文件（如 "entries/e001.md"）。
+   * fileName 非 null 时，提交不更新 ContentItem.latestVersion（只跟踪 main.md）。
+   */
+  @IsString()
+  @IsOptional()
+  fileName?: string | null;
+
   /**
    * publish 时指定发布哪个历史 commitHash。
    * 不传则默认发布 latestVersion（当前行为）。

@@ -19,6 +19,7 @@ import { ContentRepoService } from '../content/content-repo.service';
 import { NavigationRepository } from '../navigation/navigation.repository';
 import { OssService } from '../oss/oss.service';
 import { Manifest, ManifestNode, ManifestService } from './manifest.service';
+import { parseAnthologyIndex } from '../workspace/anthology-view.service';
 
 export interface ScanResult {
   /** Git 仓库 content/ 目录下发现的 contentId 列表 */
@@ -87,12 +88,17 @@ export class RecoveryService {
     // 未指定时，先扫描再确定要恢复的 ID 列表
     const targetIds = contentIds ?? (await this.scan()).missingInDb;
 
+    // 从清单构建 contentId → scope 映射，决定恢复策略
+    const manifest = await this.manifestService.readManifest();
+    const scopeMap = this.buildScopeMap(manifest);
+
     const recoveredIds = new Set<string>();
     const errors: string[] = [];
 
     for (const contentId of targetIds) {
       try {
-        await this.recoverSingleItem(contentId, recoveredIds);
+        const scope = scopeMap.get(contentId) ?? 'notes';
+        await this.recoverSingleItem(contentId, scope, recoveredIds);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.error(`恢复 ${contentId} 失败: ${msg}`);
@@ -101,7 +107,6 @@ export class RecoveryService {
     }
 
     // 最后统一恢复导航节点：有清单按树形恢复，无清单平铺到 notes 根
-    const manifest = await this.manifestService.readManifest();
     await this.restoreNavigation(manifest, recoveredIds);
 
     this.logger.log(
@@ -109,6 +114,22 @@ export class RecoveryService {
     );
 
     return { recovered: recoveredIds.size, errors };
+  }
+
+  /** 从清单导航树提取 contentId → scope 映射 */
+  private buildScopeMap(manifest: Manifest | null): Map<string, string> {
+    const map = new Map<string, string>();
+    if (!manifest) return map;
+    for (const [scope, nodes] of Object.entries(manifest.navigation)) {
+      const collect = (list: ManifestNode[]) => {
+        for (const node of list) {
+          if (node.contentItemId) map.set(node.contentItemId, scope);
+          if (node.children) collect(node.children);
+        }
+      };
+      collect(nodes);
+    }
+    return map;
   }
 
   // ── 私有方法 ──────────────────────────────────────────────────────────────
@@ -133,15 +154,13 @@ export class RecoveryService {
   }
 
   /**
-   * 恢复单条内容：
-   * 1. 从磁盘读取 main.md + README.md
-   * 2. 读取 Git log，最多取 3 条 commit 作为快照
-   * 3. 创建 ContentItem
-   * 4. 为每条 commit 创建 ContentSnapshot
-   * 5. 上传最新版本的资产到 OSS
+   * 恢复单条内容，按清单 scope 决定策略：
+   * - notes/gallery：读 main.md，创建一条 snapshot（fileName=null）
+   * - anthology：读 main.md（索引）+ entries/*.md（条目），索引和每篇条目各创建一条 snapshot
    */
   private async recoverSingleItem(
     contentId: string,
+    scope: string,
     recoveredIds: Set<string>,
   ): Promise<void> {
     const contentDir = join(this.contentRoot, contentId);
@@ -154,7 +173,7 @@ export class RecoveryService {
       return;
     }
 
-    // 读取正文
+    // 读取 main.md（所有 scope 都有）
     let bodyMarkdown = '';
     try {
       bodyMarkdown = await readFile(join(contentDir, 'main.md'), 'utf8');
@@ -189,7 +208,7 @@ export class RecoveryService {
       updatedAt: now,
     });
 
-    // 只建一条快照（当前磁盘状态），不翻 git 历史
+    // 索引 snapshot（main.md，fileName=null）
     await this.contentSnapshotRepository.create({
       versionId: latestVersionId,
       contentItemId: contentId,
@@ -202,11 +221,60 @@ export class RecoveryService {
       source: 'system',
     });
 
+    // anthology scope：额外恢复 entries/ 下的条目文件
+    if (scope === 'anthology') {
+      await this.recoverAnthologyEntries(contentId, bodyMarkdown, now);
+    }
+
     // 上传最新版本资产到 OSS
     await this.uploadAssetsToOss(contentId, latestVersionId, contentDir);
 
     recoveredIds.add(contentId);
-    this.logger.log(`恢复完成: ${contentId} (${title})`);
+    this.logger.log(`恢复完成: ${contentId} (${title}) [${scope}]`);
+  }
+
+  /**
+   * 恢复 anthology 的条目文件：
+   * 从索引 frontmatter 读取条目列表，逐个读取 entries/{key}.md 并创建 snapshot。
+   * 以索引为权威——索引里有但磁盘上没有的条目跳过（warn），磁盘上多余的文件忽略。
+   */
+  private async recoverAnthologyEntries(
+    contentId: string,
+    indexMarkdown: string,
+    now: Date,
+  ): Promise<void> {
+    const indexData = parseAnthologyIndex(indexMarkdown);
+    if (indexData.entries.length === 0) return;
+
+    const contentDir = join(this.contentRoot, contentId);
+
+    for (const entry of indexData.entries) {
+      const filePath = join(contentDir, `entries/${entry.key}.md`);
+      let entryMarkdown = '';
+      try {
+        entryMarkdown = await readFile(filePath, 'utf8');
+      } catch {
+        this.logger.warn(`${contentId}: entries/${entry.key}.md 不存在，跳过`);
+        continue;
+      }
+
+      await this.contentSnapshotRepository.create({
+        versionId: nanoid(16),
+        contentItemId: contentId,
+        title: entry.title,
+        summary: '',
+        bodyMarkdown: entryMarkdown,
+        assetRefs: [],
+        createdAt: now,
+        changeNote: '从远端恢复',
+        source: 'system',
+        fileName: `entries/${entry.key}.md`,
+      });
+    }
+
+    this.logger.log(
+      `${contentId}: 恢复 ${indexData.entries.length} 篇条目`,
+    );
   }
 
   /**
