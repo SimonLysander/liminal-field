@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { appleEase } from '@/lib/motion';
@@ -49,6 +49,71 @@ const fadeUp = {
   }),
 };
 
+/* ---------- Manifesto — 打字效果引言 ---------- */
+
+const MANIFESTO = '让纸墨见证我斑驳而卑微的期许，如何像云雾升腾一般，生长为生机勃勃、斩钉截铁的现实';
+/** 页面加载后延迟多久开始打字（等 PaperGarden 入场完成） */
+const TYPE_DELAY = 800;
+
+/** 根据当前字符计算下一次击键间隔，模拟真人节奏 */
+function getTypeInterval(char: string): number {
+  // 标点停顿更久（思考感）
+  if ('，、。；：' .includes(char)) return 260 + Math.random() * 120;
+  // 普通字符：基础 70ms + 随机抖动 ±30ms
+  return 70 + Math.random() * 60;
+}
+
+function Manifesto() {
+  const [displayLen, setDisplayLen] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => {
+    timerRef.current = setTimeout(() => {
+      let i = 0;
+      const tick = () => {
+        i++;
+        setDisplayLen(i);
+        if (i < MANIFESTO.length) {
+          timerRef.current = setTimeout(tick, getTypeInterval(MANIFESTO[i - 1]));
+        }
+      };
+      tick();
+    }, TYPE_DELAY);
+    return () => clearTimeout(timerRef.current);
+  }, []);
+
+  return (
+    <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 pt-6 pb-2 max-[520px]:px-4">
+      <p
+        className="text-center text-sm leading-relaxed"
+        style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)', minHeight: '1.5em' }}
+      >
+        {MANIFESTO.slice(0, displayLen)}
+        {/* 光标：打字进行中闪烁，完成后淡出 */}
+        {displayLen < MANIFESTO.length ? (
+          <span
+            className="inline-block w-[2px] align-middle"
+            style={{
+              height: '1em',
+              background: 'var(--ink-ghost)',
+              marginLeft: 1,
+              animation: 'cursor-blink 0.8s steps(2) infinite',
+            }}
+          />
+        ) : (
+          <motion.span
+            className="inline-block w-[2px] align-middle"
+            style={{ height: '1em', background: 'var(--ink-ghost)', marginLeft: 1 }}
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 0 }}
+            transition={{ duration: 1.5, delay: 0.5 }}
+          />
+        )}
+      </p>
+    </div>
+  );
+}
+
 /* ---------- Component ---------- */
 
 export default function HomePage() {
@@ -94,6 +159,9 @@ export default function HomePage() {
 
       {/* ── Hero：纸艺花圃 ── */}
       <PaperGarden />
+
+      {/* ── 引言：打字效果，PaperGarden 和内容之间的定调 ── */}
+      <Manifesto />
 
       <div className="mx-auto w-full max-w-[var(--layout-reading-max)] pt-9">
       {/* ── 最近笔记 ── */}

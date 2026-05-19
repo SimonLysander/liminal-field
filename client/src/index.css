@@ -618,6 +618,13 @@ body.theme-transitioning [data-slate-leaf] {
 [data-theme="midnight"] .mark-red { text-shadow: 0 0 12px rgba(255,69,58,0.2); }
 [data-theme="midnight"] .mark-green { text-shadow: 0 0 12px rgba(48,209,88,0.2); }
 
+/* ========== Typewriter cursor blink ========== */
+
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0; }
+}
+
 /* ========== TOC scroll-to highlight flash ========== */
 
 @keyframes toc-flash {

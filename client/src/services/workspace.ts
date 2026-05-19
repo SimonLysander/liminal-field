@@ -568,6 +568,8 @@ export interface AnthologyEntryDetail {
   key: string;
   title: string;
   date: string | null;
+  /** 最后更新时间（ISO 8601），与 NoteReader 的 updatedAt 同语义。 */
+  updatedAt: string;
   bodyMarkdown: string;
   prev: { key: string; title: string } | null;
   next: { key: string; title: string } | null;

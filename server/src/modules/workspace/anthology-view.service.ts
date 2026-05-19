@@ -435,9 +435,14 @@ export class AnthologyViewService {
     entryKey: string,
   ): Promise<AnthologyAdminDetailDto> {
     const indexData = await this.loadIndex(contentItemId);
-    const exists = indexData.entries.some((e) => e.key === entryKey);
-    if (!exists) {
+    const entryRef = indexData.entries.find((e) => e.key === entryKey);
+    if (!entryRef) {
       throw new NotFoundException(`Entry ${entryKey} not found in anthology ${contentItemId}`);
+    }
+
+    // 已发布的条目不能直接删除，必须先取消发布
+    if (entryRef.publishedVersionId !== null) {
+      throw new BadRequestException('已发布的条目不能删除，请先取消发布');
     }
 
     // 从索引移除
@@ -446,6 +451,9 @@ export class AnthologyViewService {
       entries: indexData.entries.filter((e) => e.key !== entryKey),
     };
     await this.commitIndex(contentItemId, updatedIndex, `删除条目 ${entryKey}`);
+
+    // 删除条目后同步已发布版本（否则展示端仍显示已删除的条目）
+    await this.syncPublishedVersionIfNeeded(contentItemId);
 
     // 并行清理该条目的所有 snapshot 和草稿（非致命，失败不影响主流程）
     const fileName = `entries/${entryKey}.md`;
@@ -553,13 +561,20 @@ export class AnthologyViewService {
       throw new NotFoundException(`Entry ${entryKey} has no content snapshot`);
     }
 
+    // updatedAt：始终取该条目最新 snapshot 的 createdAt（与 NoteReader 的 updatedAt 同语义）
+    const latestSnapshot = await this.snapshotRepository.findLatestByFileName(
+      contentItemId,
+      fileName,
+    );
+
     const parsed = parseEntryContent(entrySnapshot.bodyMarkdown);
     const { prev, next } = this.buildPrevNext(visibleEntries, entryIdx);
 
     return {
       key: entryKey,
       title: parsed.title || entrySnapshot.title,
-      date: parsed.date,
+      date: parsed.date ?? entrySnapshot.createdAt.toISOString().split('T')[0],
+      updatedAt: (latestSnapshot ?? entrySnapshot).createdAt.toISOString(),
       bodyMarkdown: parsed.bodyMarkdown,
       prev,
       next,
@@ -807,7 +822,8 @@ export class AnthologyViewService {
     return {
       key: entryKey,
       title: parsed.title || snapshot.title,
-      date: parsed.date,
+      date: parsed.date ?? snapshot.createdAt.toISOString().split('T')[0],
+      updatedAt: snapshot.createdAt.toISOString(),
       bodyMarkdown: parsed.bodyMarkdown,
       prev,
       next,
@@ -890,11 +906,17 @@ export class AnthologyViewService {
       id: contentItemId,
       title: item.publishedVersion!.title || indexData.title,
       description: indexData.description,
-      entries: publishedEntries.map((e) => ({
-        key: e.key,
-        title: e.title,
-        date: e.date,
-      })),
+      entries: await Promise.all(
+        publishedEntries.map(async (e) => {
+          // date 兜底：索引里没有时从已发布 snapshot 的 createdAt 取
+          let date = e.date;
+          if (!date && e.publishedVersionId) {
+            const snap = await this.snapshotRepository.findByVersionId(e.publishedVersionId);
+            if (snap) date = snap.createdAt.toISOString().split('T')[0];
+          }
+          return { key: e.key, title: e.title, date };
+        }),
+      ),
     };
   }
 
@@ -952,7 +974,8 @@ export class AnthologyViewService {
         return {
           key: e.key,
           title: e.title,
-          date: e.date,
+          // date 兜底：索引里没有时从 snapshot 的 createdAt 取
+          date: e.date ?? (snapshot ? snapshot.createdAt.toISOString().split('T')[0] : null),
           hasContent,
           publishedVersionId: e.publishedVersionId,
           hasUnpublishedChanges,

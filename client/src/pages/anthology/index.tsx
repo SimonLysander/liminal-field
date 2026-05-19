@@ -98,66 +98,83 @@ function AnthologyListView() {
           文集
         </motion.h1>
 
-        {/* 文集列表 — 竖排，每行一个文集 */}
-        <motion.ul
-          className="flex flex-col divide-y"
-          style={{ borderColor: 'var(--separator)' }}
+        {/* 书架 — 精装书封面风格 */}
+        <motion.div
+          className="flex flex-wrap gap-7"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.4, delay: 0.1, ease: appleEase }}
         >
           {items.map((item, index) => (
-            <AnthologyListItem key={item.id} item={item} index={index} />
+            <BookCover key={item.id} item={item} index={index} />
           ))}
-        </motion.ul>
+        </motion.div>
       </div>
     </div>
   );
 }
 
-/* 单个文集行 — 抽为子组件，方便独立入场动画控制 */
-function AnthologyListItem({ item, index }: { item: AnthologyPublicListItem; index: number }) {
-  const displayDate = item.updatedAt
-    ? new Date(item.updatedAt)
-    : null;
+/**
+ * BookCover — 精装书封面。
+ *
+ * 不用深色色块（电子书感太重），改为浅暖底色 + 深色 serif 标题。
+ * 像高端出版社的极简封面：大面积留白、标题居中偏下、pip-a 装饰线点睛。
+ * 比例 2:3（实体书），hover 微上浮 + 阴影加深。
+ */
+function BookCover({ item, index }: { item: AnthologyPublicListItem; index: number }) {
+  const displayDate = item.updatedAt ? new Date(item.updatedAt) : null;
 
   return (
-    <motion.li
+    <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay: 0.05 * index, ease: appleEase }}
+      style={{ width: 130 }}
     >
       <Link
         to={`/anthology?id=${item.id}`}
-        className="block rounded-lg px-3 py-5 transition-colors duration-150 hover:bg-[var(--shelf)]"
+        className="group block"
       >
-        {/* 标题 */}
-        <div className="mb-1 text-xl font-bold" style={{ color: 'var(--ink)' }}>
-          {item.title}
+        {/* 封面 — 浅底 + 深色 serif 标题，精装书气质 */}
+        <div
+          className="flex flex-col items-center justify-center rounded-sm px-5 py-6 transition-all duration-200 ease-out group-hover:-translate-y-1"
+          style={{
+            aspectRatio: '2 / 3',
+            background: 'var(--shelf)',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.06)',
+            border: '0.5px solid var(--separator)',
+          }}
+        >
+          {/* 装饰线 — 与全站 pip-a 一致 */}
+          <span
+            className="mb-4 block h-[1.5px] w-8 rounded-sm"
+            style={{ background: 'var(--pip-a)', opacity: 0.5 }}
+          />
+
+          {/* 标题 — 居中，大号 serif */}
+          <div
+            className="text-center text-sm font-bold leading-snug"
+            style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
+          >
+            {item.title}
+          </div>
+
+          {/* 装饰线 — 标题下对称 */}
+          <span
+            className="mt-4 block h-[1.5px] w-8 rounded-sm"
+            style={{ background: 'var(--pip-a)', opacity: 0.5 }}
+          />
         </div>
 
-        {/* 描述 */}
-        {item.description && (
-          <div
-            className="mb-2 truncate text-sm"
-            style={{ color: 'var(--ink-faded)' }}
-          >
-            {item.description}
-          </div>
-        )}
-
-        {/* 条目数 + 更新时间 */}
-        <div className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
+        {/* 封面下方 meta */}
+        <div className="mt-2 text-center text-xs tabular-nums" style={{ color: 'var(--ink-ghost)' }}>
           {item.entryCount} 篇
           {displayDate && (
-            <>
-              {' · 更新于 '}
-              {displayDate.getFullYear()}/{displayDate.getMonth() + 1}/{displayDate.getDate()}
-            </>
+            <> · {displayDate.getFullYear()}/{displayDate.getMonth() + 1}/{displayDate.getDate()}</>
           )}
         </div>
       </Link>
-    </motion.li>
+    </motion.div>
   );
 }
 
@@ -197,27 +214,20 @@ function AnthologyOverview({ id }: { id: string }) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-10">
+    <div className="flex-1 overflow-y-auto py-12">
       <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 max-[520px]:px-4">
-        {/* 面包屑：文集 → 当前文集名 */}
-        <motion.div
-          className="mb-8 flex items-center gap-1.5 text-sm"
-          style={{ color: 'var(--ink-ghost)' }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.3, ease: appleEase }}
-        >
+        {/* 返回按钮 — 与 NoteReader 同风格 */}
+        <div className="mb-5">
           <Link
             to="/anthology"
-            className="transition-colors duration-150 hover:text-[var(--ink-faded)]"
+            className="text-md transition-colors duration-150 hover:text-[var(--ink-faded)]"
+            style={{ color: 'var(--ink-ghost)' }}
           >
-            文集
+            ← 文集
           </Link>
-          <span>/</span>
-          <span style={{ color: 'var(--ink-faded)' }}>{detail.title}</span>
-        </motion.div>
+        </div>
 
-        {/* 文集标题 — fade+rise 入场 */}
+        {/* 文集标题 — fade+rise+blur 入场，与 NoteReader 一致 */}
         <motion.h1
           className="mb-4 text-5xl font-bold leading-snug tracking-tight"
           style={{ fontFamily: 'var(--font-serif)', color: 'var(--ink)' }}
@@ -228,26 +238,36 @@ function AnthologyOverview({ id }: { id: string }) {
           {detail.title}
         </motion.h1>
 
-        {/* 装饰线 */}
-        <motion.span
-          className="mb-6 block h-[2px] rounded-sm"
-          style={{ background: 'var(--pip-a)', opacity: 0.5 }}
-          initial={{ width: 0 }}
-          animate={{ width: 32 }}
-          transition={{ duration: 0.6, delay: 0.2, ease: smoothBounce }}
-        />
+        {/* 元信息 + 装饰线 — 与 NoteReader 同结构 */}
+        <motion.div
+          className="mb-10"
+          initial={{ opacity: 0, filter: 'blur(3px)' }}
+          animate={{ opacity: 1, filter: 'blur(0px)' }}
+          transition={{ duration: 0.4, delay: 0.2, ease: smoothBounce }}
+        >
+          <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            {detail.entries.length} 篇
+          </p>
+          <motion.span
+            className="mt-4 block h-[2px] rounded-sm"
+            style={{ background: 'var(--pip-a)', opacity: 0.5 }}
+            initial={{ width: 0 }}
+            animate={{ width: 32 }}
+            transition={{ duration: 0.6, delay: 0.3, ease: smoothBounce }}
+          />
+        </motion.div>
 
-        {/* 描述 */}
+        {/* 描述 — 无斜体，与 NoteReader summary 同风格 */}
         {detail.description && (
-          <motion.p
-            className="mb-10 text-lg leading-relaxed"
-            style={{ color: 'var(--ink-faded)', fontStyle: 'italic' }}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
+          <motion.div
+            className="mb-8 rounded-lg px-4 py-3 text-lg leading-relaxed"
+            style={{ color: 'var(--ink-faded)', background: 'var(--shelf)' }}
+            initial={{ opacity: 0, y: 8, filter: 'blur(3px)' }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
             transition={{ duration: 0.4, delay: 0.15, ease: smoothBounce }}
           >
             {detail.description}
-          </motion.p>
+          </motion.div>
         )}
 
         {/* 条目目录 */}
@@ -257,19 +277,20 @@ function AnthologyOverview({ id }: { id: string }) {
           transition={{ duration: 0.5, delay: 0.25, ease: smoothBounce }}
         >
           <div
-            className="mb-4 text-2xs font-semibold uppercase tracking-widest"
+            className="mb-3 text-2xs font-semibold uppercase tracking-widest"
             style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}
           >
             目录
           </div>
-          <ol className="flex flex-col divide-y" style={{ borderColor: 'var(--separator)' }}>
+          <ol className="flex flex-col">
             {detail.entries.map((entry, index) => {
               const date = entry.date ? new Date(entry.date) : null;
               return (
                 <li key={entry.key}>
                   <Link
                     to={`/anthology?id=${id}&entry=${entry.key}`}
-                    className="group flex items-baseline gap-4 rounded-lg px-3 py-4 transition-colors duration-150 hover:bg-[var(--shelf)]"
+                    className="group -mx-2 flex items-baseline gap-4 rounded-lg px-2 py-3.5 transition-colors duration-150 hover:bg-[var(--shelf)]"
+                    style={{ borderBottom: '0.5px solid var(--separator)' }}
                   >
                     {/* 序号 */}
                     <span
@@ -301,6 +322,19 @@ function AnthologyOverview({ id }: { id: string }) {
               );
             })}
           </ol>
+
+          {/* 开始阅读 — 指向第一篇条目 */}
+          {detail.entries.length > 0 && (
+            <div className="mt-8">
+              <Link
+                to={`/anthology?id=${id}&entry=${detail.entries[0].key}`}
+                className="inline-flex items-center gap-1.5 text-md font-medium transition-colors duration-150 hover:text-[var(--ink)]"
+                style={{ color: 'var(--ink-faded)' }}
+              >
+                开始阅读
+              </Link>
+            </div>
+          )}
         </motion.div>
       </div>
     </div>
@@ -317,13 +351,15 @@ function AnthologyOverview({ id }: { id: string }) {
 function EntryReader({ id, entryKey }: { id: string; entryKey: string }) {
   const [entry, setEntry] = useState<AnthologyEntryDetail | null>(null);
   const [anthologyTitle, setAnthologyTitle] = useState('');
+  /** 进度信息：当前第几篇 / 共几篇 */
+  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
 
-    // 并发拉取：条目正文 + 文集标题（面包屑展示用）
+    // 并发拉取：条目正文 + 文集详情（返回按钮标题 + 进度计算）
     void Promise.all([
       anthologyApi.getEntry(id, entryKey),
       anthologyApi.getPublicDetail(id),
@@ -331,6 +367,8 @@ function EntryReader({ id, entryKey }: { id: string; entryKey: string }) {
       if (cancelled) return;
       setEntry(entryData);
       setAnthologyTitle(detail.title);
+      const idx = detail.entries.findIndex((e) => e.key === entryKey);
+      setProgress({ current: idx + 1, total: detail.entries.length });
       setLoading(false);
     }).catch(() => {
       if (!cancelled) setLoading(false);
@@ -355,32 +393,29 @@ function EntryReader({ id, entryKey }: { id: string; entryKey: string }) {
     );
   }
 
-  const date = entry.date ? new Date(entry.date) : null;
+  /* 日期：统一用 updatedAt，与 NoteReader 同逻辑 */
+  const displayDate = entry.updatedAt ? new Date(entry.updatedAt) : null;
+  /* 字数 + 阅读时间 — 与 NoteReader 完全一致的计算逻辑 */
+  const wordCount = entry.bodyMarkdown.length || 0;
+  const readMin = Math.max(1, Math.ceil(wordCount / 400));
 
   return (
     <div className="flex-1 overflow-y-auto py-12">
       <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 max-[520px]:px-4">
-        {/* 面包屑：文集名 → 当前条目名 */}
-        <motion.div
-          className="mb-8 flex items-center gap-1.5 text-sm"
-          style={{ color: 'var(--ink-ghost)' }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.3, ease: appleEase }}
-        >
+        {/* 返回按钮 — 与 NoteReader 同风格，显示文集标题 */}
+        <div className="mb-5">
           <Link
             to={`/anthology?id=${id}`}
-            className="transition-colors duration-150 hover:text-[var(--ink-faded)]"
+            className="text-md transition-colors duration-150 hover:text-[var(--ink-faded)]"
+            style={{ color: 'var(--ink-ghost)' }}
           >
-            {anthologyTitle || '文集'}
+            ← {anthologyTitle || '文集'}
           </Link>
-          <span>/</span>
-          <span style={{ color: 'var(--ink-faded)' }}>{entry.title}</span>
-        </motion.div>
+        </div>
 
-        {/* 条目标题 */}
+        {/* 条目标题 — 与 NoteReader 同规格 */}
         <motion.h1
-          className="mb-4 text-3xl font-bold leading-snug tracking-tight"
+          className="mb-4 text-5xl font-bold leading-snug tracking-tight"
           style={{ fontFamily: 'var(--font-serif)', color: 'var(--ink)' }}
           initial={{ opacity: 0, y: 10, filter: 'blur(4px)' }}
           animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
@@ -389,25 +424,25 @@ function EntryReader({ id, entryKey }: { id: string; entryKey: string }) {
           {entry.title}
         </motion.h1>
 
-        {/* 元信息：日期 */}
+        {/* 元信息 + 装饰线 — 与 NoteReader 同结构、同格式 */}
         <motion.div
           className="mb-10"
           initial={{ opacity: 0, filter: 'blur(3px)' }}
           animate={{ opacity: 1, filter: 'blur(0px)' }}
-          transition={{ duration: 0.4, delay: 0.15, ease: smoothBounce }}
+          transition={{ duration: 0.4, delay: 0.2, ease: smoothBounce }}
         >
-          {date && (
-            <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
-              {date.getFullYear()}/{date.getMonth() + 1}/{date.getDate()}
-            </p>
-          )}
-          {/* 装饰线 */}
+          <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            {displayDate && `更新于 ${displayDate.getFullYear()}/${displayDate.getMonth() + 1}/${displayDate.getDate()} · `}
+            {wordCount > 1000 ? `${(wordCount / 1000).toFixed(1)}k` : wordCount} 字 · {readMin} min
+            {progress && ` · 第 ${progress.current} / ${progress.total} 篇`}
+          </p>
+          {/* 装饰线 — pip-a 雾蓝，与 NoteReader 同参数 */}
           <motion.span
             className="mt-4 block h-[2px] rounded-sm"
             style={{ background: 'var(--pip-a)', opacity: 0.5 }}
             initial={{ width: 0 }}
             animate={{ width: 32 }}
-            transition={{ duration: 0.6, delay: 0.25, ease: smoothBounce }}
+            transition={{ duration: 0.6, delay: 0.3, ease: smoothBounce }}
           />
         </motion.div>
 
@@ -432,52 +467,55 @@ function EntryReader({ id, entryKey }: { id: string; entryKey: string }) {
           <span className="text-xs">·</span>
         </div>
 
-        {/* 上一篇 / 下一篇导航条 */}
-        {(entry.prev || entry.next) && (
-          <motion.div
-            className="flex items-center justify-between border-t pt-8 pb-4"
-            style={{ borderColor: 'var(--separator)' }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.4, delay: 0.4, ease: appleEase }}
-          >
-            {/* 上一篇 — 靠左 */}
-            <div className="flex-1">
-              {entry.prev && (
-                <Link
-                  to={`/anthology?id=${id}&entry=${entry.prev.key}`}
-                  className="group flex flex-col gap-1"
-                >
-                  <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>上一篇</span>
-                  <span
-                    className="text-base font-medium transition-colors duration-150 group-hover:text-[var(--ink)]"
-                    style={{ color: 'var(--ink-faded)' }}
-                  >
-                    ← {entry.prev.title}
-                  </span>
-                </Link>
-              )}
-            </div>
+        {/* 篇章导航 — next 是主动作（full-width 卡片），prev 是次要（文字链接） */}
+        <motion.div
+          className="flex flex-col gap-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.4, delay: 0.4, ease: appleEase }}
+        >
+          {/* 主导航：下一篇 或 回到目录（最后一篇时） */}
+          {entry.next ? (
+            <Link
+              to={`/anthology?id=${id}&entry=${entry.next.key}`}
+              className="group flex flex-col gap-1.5 rounded-lg px-4 py-4 transition-colors duration-150 hover:bg-[var(--shelf)]"
+              style={{ border: '0.5px solid var(--separator)' }}
+            >
+              <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>下一篇</span>
+              <span
+                className="text-base font-medium transition-colors duration-150 group-hover:text-[var(--ink)]"
+                style={{ color: 'var(--ink-faded)' }}
+              >
+                {progress && `${progress.current + 1}. `}{entry.next.title}
+              </span>
+            </Link>
+          ) : (
+            <Link
+              to={`/anthology?id=${id}`}
+              className="group flex flex-col gap-1.5 rounded-lg px-4 py-4 transition-colors duration-150 hover:bg-[var(--shelf)]"
+              style={{ border: '0.5px solid var(--separator)' }}
+            >
+              <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>已读完</span>
+              <span
+                className="text-base font-medium transition-colors duration-150 group-hover:text-[var(--ink)]"
+                style={{ color: 'var(--ink-faded)' }}
+              >
+                回到目录
+              </span>
+            </Link>
+          )}
 
-            {/* 下一篇 — 靠右 */}
-            <div className="flex-1 text-right">
-              {entry.next && (
-                <Link
-                  to={`/anthology?id=${id}&entry=${entry.next.key}`}
-                  className="group flex flex-col items-end gap-1"
-                >
-                  <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>下一篇</span>
-                  <span
-                    className="text-base font-medium transition-colors duration-150 group-hover:text-[var(--ink)]"
-                    style={{ color: 'var(--ink-faded)' }}
-                  >
-                    {entry.next.title} →
-                  </span>
-                </Link>
-              )}
-            </div>
-          </motion.div>
-        )}
+          {/* 次导航：上一篇（文字链接，视觉权重低于主导航） */}
+          {entry.prev && (
+            <Link
+              to={`/anthology?id=${id}&entry=${entry.prev.key}`}
+              className="text-sm transition-colors duration-150 hover:text-[var(--ink-faded)]"
+              style={{ color: 'var(--ink-ghost)' }}
+            >
+              上一篇: {progress && `${progress.current - 1}. `}{entry.prev.title}
+            </Link>
+          )}
+        </motion.div>
       </div>
     </div>
   );
