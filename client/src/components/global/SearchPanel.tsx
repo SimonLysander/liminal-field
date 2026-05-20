@@ -235,8 +235,15 @@ export function SearchPanel({ open, onOpenChange, admin }: SearchPanelProps) {
                                 {SCOPE_ICON[scope] ?? SCOPE_ICON.notes}
                               </span>
                               <div className="min-w-0 flex-1">
-                                <div className="truncate text-sm" style={{ color: 'var(--ink)' }}>
-                                  {highlightKeyword(item.title, query.trim())}
+                                <div className="flex items-baseline gap-1.5">
+                                  <span className="truncate text-sm" style={{ color: 'var(--ink)' }}>
+                                    {highlightKeyword(item.title, query.trim())}
+                                  </span>
+                                  {item.path && (
+                                    <span className="flex-shrink-0 text-[11px]" style={{ color: 'var(--ink-ghost)' }}>
+                                      {item.path}
+                                    </span>
+                                  )}
                                 </div>
                                 {item.snippet && (
                                   <div className="truncate text-xs mt-px" style={{ color: 'var(--ink-ghost)' }}>

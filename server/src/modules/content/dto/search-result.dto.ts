@@ -4,6 +4,8 @@ export class SearchResultDto {
   title!: string;
   /** 所属 scope（notes / gallery / anthology），来自 NavigationNode */
   scope!: string;
+  /** 文件夹路径（如 "操作系统 / 进程管理"），根级文档为空字符串 */
+  path!: string;
   /** 匹配的上下文片段（~100 字），清理了 Markdown 语法 */
   snippet!: string;
   updatedAt!: string;

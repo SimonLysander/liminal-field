@@ -4,6 +4,8 @@ export interface SearchResult {
   contentItemId: string;
   title: string;
   scope: string;
+  /** 文件夹路径（如 "操作系统 / 进程管理"），根级为空字符串 */
+  path: string;
   snippet: string;
   updatedAt: string;
 }

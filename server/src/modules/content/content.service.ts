@@ -950,7 +950,7 @@ export class ContentService {
   }
 
   /**
-   * 为搜索结果补充 scope 和 snippet，按 scope 过滤。
+   * 为搜索结果补充 scope、path 和 snippet，按 scope 过滤。
    */
   private async enrichWithScopeAndSnippet(
     items: ContentItem[],
@@ -960,17 +960,25 @@ export class ContentService {
   ): Promise<SearchResultDto[]> {
     if (items.length === 0) return [];
 
-    // 批量查询 scope
+    // 批量查询 NavigationNode（scope + parentId）
     const contentIds = items.map((c) => c.id);
     const navNodes = await this.navigationModel
       .find({ contentItemId: { $in: contentIds } })
       .lean();
+
     const scopeMap = new Map<string, string>();
+    const parentIdMap = new Map<string, string>(); // contentItemId → parentId
     for (const node of navNodes) {
       if (node.contentItemId) {
         scopeMap.set(node.contentItemId, node.scope);
+        if (node.parentId) {
+          parentIdMap.set(node.contentItemId, node.parentId.toString());
+        }
       }
     }
+
+    // 批量查询所有祖先节点名称，构建路径（最多 3 级）
+    const pathMap = await this.buildPathMap(parentIdMap);
 
     // 按 scope 过滤
     let filtered = items;
@@ -980,7 +988,7 @@ export class ContentService {
       );
     }
 
-    // 批量获取最新 snapshot 用于 snippet 提取（通过 latestVersion.versionId 直接读取）
+    // 批量获取最新 snapshot 用于 snippet 提取
     const snapshots = await Promise.all(
       filtered.map((c) => {
         const vid = publicView
@@ -1002,12 +1010,66 @@ export class ContentService {
         contentItemId: item.id,
         title,
         scope: scopeMap.get(item.id) ?? 'notes',
+        path: pathMap.get(item.id) ?? '',
         snippet: keyword
           ? this.extractSnippet(body, keyword)
           : this.extractLeadSnippet(body),
         updatedAt: item.updatedAt.toISOString(),
       };
     });
+  }
+
+  /**
+   * 从 parentIdMap（contentItemId → 直接父节点 ID）批量构建文件夹路径。
+   * 向上追溯最多 3 级祖先，返回 contentItemId → "祖父 / 父" 格式的路径。
+   */
+  private async buildPathMap(
+    parentIdMap: Map<string, string>,
+  ): Promise<Map<string, string>> {
+    const result = new Map<string, string>();
+    if (parentIdMap.size === 0) return result;
+
+    // 收集所有需要查询的节点 ID（去重），逐级向上追溯
+    const allIds = new Set(parentIdMap.values());
+    const nodeNameMap = new Map<string, string>();   // nodeId → name
+    const nodeParentMap = new Map<string, string>(); // nodeId → parentId
+
+    // 最多查 3 轮（3 级文件夹深度）
+    let pendingIds = [...allIds];
+    for (let depth = 0; depth < 3 && pendingIds.length > 0; depth++) {
+      const nodes = await this.navigationModel
+        .find({ _id: { $in: pendingIds } })
+        .lean();
+
+      const nextPending: string[] = [];
+      for (const node of nodes) {
+        const id = node._id.toString();
+        nodeNameMap.set(id, node.name);
+        if (node.parentId) {
+          const pid = node.parentId.toString();
+          nodeParentMap.set(id, pid);
+          if (!nodeNameMap.has(pid) && !allIds.has(pid)) {
+            nextPending.push(pid);
+            allIds.add(pid);
+          }
+        }
+      }
+      pendingIds = nextPending;
+    }
+
+    // 为每个 contentItemId 构建路径字符串
+    for (const [contentItemId, directParentId] of parentIdMap) {
+      const parts: string[] = [];
+      let nodeId: string | undefined = directParentId;
+      for (let i = 0; i < 3 && nodeId; i++) {
+        const name = nodeNameMap.get(nodeId);
+        if (name) parts.unshift(name);
+        nodeId = nodeParentMap.get(nodeId);
+      }
+      result.set(contentItemId, parts.join(' / '));
+    }
+
+    return result;
   }
 
   /**
