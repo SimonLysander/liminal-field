@@ -155,14 +155,35 @@ export class SystemConfigService implements OnModuleInit {
     if (config.mineruToken) process.env.MINERU_TOKEN = config.mineruToken;
   }
 
-  /** 更新 Git 仓库的 origin remote URL */
+  /**
+   * 更新 KB Git 仓库的 origin remote URL。
+   *
+   * 防御措施：
+   * 1. resolvedUrl 为空时跳过（防止写入 "undefined" 字面量）
+   * 2. 验证 git rev-parse --show-toplevel 指向 repoRoot（防止误操作项目代码仓库）
+   */
   private async syncGitRemote(remoteUrl: string, token: string): Promise<void> {
     const resolvedUrl = applyKbGitTokenToGithubHttps(
       remoteUrl,
       token || undefined,
     );
+    if (!resolvedUrl || resolvedUrl === 'undefined') {
+      this.logger.warn('syncGitRemote: resolvedUrl 为空，跳过');
+      return;
+    }
     try {
-      const git = simpleGit(this.contentRepoService.repoRoot);
+      const expectedRoot = this.contentRepoService.repoRoot;
+      const git = simpleGit(expectedRoot);
+
+      // 安全检查：确认 git 仓库根目录是 KB 仓库，不是项目代码仓库
+      const actualRoot = (await git.raw(['rev-parse', '--show-toplevel'])).trim();
+      if (actualRoot !== expectedRoot) {
+        this.logger.error(
+          `syncGitRemote: git 根目录不匹配（期望 ${expectedRoot}，实际 ${actualRoot}），跳过以防污染项目仓库`,
+        );
+        return;
+      }
+
       const remotes = await git.getRemotes(true);
       const origin = remotes.find((r) => r.name === 'origin');
       if (!origin) {
