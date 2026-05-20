@@ -75,13 +75,46 @@ function buildPath(scope: string, id: string, admin?: boolean): string {
   return publicPaths[scope] ?? publicPaths.notes;
 }
 
-function groupByScope(results: SearchResult[]): Record<string, SearchResult[]> {
-  const groups: Record<string, SearchResult[]> = {};
+interface SearchGroup {
+  key: string;
+  name: string;          // 直接父文件夹名，如 "计算机组成原理"
+  breadcrumb?: string;   // 更上层路径，如 "计算机科学"
+  scope: string;
+  items: SearchResult[];
+}
+
+/**
+ * 按直接父文件夹分组（而非 scope），让同一主题下的结果聚在一起。
+ * 无 path 的根级文档回退到 scope 标签分组。
+ * key 包含 scope 前缀，避免不同 scope 下同名文件夹合并。
+ */
+function groupByParent(results: SearchResult[]): SearchGroup[] {
+  const map = new Map<string, SearchGroup>();
+
   for (const r of results) {
-    const list = groups[r.scope] ?? (groups[r.scope] = []);
-    list.push(r);
+    let key: string;
+    let name: string;
+    let breadcrumb: string | undefined;
+
+    if (r.path) {
+      const parts = r.path.split(' / ');
+      name = parts[parts.length - 1];
+      key = `${r.scope}:${name}`;
+      if (parts.length > 1) breadcrumb = parts.slice(0, -1).join(' / ');
+    } else {
+      key = `scope:${r.scope}`;
+      name = SCOPE_LABEL[r.scope] ?? r.scope;
+    }
+
+    let group = map.get(key);
+    if (!group) {
+      group = { key, name, breadcrumb, scope: r.scope, items: [] };
+      map.set(key, group);
+    }
+    group.items.push(r);
   }
-  return groups;
+
+  return [...map.values()];
 }
 
 export function SearchPanel({ open, onOpenChange, admin }: SearchPanelProps) {
@@ -145,7 +178,7 @@ export function SearchPanel({ open, onOpenChange, admin }: SearchPanelProps) {
     navigate(buildPath(scope, contentId, admin));
   }
 
-  const grouped = groupByScope(results);
+  const groups = groupByParent(results);
   const hasQ = query.trim().length > 0;
   const hasR = results.length > 0;
 
@@ -215,36 +248,33 @@ export function SearchPanel({ open, onOpenChange, admin }: SearchPanelProps) {
                         <p className="py-6 text-center text-xs" style={{ color: 'var(--ink-ghost)' }}>无匹配结果</p>
                       )}
 
-                      {Object.entries(grouped).map(([scope, items]) => (
-                        <CommandPrimitive.Group key={scope}>
-                          <div
-                            className="px-4 pb-1 pt-2.5 text-xs font-medium tracking-wide"
-                            style={{ color: 'var(--ink-ghost)' }}
-                          >
-                            {SCOPE_LABEL[scope] ?? scope}
+                      {groups.map((group) => (
+                        <CommandPrimitive.Group key={group.key}>
+                          {/* 组标题：scope 图标 + 父文件夹名（ink-faded）+ 上层面包屑（ink-ghost） */}
+                          <div className="flex items-center gap-2 px-4 pb-1 pt-2.5 text-xs font-medium tracking-wide">
+                            <span className="flex-shrink-0" style={{ color: 'var(--ink-faded)' }}>
+                              {SCOPE_ICON[group.scope] ?? SCOPE_ICON.notes}
+                            </span>
+                            <span style={{ color: 'var(--ink-faded)' }}>{group.name}</span>
+                            {group.breadcrumb && (
+                              <>
+                                <span style={{ color: 'var(--ink-ghost)' }}>·</span>
+                                <span style={{ color: 'var(--ink-ghost)' }}>{group.breadcrumb}</span>
+                              </>
+                            )}
                           </div>
 
-                          {items.map((item) => (
+                          {group.items.map((item) => (
                             <CommandPrimitive.Item
                               key={item.contentItemId}
                               value={`${item.title} ${item.snippet}`}
-                              onSelect={() => go(scope, item.contentItemId)}
-                              className="mx-1.5 flex cursor-default items-center gap-2.5 rounded-lg px-2.5 py-1.5 transition-colors duration-75 data-[selected=true]:bg-[var(--shelf)]"
+                              onSelect={() => go(item.scope, item.contentItemId)}
+                              className="mx-1.5 flex cursor-default items-center rounded-lg px-2.5 py-1.5 pl-9 transition-colors duration-75 data-[selected=true]:bg-[var(--shelf)]"
                             >
-                              <span className="flex-shrink-0 self-start mt-0.5" style={{ color: 'var(--ink-ghost)' }}>
-                                {SCOPE_ICON[scope] ?? SCOPE_ICON.notes}
-                              </span>
                               <div className="min-w-0 flex-1">
-                                <div className="flex items-baseline gap-1.5">
-                                  <span className="truncate text-sm" style={{ color: 'var(--ink)' }}>
-                                    {highlightKeyword(item.title, query.trim())}
-                                  </span>
-                                  {item.path && (
-                                    <span className="flex-shrink-0 text-[11px]" style={{ color: 'var(--ink-ghost)' }}>
-                                      {item.path}
-                                    </span>
-                                  )}
-                                </div>
+                                <span className="truncate text-sm" style={{ color: 'var(--ink)' }}>
+                                  {highlightKeyword(item.title, query.trim())}
+                                </span>
                                 {item.snippet && (
                                   <div className="truncate text-xs mt-px" style={{ color: 'var(--ink-ghost)' }}>
                                     {highlightKeyword(item.snippet, query.trim())}
