@@ -4,6 +4,8 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { InjectModel } from 'nestjs-typegoose';
+import { ReturnModelType } from '@typegoose/typegoose';
 import { randomUUID } from 'crypto';
 import { nanoid } from 'nanoid';
 import {
@@ -18,12 +20,14 @@ import { ContentRepoService } from './content-repo.service';
 import { ContentRepository } from './content.repository';
 import { ContentSnapshotRepository } from './content-snapshot.repository';
 import { OssService } from '../oss/oss.service';
+import { NavigationNode } from '../navigation/navigation.entity';
 import { ChangeLogDto } from './dto/change-log.dto';
 import { ContentDetailDto } from './dto/content-detail.dto';
 import { extractHeadings } from '../../common/extract-headings';
 import { ContentHistoryEntryDto } from './dto/content-history.dto';
 import { ContentListItemDto } from './dto/content-list-item.dto';
 import { ContentQueryDto, ContentVisibility } from './dto/content-query.dto';
+import { SearchResultDto } from './dto/search-result.dto';
 import { CreateContentDto } from './dto/create-content.dto';
 import { ContentSaveAction, SaveContentDto } from './dto/save-content.dto';
 
@@ -37,6 +41,8 @@ export class ContentService {
     private readonly contentGitService: ContentGitService,
     private readonly snapshotRepository: ContentSnapshotRepository,
     private readonly ossService: OssService,
+    @InjectModel(NavigationNode)
+    private readonly navigationModel: ReturnModelType<typeof NavigationNode>,
   ) {}
 
   private buildContentId(): string {
@@ -871,24 +877,21 @@ export class ContentService {
   }
 
   /**
-   * 全局搜索：标题/摘要 + 正文全文，全部下推到 MongoDB。
-   *
-   * 两阶段搜索：先按标题/摘要匹配（$regex），再按 ContentSnapshot.bodyMarkdown
-   * 匹配（aggregation），合并去重。避免全量加载内存和逐条读磁盘。
+   * 两阶段搜索核心：标题/摘要 $regex + 正文全文 aggregation，合并去重。
+   * searchContents 和 searchWithScope 共用此逻辑，避免重复。
    */
-  async searchContents(query: ContentQueryDto): Promise<ContentListItemDto[]> {
+  private async twoPhaseSearch(
+    query: ContentQueryDto,
+  ): Promise<ContentItem[]> {
     const keyword = query.q?.trim();
     const pageSize = query.pageSize ?? 20;
-    const publicView = query.visibility !== ContentVisibility.all;
 
     if (!keyword) {
       const contents = await this.contentRepository.list({
         page: query.page,
         pageSize,
       });
-      return contents
-        .filter((content) => this.isReadableInQuery(content, query))
-        .map((content) => this.toListItemDto(content, { publicView }));
+      return contents.filter((c) => this.isReadableInQuery(c, query));
     }
 
     // 阶段 1：标题/摘要搜索（MongoDB $regex）
@@ -904,24 +907,159 @@ export class ContentService {
         pageSize,
       );
 
-    // 合并去重：标题匹配的 ID 集合 + 正文匹配的 ID 集合
+    // 合并去重：标题匹配优先，正文匹配补充
     const seenIds = new Set(titleMatches.map((c) => c.id));
     const bodyOnlyIds = bodyMatchIds.filter((id) => !seenIds.has(id));
 
-    // 补充加载正文匹配但标题未匹配的 ContentItem
     const bodyOnlyItems = await Promise.all(
       bodyOnlyIds.map((id) => this.contentRepository.findById(id)),
     );
 
-    const allMatches = [
+    return [
       ...titleMatches,
       ...bodyOnlyItems.filter((c): c is ContentItem => c !== null),
-    ];
-
-    return allMatches
+    ]
       .filter((content) => this.isReadableInQuery(content, query))
-      .slice(0, pageSize)
-      .map((content) => this.toListItemDto(content, { publicView }));
+      .slice(0, pageSize);
+  }
+
+  /**
+   * 全局搜索：标题/摘要 + 正文全文，全部下推到 MongoDB。
+   */
+  async searchContents(query: ContentQueryDto): Promise<ContentListItemDto[]> {
+    const publicView = query.visibility !== ContentVisibility.all;
+    const matches = await this.twoPhaseSearch(query);
+    return matches.map((content) => this.toListItemDto(content, { publicView }));
+  }
+
+  /**
+   * 增强搜索：在 twoPhaseSearch 基础上增加 scope 过滤和 snippet 提取。
+   *
+   * 1. 执行两阶段搜索获取匹配的 ContentItem
+   * 2. 批量查询 NavigationNode 获取 contentItemId -> scope 映射
+   * 3. 按 scope 过滤（如果指定了）
+   * 4. 从最新 snapshot 中提取匹配片段
+   */
+  async searchWithScope(
+    query: ContentQueryDto,
+  ): Promise<SearchResultDto[]> {
+    const publicView = query.visibility !== ContentVisibility.all;
+    const keyword = query.q?.trim() ?? '';
+    const matches = await this.twoPhaseSearch(query);
+    return this.enrichWithScopeAndSnippet(matches, keyword, query.scope, publicView);
+  }
+
+  /**
+   * 为搜索结果补充 scope 和 snippet，按 scope 过滤。
+   */
+  private async enrichWithScopeAndSnippet(
+    items: ContentItem[],
+    keyword: string,
+    scopeFilter: string | undefined,
+    publicView: boolean,
+  ): Promise<SearchResultDto[]> {
+    if (items.length === 0) return [];
+
+    // 批量查询 scope
+    const contentIds = items.map((c) => c.id);
+    const navNodes = await this.navigationModel
+      .find({ contentItemId: { $in: contentIds } })
+      .lean();
+    const scopeMap = new Map<string, string>();
+    for (const node of navNodes) {
+      if (node.contentItemId) {
+        scopeMap.set(node.contentItemId, node.scope);
+      }
+    }
+
+    // 按 scope 过滤
+    let filtered = items;
+    if (scopeFilter) {
+      filtered = items.filter(
+        (c) => scopeMap.get(c.id) === scopeFilter,
+      );
+    }
+
+    // 批量获取最新 snapshot 用于 snippet 提取（通过 latestVersion.versionId 直接读取）
+    const snapshots = await Promise.all(
+      filtered.map((c) => {
+        const vid = publicView
+          ? (c.publishedVersion?.versionId ?? c.latestVersion.versionId)
+          : c.latestVersion.versionId;
+        return vid
+          ? this.snapshotRepository.findByVersionId(vid)
+          : Promise.resolve(null);
+      }),
+    );
+
+    return filtered.map((item, i) => {
+      const title = publicView
+        ? (item.publishedVersion?.title ?? item.latestVersion.title)
+        : item.latestVersion.title;
+      const body = snapshots[i]?.bodyMarkdown ?? '';
+
+      return {
+        contentItemId: item.id,
+        title,
+        scope: scopeMap.get(item.id) ?? 'notes',
+        snippet: keyword
+          ? this.extractSnippet(body, keyword)
+          : this.extractLeadSnippet(body),
+        updatedAt: item.updatedAt.toISOString(),
+      };
+    });
+  }
+
+  /**
+   * 从 bodyMarkdown 中提取关键词附近的上下文片段。
+   * 清理 Markdown 语法后返回 ~100 字的纯文本。
+   */
+  private extractSnippet(
+    bodyMarkdown: string,
+    keyword: string,
+    maxLen = 100,
+  ): string {
+    const plain = this.stripMarkdown(bodyMarkdown);
+    const idx = plain.toLowerCase().indexOf(keyword.toLowerCase());
+
+    if (idx === -1) {
+      // 标题匹配但正文没有关键词，返回开头摘要
+      return this.extractLeadSnippet(bodyMarkdown);
+    }
+
+    const half = Math.floor(maxLen / 2);
+    const start = Math.max(0, idx - half);
+    const end = Math.min(plain.length, idx + keyword.length + half);
+
+    let snippet = plain.slice(start, end).trim();
+    if (start > 0) snippet = '...' + snippet;
+    if (end < plain.length) snippet = snippet + '...';
+
+    return snippet;
+  }
+
+  /** 返回正文开头 ~100 字作为摘要 */
+  private extractLeadSnippet(bodyMarkdown: string): string {
+    const plain = this.stripMarkdown(bodyMarkdown);
+    if (plain.length <= 100) return plain;
+    return plain.slice(0, 100).trim() + '...';
+  }
+
+  /** 清理 Markdown 语法，返回纯文本（只移除成对标记，保留内容中的 * _ 等字符） */
+  private stripMarkdown(md: string): string {
+    return md
+      .replace(/^---[\s\S]*?---\n*/m, '')          // frontmatter
+      .replace(/^#{1,6}\s+/gm, '')                  // 标题标记
+      .replace(/!\[.*?\]\(.*?\)/g, '')               // 图片
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')       // 链接保留文字
+      .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')       // **bold** / *italic*
+      .replace(/_{1,3}([^_]+)_{1,3}/g, '$1')          // __bold__ / _italic_
+      .replace(/~~([^~]+)~~/g, '$1')                  // ~~strikethrough~~
+      .replace(/`([^`]+)`/g, '$1')                    // `inline code`
+      .replace(/^>\s?/gm, '')                         // blockquote 行首 >
+      .replace(/\n{2,}/g, ' ')                        // 多换行变空格
+      .replace(/\n/g, ' ')                            // 单换行变空格
+      .trim();
   }
 
   /**

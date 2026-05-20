@@ -1,4 +1,12 @@
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ContentStatus } from '../content-item.entity';
 
@@ -19,6 +27,11 @@ export class ContentQueryDto {
   @IsString()
   @IsOptional()
   q?: string;
+
+  /** 按 scope 过滤搜索结果（notes / gallery / anthology） */
+  @IsIn(['notes', 'gallery', 'anthology'])
+  @IsOptional()
+  scope?: string;
 
   @Type(() => Number)
   @IsInt()

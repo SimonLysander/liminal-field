@@ -8,9 +8,12 @@ import { ContentRepoService } from './content-repo.service';
 import { ContentRepository } from './content.repository';
 import { ContentSnapshotRepository } from './content-snapshot.repository';
 import { ContentService } from './content.service';
+import { NavigationNode } from '../navigation/navigation.entity';
 
 @Module({
-  imports: [TypegooseModule.forFeature([ContentItem, ContentSnapshot])],
+  imports: [
+    TypegooseModule.forFeature([ContentItem, ContentSnapshot, NavigationNode]),
+  ],
   controllers: [ContentController],
   providers: [
     ContentRepository,

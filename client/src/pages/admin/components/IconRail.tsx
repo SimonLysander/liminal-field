@@ -2,10 +2,12 @@
 
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { FileText, Image, BookOpen, RefreshCw, LogOut, Settings } from 'lucide-react';
+import { FileText, Image, BookOpen, RefreshCw, LogOut, Settings, Search } from 'lucide-react';
 import { authApi } from '@/services/auth';
 import { resetAuth } from '@/App';
 import { Logo } from '@/components/Logo';
+import { SearchPanel } from '@/components/global/SearchPanel';
+import { useSearchHotkey } from '@/hooks/use-search-hotkey';
 import { SyncDialog } from './SyncDialog';
 
 /*
@@ -27,6 +29,7 @@ export function IconRail() {
   const location = useLocation();
   const navigate = useNavigate();
   const [syncOpen, setSyncOpen] = useState(false);
+  const { searchOpen, setSearchOpen } = useSearchHotkey();
 
   /* 匹配当前路径到导航项（前缀匹配） */
   const activePath = NAV_ITEMS.find((item) =>
@@ -55,6 +58,16 @@ export function IconRail() {
       >
         {/* Logo */}
         <Logo variant="mark" size={22} className="mb-4" />
+
+        {/* Search */}
+        <button
+          className="flex items-center justify-center rounded-lg transition-colors duration-150 mb-1"
+          style={{ width: 36, height: 36, color: 'var(--ink-ghost)' }}
+          title="搜索 (⌘K)"
+          onClick={() => setSearchOpen(true)}
+        >
+          <Search size={18} strokeWidth={1.5} />
+        </button>
 
         {/* Nav icons */}
         {NAV_ITEMS.map((item) => {
@@ -100,6 +113,7 @@ export function IconRail() {
       </div>
 
       {syncOpen && <SyncDialog onClose={() => setSyncOpen(false)} />}
+      <SearchPanel open={searchOpen} onOpenChange={setSearchOpen} admin />
     </>
   );
 }

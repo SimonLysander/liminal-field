@@ -19,6 +19,7 @@ import { MediaKit } from './plugins/media-kit';
 import { FontKit } from './plugins/font-kit';
 import { MathKit } from './plugins/math-kit';
 import { MarkdownKit } from './plugins/markdown-kit';
+import { SlashKit } from './plugins/slash-kit';
 
 export const EditorKit = [
   ...BasicNodesKit,
@@ -34,6 +35,7 @@ export const EditorKit = [
   ...FontKit,
   ...MathKit,
   ...MarkdownKit,
+  ...SlashKit,
 
   /* ⌘+Enter 跳出代码块/引用等嵌套结构，在后面插入新段落 */
   ExitBreakPlugin.configure({

@@ -329,9 +329,12 @@ describe('Version System (e2e)', () => {
         .set('Cookie', cookie)
         .expect(200);
 
+      /* searchWithScope 返回 SearchResultDto，字段名是 contentItemId（非 id） */
       const items: any[] = res.body.data;
-      const found = items.find((item: any) => item.id === id);
+      const found = items.find((item: any) => item.contentItemId === id);
       expect(found).toBeDefined();
+      expect(found.scope).toBeDefined();
+      expect(found.snippet).toBeDefined();
     });
 
     it('创建两篇已发布内容（不同关键字）→ 各自关键字搜索只返回对应内容', async () => {
@@ -374,7 +377,7 @@ describe('Version System (e2e)', () => {
         .get(`/api/v1/search?q=${encodeURIComponent(keyword1)}`)
         .expect(200);
 
-      const ids1 = res1.body.data.map((item: any) => item.id);
+      const ids1 = res1.body.data.map((item: any) => item.contentItemId);
       expect(ids1).toContain(id1);
       expect(ids1).not.toContain(id2);
 
@@ -383,7 +386,7 @@ describe('Version System (e2e)', () => {
         .get(`/api/v1/search?q=${encodeURIComponent(keyword2)}`)
         .expect(200);
 
-      const ids2 = res2.body.data.map((item: any) => item.id);
+      const ids2 = res2.body.data.map((item: any) => item.contentItemId);
       expect(ids2).toContain(id2);
       expect(ids2).not.toContain(id1);
     });

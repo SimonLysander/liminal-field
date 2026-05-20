@@ -16,9 +16,11 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { useSearchHotkey } from '@/hooks/use-search-hotkey';
 import { AnimatePresence, motion } from 'motion/react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Logo } from '@/components/Logo';
+import { SearchPanel } from '@/components/global/SearchPanel';
 import { structureApi } from '@/services/structure';
 import type { StructureNode } from '@/services/structure';
 import {
@@ -140,6 +142,9 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const active = pathToSpace(location.pathname);
 
+  /* ── 全局搜索 ⌘K ────────────────────────────────── */
+  const { searchOpen, setSearchOpen } = useSearchHotkey();
+
   /* query params 直接读 topic / doc，无需 regex 解析 pathname */
   const [searchParams] = useSearchParams();
   const activeTopicId = searchParams.get('topic');
@@ -248,11 +253,14 @@ export default function Sidebar() {
           fontFamily: 'var(--font-sans)',
           ...(isGallery ? { visibility: 'hidden' } as const : {}),
         }}
+        onClick={() => setSearchOpen(true)}
       >
         <Search size={13} strokeWidth={2} style={{ opacity: 0.4, color: 'var(--ink)' }} />
         <span>搜索</span>
         <kbd className="ml-auto text-sm" style={{ opacity: 0.45, color: 'var(--ink-ghost)' }}>⌘K</kbd>
       </button>
+
+      <SearchPanel open={searchOpen} onOpenChange={setSearchOpen} />
 
       {/* Main navigation — 始终显示所有 tab */}
       <nav className="flex flex-col gap-0.5 px-2">

@@ -9,23 +9,23 @@ import { Controller, Get, Query, Req } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 import { Public } from '../auth/decorators/public.decorator';
 import { ContentService } from './content.service';
-import { ContentListItemDto } from './dto/content-list-item.dto';
+import { SearchResultDto } from './dto/search-result.dto';
 import { ContentQueryDto, ContentVisibility } from './dto/content-query.dto';
 
 @Controller()
 export class ContentController {
   constructor(private readonly contentService: ContentService) {}
 
+  /** 全局搜索，返回带 scope 和 snippet 的结果 */
   @Public()
   @Get('search')
   async searchContents(
     @Query() query: ContentQueryDto,
     @Req() request: FastifyRequest,
-  ): Promise<ContentListItemDto[]> {
-    // 未登录用户强制只搜索已发布内容
+  ): Promise<SearchResultDto[]> {
     if (!request.user) {
       query.visibility = ContentVisibility.public;
     }
-    return this.contentService.searchContents(query);
+    return this.contentService.searchWithScope(query);
   }
 }
