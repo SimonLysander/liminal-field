@@ -196,6 +196,69 @@ Anthology: 解析 main.md frontmatter → 按 key 去 MongoDB 拿条目 snapshot
 | Gallery | 照片列表 + 随笔 | 照片文件 | OSS / assets/ |
 | Anthology | 条目目录 | 各篇正文 | MongoDB snapshot（fileName 区分） |
 
+## Git 同步与恢复
+
+Git 仓库是异步归档层，不参与正常读写。但它是灾难恢复的唯一数据源。
+
+### 推送（MongoDB → Git → 远端）
+
+```
+retryPendingArchives()          ← 定时 5 分钟，处理 commitHash 为空的 snapshot
+  │  按 snapshot.fileName 决定写入路径：
+  │    null        → content/<id>/main.md
+  │    非 null     → content/<id>/<fileName>（如 entries/e001.md）
+  │  清洗脏 URL（OSS 签名 URL → ./assets/ 相对路径）
+  │  git add + commit → 回填 snapshot.commitHash
+  ▼
+writeManifest()                 ← 序列化导航树到 .liminal-field.yaml
+  ▼
+pushCurrentBranch() + pushBranch('main')
+  ▼
+远端仓库（GitHub / Gitee）
+```
+
+### 恢复（远端 → Git → MongoDB）
+
+```
+pullFromRemote()                ← clone 远端到本地（优先读 git remote URL，env 作 fallback）
+  ▼
+scan()                          ← 对比 Git content/ 目录 vs MongoDB，找出缺失项
+  ▼
+execute()
+  │  从清单 .liminal-field.yaml 构建 contentId → scope 映射
+  │
+  │  所有 scope：
+  │    读 main.md + README.md → 创建 ContentItem + ContentSnapshot
+  │
+  │  anthology scope 额外处理：
+  │    解析索引 frontmatter → 逐个读 entries/*.md
+  │    → 创建 fileName 非 null 的 ContentSnapshot
+  │
+  │  上传 assets/ 到 OSS
+  ▼
+restoreNavigation()             ← 有清单按树形恢复，无清单平铺到 notes 根
+```
+
+### 清单文件（.liminal-field.yaml）
+
+随 Git push 一起提交，是恢复时重建导航结构和 scope 归属的权威数据源。
+
+```yaml
+version: 1
+navigation:
+  notes:
+    - { id: ..., name: 标题, type: DOC, contentItemId: ci_xxx }
+  gallery:
+    - { id: ..., name: 标题, type: DOC, contentItemId: ci_xxx }
+  anthology:
+    - { id: ..., name: 标题, type: DOC, contentItemId: ci_xxx }
+stats:
+  totalItems: 52
+  notes: 45
+  gallery: 6
+  anthology: 1
+```
+
 ## 设计原则
 
 - **bodyMarkdown = 一个文件的内容**，版本层不解析，业务层按文件协议解析
