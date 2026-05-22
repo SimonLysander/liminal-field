@@ -136,7 +136,8 @@ const AnthologyEntryEditPage = () => {
         let draft: EditorDraft | null = null;
         try {
           draft = await anthologyApi.getEntryDraft(id, entryKey);
-        } catch {
+        } catch (err) {
+          console.error('[AnthologyEntryEditPage] 获取草稿失败, 视为无草稿:', err);
           // 草稿不存在或请求失败均视为无草稿，继续加载正式版
         }
 

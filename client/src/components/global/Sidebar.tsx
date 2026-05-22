@@ -118,7 +118,8 @@ function useStructureLevel(parentId: string | undefined) {
       try {
         const result = await req;
         if (!cancelled) setNodes(result.children);
-      } catch {
+      } catch (err) {
+        console.error('[Sidebar] 结构节点加载失败:', err);
         // 结构节点加载失败时静默降级为空列表
         if (!cancelled) setNodes([]);
       } finally {
@@ -180,7 +181,8 @@ export default function Sidebar() {
           .filter((n) => n.type === 'FOLDER')
           .map((n) => ({ id: n.id, name: n.name }));
         setBreadcrumb(folders);
-      }).catch(() => {
+      }).catch((err) => {
+        console.error('[Sidebar] 面包屑路径加载失败:', err);
         // 面包屑路径加载失败不影响页面功能，静默降级
       });
     } else if (activeTopicId) {
@@ -190,7 +192,8 @@ export default function Sidebar() {
           .filter((n) => n.type === 'FOLDER')
           .map((n) => ({ id: n.id, name: n.name }));
         setBreadcrumb(folders);
-      }).catch(() => {
+      }).catch((err) => {
+        console.error('[Sidebar] 面包屑路径加载失败:', err);
         // 面包屑路径加载失败不影响页面功能，静默降级
       });
     } else {

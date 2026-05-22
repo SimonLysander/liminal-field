@@ -93,7 +93,8 @@ export function GalleryProseEditor({
     try {
       const md = serializeMd(editor);
       onChange(md);
-    } catch {
+    } catch (err) {
+      if (import.meta.env.DEV) console.warn('[GalleryProseEditor] 序列化失败 (通常为暂态):', err);
       // 序列化失败通常为暂态，忽略
     }
   }, [editor, onChange]);

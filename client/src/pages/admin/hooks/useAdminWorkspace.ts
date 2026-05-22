@@ -225,7 +225,8 @@ export function useAdminWorkspace() {
       });
 
       if (reorderedIds.length > 0) {
-        void structureApi.reorderSiblings(urlFolderId ?? null, reorderedIds).catch(() => {
+        void structureApi.reorderSiblings(urlFolderId ?? null, reorderedIds).catch((err) => {
+          console.error('[useAdminWorkspace] 排序保存失败:', err);
           // 排序保存失败时回滚乐观更新
           void loadLevel(urlFolderId);
         });

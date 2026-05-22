@@ -137,7 +137,8 @@ export default function GalleryAdmin() {
         setDetail(d);
         setDraftInfo(draft ? { exists: true, savedAt: draft.savedAt } : { exists: false });
         setHistory(hist);
-      } catch {
+      } catch (err) {
+        console.error('[GalleryAdmin] 加载动态详情失败:', err);
         // 详情加载失败时静默重置状态
         if (!cancelled) {
           setDetail(null);
@@ -199,7 +200,8 @@ export default function GalleryAdmin() {
       ]);
       setDetail(d);
       setHistory(hist);
-    } catch {
+    } catch (err) {
+      console.error('[GalleryAdmin] 重载详情失败:', err);
       // 刷新详情失败时保留当前已展示的数据
     }
   };

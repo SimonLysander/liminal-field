@@ -47,7 +47,8 @@ function useFolderLevel(parentId: string | undefined, scope: string) {
         if (!cancelled) {
           setFolders(result.children.filter((n) => n.type === 'FOLDER'));
         }
-      } catch {
+      } catch (err) {
+        console.error('[MoveToDialog] 加载文件夹失败:', err);
         // 文件夹列表加载失败时静默降级为空列表
         if (!cancelled) setFolders([]);
       } finally {

@@ -45,7 +45,8 @@ export default function LoginPage() {
             const { deviceToken } = await authApi.trustDevice();
             localStorage.setItem(DEVICE_TOKEN_KEY, deviceToken);
             setHasDeviceToken(true);
-          } catch {
+          } catch (trustErr) {
+            console.warn('Failed to trust device after login', trustErr);
             // 信任设备失败时静默处理，不阻断登录流程
           }
         }

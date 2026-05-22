@@ -29,7 +29,8 @@ export function SyncDialog({ onClose }: { onClose: () => void }) {
       } else {
         banner.error(result.message);
       }
-    } catch {
+    } catch (err) {
+      console.error('[SyncDialog] 同步失败:', err);
       // 同步推送失败
       banner.error('同步失败');
     } finally {

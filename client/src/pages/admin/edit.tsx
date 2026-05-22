@@ -126,7 +126,8 @@ const DraftEditPage = () => {
         let draft: EditorDraft | null = null;
         try {
           draft = await contentItemsApi.getDraft(id);
-        } catch {
+        } catch (err) {
+          console.error('[DraftEditPage] 获取草稿失败, 视为无草稿:', err);
           // 草稿不存在或请求失败均视为无草稿，继续加载正式版本
         }
 

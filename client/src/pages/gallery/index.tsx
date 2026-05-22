@@ -754,7 +754,8 @@ export default function GalleryPage() {
         }
         setLoading(false);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error('[Gallery] 加载动态列表失败:', err);
         // 列表加载失败时停止 loading 状态，页面展示空状态
         setLoading(false);
       });
@@ -782,7 +783,8 @@ export default function GalleryPage() {
         detailCache.current.set(post.id, detail);
         setCurrentDetail(detail);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error('[Gallery] 加载动态详情失败:', err);
         // 详情加载失败时静默忽略（依赖缓存/重试）
       });
   }, [posts, postIdx]);
