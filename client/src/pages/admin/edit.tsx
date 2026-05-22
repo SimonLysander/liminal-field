@@ -92,7 +92,7 @@ const DraftEditPage = () => {
   const [resetKey] = useState(0);
   const [showCommitDialog, setShowCommitDialog] = useState(false);
   /* Portal 目标：Plate 工具栏通过 Portal 渲染到此元素内 */
-  const [toolbarPortal, setToolbarPortal] = useState<HTMLDivElement | null>(null);
+  // 固定工具栏已移除（Notion 风格），格式化通过浮动工具栏和 / 命令完成
 
   /* Parse headings from markdown for outline — skips code blocks */
   const headings = useMemo<HeadingEntry[]>(
@@ -314,10 +314,10 @@ const DraftEditPage = () => {
   }
 
   /*
-   * CSS Grid 三栏布局：
+   * CSS Grid 三栏布局（Notion 风格）：
    *   列：AI 面板 | 编辑器 | 大纲
-   *   行：顶栏(48px) | 内容(1fr)
-   * 顶栏各单元格自然对齐到下方的列，工具栏不会溢出到 AI 面板。
+   *   行：顶栏(44px) | 内容(1fr)
+   * 无固定工具栏——格式化通过浮动工具栏（选中文字弹出）和 / 斜杠命令完成。
    */
   const gridColumns = 'clamp(18rem, 22vw, 22rem) 1fr var(--layout-sidebar)';
 
@@ -327,70 +327,42 @@ const DraftEditPage = () => {
       style={{
         background: 'var(--paper)',
         gridTemplateColumns: gridColumns,
-        gridTemplateRows: '48px 1fr',
+        gridTemplateRows: '44px 1fr',
       }}
     >
       <ThresholdOverlay visible={committing} label="正在提交版本..." />
 
-      {/* ── Row 1: 顶栏，分成三个 grid cell ── */}
+      {/* ── Row 1: Notion 风格顶栏 ── */}
 
-      {/* [1,1] AI 面板上方：返回 + 标题 */}
-      <div className="flex items-center px-3">
-        <div
-          className="flex min-w-0 items-center gap-2"
-          style={{
-            background: 'var(--glass-bg)',
-            backdropFilter: 'blur(12px) saturate(180%)',
-            WebkitBackdropFilter: 'blur(12px) saturate(180%)',
-            border: '1px solid var(--glass-border)',
-            borderRadius: 20,
-            padding: '4px 12px',
-            boxShadow: 'var(--glass-shadow)',
-          }}
+      {/* [1,1] AI 面板上方：留空或放返回 */}
+      <div className="flex items-center px-3" style={{ borderBottom: '0.5px solid var(--separator)' }}>
+        <button
+          className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm transition-colors hover:opacity-70"
+          style={{ color: 'var(--ink-faded)' }}
+          onClick={() => navigate(-1)}
         >
-          <button
-            className="hover-shelf shrink-0 rounded-md px-2 py-1 transition-colors duration-150"
-            style={{ color: 'var(--ink-faded)' }}
-            onClick={() => navigate(-1)}
-          >
-            ←
-          </button>
-          <span style={{ color: 'var(--ink-ghost)' }}>/</span>
-          <input
-            type="text"
-            value={state.title}
-            onChange={(e) => handleChange('title', e.target.value)}
-            placeholder="无标题"
-            className="w-[120px] shrink-0 truncate border-none bg-transparent text-sm font-medium outline-none placeholder:text-[var(--ink-ghost)]"
-            style={{ color: 'var(--ink)' }}
-          />
-        </div>
+          ← 返回
+        </button>
       </div>
 
-      {/* [1,2-3] 工具栏居中 + 右胶囊靠右 */}
+      {/* [1,2-3] 标题 + 状态 + 操作 */}
       <div
-        className="flex min-w-0 items-center px-4"
-        style={{ gridColumn: '2 / -1' }}
+        className="flex items-center justify-between px-4"
+        style={{ gridColumn: '2 / -1', borderBottom: '0.5px solid var(--separator)' }}
       >
-        {/* 工具栏：flex-1 吃满空间，从左排列，超出可滚动 */}
-        <div
-          ref={setToolbarPortal}
-          className="flex min-w-0 flex-1 items-center overflow-x-auto"
+        {/* 左：标题 */}
+        <input
+          type="text"
+          value={state.title}
+          onChange={(e) => handleChange('title', e.target.value)}
+          placeholder="无标题"
+          className="min-w-0 flex-1 truncate border-none bg-transparent text-sm font-medium outline-none placeholder:text-[var(--ink-ghost)]"
+          style={{ color: 'var(--ink)' }}
         />
 
-        {/* 右侧胶囊 */}
-        <div
-          className="ml-4 flex shrink-0 items-center gap-3"
-          style={{
-            background: 'var(--glass-bg)',
-            backdropFilter: 'blur(12px) saturate(180%)',
-            WebkitBackdropFilter: 'blur(12px) saturate(180%)',
-            border: '1px solid var(--glass-border)',
-            borderRadius: 20,
-            padding: '4px 12px',
-            boxShadow: 'var(--glass-shadow)',
-          }}
-        >
+        {/* 右：状态 + 操作 */}
+        <div className="ml-4 flex shrink-0 items-center gap-3">
+          {/* 保存状态 */}
           <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
             {isAutosaving && <StatusDot color="var(--mark-blue)" />}
             {isDirty && !isAutosaving && <StatusDot color="var(--mark-red)" />}
@@ -400,15 +372,19 @@ const DraftEditPage = () => {
             )}
             {autosaveError && <span style={{ color: 'var(--mark-red)' }}>{autosaveError}</span>}
           </div>
+
+          {/* 主题切换 */}
           <button
-            className="hover-shelf flex h-7 w-7 items-center justify-center rounded-lg transition-colors duration-200"
-            style={{ color: 'var(--ink-faded)' }}
+            className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:opacity-70"
+            style={{ color: 'var(--ink-ghost)' }}
             onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}
             aria-label="切换主题"
           >
             <Sun size={14} strokeWidth={1.5} className="theme-icon-light" />
             <Moon size={14} strokeWidth={1.5} className="theme-icon-dark" />
           </button>
+
+          {/* 操作按钮：扁平，无胶囊 */}
           <div className="flex items-center gap-1">
             <ActionPill label="保存" shortcut="⇧⌘S" onClick={() => void saveDraft()} />
             <ActionPill label="提交" shortcut="⌘S" primary onClick={() => setShowCommitDialog(true)} />
@@ -446,7 +422,7 @@ const DraftEditPage = () => {
               key={`${id}-${resetKey}`}
               initialMarkdown={state.bodyMarkdown}
               onChange={(md) => handleChange('bodyMarkdown', md)}
-              toolbarContainer={toolbarPortal}
+              toolbarContainer={null}
             />
           </DraftAssetProvider>
         </div>

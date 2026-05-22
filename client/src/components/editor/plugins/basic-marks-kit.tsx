@@ -24,6 +24,8 @@ import {
 } from '@platejs/basic-nodes/react';
 
 import { CodeLeaf } from '@/components/ui/code-node';
+import { FloatingToolbar } from '@/components/ui/floating-toolbar';
+import { FloatingToolbarButtons } from '@/components/ui/floating-toolbar-buttons';
 import { HighlightLeaf } from '@/components/ui/highlight-node';
 import { KbdLeaf } from '@/components/ui/kbd-node';
 
@@ -37,6 +39,13 @@ export const BasicMarksKit = [
       MarkComboRules.markdown({ variant: 'boldItalicUnderline' }),
       MarkComboRules.markdown({ variant: 'italicUnderline' }),
     ],
+    render: {
+      afterEditable: () => (
+        <FloatingToolbar>
+          <FloatingToolbarButtons />
+        </FloatingToolbar>
+      ),
+    },
   }),
   ItalicPlugin.configure({
     inputRules: [
