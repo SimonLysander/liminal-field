@@ -377,8 +377,10 @@ const DraftEditPage = () => {
               <Sun size={15} strokeWidth={1.5} className="theme-icon-light" />
               <Moon size={15} strokeWidth={1.5} className="theme-icon-dark" />
             </button>
-            <button className="rounded-sm p-1.5 transition-colors hover:bg-red-500/10 hover:text-red-500" style={{ color: 'var(--ink-ghost)' }}
-              onClick={() => void discardDraft()} title="丢弃草稿">
+            <button
+              className="rounded-sm p-1.5 text-[var(--ink-ghost)] transition-colors hover:bg-[color-mix(in_srgb,var(--mark-red)_10%,transparent)] hover:text-[var(--mark-red)]"
+              onClick={() => void discardDraft()} title="丢弃草稿"
+            >
               <Trash2 size={15} strokeWidth={1.5} />
             </button>
           </div>
