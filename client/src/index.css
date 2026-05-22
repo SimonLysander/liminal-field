@@ -574,6 +574,21 @@ pre code {
   }
 
   a { color: inherit; text-decoration: none; }
+
+  /* 透明文本输入：看起来像纯文本，点击可编辑。用于顶栏标题等场景。 */
+  .input-ghost {
+    border: none;
+    outline: none;
+    background: transparent;
+    box-shadow: none;
+    font: inherit;
+    color: inherit;
+  }
+  .input-ghost:focus {
+    border: none;
+    outline: none;
+    box-shadow: none;
+  }
 }
 
 /*
@@ -648,6 +663,12 @@ body.theme-transitioning [data-slate-leaf] {
 @keyframes glow-pulse {
   0%, 100% { opacity: 0.6; transform: scale(1); }
   50% { opacity: 1; transform: scale(1.15); }
+}
+
+/* AI 面板：工具调用 / 思考中的 pulse 点 */
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
 }
 
 /* ========== Immersive Mode Hint ========== */

@@ -56,7 +56,7 @@ export function FixedToolbarButtons() {
   });
 
   return (
-    <div className="flex w-max max-w-full flex-wrap items-center justify-center gap-x-1">
+    <div className="flex w-max items-center gap-x-1">
       {!readOnly && (
         <>
           <ToolbarGroup>

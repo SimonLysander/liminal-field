@@ -1,0 +1,101 @@
+/**
+ * AgentService — Agent 对话的核心 LLM 调用层。
+ *
+ * 职责（精简后）：
+ * 1. 按 agentKey 加载 AgentEntryConfig（tier / systemPrompt / tools 白名单）
+ * 2. 读取 AI 配置（baseUrl / apiKey / model），tier 优先级：前端传入 > 入口配置 > standard
+ * 3. 通过 AgentLifecycle.onBeforeChat 获取 systemPrompt 和 tools
+ * 4. 调用 Vercel AI SDK 的 streamText，内置 ReAct 循环（最多 10 步）
+ *
+ * 记忆加载、system prompt 构建、工具组装全部委托给 AgentLifecycle，
+ * 本服务只负责 LLM 调用本身。
+ */
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { convertToModelMessages, stepCountIs, streamText } from 'ai';
+import { SystemConfigService } from '../settings/system-config.service';
+import { AgentLifecycle } from './lifecycle/agent-lifecycle.service';
+import type { AgentChatDto } from './dto/agent-chat.dto';
+
+@Injectable()
+export class AgentService {
+  private readonly logger = new Logger(AgentService.name);
+
+  constructor(
+    private readonly systemConfigService: SystemConfigService,
+    private readonly lifecycle: AgentLifecycle,
+  ) {}
+
+  async chat(dto: AgentChatDto, abortSignal?: AbortSignal) {
+    // 1. 读取 agent 入口配置（AgentEntryConfig），获取 tier / systemPrompt / tools 白名单
+    const agentConfig = dto.agentKey
+      ? await this.systemConfigService.getAgentConfig(dto.agentKey)
+      : null;
+
+    // 1b. 检查 enabled 状态
+    if (agentConfig && !agentConfig.enabled) {
+      throw new BadRequestException(`Agent "${dto.agentKey}" 已禁用`);
+    }
+
+    // 2. 读取 AI 配置，tier 优先级：前端传入 > 入口配置 > 默认 standard
+    const tier = dto.tier ?? agentConfig?.tier ?? 'standard';
+    const aiConfig = await this.systemConfigService.getAiConfig(tier);
+    if (!aiConfig.baseUrl || !aiConfig.apiKey || !aiConfig.model) {
+      throw new BadRequestException(
+        'AI 配置不完整，请先在设置页配置 API 地址、密钥和模型',
+      );
+    }
+
+    // 3. 创建兼容 OpenAI 格式的 LLM provider（支持任意 openai-compatible 接口）
+    const provider = createOpenAICompatible({
+      name: 'custom-llm',
+      baseURL: aiConfig.baseUrl,
+      apiKey: aiConfig.apiKey,
+    });
+    const model = provider.chatModel(aiConfig.model);
+
+    // 4. BeforeChat 钩子：并行加载记忆 + 构建 systemPrompt + 组装 tools
+    //    将入口配置的 systemPrompt 和 tools 白名单一并传入
+    const { systemPrompt, tools } = await this.lifecycle.onBeforeChat(dto, {
+      aiSystemPrompt: aiConfig.aiSystemPrompt,
+      entrySystemPrompt: agentConfig?.systemPrompt,
+      allowedTools: agentConfig?.tools,
+      tier,
+    });
+
+    // 5. 将前端 UIMessage 格式转为 streamText 需要的 ModelMessage 格式
+    const modelMessages = await convertToModelMessages(dto.messages);
+
+    // 6. 调用 streamText：AI SDK 内置 ReAct 循环，stopWhen 限制最多 10 步防止无限循环
+    const result = streamText({
+      model,
+      system: systemPrompt,
+      messages: modelMessages,
+      tools,
+      stopWhen: stepCountIs(10),
+      abortSignal,
+      experimental_telemetry: { isEnabled: true },
+      onStepFinish: ({ stepNumber, toolCalls, usage }) => {
+        // 通过 lifecycle 发射工具调用事件，解耦日志记录逻辑
+        if (toolCalls.length > 0) {
+          this.lifecycle.emitAfterToolUse(
+            stepNumber,
+            toolCalls.map((t) => ({ toolName: t.toolName })),
+          );
+        }
+        if (usage) {
+          this.logger.debug(
+            `Step ${stepNumber}: tokens=${usage.totalTokens ?? '?'}`,
+          );
+        }
+      },
+      onFinish: ({ usage, steps }) => {
+        this.logger.log(
+          `Agent finished: ${steps.length} steps, ${usage?.totalTokens ?? '?'} total tokens`,
+        );
+      },
+    });
+
+    return result;
+  }
+}

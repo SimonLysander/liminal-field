@@ -1,0 +1,223 @@
+/**
+ * 所有者身份 + 记忆管理 + 会话任务 E2E 测试。
+ *
+ * 覆盖：
+ * - GET  /settings/owner-profile        — 读取所有者信息
+ * - PUT  /settings/owner-profile        — 保存所有者信息
+ * - GET  /agent/memories                — 列出所有记忆
+ * - PUT  /agent/memories/:id            — 更新记忆
+ * - DELETE /agent/memories/:id          — 删除记忆
+ * - GET  /agent/sessions/:key           — 加载会话（含 tasks）
+ * - PUT  /agent/sessions/:key           — 保存会话，返回 tasks
+ * （SSE 端点 /agent/sub-agent-progress 不适合 supertest，手动验证）
+ */
+import supertest from 'supertest';
+import { TestContext, login } from './helpers';
+import { AgentMemoryRepository } from '../src/modules/agent/memory/agent-memory.repository';
+import { AgentSessionRepository } from '../src/modules/agent/session/agent-session.repository';
+
+describe('Owner Profile & Memory Management (E2E)', () => {
+  const ctx = new TestContext();
+  let cookie: string;
+
+  beforeAll(async () => {
+    await ctx.setup();
+    cookie = await login(ctx.app);
+  }, 120_000);
+
+  afterAll(async () => {
+    await ctx.teardown();
+  });
+
+  // ── 所有者身份 ──
+
+  describe('GET /settings/owner-profile', () => {
+    it('首次应返回空的所有者信息', async () => {
+      const res = await supertest(ctx.app.getHttpServer())
+        .get('/api/v1/settings/owner-profile')
+        .set('Cookie', cookie)
+        .expect(200);
+
+      expect(res.body.data).toEqual({
+        name: '',
+        birthday: '',
+        bio: '',
+        interests: '',
+      });
+    });
+  });
+
+  describe('PUT /settings/owner-profile', () => {
+    it('应能保存所有者信息', async () => {
+      await supertest(ctx.app.getHttpServer())
+        .put('/api/v1/settings/owner-profile')
+        .set('Cookie', cookie)
+        .send({
+          name: 'lux-stirring',
+          birthday: '2000-01-15',
+          bio: '前端开发、摄影',
+          interests: '计算机科学、文学、城市骑行',
+        })
+        .expect(200);
+
+      const res = await supertest(ctx.app.getHttpServer())
+        .get('/api/v1/settings/owner-profile')
+        .set('Cookie', cookie)
+        .expect(200);
+
+      expect(res.body.data.name).toBe('lux-stirring');
+      expect(res.body.data.birthday).toBe('2000-01-15');
+      expect(res.body.data.bio).toBe('前端开发、摄影');
+      expect(res.body.data.interests).toBe('计算机科学、文学、城市骑行');
+    });
+
+    it('应支持部分更新', async () => {
+      await supertest(ctx.app.getHttpServer())
+        .put('/api/v1/settings/owner-profile')
+        .set('Cookie', cookie)
+        .send({ interests: '计算机网络、摄影' })
+        .expect(200);
+
+      const res = await supertest(ctx.app.getHttpServer())
+        .get('/api/v1/settings/owner-profile')
+        .set('Cookie', cookie)
+        .expect(200);
+
+      // interests 更新了，其他字段保持不变
+      expect(res.body.data.name).toBe('lux-stirring');
+      expect(res.body.data.birthday).toBe('2000-01-15');
+      expect(res.body.data.interests).toBe('计算机网络、摄影');
+    });
+
+    it('所有者信息应出现在 config view 中', async () => {
+      const res = await supertest(ctx.app.getHttpServer())
+        .get('/api/v1/settings/config')
+        .set('Cookie', cookie)
+        .expect(200);
+
+      expect(res.body.data.owner).toBeDefined();
+      expect(res.body.data.owner.name).toBe('lux-stirring');
+    });
+  });
+
+  // ── 记忆管理 ──
+
+  let memoryId: string;
+
+  describe('GET /agent/memories', () => {
+    it('初始应返回空列表', async () => {
+      const res = await supertest(ctx.app.getHttpServer())
+        .get('/api/v1/agent/memories')
+        .set('Cookie', cookie)
+        .expect(200);
+
+      expect(res.body.data).toEqual([]);
+    });
+  });
+
+  describe('Memory CRUD via API', () => {
+    it('通过 repository 创建记忆后应能通过 API 列出', async () => {
+      // 通过 repository 创建测试记忆（E2E 测管理接口，不测 agent chat）
+      const memoryRepo = ctx.app.get(AgentMemoryRepository);
+      const doc = await memoryRepo.upsert({
+        type: 'user',
+        title: '测试记忆',
+        content: '用户喜欢喝咖啡',
+      });
+      memoryId = (doc._id as any).toString();
+
+      const res = await supertest(ctx.app.getHttpServer())
+        .get('/api/v1/agent/memories')
+        .set('Cookie', cookie)
+        .expect(200);
+
+      expect(res.body.data.length).toBe(1);
+      expect(res.body.data[0].title).toBe('测试记忆');
+      expect(res.body.data[0].type).toBe('user');
+    });
+
+    it('PUT /agent/memories/:id 应能更新记忆', async () => {
+      const res = await supertest(ctx.app.getHttpServer())
+        .put(`/api/v1/agent/memories/${memoryId}`)
+        .set('Cookie', cookie)
+        .send({ content: '用户喜欢喝红茶', type: 'project' })
+        .expect(200);
+
+      expect(res.body.data.content).toBe('用户喜欢喝红茶');
+      expect(res.body.data.type).toBe('project');
+      expect(res.body.data.title).toBe('测试记忆'); // title 未改
+    });
+
+    it('DELETE /agent/memories/:id 应能删除记忆', async () => {
+      await supertest(ctx.app.getHttpServer())
+        .delete(`/api/v1/agent/memories/${memoryId}`)
+        .set('Cookie', cookie)
+        .expect(200);
+
+      const res = await supertest(ctx.app.getHttpServer())
+        .get('/api/v1/agent/memories')
+        .set('Cookie', cookie)
+        .expect(200);
+
+      expect(res.body.data.length).toBe(0);
+    });
+  });
+
+  // ── 会话 tasks（#103） ──
+
+  describe('Session tasks', () => {
+    const testSessionKey = 'test-task-session';
+
+    it('GET session 应返回 tasks 字段', async () => {
+      const res = await supertest(ctx.app.getHttpServer())
+        .get(`/api/v1/agent/sessions/${testSessionKey}`)
+        .set('Cookie', cookie)
+        .expect(200);
+
+      expect(res.body.data.tasks).toEqual([]);
+    });
+
+    it('PUT session 后应在 response 中返回最新 tasks', async () => {
+      // 先通过 repository 插入一个 task
+      const sessionRepo = ctx.app.get(AgentSessionRepository);
+      await sessionRepo.upsert(testSessionKey, [{ role: 'user', content: 'hello' }], 1);
+      await sessionRepo.addTask(testSessionKey, {
+        id: 'task_001',
+        title: '写第一章',
+        description: '',
+        status: 'pending',
+        blocks: [],
+        blockedBy: [],
+        metadata: {},
+        createdAt: new Date().toISOString(),
+        completedAt: null,
+      });
+
+      // PUT 保存消息，response 应包含 tasks
+      const res = await supertest(ctx.app.getHttpServer())
+        .put(`/api/v1/agent/sessions/${testSessionKey}`)
+        .set('Cookie', cookie)
+        .send({ messages: [{ role: 'user', content: 'hello' }] })
+        .expect(200);
+
+      expect(res.body.data.ok).toBe(true);
+      expect(res.body.data.tasks).toBeInstanceOf(Array);
+      expect(res.body.data.tasks.length).toBe(1);
+      expect(res.body.data.tasks[0].id).toBe('task_001');
+      expect(res.body.data.tasks[0].title).toBe('写第一章');
+    });
+
+    it('GET session 加载时也应包含 tasks', async () => {
+      const res = await supertest(ctx.app.getHttpServer())
+        .get(`/api/v1/agent/sessions/${testSessionKey}`)
+        .set('Cookie', cookie)
+        .expect(200);
+
+      expect(res.body.data.tasks.length).toBe(1);
+      expect(res.body.data.tasks[0].title).toBe('写第一章');
+    });
+  });
+
+  // SSE 端点 /agent/sub-agent-progress 不用 supertest 测试（SSE 长连接不适合 request/response 模型），
+  // 通过手动集成测试验证。
+});

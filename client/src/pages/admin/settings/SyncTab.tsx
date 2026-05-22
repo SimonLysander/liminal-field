@@ -5,9 +5,11 @@
  * 1. 远端仓库配置（编辑/只读模式）
  * 2. 数据同步操作（推送/恢复）
  * 3. Git 提交配置（编辑/只读模式）
+ *
+ * 自包含：组件内部独立 loadData，不依赖父组件传入数据或回调。
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { banner } from '@/components/ui/banner-api';
 import { settingsApi } from '@/services/settings';
 import type { SettingsConfigView, SettingsStatus, StorageStatus } from '@/services/settings';
@@ -30,17 +32,35 @@ import {
   DangerButton,
 } from './SettingsUI';
 
-interface SyncTabProps {
-  config: SettingsConfigView['sync'] | null;
-  status: SettingsStatus | null;
-  storageStatus: StorageStatus | null;
-  loading: boolean;
-  lastRefresh: Date | null;
-  onRefresh: () => Promise<void>;
-}
-
-export function SyncTab({ config, status, storageStatus, loading, lastRefresh, onRefresh }: SyncTabProps) {
+export function SyncTab() {
   const confirm = useConfirm();
+
+  // ─── 内部数据状态 ───
+
+  const [config, setConfig] = useState<SettingsConfigView['sync'] | null>(null);
+  const [status, setStatus] = useState<SettingsStatus | null>(null);
+  const [storageStatus, setStorageStatus] = useState<StorageStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+
+  // 并行拉取 config、status、storageStatus，失败静默处理
+  const loadData = useCallback(async () => {
+    const [c, s, ss] = await Promise.all([
+      settingsApi.getConfig().catch(() => null),
+      settingsApi.getStatus().catch(() => null),
+      settingsApi.getStorageStatus().catch(() => null),
+    ]);
+    setConfig(c?.sync ?? null);
+    setStatus(s);
+    setStorageStatus(ss);
+    setLastRefresh(new Date());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 初始数据加载
+    void loadData();
+  }, [loadData]);
 
   // ─── 远端配置 ───
 
@@ -90,7 +110,7 @@ export function SyncTab({ config, status, storageStatus, loading, lastRefresh, o
       setRemoteEditing(false);
       setValidationResult(null);
       setFormToken('');
-      await onRefresh();
+      await loadData();
     } catch {
       banner.error('保存失败');
     } finally {
@@ -124,7 +144,7 @@ export function SyncTab({ config, status, storageStatus, loading, lastRefresh, o
       });
       banner.success('Git 配置已保存');
       setGitEditing(false);
-      await onRefresh();
+      await loadData();
     } catch {
       banner.error('保存失败');
     } finally {
@@ -168,7 +188,7 @@ export function SyncTab({ config, status, storageStatus, loading, lastRefresh, o
       const result = await settingsApi.pushToRemote();
       if (result.success) banner.success(result.message);
       else banner.error(result.message);
-      await onRefresh();
+      await loadData();
     } catch {
       banner.error('推送失败');
     } finally {
@@ -196,7 +216,7 @@ export function SyncTab({ config, status, storageStatus, loading, lastRefresh, o
       } else {
         banner.error(result.message);
       }
-      await onRefresh();
+      await loadData();
     } catch {
       banner.error('恢复失败');
     } finally {

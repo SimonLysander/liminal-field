@@ -3,9 +3,11 @@
  *
  * 1. 本地仓库诊断（只读）
  * 2. 数据管理（一键清空 / 归档清空）
+ *
+ * 自包含：组件内部独立 loadData，不依赖父组件传入数据或回调。
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { banner } from '@/components/ui/banner-api';
 import { settingsApi } from '@/services/settings';
 import type { StorageStatus } from '@/services/settings';
@@ -21,18 +23,31 @@ import {
   SecondaryButton,
 } from './SettingsUI';
 
-interface StorageTabProps {
-  storageStatus: StorageStatus | null;
-  loading: boolean;
-  lastRefresh: Date | null;
-  onRefresh: () => Promise<void>;
-}
-
-export function StorageTab({ storageStatus, loading, lastRefresh, onRefresh }: StorageTabProps) {
+export function StorageTab() {
   const confirm = useConfirm();
+
+  // ─── 内部数据状态 ───
+
+  const [storageStatus, setStorageStatus] = useState<StorageStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [clearing, setClearing] = useState(false);
+
+  // 拉取存储状态，失败静默处理
+  const loadData = useCallback(async () => {
+    const ss = await settingsApi.getStorageStatus().catch(() => null);
+    setStorageStatus(ss);
+    setLastRefresh(new Date());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 初始数据加载
+    void loadData();
+  }, [loadData]);
+
   const git = storageStatus?.git;
   const oss = storageStatus?.oss;
-  const [clearing, setClearing] = useState(false);
 
   const handleClear = async (archive: boolean) => {
     const msg = archive
@@ -53,7 +68,7 @@ export function StorageTab({ storageStatus, loading, lastRefresh, onRefresh }: S
       } else {
         banner.error(result.message);
       }
-      await onRefresh();
+      await loadData();
     } catch {
       banner.error('清空失败');
     } finally {

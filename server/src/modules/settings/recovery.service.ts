@@ -272,9 +272,7 @@ export class RecoveryService {
       });
     }
 
-    this.logger.log(
-      `${contentId}: 恢复 ${indexData.entries.length} 篇条目`,
-    );
+    this.logger.log(`${contentId}: 恢复 ${indexData.entries.length} 篇条目`);
   }
 
   /**

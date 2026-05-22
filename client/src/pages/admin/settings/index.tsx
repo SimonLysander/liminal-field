@@ -2,61 +2,50 @@
  * SettingsPage — 系统设置页
  *
  * GitHub Settings 风格布局：左侧 tab 导航 + 右侧内容区。
- * 4 个 tab：同步、存储、集成、安全。
- * 各 tab 独立加载，不阻塞整个页面。
+ * 6 个 tab：所有者、同步、存储、集成、安全、Agent。
+ *
+ * 父组件只负责布局 + URL 路由驱动的 tab 切换。
+ * 各 tab 组件自包含，各自独立 fetch 数据，互不干扰。
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   RefreshCw,
   HardDrive,
   Puzzle,
   Shield,
+  Bot,
+  User,
 } from 'lucide-react';
 import Topbar from '@/components/global/Topbar';
-import { settingsApi } from '@/services/settings';
-import type { SettingsConfigView, SettingsStatus, StorageStatus } from '@/services/settings';
 import { SyncTab } from './SyncTab';
 import { StorageTab } from './StorageTab';
 import { IntegrationTab } from './IntegrationTab';
 import { SecurityTab } from './SecurityTab';
+import { AgentTab } from './AgentTab';
+import { OwnerTab } from './OwnerTab';
 
 const TABS = [
+  { id: 'owner', label: '所有者', icon: User },
   { id: 'sync', label: '同步', icon: RefreshCw },
   { id: 'storage', label: '存储', icon: HardDrive },
   { id: 'integration', label: '集成', icon: Puzzle },
   { id: 'security', label: '安全', icon: Shield },
+  { id: 'agent', label: 'Agent', icon: Bot },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<TabId>('sync');
-  const [config, setConfig] = useState<SettingsConfigView | null>(null);
-  const [status, setStatus] = useState<SettingsStatus | null>(null);
-  const [storageStatus, setStorageStatus] = useState<StorageStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const { tab } = useParams<{ tab?: string }>();
+  const navigate = useNavigate();
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
-    const [c, s, ss] = await Promise.all([
-      settingsApi.getConfig().catch(() => null),
-      settingsApi.getStatus().catch(() => null),
-      settingsApi.getStorageStatus().catch(() => null),
-    ]);
-    setConfig(c);
-    setStatus(s);
-    setStorageStatus(ss);
-    setLastRefresh(new Date());
-    setLoading(false);
-  }, []);
+  // URL 参数驱动 tab：/admin/settings/integration → 集成 tab
+  const isValidTab = (t?: string): t is TabId => TABS.some((x) => x.id === t);
+  const activeTab: TabId = isValidTab(tab) ? tab : 'owner';
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 初始数据加载
-    void loadAll();
-  }, [loadAll]);
+  const setActiveTab = (id: TabId) => navigate(`/admin/settings/${id}`, { replace: true });
 
   return (
     <div
@@ -112,27 +101,12 @@ export default function SettingsPage() {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
               >
-                {activeTab === 'sync' && (
-                  <SyncTab
-                    config={config?.sync ?? null}
-                    status={status}
-                    storageStatus={storageStatus}
-                    loading={loading}
-                    lastRefresh={lastRefresh}
-                    onRefresh={loadAll}
-                  />
-                )}
-                {activeTab === 'storage' && (
-                  <StorageTab storageStatus={storageStatus} loading={loading} lastRefresh={lastRefresh} onRefresh={loadAll} />
-                )}
-                {activeTab === 'integration' && (
-                  <IntegrationTab
-                    config={config?.integration ?? null}
-                    loading={loading}
-                    onRefresh={loadAll}
-                  />
-                )}
+                {activeTab === 'owner' && <OwnerTab />}
+                {activeTab === 'sync' && <SyncTab />}
+                {activeTab === 'storage' && <StorageTab />}
+                {activeTab === 'integration' && <IntegrationTab />}
                 {activeTab === 'security' && <SecurityTab />}
+                {activeTab === 'agent' && <AgentTab />}
               </motion.div>
             </AnimatePresence>
           </div>

@@ -38,6 +38,7 @@ import { WorkspaceModule } from '../src/modules/workspace/workspace.module';
 import { OssModule } from '../src/modules/oss/oss.module';
 import { OssService } from '../src/modules/oss/oss.service';
 import { ImportModule } from '../src/modules/import/import.module';
+import { AgentModule } from '../src/modules/agent/agent.module';
 import { ResponseWrapperInterceptor } from '../src/common/response-wrapper.interceptor';
 import { RequestLoggerInterceptor } from '../src/common/request-logger.interceptor';
 import { AllExceptionsFilter } from '../src/common/all-exceptions.filter';
@@ -114,6 +115,7 @@ export class TestContext {
         NavigationModule,
         WorkspaceModule,
         ImportModule,
+        AgentModule,
       ],
     })
       // OssService.onModuleInit 会尝试连真实 OSS，E2E 中完全 mock 掉。
