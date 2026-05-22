@@ -10,11 +10,8 @@ import {
   useFloatingToolbarState,
 } from '@platejs/floating';
 import { useComposedRef } from '@udecode/cn';
-import { KEYS } from 'platejs';
 import {
   useEditorId,
-  useEventEditorValue,
-  usePluginOption,
 } from 'platejs/react';
 
 import { cn } from '@/lib/utils';
@@ -30,13 +27,11 @@ export function FloatingToolbar({
   state?: FloatingToolbarState;
 }) {
   const editorId = useEditorId();
-  const focusedEditorId = useEventEditorValue('focus');
-  const isFloatingLinkOpen = !!usePluginOption({ key: KEYS.link }, 'mode');
 
   const floatingToolbarState = useFloatingToolbarState({
     editorId,
-    focusedEditorId,
-    hideToolbar: isFloatingLinkOpen,
+    // 单编辑器场景，当前编辑器始终视为聚焦
+    focusedEditorId: editorId,
     ...state,
     floatingOptions: {
       middleware: [
@@ -79,6 +74,7 @@ export function FloatingToolbar({
           className
         )}
         style={{
+          ...rootProps.style,
           background: 'var(--popover, var(--paper-dark))',
           borderColor: 'var(--box-border, var(--separator))',
         }}

@@ -10,7 +10,6 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
 import {
   Plate,
   usePlateEditor,
@@ -20,8 +19,8 @@ import { serializeMd, deserializeMd } from '@platejs/markdown';
 import { fixCodeBlockLines } from '@/components/shared/plate-transforms';
 import { EditorKit } from '@/components/editor/editor-kit';
 import { Editor, EditorContainer } from '@/components/ui/editor';
-import { FixedToolbar } from '@/components/ui/fixed-toolbar';
-import { FixedToolbarButtons } from '@/components/ui/fixed-toolbar-buttons';
+import { FloatingToolbar } from '@/components/ui/floating-toolbar';
+import { FloatingToolbarButtons } from '@/components/ui/floating-toolbar-buttons';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useDraftAssetContext } from '@/contexts/DraftAssetContext';
 
@@ -51,10 +50,11 @@ function toStoredAssetPaths(markdown: string, contentItemId: string): string {
 export function PlateMarkdownEditor({
   initialMarkdown,
   onChange,
-  toolbarContainer,
+  toolbarContainer: _toolbarContainer,
 }: {
   initialMarkdown: string;
   onChange: (markdown: string) => void;
+  /** @deprecated 固定工具栏已移除，保留参数兼容文集编辑器 */
   toolbarContainer?: HTMLElement | null;
 }) {
   const { contentItemId } = useDraftAssetContext();
@@ -102,15 +102,12 @@ export function PlateMarkdownEditor({
   return (
     <TooltipProvider>
       <Plate key={editorId} editor={editor} onValueChange={handleChange}>
-        {toolbarContainer && createPortal(
-          <FixedToolbar>
-            <FixedToolbarButtons />
-          </FixedToolbar>,
-          toolbarContainer,
-        )}
         <EditorContainer>
           <Editor variant="default" placeholder="开始写作..." />
         </EditorContainer>
+        <FloatingToolbar>
+          <FloatingToolbarButtons />
+        </FloatingToolbar>
       </Plate>
     </TooltipProvider>
   );

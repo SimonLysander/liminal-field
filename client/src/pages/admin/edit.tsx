@@ -334,35 +334,30 @@ const DraftEditPage = () => {
 
       {/* ── Row 1: Notion 风格顶栏 ── */}
 
-      {/* [1,1] AI 面板上方：留空或放返回 */}
-      <div className="flex items-center px-3" style={{ borderBottom: '0.5px solid var(--separator)' }}>
-        <button
-          className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm transition-colors hover:opacity-70"
-          style={{ color: 'var(--ink-faded)' }}
-          onClick={() => navigate(-1)}
-        >
-          ← 返回
-        </button>
-      </div>
-
-      {/* [1,2-3] 标题 + 状态 + 操作 */}
+      {/* [1,1-3] Notion 风格极简顶栏：横跨全宽 */}
       <div
-        className="flex items-center justify-between px-4"
-        style={{ gridColumn: '2 / -1', borderBottom: '0.5px solid var(--separator)' }}
+        className="col-span-full flex items-center justify-between px-3"
+        style={{ borderBottom: '0.5px solid var(--separator)' }}
       >
-        {/* 左：标题 */}
-        <input
-          type="text"
-          value={state.title}
-          onChange={(e) => handleChange('title', e.target.value)}
-          placeholder="无标题"
-          className="min-w-0 flex-1 truncate border-none bg-transparent text-sm font-medium outline-none placeholder:text-[var(--ink-ghost)]"
-          style={{ color: 'var(--ink)' }}
-        />
+        {/* 左：← + 页面名（只读面包屑） */}
+        <div className="flex items-center gap-1 text-sm">
+          <button
+            className="shrink-0 rounded px-1.5 py-0.5 transition-colors hover:opacity-70"
+            style={{ color: 'var(--ink-faded)' }}
+            onClick={() => navigate(-1)}
+          >
+            ←
+          </button>
+          <span
+            className="truncate"
+            style={{ color: 'var(--ink)', fontWeight: 500, maxWidth: 200 }}
+          >
+            {state.title || '无标题'}
+          </span>
+        </div>
 
         {/* 右：状态 + 操作 */}
-        <div className="ml-4 flex shrink-0 items-center gap-3">
-          {/* 保存状态 */}
+        <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
             {isAutosaving && <StatusDot color="var(--mark-blue)" />}
             {isDirty && !isAutosaving && <StatusDot color="var(--mark-red)" />}
@@ -372,19 +367,14 @@ const DraftEditPage = () => {
             )}
             {autosaveError && <span style={{ color: 'var(--mark-red)' }}>{autosaveError}</span>}
           </div>
-
-          {/* 主题切换 */}
           <button
-            className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:opacity-70"
+            className="flex h-6 w-6 items-center justify-center rounded transition-colors hover:opacity-70"
             style={{ color: 'var(--ink-ghost)' }}
             onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}
-            aria-label="切换主题"
           >
-            <Sun size={14} strokeWidth={1.5} className="theme-icon-light" />
-            <Moon size={14} strokeWidth={1.5} className="theme-icon-dark" />
+            <Sun size={13} strokeWidth={1.5} className="theme-icon-light" />
+            <Moon size={13} strokeWidth={1.5} className="theme-icon-dark" />
           </button>
-
-          {/* 操作按钮：扁平，无胶囊 */}
           <div className="flex items-center gap-1">
             <ActionPill label="保存" shortcut="⇧⌘S" onClick={() => void saveDraft()} />
             <ActionPill label="提交" shortcut="⌘S" primary onClick={() => setShowCommitDialog(true)} />
@@ -422,7 +412,6 @@ const DraftEditPage = () => {
               key={`${id}-${resetKey}`}
               initialMarkdown={state.bodyMarkdown}
               onChange={(md) => handleChange('bodyMarkdown', md)}
-              toolbarContainer={null}
             />
           </DraftAssetProvider>
         </div>
