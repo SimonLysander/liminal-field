@@ -372,10 +372,10 @@ const DraftEditPage = () => {
         className="flex min-w-0 items-center px-4"
         style={{ gridColumn: '2 / -1' }}
       >
-        {/* 工具栏：flex-1 吃满空间，内容居中，超出滚动 */}
+        {/* 工具栏：flex-1 吃满空间，从左排列，超出可滚动 */}
         <div
           ref={setToolbarPortal}
-          className="flex min-w-0 flex-1 items-center justify-center overflow-x-auto"
+          className="flex min-w-0 flex-1 items-center overflow-x-auto"
         />
 
         {/* 右侧胶囊 */}
