@@ -333,7 +333,7 @@ const DraftEditPage = () => {
 
       {/* ── Row 1: Notion 风格顶栏（无底边框，与内容自然融合） ── */}
       <div className="col-span-full flex items-center justify-between px-4">
-        {/* 左：← + 页面名（加粗） */}
+        {/* 左：← + 可编辑页面名 */}
         <div className="flex items-center gap-1.5">
           <button
             className="rounded-sm p-0.5 transition-colors hover:bg-[var(--shelf)]"
@@ -342,12 +342,14 @@ const DraftEditPage = () => {
           >
             <ChevronLeft size={16} strokeWidth={1.5} />
           </button>
-          <span
-            className="truncate text-sm font-medium"
-            style={{ color: 'var(--ink)', maxWidth: 200 }}
-          >
-            {state.title || '无标题'}
-          </span>
+          <input
+            type="text"
+            value={state.title}
+            onChange={(e) => handleChange('title', e.target.value)}
+            placeholder="无标题"
+            className="min-w-[60px] max-w-[240px] truncate border-none bg-transparent text-sm font-medium outline-none placeholder:text-[var(--ink-ghost)]"
+            style={{ color: 'var(--ink)' }}
+          />
         </div>
 
         {/* 右：状态文字 + 提交按钮（Notion"共享"风格） + 图标组 */}
