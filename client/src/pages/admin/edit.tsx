@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { motion } from 'motion/react';
-import { Sun, Moon } from 'lucide-react';
+import { Sun, Moon, ChevronLeft, Save, MoreHorizontal } from 'lucide-react';
 import { smoothBounce } from '@/lib/motion';
 import { useTheme } from '@/hooks/use-theme';
 import { notesApi as contentItemsApi } from '@/services/workspace';
@@ -88,7 +88,7 @@ const DraftEditPage = () => {
   const [isDirty, setIsDirty] = useState(false);
   const [isAutosaving, setIsAutosaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState('');
-  const [autosaveError, setAutosaveError] = useState('');
+  const [_autosaveError, setAutosaveError] = useState('');
   const [resetKey] = useState(0);
   const [showCommitDialog, setShowCommitDialog] = useState(false);
   /* Portal 目标：Plate 工具栏通过 Portal 渲染到此元素内 */
@@ -316,8 +316,7 @@ const DraftEditPage = () => {
   /*
    * CSS Grid 三栏布局（Notion 风格）：
    *   列：AI 面板 | 编辑器 | 大纲
-   *   行：顶栏(44px) | 内容(1fr)
-   * 无固定工具栏——格式化通过浮动工具栏（选中文字弹出）和 / 斜杠命令完成。
+   *   行：顶栏(36px) | 内容(1fr)
    */
   const gridColumns = 'clamp(18rem, 22vw, 22rem) 1fr var(--layout-sidebar)';
 
@@ -327,58 +326,61 @@ const DraftEditPage = () => {
       style={{
         background: 'var(--paper)',
         gridTemplateColumns: gridColumns,
-        gridTemplateRows: '44px 1fr',
+        gridTemplateRows: '36px 1fr',
       }}
     >
       <ThresholdOverlay visible={committing} label="正在提交版本..." />
 
-      {/* ── Row 1: Notion 风格顶栏 ── */}
-
-      {/* [1,1-3] Notion 风格极简顶栏：横跨全宽 */}
-      <div
-        className="col-span-full flex items-center justify-between px-3"
-        style={{ borderBottom: '0.5px solid var(--separator)' }}
-      >
-        {/* 左：← + 页面名（只读面包屑） */}
-        <div className="flex items-center gap-1 text-sm">
+      {/* ── Row 1: Notion 风格顶栏（无底边框，与内容自然融合） ── */}
+      <div className="col-span-full flex items-center justify-between px-4">
+        {/* 左：← + 页面名（加粗） */}
+        <div className="flex items-center gap-1.5">
           <button
-            className="shrink-0 rounded px-1.5 py-0.5 transition-colors hover:opacity-70"
+            className="rounded-sm p-0.5 transition-colors hover:bg-[var(--shelf)]"
             style={{ color: 'var(--ink-faded)' }}
             onClick={() => navigate(-1)}
           >
-            ←
+            <ChevronLeft size={16} strokeWidth={1.5} />
           </button>
           <span
-            className="truncate"
-            style={{ color: 'var(--ink)', fontWeight: 500, maxWidth: 200 }}
+            className="truncate text-sm font-medium"
+            style={{ color: 'var(--ink)', maxWidth: 200 }}
           >
             {state.title || '无标题'}
           </span>
         </div>
 
-        {/* 右：状态 + 操作 */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-            {isAutosaving && <StatusDot color="var(--mark-blue)" />}
-            {isDirty && !isAutosaving && <StatusDot color="var(--mark-red)" />}
-            {!isDirty && !isAutosaving && lastSavedAt && <StatusDot color="var(--mark-green)" />}
-            {lastSavedAt && (
-              <span>{new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</span>
-            )}
-            {autosaveError && <span style={{ color: 'var(--mark-red)' }}>{autosaveError}</span>}
-          </div>
+        {/* 右：状态文字 + 提交按钮（Notion"共享"风格） + 图标组 */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            {isAutosaving ? '保存中...' : isDirty ? '未保存' :
+             lastSavedAt ? `上次编辑 ${new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` : ''}
+          </span>
+
+          {/* 提交按钮：Notion "共享" 风格 */}
           <button
-            className="flex h-6 w-6 items-center justify-center rounded transition-colors hover:opacity-70"
-            style={{ color: 'var(--ink-ghost)' }}
-            onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}
+            className="rounded-md border px-2.5 py-1 text-xs font-medium transition-colors hover:bg-[var(--shelf)]"
+            style={{ color: 'var(--ink)', borderColor: 'var(--separator)' }}
+            onClick={() => setShowCommitDialog(true)}
           >
-            <Sun size={13} strokeWidth={1.5} className="theme-icon-light" />
-            <Moon size={13} strokeWidth={1.5} className="theme-icon-dark" />
+            提交
           </button>
-          <div className="flex items-center gap-1">
-            <ActionPill label="保存" shortcut="⇧⌘S" onClick={() => void saveDraft()} />
-            <ActionPill label="提交" shortcut="⌘S" primary onClick={() => setShowCommitDialog(true)} />
-            <ActionPill label="丢弃" danger onClick={() => void discardDraft()} />
+
+          {/* 图标按钮组 */}
+          <div className="flex items-center gap-0.5">
+            <button className="rounded-sm p-1.5 transition-colors hover:bg-[var(--shelf)]" style={{ color: 'var(--ink-ghost)' }}
+              onClick={() => void saveDraft()} title="保存 ⇧⌘S">
+              <Save size={15} strokeWidth={1.5} />
+            </button>
+            <button className="rounded-sm p-1.5 transition-colors hover:bg-[var(--shelf)]" style={{ color: 'var(--ink-ghost)' }}
+              onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')} title="切换主题">
+              <Sun size={15} strokeWidth={1.5} className="theme-icon-light" />
+              <Moon size={15} strokeWidth={1.5} className="theme-icon-dark" />
+            </button>
+            <button className="rounded-sm p-1.5 transition-colors hover:bg-[var(--shelf)]" style={{ color: 'var(--ink-ghost)' }}
+              onClick={() => void discardDraft()} title="丢弃草稿">
+              <MoreHorizontal size={15} strokeWidth={1.5} />
+            </button>
           </div>
         </div>
       </div>
@@ -399,7 +401,7 @@ const DraftEditPage = () => {
         <div />
       )}
 
-      {/* [2,2] 编辑器 */}
+      {/* 编辑器 */}
       <div className="min-w-0 overflow-y-auto overflow-x-hidden" data-scroll-container>
         {error && contentDetail && (
           <div className="px-6 py-2" style={{ background: 'rgba(255,59,48,0.06)' }}>
@@ -543,48 +545,6 @@ function CommitDialog({
         </div>
       </motion.div>
     </div>
-  );
-}
-
-/* ---------- Primitives ---------- */
-
-function StatusDot({ color }: { color: string }) {
-  return (
-    <span
-      className="h-[6px] w-[6px] rounded-full"
-      style={{ background: color, boxShadow: `0 0 6px ${color}40` }}
-    />
-  );
-}
-
-function ActionPill({
-  label,
-  shortcut,
-  primary,
-  danger,
-  onClick,
-}: {
-  label: string;
-  shortcut?: string;
-  primary?: boolean;
-  danger?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      className="rounded-md px-2.5 py-1 transition-all duration-150"
-      style={{
-        color: danger ? 'var(--mark-red)' : primary ? 'var(--ink)' : 'var(--ink-faded)',
-        fontSize: 'var(--text-base)',
-        fontWeight: primary ? 600 : 400,
-      }}
-      onClick={onClick}
-      onMouseEnter={(e) => { if (!danger) e.currentTarget.style.background = 'var(--shelf)'; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-      title={shortcut}
-    >
-      {label}
-    </button>
   );
 }
 
