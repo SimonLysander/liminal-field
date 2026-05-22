@@ -133,8 +133,7 @@ export default function HomePage() {
           setLoading(false);
         }
       })
-      .catch((err) => {
-        console.error('[Home] 加载首页数据失败:', err);
+      .catch(() => {
         if (!cancelled) setLoading(false);
       });
     return () => {

@@ -68,10 +68,9 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
             onClick={(e) => e.target === e.currentTarget && handleClose(false)}
           >
             <motion.div
-              className="w-[360px]"
+              className="w-[360px] rounded-xl"
               style={{
                 background: 'var(--paper)',
-                borderRadius: 'var(--radius-xl)',
                 boxShadow: 'var(--shadow-lg)',
               }}
               initial={{ opacity: 0, scale: 0.96, y: 8 }}
@@ -80,10 +79,10 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
               transition={{ duration: 0.2, ease: smoothBounce }}
             >
               <div className="px-6 pb-2 pt-5">
-                <h3 className="font-semibold" style={{ color: 'var(--ink)', fontSize: 'var(--text-lg)' }}>
+                <h3 className="text-lg font-semibold" style={{ color: 'var(--ink)' }}>
                   {state.title}
                 </h3>
-                <p className="mt-2 leading-relaxed" style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-sm)' }}>
+                <p className="mt-2 text-sm leading-relaxed" style={{ color: 'var(--ink-faded)' }}>
                   {state.message}
                 </p>
               </div>
@@ -91,19 +90,18 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
               <div className="flex justify-end gap-2 px-6 pb-5 pt-4">
                 <button
                   type="button"
-                  className="rounded-lg px-4 py-2 font-medium"
-                  style={{ background: 'var(--shelf)', color: 'var(--ink-faded)', fontSize: 'var(--text-sm)' }}
+                  className="rounded-lg px-4 py-2 text-sm font-medium"
+                  style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
                   onClick={() => handleClose(false)}
                 >
                   {state.cancelLabel ?? '取消'}
                 </button>
                 <button
                   type="button"
-                  className="rounded-lg px-4 py-2 font-medium"
+                  className="rounded-lg px-4 py-2 text-sm font-medium"
                   style={{
                     background: state.danger ? 'var(--mark-red)' : 'var(--ink)',
                     color: '#fff',
-                    fontSize: 'var(--text-sm)',
                   }}
                   onClick={() => handleClose(true)}
                 >

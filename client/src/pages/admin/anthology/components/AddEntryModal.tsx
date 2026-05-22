@@ -57,8 +57,8 @@ export function AddEntryModal({ open, onClose, onSubmit }: AddEntryModalProps) {
         onClick={(e) => e.stopPropagation()}
       >
         <h3
-          className="mb-4 font-semibold"
-          style={{ color: 'var(--ink)', fontSize: 'var(--text-md)', letterSpacing: '-0.01em' }}
+          className="mb-4 text-md font-semibold"
+          style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}
         >
           添加条目
         </h3>
@@ -69,13 +69,13 @@ export function AddEntryModal({ open, onClose, onSubmit }: AddEntryModalProps) {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') void handleSubmit(); }}
-          className="w-full rounded-lg px-3 py-2 outline-none"
-          style={{ background: 'var(--shelf)', color: 'var(--ink)', fontSize: 'var(--text-base)', border: 'none' }}
+          className="w-full rounded-lg px-3 py-2 text-base outline-none"
+          style={{ background: 'var(--shelf)', color: 'var(--ink)', border: 'none' }}
         />
         <div className="mt-5 flex items-center justify-end gap-2.5">
           <button
-            className="rounded-lg px-3.5 py-1.5 transition-colors duration-150"
-            style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-base)' }}
+            className="rounded-lg px-3.5 py-1.5 text-base transition-colors duration-150"
+            style={{ color: 'var(--ink-faded)' }}
             onClick={onClose}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--shelf)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
@@ -83,11 +83,10 @@ export function AddEntryModal({ open, onClose, onSubmit }: AddEntryModalProps) {
             取消
           </button>
           <button
-            className="rounded-lg px-4 py-1.5 font-medium transition-all duration-150"
+            className="rounded-lg px-4 py-1.5 text-base font-medium transition-all duration-150"
             style={{
               background: title.trim() && !submitting ? 'var(--accent)' : 'var(--ink-ghost)',
               color: 'var(--accent-contrast)',
-              fontSize: 'var(--text-base)',
               cursor: title.trim() && !submitting ? 'pointer' : 'not-allowed',
             }}
             disabled={!title.trim() || submitting}

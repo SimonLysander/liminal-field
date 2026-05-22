@@ -72,9 +72,8 @@ export function PlateMarkdownEditor({
         try {
           const nodes = deserializeMd(editor, editorMarkdown);
           return fixCodeBlockLines(nodes);
-        } catch (err) {
-          // 反序列化失败时降级为空段落，记录错误供调试
-          console.error('[PlateEditor] Markdown 反序列化失败:', err);
+        } catch {
+          // 反序列化失败时降级为空段落
           return [{ type: 'p', children: [{ text: '' }] }];
         }
       },

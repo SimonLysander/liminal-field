@@ -18,6 +18,11 @@ const buttonVariants = cva(
           "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
+        // 设计系统:主操作 = 长春花紫实心(唯一);danger = 红字(非红块)
+        primary:
+          "bg-[var(--accent)] text-[var(--accent-contrast)] hover:bg-[var(--accent-hover)]",
+        danger:
+          "text-[var(--danger)] hover:bg-[color-mix(in_srgb,var(--danger)_9%,transparent)]",
       },
       size: {
         default: "h-10 px-4 py-2",

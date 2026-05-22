@@ -70,13 +70,13 @@ export const DraftWorkspace = ({
         <LoadingState label="加载草稿中" />
       ) : error ? (
         <div className="rounded-xl p-4" style={{ background: 'rgba(255,59,48,0.06)' }}>
-          <p style={{ color: 'var(--mark-red)', fontSize: 'var(--text-sm)' }}>{error}</p>
+          <p className="text-sm" style={{ color: 'var(--mark-red)' }}>{error}</p>
         </div>
       ) : (
     <div className="space-y-4">
       {/* Action bar */}
       <div className="flex items-center justify-between">
-        <p style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)' }}>
+        <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
           草稿工作区 · 基于{formalStatus}版本
         </p>
         <div className="flex flex-wrap items-center gap-4">
@@ -90,7 +90,7 @@ export const DraftWorkspace = ({
 
       {/* Status bar */}
       {(isDirty || isAutosaving || lastDraftSavedAt || autosaveError || draftInfo) && (
-        <div className="flex flex-wrap items-center gap-3" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)' }}>
+        <div className="flex flex-wrap items-center gap-3 text-xs" style={{ color: 'var(--ink-ghost)' }}>
           {isAutosaving && <StatusDot color="var(--mark-blue)" label="自动保存中..." />}
           {isDirty && !isAutosaving && <StatusDot color="var(--mark-red)" label="有未保存的更改" />}
           {!isDirty && !isAutosaving && lastDraftSavedAt && <StatusDot color="var(--mark-green)" label="已同步" />}
@@ -109,8 +109,8 @@ export const DraftWorkspace = ({
         value={draftState.title}
         onChange={(e) => onEditorChange('title', e.target.value)}
         placeholder="无标题"
-        className="w-full border-none bg-transparent font-bold outline-none placeholder:text-[var(--ink-ghost)]"
-        style={{ color: 'var(--ink)', fontSize: 'var(--text-5xl)', letterSpacing: '-0.025em', lineHeight: 1.2 }}
+        className="w-full border-none bg-transparent text-5xl font-bold outline-none placeholder:text-[var(--ink-ghost)]"
+        style={{ color: 'var(--ink)', letterSpacing: '-0.025em', lineHeight: 1.2 }}
       />
 
       {/* Plate rich-text editor — immediately after title */}
@@ -142,10 +142,9 @@ function ActionBtn({
 }) {
   return (
     <button
-      className="transition-colors duration-150"
+      className="text-xs transition-colors duration-150"
       style={{
         color: danger ? 'var(--mark-red)' : primary ? 'var(--ink)' : 'var(--ink-faded)',
-        fontSize: 'var(--text-xs)',
         fontWeight: primary ? 600 : 400,
       }}
       onClick={onClick}

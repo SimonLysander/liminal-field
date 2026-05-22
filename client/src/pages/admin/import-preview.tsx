@@ -59,10 +59,9 @@ export default function ImportPreviewPage() {
         setTitle(parsed.title);
         setAssets(parsed.assets);
       })
-      .catch((err) => {
-        // 导入会话加载失败（通常为过期），记录错误后提示用户重试
-        console.error('[ImportPreview] 加载导入会话失败:', err);
-        banner.info('导入会话已过期，请重新上传');
+      .catch(() => {
+        // 导入会话加载失败（通常为过期），提示用户重试
+          banner.info('导入会话已过期，请重新上传');
         navigate('/admin/notes');
       })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -187,11 +186,11 @@ export default function ImportPreviewPage() {
           style={{ color: 'var(--ink-faded)' }}
         >
           <ArrowLeft size={16} strokeWidth={1.5} />
-          <span style={{ fontSize: 'var(--text-sm)' }}>返回</span>
+          <span className="text-sm">返回</span>
         </button>
         <h1
-          className="font-semibold"
-          style={{ color: 'var(--ink)', fontSize: 'var(--text-base)' }}
+          className="text-base font-semibold"
+          style={{ color: 'var(--ink)' }}
         >
           导入预览
         </h1>
@@ -229,23 +228,23 @@ export default function ImportPreviewPage() {
             {/* 文件信息 + 标题可编辑 */}
             <section>
               <h3
-                className="mb-2 font-semibold"
-                style={{ color: 'var(--ink)', fontSize: 'var(--text-sm)' }}
+                className="mb-2 text-sm font-semibold"
+                style={{ color: 'var(--ink)' }}
               >
                 文件信息
               </h3>
               <div className="space-y-2">
                 <label className="flex flex-col gap-1">
-                  <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--ink-ghost)' }}>标题</span>
+                  <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>标题</span>
                   <input
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    className="w-full rounded-md border-none px-2.5 py-1.5 outline-none"
-                    style={{ background: 'var(--shelf)', color: 'var(--ink)', fontSize: 'var(--text-sm)', fontFamily: 'var(--font-sans)' }}
+                    className="w-full rounded-md border-none px-2.5 py-1.5 text-sm outline-none"
+                    style={{ background: 'var(--shelf)', color: 'var(--ink)', fontFamily: 'var(--font-sans)' }}
                   />
                 </label>
-                <p style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-ghost)' }}>格式：Markdown</p>
+                <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>格式：Markdown</p>
               </div>
             </section>
 
@@ -253,8 +252,8 @@ export default function ImportPreviewPage() {
             {toc.length > 0 && (
               <section>
                 <h3
-                  className="mb-2 font-semibold"
-                  style={{ color: 'var(--ink)', fontSize: 'var(--text-sm)' }}
+                  className="mb-2 text-sm font-semibold"
+                  style={{ color: 'var(--ink)' }}
                 >
                   大纲
                 </h3>
@@ -263,9 +262,8 @@ export default function ImportPreviewPage() {
                     <motion.div
                       key={item.id}
                       data-toc-id={item.id}
-                      className="cursor-pointer border-l-2 py-[5px] transition-all duration-200"
+                      className="cursor-pointer border-l-2 py-[5px] text-xs transition-all duration-200"
                       style={{
-                        fontSize: 'var(--text-xs)',
                         color: activeToc === item.id ? 'var(--ink-light)' : 'var(--ink-faded)',
                         fontWeight: activeToc === item.id ? 500 : 400,
                         borderColor: activeToc === item.id ? 'var(--ink-light)' : 'transparent',
@@ -301,16 +299,16 @@ export default function ImportPreviewPage() {
           >
             <button
               onClick={handleCancel}
-              className="flex-1 rounded-lg py-2.5 font-medium"
-              style={{ background: 'var(--shelf)', color: 'var(--ink-faded)', fontSize: 'var(--text-sm)' }}
+              className="flex-1 rounded-lg py-2.5 text-sm font-medium"
+              style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
             >
               取消
             </button>
             <button
               onClick={handleConfirm}
               disabled={confirming || countdown.expired}
-              className="flex-1 rounded-lg py-2.5 font-medium transition-opacity disabled:opacity-50"
-              style={{ background: 'var(--accent)', color: 'var(--accent-contrast)', fontSize: 'var(--text-sm)' }}
+              className="flex-1 rounded-lg py-2.5 text-sm font-medium transition-opacity disabled:opacity-50"
+              style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}
             >
               {getConfirmLabel()}
             </button>
@@ -341,14 +339,14 @@ function AssetSummary({
   return (
     <section>
       <h3
-        className="mb-2 font-semibold"
-        style={{ color: 'var(--ink)', fontSize: 'var(--text-sm)' }}
+        className="mb-2 text-sm font-semibold"
+        style={{ color: 'var(--ink)' }}
       >
         资源引用
       </h3>
 
       {/* 统计摘要 */}
-      <div className="flex items-center gap-3" style={{ fontSize: 'var(--text-xs)' }}>
+      <div className="flex items-center gap-3 text-xs">
         <span style={{ color: 'var(--ink-faded)' }}>
           <span style={{ color: 'var(--mark-green)' }}>{resolvedCount}</span> 已加载
           {missingCount > 0 && (
@@ -358,8 +356,8 @@ function AssetSummary({
         </span>
         <button
           onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-0.5 transition-colors hover:opacity-70"
-          style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)' }}
+          className="flex items-center gap-0.5 text-2xs transition-colors hover:opacity-70"
+          style={{ color: 'var(--ink-ghost)' }}
         >
           详情
           <ChevronDown
@@ -376,8 +374,7 @@ function AssetSummary({
           {assets.map((asset) => (
             <li
               key={asset.ref}
-              className="flex items-center gap-2"
-              style={{ fontSize: 'var(--text-2xs)' }}
+              className="flex items-center gap-2 text-2xs"
             >
               {asset.status === 'resolved' ? (
                 <Check size={10} style={{ color: 'var(--mark-green)' }} />
@@ -410,11 +407,10 @@ function AssetSummary({
           <button
             onClick={() => folderInputRef.current?.click()}
             disabled={resolving}
-            className="flex w-full items-center justify-center gap-2 rounded-lg py-2 font-medium transition-opacity disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-xs font-medium transition-opacity disabled:opacity-50"
             style={{
               background: 'var(--shelf)',
               color: 'var(--ink-faded)',
-              fontSize: 'var(--text-xs)',
               border: '1px dashed var(--separator)',
             }}
           >

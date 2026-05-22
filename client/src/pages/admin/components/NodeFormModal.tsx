@@ -107,10 +107,9 @@ export const NodeFormModal = ({
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <motion.div
-        className="w-[420px] overflow-hidden"
+        className="w-[420px] overflow-hidden rounded-xl"
         style={{
           background: 'var(--paper)',
-          borderRadius: 'var(--radius-xl)',
           boxShadow: 'var(--shadow-lg)',
         }}
         initial={{ opacity: 0, scale: 0.96, y: 8 }}
@@ -118,7 +117,7 @@ export const NodeFormModal = ({
         transition={{ duration: 0.2, ease: smoothBounce }}
       >
         <div className="px-6 pb-1 pt-5">
-          <h2 className="font-semibold" style={{ color: 'var(--ink)', fontSize: 'var(--text-lg)', letterSpacing: '-0.01em' }}>
+          <h2 className="text-lg font-semibold" style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}>
             {isCreate ? '新建' : '重命名'}
           </h2>
         </div>
@@ -129,8 +128,8 @@ export const NodeFormModal = ({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border-none px-3 py-2 outline-none"
-              style={{ background: 'var(--shelf)', color: 'var(--ink)', fontSize: 'var(--text-sm)', fontFamily: 'var(--font-sans)' }}
+              className="w-full rounded-lg border-none px-3 py-2 text-sm outline-none"
+              style={{ background: 'var(--shelf)', color: 'var(--ink)', fontFamily: 'var(--font-sans)' }}
               placeholder={isCreate && type === 'DOC' ? '例如：世界观构建笔记' : '例如：世界观构建'}
               autoFocus
             />
@@ -144,9 +143,8 @@ export const NodeFormModal = ({
                     key={option.value}
                     type="button"
                     onClick={() => setType(option.value)}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 font-medium transition-colors duration-150"
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-colors duration-150"
                     style={{
-                      fontSize: 'var(--text-sm)',
                       background: type === option.value ? 'var(--accent)' : 'var(--shelf)',
                       color: type === option.value ? 'var(--accent-contrast)' : 'var(--ink-faded)',
                     }}
@@ -172,11 +170,10 @@ export const NodeFormModal = ({
                 type="button"
                 onClick={handleImportClick}
                 disabled={importing}
-                className="w-full rounded-lg py-2 text-center font-medium transition-opacity duration-150 disabled:opacity-50"
+                className="w-full rounded-lg py-2 text-center text-sm font-medium transition-opacity duration-150 disabled:opacity-50"
                 style={{
                   background: 'var(--shelf)',
                   color: 'var(--ink-faded)',
-                  fontSize: 'var(--text-sm)',
                   border: '1px dashed var(--separator)',
                 }}
               >
@@ -186,14 +183,14 @@ export const NodeFormModal = ({
           )}
 
           {error && (
-            <p style={{ color: 'var(--mark-red)', fontSize: 'var(--text-xs)' }}>{error}</p>
+            <p className="text-xs" style={{ color: 'var(--mark-red)' }}>{error}</p>
           )}
 
           <div className="flex justify-end gap-2 pt-1">
             <button
               type="button"
-              className="rounded-lg px-4 py-2 font-medium"
-              style={{ background: 'var(--shelf)', color: 'var(--ink-faded)', fontSize: 'var(--text-sm)' }}
+              className="rounded-lg px-4 py-2 text-sm font-medium"
+              style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
               onClick={onClose}
             >
               取消
@@ -201,8 +198,8 @@ export const NodeFormModal = ({
             <button
               type="submit"
               disabled={submitting}
-              className="rounded-lg px-4 py-2 font-medium transition-opacity duration-150 disabled:opacity-50"
-              style={{ background: 'var(--accent)', color: 'var(--accent-contrast)', fontSize: 'var(--text-sm)' }}
+              className="rounded-lg px-4 py-2 text-sm font-medium transition-opacity duration-150 disabled:opacity-50"
+              style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}
             >
               {submitting ? '提交中...' : isCreate ? '创建' : '保存'}
             </button>
@@ -217,7 +214,7 @@ export const NodeFormModal = ({
 function FieldLabel({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="font-medium" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)' }}>{label}</span>
+      <span className="text-2xs font-medium" style={{ color: 'var(--ink-ghost)' }}>{label}</span>
       {children}
     </label>
   );

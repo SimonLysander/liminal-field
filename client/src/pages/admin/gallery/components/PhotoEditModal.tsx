@@ -105,11 +105,11 @@ function ExifSummary({ tags, fileSize, dimensions, onEdit }: ExifSummaryProps) {
           alignItems: 'center',
           justifyContent: 'space-between',
           fontFamily: FRAME_FONT,
-          fontSize: 10,
           letterSpacing: '0.02em',
           color: 'var(--ink-faded)',
           lineHeight: 1,
         }}
+        className="text-2xs"
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
           {segments.map((seg, i) => (
@@ -235,22 +235,20 @@ export function PhotoEditModal({
        */}
       <DialogContent
         aria-describedby={undefined}
-        className={`flex overflow-hidden p-0 [&>button:last-child]:hidden ${isLandscape ? 'flex-col' : 'flex-row'}`}
+        className={`flex overflow-hidden rounded-xl p-0 [&>button:last-child]:hidden ${isLandscape ? 'flex-col' : 'flex-row'}`}
         style={{
           maxWidth: '760px',
           width: '760px',
-          borderRadius: '12px',
           border: 'none',
         }}
       >
         {/* 文件名 — 整个 modal 左上角 */}
         <span
-          className="absolute left-3 top-3 z-10 flex h-6 items-center rounded-full px-2.5"
+          className="absolute left-3 top-3 z-10 flex h-6 items-center rounded-full px-2.5 text-2xs"
           style={{
             background: 'rgba(0,0,0,0.35)',
             color: 'rgba(255,255,255,0.85)',
             fontFamily: FRAME_FONT,
-            fontSize: 10,
             letterSpacing: '0.02em',
             lineHeight: 1,
           }}

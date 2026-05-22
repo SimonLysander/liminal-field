@@ -225,9 +225,8 @@ export function useAdminWorkspace() {
       });
 
       if (reorderedIds.length > 0) {
-        void structureApi.reorderSiblings(urlFolderId ?? null, reorderedIds).catch((err) => {
-          // 排序保存失败时回滚乐观更新，记录错误供调试
-          console.error('[useAdminWorkspace] 排序保存失败:', err);
+        void structureApi.reorderSiblings(urlFolderId ?? null, reorderedIds).catch(() => {
+          // 排序保存失败时回滚乐观更新
           void loadLevel(urlFolderId);
         });
       }

@@ -71,8 +71,8 @@ export function EntryPreviewPanel({
         <div className="mx-auto w-full max-w-[var(--layout-reading-max)]">
           {/* 返回按钮 */}
           <button
-            className="mb-6 flex items-center gap-1.5 transition-opacity duration-150 hover:opacity-70"
-            style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-xs)' }}
+            className="mb-6 text-xs flex items-center gap-1.5 transition-opacity duration-150 hover:opacity-70"
+            style={{ color: 'var(--ink-faded)' }}
             onClick={onBack}
           >
             <ChevronLeft size={13} strokeWidth={1.5} />
@@ -85,12 +85,12 @@ export function EntryPreviewPanel({
               className="mb-5 flex items-center justify-between rounded-md px-3.5 py-2"
               style={{ background: 'var(--shelf)', border: '1px solid var(--box-border)' }}
             >
-              <span style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-xs)' }}>
+              <span className="text-xs" style={{ color: 'var(--ink-faded)' }}>
                 正在预览历史版本
               </span>
               <button
-                className="transition-opacity hover:opacity-70"
-                style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-xs)' }}
+                className="text-xs transition-opacity hover:opacity-70"
+                style={{ color: 'var(--ink-faded)' }}
                 onClick={onExitPreview}
               >
                 返回最新 →
@@ -107,10 +107,9 @@ export function EntryPreviewPanel({
                 <div className="flex items-start justify-between">
                   <div>
                     <h2
-                      className="font-bold"
+                      className="text-5xl font-bold"
                       style={{
                         color: 'var(--ink)',
-                        fontSize: 'var(--text-5xl)',
                         fontFamily: 'var(--font-serif)',
                         letterSpacing: '-0.025em',
                       }}
@@ -121,12 +120,12 @@ export function EntryPreviewPanel({
                       {/* 版本预览模式下不展示发布状态 Pill，避免误导 */}
                       {!isPreviewMode && <VersionStatusPill isPublished={isPublished} />}
                       {displayEntry.date && (
-                        <span style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)' }}>
+                        <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>
                           {new Date(displayEntry.date).toLocaleString('zh-CN')}
                         </span>
                       )}
                       {!isPreviewMode && isPublished && hasUnpublishedChanges && (
-                        <span style={{ color: 'var(--mark-red)', fontSize: 'var(--text-2xs)' }}>
+                        <span className="text-2xs" style={{ color: 'var(--mark-red)' }}>
                           有未发布的变更
                         </span>
                       )}
@@ -171,7 +170,7 @@ export function EntryPreviewPanel({
                 </div>
 
                 {/* 条目正文 */}
-                <div className="leading-[1.9]" style={{ fontSize: 'var(--text-lg)' }}>
+                <div className="text-lg leading-[1.9]">
                   <MarkdownBody markdown={displayEntry.bodyMarkdown || ''} />
                 </div>
               </div>

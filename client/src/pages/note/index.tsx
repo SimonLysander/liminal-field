@@ -264,8 +264,8 @@ function NoteReader({ id }: { id: string }) {
 
         {/* Markdown 正文 — 延迟浮入 */}
         <motion.div
-          className="note-prose leading-[1.9]"
-          style={{ color: 'var(--ink-light)', fontSize: 'var(--text-lg)' }}
+          className="note-prose text-lg leading-[1.9]"
+          style={{ color: 'var(--ink-light)' }}
           initial={{ opacity: 0, y: 8, filter: 'blur(4px)' }}
           animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
           transition={{ duration: 0.5, delay: 0.25, ease: smoothBounce }}
@@ -326,11 +326,10 @@ function NoteReader({ id }: { id: string }) {
         <AnimatePresence>
           {aiOpen && (
             <motion.div
-              className="ai-chat-panel flex w-[340px] flex-col overflow-hidden"
+              className="ai-chat-panel flex w-[340px] flex-col overflow-hidden rounded-xl"
               style={{
                 maxHeight: 420,
                 background: 'var(--paper)',
-                borderRadius: 'var(--radius-xl)',
                 boxShadow: 'var(--shadow-xl)',
               }}
               initial={{ opacity: 0, y: 12, scale: 0.95 }}

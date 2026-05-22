@@ -178,11 +178,10 @@ export function PhotoGrid({ photos, uploadProgress, onReorder, onPhotoClick, onD
 
             {/* Upload button — 上传中禁用 */}
             <button
-              className="flex aspect-square items-center justify-center rounded-md transition-colors duration-150"
+              className="flex aspect-square items-center justify-center rounded-md text-lg transition-colors duration-150"
               style={{
                 border: '1.5px dashed var(--separator)',
                 color: 'var(--ink-ghost)',
-                fontSize: 'var(--text-lg)',
                 opacity: uploading ? 0.3 : 1,
                 pointerEvents: uploading ? 'none' : undefined,
               }}

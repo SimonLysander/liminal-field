@@ -77,7 +77,7 @@ export function EntrySidePanel({
               </div>
             ) : (
               <>
-                <p className="mb-3.5 leading-relaxed" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)' }}>
+                <p className="mb-3.5 text-xs leading-relaxed" style={{ color: 'var(--ink-ghost)' }}>
                   进入编辑器创建草稿
                 </p>
                 <SideLink
@@ -98,7 +98,7 @@ export function EntrySidePanel({
               {historyLoading ? (
                 <LoadingState />
               ) : history.length === 0 ? (
-                <p style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)' }}>暂无版本</p>
+                <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>暂无版本</p>
               ) : (
                 <VersionTimeline
                   history={history}

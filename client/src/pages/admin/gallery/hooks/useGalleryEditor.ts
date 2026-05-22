@@ -177,9 +177,8 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     try {
       await galleryApi.saveDraft(id, buildSavePayload());
       setSaveStatus('saved');
-    } catch (err) {
+    } catch {
       // 自动保存失败时不打断用户，还原为 dirty 以便下次重试
-      console.error('[useGalleryEditor] 自动保存失败:', err);
       setSaveStatus('dirty');
     }
   }, [buildSavePayload]);
@@ -334,9 +333,8 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
       await galleryApi.deleteDraft(id).catch(() => {});
       setSaveStatus('saved');
       // 提交成功，页面跳转即为反馈，无需弹窗
-    } catch (err) {
+    } catch {
       // 提交失败时还原为 dirty，用户可重试
-      console.error('[useGalleryEditor] 提交失败:', err);
       setSaveStatus('dirty');
       banner.error('提交失败');
     }

@@ -12,10 +12,9 @@ import { Eye, EyeOff } from 'lucide-react';
 export function SectionSkeleton({ title }: { title?: string }) {
   return (
     <div
-      className="animate-pulse p-6"
+      className="animate-pulse rounded-lg p-6"
       style={{
         background: 'var(--paper-dark)',
-        borderRadius: 'var(--radius-lg)',
         border: '0.5px solid var(--separator)',
       }}
     >
@@ -60,10 +59,9 @@ export function Section({
 }) {
   return (
     <div
-      className="p-6"
+      className="rounded-lg p-6"
       style={{
         background: 'var(--paper-dark)',
-        borderRadius: 'var(--radius-lg)',
         border: '0.5px solid var(--separator)',
       }}
     >
@@ -117,10 +115,9 @@ export function EditableSection({
 }) {
   return (
     <div
-      className="p-6"
+      className="rounded-lg p-6"
       style={{
         background: 'var(--paper-dark)',
-        borderRadius: 'var(--radius-lg)',
         border: '0.5px solid var(--separator)',
       }}
     >

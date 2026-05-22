@@ -29,9 +29,8 @@ export function SyncDialog({ onClose }: { onClose: () => void }) {
       } else {
         banner.error(result.message);
       }
-    } catch (err) {
-      // 同步推送失败，记录错误供调试
-      console.error('[SyncDialog] 同步失败:', err);
+    } catch {
+      // 同步推送失败
       banner.error('同步失败');
     } finally {
       setPushing(false);
@@ -45,10 +44,9 @@ export function SyncDialog({ onClose }: { onClose: () => void }) {
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <motion.div
-        className="w-[360px]"
+        className="w-[360px] rounded-xl"
         style={{
           background: 'var(--paper)',
-          borderRadius: 'var(--radius-xl)',
           boxShadow: 'var(--shadow-lg)',
         }}
         initial={{ opacity: 0, scale: 0.96, y: 8 }}
@@ -57,14 +55,14 @@ export function SyncDialog({ onClose }: { onClose: () => void }) {
       >
         <div className="px-6 pb-2 pt-5">
           <div
-            className="font-semibold uppercase"
-            style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)', letterSpacing: '0.04em' }}
+            className="text-2xs font-semibold uppercase"
+            style={{ color: 'var(--ink-ghost)', letterSpacing: '0.04em' }}
           >
             远程同步
           </div>
           <h3
-            className="mt-1 font-semibold"
-            style={{ color: 'var(--ink)', fontSize: 'var(--text-lg)' }}
+            className="mt-1 text-lg font-semibold"
+            style={{ color: 'var(--ink)' }}
           >
             推送到远程仓库
           </h3>
@@ -76,15 +74,15 @@ export function SyncDialog({ onClose }: { onClose: () => void }) {
               <LoadingState label="正在获取仓库状态" />
             ) : error ? (
               <div
-                className="py-4 text-center"
-                style={{ color: 'var(--mark-red)', fontSize: 'var(--text-sm)' }}
+                className="py-4 text-center text-sm"
+                style={{ color: 'var(--mark-red)' }}
               >
                 {error}
               </div>
             ) : !status ? (
               <div
-                className="py-4 text-center"
-                style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-sm)' }}
+                className="py-4 text-center text-sm"
+                style={{ color: 'var(--ink-ghost)' }}
               >
                 未配置 Git 仓库
               </div>
@@ -118,16 +116,16 @@ export function SyncDialog({ onClose }: { onClose: () => void }) {
         <div className="flex justify-end gap-2 px-6 pb-5 pt-4">
           <button
             type="button"
-            className="rounded-lg px-4 py-2 font-medium"
-            style={{ background: 'var(--shelf)', color: 'var(--ink-faded)', fontSize: 'var(--text-sm)' }}
+            className="rounded-lg px-4 py-2 text-sm font-medium"
+            style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
             onClick={onClose}
           >
             取消
           </button>
           <button
             type="button"
-            className="rounded-lg px-4 py-2 font-medium transition-opacity duration-150 disabled:opacity-50"
-            style={{ background: 'var(--accent)', color: 'var(--accent-contrast)', fontSize: 'var(--text-sm)' }}
+            className="rounded-lg px-4 py-2 text-sm font-medium transition-opacity duration-150 disabled:opacity-50"
+            style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}
             onClick={() => void handlePush()}
             disabled={pushing || loading || !status || status.unpushedCommits === 0}
           >
@@ -153,16 +151,15 @@ function InfoRow({
   return (
     <div className="flex items-baseline justify-between gap-4">
       <span
-        className="shrink-0 font-medium"
-        style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)' }}
+        className="shrink-0 text-2xs font-medium"
+        style={{ color: 'var(--ink-ghost)' }}
       >
         {label}
       </span>
       <span
-        className={`text-right ${truncate ? 'truncate max-w-[200px]' : ''}`}
+        className={`text-right text-sm ${truncate ? 'truncate max-w-[200px]' : ''}`}
         style={{
           color: highlight ? 'var(--mark-blue)' : 'var(--ink-faded)',
-          fontSize: 'var(--text-sm)',
         }}
         title={truncate ? value : undefined}
       >

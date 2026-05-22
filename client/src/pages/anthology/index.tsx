@@ -446,8 +446,8 @@ function EntryReader({ id, entryKey }: { id: string; entryKey: string }) {
 
         {/* 正文 — MarkdownBody 渲染，与 NoteReader 保持一致 */}
         <motion.div
-          className="note-prose leading-[1.9]"
-          style={{ color: 'var(--ink-light)', fontSize: 'var(--text-lg)' }}
+          className="note-prose text-lg leading-[1.9]"
+          style={{ color: 'var(--ink-light)' }}
           initial={{ opacity: 0, y: 8, filter: 'blur(4px)' }}
           animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
           transition={{ duration: 0.5, delay: 0.25, ease: smoothBounce }}

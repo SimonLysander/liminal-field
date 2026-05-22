@@ -16,8 +16,8 @@ export class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('ErrorBoundary caught:', error, info.componentStack);
+  componentDidCatch(_error: Error, _info: ErrorInfo) {
+    // 静默捕获，错误已通过 hasError state 展示给用户
   }
 
   render() {

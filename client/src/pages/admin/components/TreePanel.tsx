@@ -121,7 +121,7 @@ const TreeNodeItem = ({
             }}
           >
             {node.isLoading ? (
-              <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--ink-ghost)' }}>···</span>
+              <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>···</span>
             ) : (
               <motion.span
                 className="flex items-center"
@@ -138,9 +138,8 @@ const TreeNodeItem = ({
         )}
 
         <span
-          className="min-w-0 flex-1 truncate"
+          className="min-w-0 flex-1 truncate text-sm"
           style={{
-            fontSize: 'var(--text-sm)',
             fontWeight: isSelected ? 500 : 400,
           }}
         >
@@ -159,15 +158,15 @@ const TreeNodeItem = ({
             </button>
           )}
           <button
-            className="rounded-md px-1 py-0.5 transition-colors duration-100 hover:bg-[var(--shelf)]"
-            style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)' }}
+            className="rounded-md px-1 py-0.5 text-2xs transition-colors duration-100 hover:bg-[var(--shelf)]"
+            style={{ color: 'var(--ink-ghost)' }}
             onClick={(e) => { e.stopPropagation(); onEdit(node); }}
           >
             ✎
           </button>
           <button
-            className="rounded-md px-1 py-0.5 transition-colors duration-100 hover:bg-[var(--shelf)]"
-            style={{ color: 'var(--mark-red)', fontSize: 'var(--text-2xs)' }}
+            className="rounded-md px-1 py-0.5 text-2xs transition-colors duration-100 hover:bg-[var(--shelf)]"
+            style={{ color: 'var(--mark-red)' }}
             onClick={(e) => { e.stopPropagation(); onDelete(node); }}
           >
             ×
@@ -192,11 +191,10 @@ const TreeNodeItem = ({
         <div>
           {node.children.length === 0 ? (
             <p
-              className="py-1"
+              className="py-1 text-xs"
               style={{
                 paddingLeft: `${(depth + 1) * 14 + 30}px`,
                 color: 'var(--ink-ghost)',
-                fontSize: 'var(--text-xs)',
               }}
             >
               暂无内容
@@ -338,20 +336,20 @@ export const TreePanel = ({
       {/* Header */}
       <div className="px-5 pt-5 pb-1">
         <div
-          className="font-semibold"
-          style={{ color: 'var(--ink)', fontSize: 'var(--text-base)', letterSpacing: '-0.01em' }}
+          className="text-base font-semibold"
+          style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}
         >
           内容管理
         </div>
-        <div className="mt-1" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)' }}>
+        <div className="mt-1 text-2xs" style={{ color: 'var(--ink-ghost)' }}>
           {totalNodes} 个节点
         </div>
       </div>
 
       {/* Section label */}
       <div
-        className="mt-4 px-5 pb-2 font-semibold uppercase"
-        style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)', letterSpacing: '0.06em' }}
+        className="mt-4 px-5 pb-2 text-2xs font-semibold uppercase"
+        style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}
       >
         结构
       </div>
@@ -359,22 +357,22 @@ export const TreePanel = ({
       {/* Tree list */}
       <div className="flex-1 overflow-y-auto px-2.5 pb-4">
         {loading && tree.length === 0 ? (
-          <div className="px-3 py-8 text-center" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)' }}>
+          <div className="px-3 py-8 text-center text-xs" style={{ color: 'var(--ink-ghost)' }}>
             加载中...
           </div>
         ) : error ? (
           <div className="rounded-xl p-3" style={{ background: 'rgba(255,59,48,0.06)' }}>
-            <p style={{ color: 'var(--mark-red)', fontSize: 'var(--text-xs)' }}>{error}</p>
+            <p className="text-xs" style={{ color: 'var(--mark-red)' }}>{error}</p>
             <button
-              className="mt-2 font-medium transition-colors duration-150"
-              style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-xs)' }}
+              className="mt-2 text-xs font-medium transition-colors duration-150"
+              style={{ color: 'var(--ink-faded)' }}
               onClick={() => void onReload()}
             >
               重试
             </button>
           </div>
         ) : tree.length === 0 ? (
-          <div className="px-3 py-8 text-center" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)' }}>
+          <div className="px-3 py-8 text-center text-xs" style={{ color: 'var(--ink-ghost)' }}>
             暂无节点
           </div>
         ) : (
@@ -406,16 +404,16 @@ export const TreePanel = ({
         style={{ marginTop: 12, paddingTop: 12 }}
       >
         <button
-          className="flex items-center gap-1.5 transition-colors duration-150"
-          style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-xs)' }}
+          className="flex items-center gap-1.5 text-xs transition-colors duration-150"
+          style={{ color: 'var(--ink-faded)' }}
           onClick={() => void onReload()}
         >
           <RefreshCw size={12} strokeWidth={1.5} />
           刷新
         </button>
         <button
-          className="flex items-center gap-1 font-medium transition-colors duration-150"
-          style={{ color: 'var(--ink)', fontSize: 'var(--text-xs)' }}
+          className="flex items-center gap-1 text-xs font-medium transition-colors duration-150"
+          style={{ color: 'var(--ink)' }}
           onClick={() => onAddChild()}
         >
           <Plus size={12} strokeWidth={2} />

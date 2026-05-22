@@ -202,8 +202,7 @@ function PlateReadOnlyInner({ markdown }: { markdown: string }) {
           const preprocessed = replaceDateTags(markdown);
           const nodes = deserializeMd(editor, preprocessed);
           return fixCodeBlockLines(restoreDateNodes(nodes));
-        } catch (err) {
-          console.error('[PlateReadOnly] deserializeMd failed:', err);
+        } catch {
           return [{ type: 'p', children: [{ text: markdown }] }];
         }
       },

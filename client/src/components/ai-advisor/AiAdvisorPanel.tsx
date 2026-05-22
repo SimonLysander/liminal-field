@@ -194,10 +194,9 @@ export function AiAdvisorPanel({
         {sessionReady && messages.length === 0 && (
           <div className="flex flex-1 flex-col items-center justify-center gap-6 px-5">
             <p
-              className="text-center font-light"
+              className="text-center text-lg font-light"
               style={{
                 color: 'var(--ink-ghost)',
-                fontSize: 'var(--text-lg)',
                 letterSpacing: '0.02em',
               }}
             >

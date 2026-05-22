@@ -62,10 +62,9 @@ export const ConfirmDialog = ({
       onClick={(e) => e.target === e.currentTarget && onCancel()}
     >
       <motion.div
-        className="w-[360px]"
+        className="w-[360px] rounded-xl"
         style={{
           background: 'var(--paper)',
-          borderRadius: 'var(--radius-xl)',
           boxShadow: 'var(--shadow-lg)',
         }}
         initial={{ opacity: 0, scale: 0.96, y: 8 }}
@@ -73,13 +72,13 @@ export const ConfirmDialog = ({
         transition={{ duration: 0.2, ease: smoothBounce }}
       >
         <div className="px-6 pb-2 pt-5">
-          <div className="font-semibold uppercase" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)', letterSpacing: '0.04em' }}>
+          <div className="text-2xs font-semibold uppercase" style={{ color: 'var(--ink-ghost)', letterSpacing: '0.04em' }}>
             删除节点
           </div>
-          <h3 className="mt-1 font-semibold" style={{ color: 'var(--ink)', fontSize: 'var(--text-lg)' }}>
+          <h3 className="mt-1 text-lg font-semibold" style={{ color: 'var(--ink)' }}>
             确认删除「{node.name}」？
           </h3>
-          <div className="mt-2 leading-relaxed" style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-sm)' }}>
+          <div className="mt-2 text-sm leading-relaxed" style={{ color: 'var(--ink-faded)' }}>
             {statsLoading ? (
               <LoadingState variant="inline" label="正在统计" />
             ) : stats && hasDescendants ? (
@@ -95,23 +94,23 @@ export const ConfirmDialog = ({
 
         {error && (
           <div className="px-6">
-            <p style={{ color: 'var(--mark-red)', fontSize: 'var(--text-xs)' }}>{error}</p>
+            <p className="text-xs" style={{ color: 'var(--mark-red)' }}>{error}</p>
           </div>
         )}
 
         <div className="flex justify-end gap-2 px-6 pb-5 pt-4">
           <button
             type="button"
-            className="rounded-lg px-4 py-2 font-medium"
-            style={{ background: 'var(--shelf)', color: 'var(--ink-faded)', fontSize: 'var(--text-sm)' }}
+            className="rounded-lg px-4 py-2 text-sm font-medium"
+            style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
             onClick={onCancel}
           >
             取消
           </button>
           <button
             type="button"
-            className="rounded-lg px-4 py-2 font-medium transition-opacity duration-150 disabled:opacity-50"
-            style={{ background: 'var(--mark-red)', color: '#fff', fontSize: 'var(--text-sm)' }}
+            className="rounded-lg px-4 py-2 text-sm font-medium transition-opacity duration-150 disabled:opacity-50"
+            style={{ background: 'var(--mark-red)', color: '#fff' }}
             onClick={() => void handleConfirm()}
             disabled={loading || statsLoading}
           >

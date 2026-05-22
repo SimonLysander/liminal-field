@@ -45,8 +45,8 @@ export default function LoginPage() {
             const { deviceToken } = await authApi.trustDevice();
             localStorage.setItem(DEVICE_TOKEN_KEY, deviceToken);
             setHasDeviceToken(true);
-          } catch (trustErr) {
-            console.warn('Failed to trust device after login', trustErr);
+          } catch {
+            // 信任设备失败时静默处理，不阻断登录流程
           }
         }
       }
@@ -108,11 +108,10 @@ export default function LoginPage() {
             type="button"
             onClick={() => void handleDeviceLogin()}
             disabled={loading}
-            className="enter-rise enter-delay-3 h-9 w-full text-sm font-medium transition-opacity disabled:opacity-40"
+            className="enter-rise enter-delay-3 h-9 w-full rounded-md text-sm font-medium transition-opacity disabled:opacity-40"
             style={{
               background: 'var(--ink)',
               color: 'var(--paper)',
-              borderRadius: 'var(--radius-md)',
             }}
           >
             {loading ? '登录中...' : '设备登录'}
@@ -158,11 +157,10 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading || !password}
-            className="h-9 w-full text-sm font-medium transition-opacity disabled:opacity-40"
+            className="h-9 w-full rounded-md text-sm font-medium transition-opacity disabled:opacity-40"
             style={{
               background: hasDeviceToken ? 'var(--shelf)' : 'var(--ink)',
               color: hasDeviceToken ? 'var(--ink-faded)' : 'var(--paper)',
-              borderRadius: 'var(--radius-md)',
               border: hasDeviceToken ? '1px solid var(--separator)' : 'none',
             }}
           >

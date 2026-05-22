@@ -209,11 +209,10 @@ export function SecurityTab() {
                         {device.name}
                       </span>
                       <span
-                        className="rounded px-1.5 py-0.5 font-mono text-xs"
+                        className="rounded px-1.5 py-0.5 font-mono text-2xs"
                         style={{
                           background: 'var(--shelf)',
                           color: 'var(--ink-ghost)',
-                          fontSize: '0.625rem',
                         }}
                       >
                         {device.id}

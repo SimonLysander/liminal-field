@@ -136,9 +136,8 @@ const AnthologyEntryEditPage = () => {
         let draft: EditorDraft | null = null;
         try {
           draft = await anthologyApi.getEntryDraft(id, entryKey);
-        } catch (err) {
+        } catch {
           // 草稿不存在或请求失败均视为无草稿，继续加载正式版
-          console.error('[AnthologyEntryEditPage] 获取草稿失败, 视为无草稿:', err);
         }
 
         if (cancelled) return;
@@ -305,9 +304,10 @@ const AnthologyEntryEditPage = () => {
         className="flex h-screen flex-col items-center justify-center gap-3"
         style={{ background: 'var(--paper)' }}
       >
-        <p style={{ color: 'var(--mark-red)', fontSize: 'var(--text-base)' }}>{error}</p>
+        <p className="text-base" style={{ color: 'var(--mark-red)' }}>{error}</p>
         <button
-          style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-base)' }}
+          className="text-base"
+          style={{ color: 'var(--ink-faded)' }}
           onClick={() => navigate(-1)}
         >
           返回管理后台
@@ -345,15 +345,15 @@ const AnthologyEntryEditPage = () => {
             }}
           >
             <button
-              className="hover-shelf shrink-0 rounded-md px-2 py-1 transition-colors duration-150"
-              style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-base)' }}
+              className="hover-shelf shrink-0 rounded-md px-2 py-1 text-base transition-colors duration-150"
+              style={{ color: 'var(--ink-faded)' }}
               onClick={() => navigate(-1)}
             >
               ←
             </button>
             <span
-              className="shrink-0"
-              style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-base)' }}
+              className="shrink-0 text-base"
+              style={{ color: 'var(--ink-ghost)' }}
             >
               /
             </span>
@@ -362,8 +362,8 @@ const AnthologyEntryEditPage = () => {
               value={state.title}
               onChange={(e) => handleChange('title', e.target.value)}
               placeholder="条目标题"
-              className="w-[160px] shrink-0 truncate border-none bg-transparent font-medium outline-none placeholder:text-[var(--ink-ghost)]"
-              style={{ color: 'var(--ink)', fontSize: 'var(--text-base)' }}
+              className="w-[160px] shrink-0 truncate border-none bg-transparent text-base font-medium outline-none placeholder:text-[var(--ink-ghost)]"
+              style={{ color: 'var(--ink)' }}
             />
           </div>
 
@@ -387,8 +387,8 @@ const AnthologyEntryEditPage = () => {
             }}
           >
             <div
-              className="flex items-center gap-2"
-              style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-sm)' }}
+              className="flex items-center gap-2 text-sm"
+              style={{ color: 'var(--ink-ghost)' }}
             >
               {isAutosaving && <StatusDot color="var(--mark-blue)" />}
               {isDirty && !isAutosaving && <StatusDot color="var(--mark-red)" />}
@@ -431,7 +431,7 @@ const AnthologyEntryEditPage = () => {
 
         {error && lastSavedAt && (
           <div className="px-6 py-2" style={{ background: 'rgba(255,59,48,0.06)' }}>
-            <p style={{ color: 'var(--mark-red)', fontSize: 'var(--text-base)' }}>{error}</p>
+            <p className="text-base" style={{ color: 'var(--mark-red)' }}>{error}</p>
           </div>
         )}
 
@@ -465,10 +465,9 @@ const AnthologyEntryEditPage = () => {
             style={{ width: 'var(--layout-sidebar)' }}
           >
             <div
-              className="mb-3 font-semibold uppercase"
+              className="mb-3 text-xs font-semibold uppercase"
               style={{
                 color: 'var(--ink-ghost)',
-                fontSize: 'var(--text-xs)',
                 letterSpacing: '0.04em',
               }}
             >
@@ -477,8 +476,8 @@ const AnthologyEntryEditPage = () => {
             <nav className="flex-1">
               {headings.length === 0 ? (
                 <p
-                  className="py-6 text-center"
-                  style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-sm)' }}
+                  className="py-6 text-center text-sm"
+                  style={{ color: 'var(--ink-ghost)' }}
                 >
                   使用标题构建文档结构
                 </p>
@@ -486,12 +485,11 @@ const AnthologyEntryEditPage = () => {
                 headings.map((h) => (
                   <button
                     key={`${h.index}-${h.text}`}
-                    className="outline-heading-btn w-full truncate rounded-md py-1.5 text-left transition-colors duration-100"
+                    className="outline-heading-btn w-full truncate rounded-md py-1.5 text-left text-sm transition-colors duration-100"
                     style={{
                       paddingLeft: `${(h.level - 1) * 8 + 10}px`,
                       paddingRight: 8,
                       color: 'var(--ink-faded)',
-                      fontSize: 'var(--text-sm)',
                       fontWeight: 400,
                     }}
                     onClick={() => scrollToHeading(h.index)}
@@ -554,18 +552,17 @@ function CommitDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <h3
-          className="mb-1 font-semibold"
+          className="mb-1 text-md font-semibold"
           style={{
             color: 'var(--ink)',
-            fontSize: 'var(--text-md)',
             letterSpacing: '-0.01em',
           }}
         >
           提交版本
         </h3>
         <p
-          className="mb-5"
-          style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-base)' }}
+          className="mb-5 text-base"
+          style={{ color: 'var(--ink-ghost)' }}
         >
           将当前草稿提交为正式版本
         </p>
@@ -573,8 +570,8 @@ function CommitDialog({
         <div className="space-y-3.5">
           <label className="flex flex-col gap-1.5">
             <span
-              className="font-medium"
-              style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-base)' }}
+              className="text-base font-medium"
+              style={{ color: 'var(--ink-faded)' }}
             >
               变更说明
             </span>
@@ -583,11 +580,10 @@ function CommitDialog({
               value={changeNote}
               onChange={(e) => onChangeNote(e.target.value)}
               autoFocus
-              className="rounded-lg border-none px-3 py-2 outline-none"
+              className="rounded-lg border-none px-3 py-2 text-base outline-none"
               style={{
                 background: 'var(--shelf)',
                 color: 'var(--ink)',
-                fontSize: 'var(--text-base)',
               }}
             />
           </label>
@@ -595,8 +591,8 @@ function CommitDialog({
 
         <div className="mt-6 flex items-center justify-end gap-2.5">
           <button
-            className="rounded-lg px-3.5 py-1.5 transition-colors duration-150"
-            style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-base)' }}
+            className="rounded-lg px-3.5 py-1.5 text-base transition-colors duration-150"
+            style={{ color: 'var(--ink-faded)' }}
             onClick={onCancel}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'var(--shelf)';
@@ -608,11 +604,10 @@ function CommitDialog({
             取消
           </button>
           <button
-            className="rounded-lg px-4 py-1.5 font-medium transition-all duration-150"
+            className="rounded-lg px-4 py-1.5 text-base font-medium transition-all duration-150"
             style={{
               background: 'var(--accent)',
               color: 'var(--accent-contrast)',
-              fontSize: 'var(--text-base)',
             }}
             onClick={onConfirm}
             onMouseEnter={(e) => {
@@ -656,10 +651,9 @@ function ActionPill({
 }) {
   return (
     <button
-      className="rounded-md px-2.5 py-1 transition-all duration-150"
+      className="rounded-md px-2.5 py-1 text-base transition-all duration-150"
       style={{
         color: danger ? 'var(--mark-red)' : primary ? 'var(--ink)' : 'var(--ink-faded)',
-        fontSize: 'var(--text-base)',
         fontWeight: primary ? 600 : 400,
       }}
       onClick={onClick}

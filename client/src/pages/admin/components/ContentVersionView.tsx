@@ -120,7 +120,7 @@ export const ContentVersionView = ({
         <LoadingState label="加载内容中" />
       ) : error ? (
         <div className="rounded-xl p-4" style={{ background: 'rgba(255,59,48,0.06)' }}>
-          <p style={{ color: 'var(--mark-red)', fontSize: 'var(--text-sm)' }}>{error}</p>
+          <p className="text-sm" style={{ color: 'var(--mark-red)' }}>{error}</p>
         </div>
       ) : (
     <div className="space-y-4">
@@ -129,8 +129,8 @@ export const ContentVersionView = ({
       <div className="flex items-start justify-between">
         <div>
           <h2
-            className="font-bold"
-            style={{ color: 'var(--ink)', fontSize: 'var(--text-5xl)', fontFamily: 'var(--font-serif)', letterSpacing: '-0.025em' }}
+            className="text-5xl font-bold"
+            style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)', letterSpacing: '-0.025em' }}
           >
             {node.name}
           </h2>
@@ -140,19 +140,19 @@ export const ContentVersionView = ({
               commitHash={viewingVersionId}
             />
             {!preview && (
-              <span style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)' }}>
+              <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>
                 {new Date(content.updatedAt).toLocaleString('zh-CN')}
               </span>
             )}
             {preview && (
-              <span style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)' }}>
+              <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>
                 {new Date(preview.committedAt).toLocaleString('zh-CN')}
               </span>
             )}
           </div>
           {/* 最新版有未发布变更时的提醒（仅在查看最新版时显示） */}
           {isViewingLatest && content.status === 'published' && content.hasUnpublishedChanges && (
-            <p className="mt-2" style={{ color: 'var(--mark-red)', fontSize: 'var(--text-xs)' }}>
+            <p className="mt-2 text-xs" style={{ color: 'var(--mark-red)' }}>
               公开页面仍在使用旧版本 {content.publishedVersion?.commitHash?.slice(0, 8) ?? '--'}，点击「发布」更新。
             </p>
           )}
@@ -285,8 +285,7 @@ export const ContentVersionView = ({
 
       {/* Markdown body */}
       <div
-        className="leading-[1.9]"
-        style={{ fontSize: 'var(--text-lg)' }}
+        className="text-lg leading-[1.9]"
       >
         <MarkdownBody
           markdown={(preview ? preview.bodyMarkdown : content.bodyMarkdown) || ''}
@@ -305,9 +304,8 @@ export const ContentVersionView = ({
 function VersionStatusPill({ isPublished, commitHash }: { isPublished: boolean; commitHash: string }) {
   return (
     <span
-      className="inline-flex items-center gap-[5px] rounded-full px-2.5 py-[3px] font-medium"
+      className="inline-flex items-center gap-[5px] rounded-full px-2.5 py-[3px] text-2xs font-medium"
       style={{
-        fontSize: 'var(--text-2xs)',
         background: isPublished ? 'rgba(52,199,89,0.1)' : 'var(--accent-soft)',
         color: isPublished ? 'var(--mark-green)' : 'var(--ink-faded)',
       }}
@@ -327,10 +325,9 @@ function VersionStatusPill({ isPublished, commitHash }: { isPublished: boolean; 
 function TextLink({ label, danger, onClick }: { label: string; danger?: boolean; onClick: () => void }) {
   return (
     <button
-      className="transition-colors duration-150"
+      className="text-xs transition-colors duration-150"
       style={{
         color: danger ? 'var(--mark-red)' : 'var(--ink-faded)',
-        fontSize: 'var(--text-xs)',
         background: 'none',
         border: 'none',
         cursor: 'pointer',

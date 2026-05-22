@@ -47,8 +47,8 @@ export function MetadataFields({ date, location, onDateChange, onLocationChange 
         <Popover open={calOpen} onOpenChange={setCalOpen}>
           <PopoverTrigger asChild>
             <button
-              className="metadata-input flex w-full items-center gap-1.5 text-left"
-              style={{ color: date ? 'var(--ink)' : 'var(--ink-ghost)', fontSize: 'var(--text-sm)' }}
+              className="metadata-input flex w-full items-center gap-1.5 text-left text-sm"
+              style={{ color: date ? 'var(--ink)' : 'var(--ink-ghost)' }}
             >
               <CalendarDays size={13} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)', flexShrink: 0 }} />
               {date ?? '选择日期'}
@@ -182,13 +182,13 @@ export function PhotoMetadataFields({ tags, fileSize, dimensions, onChange }: Ph
     <div className="grid grid-cols-4 gap-x-3 gap-y-1">
       {/* 第一行：大小（只读）、分辨率（只读）、光圈、快门 */}
       <FieldGroup label="大小">
-        <div className="metadata-input" style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-sm)' }}>
+        <div className="metadata-input text-sm" style={{ color: 'var(--ink-faded)' }}>
           {sizeStr}
         </div>
       </FieldGroup>
 
       <FieldGroup label="分辨率">
-        <div className="metadata-input" style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-sm)' }}>
+        <div className="metadata-input text-sm" style={{ color: 'var(--ink-faded)' }}>
           {dimensions ? `${dimensions.w}×${dimensions.h}` : '—'}
         </div>
       </FieldGroup>
@@ -229,8 +229,8 @@ export function PhotoMetadataFields({ tags, fileSize, dimensions, onChange }: Ph
         <Popover open={shotAtCalOpen} onOpenChange={setShotAtCalOpen}>
           <PopoverTrigger asChild>
             <button
-              className="metadata-input flex w-full items-center gap-1.5 text-left"
-              style={{ color: tags.shotAt ? 'var(--ink)' : 'var(--ink-ghost)', fontSize: 'var(--text-sm)' }}
+              className="metadata-input flex w-full items-center gap-1.5 text-left text-sm"
+              style={{ color: tags.shotAt ? 'var(--ink)' : 'var(--ink-ghost)' }}
             >
               <CalendarDays size={12} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)', flexShrink: 0 }} />
               {tags.shotAt ?? '选择'}

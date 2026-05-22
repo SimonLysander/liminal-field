@@ -112,9 +112,8 @@ function AssistantMarkdown({ content }: { content: string }) {
             const isBlock = className?.startsWith('language-');
             return (
               <code
-                className={className}
+                className={`text-xs${className ? ` ${className}` : ''}`}
                 style={{
-                  fontSize: 11,
                   color: 'var(--ink-faded)',
                   background: 'var(--shelf)',
                   borderRadius: 4,

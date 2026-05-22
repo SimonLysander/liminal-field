@@ -299,11 +299,10 @@ export function AdminStructurePanel({
                     <HoverCardContent
                       align="start"
                       sideOffset={4}
-                      className="w-auto min-w-[140px] max-w-[200px] p-1.5"
+                      className="w-auto min-w-[140px] max-w-[200px] rounded-lg p-1.5"
                       style={{
                         border: 'none',
                         background: 'var(--sidebar-bg)',
-                        borderRadius: 'var(--radius-lg)',
                         boxShadow:
                           '0 2px 8px rgba(0,0,0,0.12), 0 8px 24px rgba(0,0,0,0.1), 0 0 0 0.5px rgba(0,0,0,0.06)',
                       }}

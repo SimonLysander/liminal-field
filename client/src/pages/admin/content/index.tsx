@@ -198,7 +198,7 @@ const ContentAdmin = () => {
               />
             ) : (
               <div className="flex flex-1 items-center justify-center">
-                <p style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-sm)' }}>
+                <p className="text-sm" style={{ color: 'var(--ink-ghost)' }}>
                   选择文档查看详情
                 </p>
               </div>
@@ -283,8 +283,8 @@ function FormalSidePanel({
       {/* 大纲 — flex-1，内部滚动；无标题时占位，避免布局跳动 */}
       <div className="mb-5 flex min-h-0 flex-1 flex-col">
         <div
-          className="mb-2.5 shrink-0 font-semibold uppercase"
-          style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)', letterSpacing: '0.06em' }}
+          className="mb-2.5 shrink-0 text-2xs font-semibold uppercase"
+          style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}
         >
           大纲
         </div>
@@ -295,11 +295,10 @@ function FormalSidePanel({
               return (
                 <motion.div
                   key={item.index}
-                  className="cursor-pointer border-l-2 py-[5px] transition-all duration-200"
+                  className="cursor-pointer border-l-2 py-[5px] text-sm transition-all duration-200"
                   style={{
                     color: isActive ? 'var(--ink)' : 'var(--ink-faded)',
                     fontWeight: isActive ? 500 : 400,
-                    fontSize: 'var(--text-sm)',
                     borderColor: isActive ? 'var(--ink)' : 'transparent',
                     paddingLeft: `${(item.level - 1) * 8 + 10}px`,
                   }}
@@ -312,7 +311,7 @@ function FormalSidePanel({
               );
             })
           ) : (
-            <p style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)' }}>暂无标题</p>
+            <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>暂无标题</p>
           )}
         </div>
       </div>
@@ -320,8 +319,8 @@ function FormalSidePanel({
       {/* 编辑 — shrink-0，固定高度 */}
       <div className="mb-5 shrink-0">
         <div
-          className="mb-2.5 font-semibold uppercase"
-          style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)', letterSpacing: '0.06em' }}
+          className="mb-2.5 text-2xs font-semibold uppercase"
+          style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}
         >
           编辑
         </div>
@@ -339,7 +338,7 @@ function FormalSidePanel({
           </div>
         ) : (
           <>
-            <p className="mb-3.5 leading-relaxed" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)' }}>
+            <p className="mb-3.5 text-xs leading-relaxed" style={{ color: 'var(--ink-ghost)' }}>
               进入编辑器创建草稿
             </p>
             <SideLink label="开始编辑 →" primary onClick={onEditDraft} />
@@ -350,8 +349,8 @@ function FormalSidePanel({
       {/* 版本 — flex-1，内部滚动 */}
       <div className="flex min-h-0 flex-1 flex-col">
         <div
-          className="mb-2.5 shrink-0 font-semibold uppercase"
-          style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)', letterSpacing: '0.06em' }}
+          className="mb-2.5 shrink-0 text-2xs font-semibold uppercase"
+          style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}
         >
           版本
         </div>
@@ -360,7 +359,7 @@ function FormalSidePanel({
             {historyLoading ? (
               <LoadingState />
             ) : history.length === 0 ? (
-              <p style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)' }}>暂无版本</p>
+              <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>暂无版本</p>
             ) : (
               <VersionTimeline
                 history={history}
@@ -381,8 +380,8 @@ function FormalSidePanel({
 function EmptyState({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-24">
-      <div className="font-medium" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-base)' }}>{title}</div>
-      <p className="mt-2" style={{ color: 'var(--ink-ghost)', opacity: 0.6, fontSize: 'var(--text-sm)' }}>{subtitle}</p>
+      <div className="text-base font-medium" style={{ color: 'var(--ink-ghost)' }}>{title}</div>
+      <p className="mt-2 text-sm" style={{ color: 'var(--ink-ghost)', opacity: 0.6 }}>{subtitle}</p>
     </div>
   );
 }
@@ -390,8 +389,8 @@ function EmptyState({ title, subtitle }: { title: string; subtitle: string }) {
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between py-0.5">
-      <span style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-xs)' }}>{label}</span>
-      <span className="font-medium" style={{ color: 'var(--ink)', fontSize: 'var(--text-xs)' }}>{value}</span>
+      <span className="text-xs" style={{ color: 'var(--ink-faded)' }}>{label}</span>
+      <span className="text-xs font-medium" style={{ color: 'var(--ink)' }}>{value}</span>
     </div>
   );
 }
@@ -409,11 +408,10 @@ function SideLink({
 }) {
   return (
     <button
-      className="transition-colors duration-150"
+      className="text-xs transition-colors duration-150"
       style={{
         color: danger ? 'var(--mark-red)' : primary ? 'var(--ink)' : 'var(--ink-faded)',
         fontWeight: primary ? 600 : 400,
-        fontSize: 'var(--text-xs)',
         background: 'none',
         border: 'none',
         cursor: 'pointer',

@@ -9,8 +9,8 @@
 export function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="mb-2.5 shrink-0 font-semibold uppercase"
-      style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)', letterSpacing: '0.06em' }}
+      className="mb-2.5 shrink-0 text-2xs font-semibold uppercase"
+      style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}
     >
       {children}
     </div>
@@ -21,8 +21,8 @@ export function SectionLabel({ children }: { children: React.ReactNode }) {
 export function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between py-0.5">
-      <span style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-xs)' }}>{label}</span>
-      <span className="font-medium" style={{ color: 'var(--ink)', fontSize: 'var(--text-xs)' }}>{value}</span>
+      <span className="text-xs" style={{ color: 'var(--ink-faded)' }}>{label}</span>
+      <span className="text-xs font-medium" style={{ color: 'var(--ink)' }}>{value}</span>
     </div>
   );
 }
@@ -41,11 +41,10 @@ export function SideLink({
 }) {
   return (
     <button
-      className="transition-colors duration-150"
+      className="text-xs transition-colors duration-150"
       style={{
         color: danger ? 'var(--mark-red)' : primary ? 'var(--ink)' : 'var(--ink-faded)',
         fontWeight: primary ? 600 : 400,
-        fontSize: 'var(--text-xs)',
         background: 'none',
         border: 'none',
         cursor: 'pointer',
@@ -79,9 +78,8 @@ export function EmptyState({ message }: { message: string }) {
 export function VersionStatusPill({ isPublished }: { isPublished: boolean }) {
   return (
     <span
-      className="inline-flex items-center gap-[5px] rounded-full px-2.5 py-[3px] font-medium"
+      className="inline-flex items-center gap-[5px] rounded-full px-2.5 py-[3px] text-2xs font-medium"
       style={{
-        fontSize: 'var(--text-2xs)',
         background: isPublished ? 'rgba(52,199,89,0.1)' : 'var(--accent-soft)',
         color: isPublished ? 'var(--mark-green)' : 'var(--ink-faded)',
       }}
@@ -99,10 +97,9 @@ export function VersionStatusPill({ isPublished }: { isPublished: boolean }) {
 export function TextLink({ label, danger, onClick }: { label: string; danger?: boolean; onClick: () => void }) {
   return (
     <button
-      className="transition-colors duration-150"
+      className="text-xs transition-colors duration-150"
       style={{
         color: danger ? 'var(--mark-red)' : 'var(--ink-faded)',
-        fontSize: 'var(--text-xs)',
         background: 'none',
         border: 'none',
         cursor: 'pointer',

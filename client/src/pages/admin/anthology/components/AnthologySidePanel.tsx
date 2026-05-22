@@ -35,14 +35,14 @@ export function AnthologySidePanel({ detail }: AnthologySidePanelProps) {
         {detail.description ? (
           <div className="mb-5 shrink-0">
             <SectionLabel>简介</SectionLabel>
-            <p className="leading-relaxed" style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-xs)' }}>
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--ink-faded)' }}>
               {detail.description}
             </p>
           </div>
         ) : (
           <div className="mb-5 shrink-0">
             <SectionLabel>简介</SectionLabel>
-            <p style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)' }}>暂无简介</p>
+            <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>暂无简介</p>
           </div>
         )}
       </div>

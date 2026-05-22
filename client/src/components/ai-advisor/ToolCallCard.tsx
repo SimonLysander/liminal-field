@@ -220,7 +220,7 @@ export function ToolCallCard({
   }
 
   return (
-    <div className="my-0.5" style={{ fontSize: 12, lineHeight: 1.6 }}>
+    <div className="my-0.5 text-sm" style={{ lineHeight: 1.6 }}>
       {/* 第一行：状态点 + 工具名 + 关键信息 */}
       <div className="flex items-baseline gap-1.5">
         <span

@@ -126,9 +126,8 @@ const DraftEditPage = () => {
         let draft: EditorDraft | null = null;
         try {
           draft = await contentItemsApi.getDraft(id);
-        } catch (err) {
+        } catch {
           // 草稿不存在或请求失败均视为无草稿，继续加载正式版本
-          console.error('[DraftEditPage] 获取草稿失败, 视为无草稿:', err);
         }
 
         if (cancelled) return;
@@ -305,8 +304,8 @@ const DraftEditPage = () => {
   if (error && !contentDetail) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-3" style={{ background: 'var(--paper)' }}>
-        <p style={{ color: 'var(--mark-red)', fontSize: 'var(--text-base)' }}>{error}</p>
-        <button style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-base)' }} onClick={() => navigate(-1)}>
+        <p className="text-base" style={{ color: 'var(--mark-red)' }}>{error}</p>
+        <button className="text-base" style={{ color: 'var(--ink-faded)' }} onClick={() => navigate(-1)}>
           返回管理后台
         </button>
       </div>
@@ -426,8 +425,8 @@ const DraftEditPage = () => {
       {/* [2,3] 大纲 */}
       <div className="overflow-y-auto px-4 py-10">
         <div
-          className="mb-3 font-semibold uppercase"
-          style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)', letterSpacing: '0.04em' }}
+          className="mb-3 text-xs font-semibold uppercase"
+          style={{ color: 'var(--ink-ghost)', letterSpacing: '0.04em' }}
         >
           大纲
         </div>
@@ -504,24 +503,24 @@ function CommitDialog({
         transition={{ duration: 0.25, ease: smoothBounce }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="mb-1 font-semibold" style={{ color: 'var(--ink)', fontSize: 'var(--text-md)', letterSpacing: '-0.01em' }}>
+        <h3 className="mb-1 text-md font-semibold" style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}>
           提交版本
         </h3>
-        <p className="mb-5" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-base)' }}>
+        <p className="mb-5 text-base" style={{ color: 'var(--ink-ghost)' }}>
           将当前草稿提交为正式版本
         </p>
 
         <div className="space-y-3.5">
 
           <label className="flex flex-col gap-1.5">
-            <span className="font-medium" style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-base)' }}>变更说明</span>
+            <span className="text-base font-medium" style={{ color: 'var(--ink-faded)' }}>变更说明</span>
             <input
               type="text"
               value={changeNote}
               onChange={(e) => onChangeNote(e.target.value)}
               autoFocus
-              className="rounded-lg border-none px-3 py-2 outline-none"
-              style={{ background: 'var(--shelf)', color: 'var(--ink)', fontSize: 'var(--text-base)' }}
+              className="rounded-lg border-none px-3 py-2 text-base outline-none"
+              style={{ background: 'var(--shelf)', color: 'var(--ink)' }}
             />
           </label>
 
@@ -529,8 +528,8 @@ function CommitDialog({
 
         <div className="mt-6 flex items-center justify-end gap-2.5">
           <button
-            className="rounded-lg px-3.5 py-1.5 transition-colors duration-150"
-            style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-base)' }}
+            className="rounded-lg px-3.5 py-1.5 text-base transition-colors duration-150"
+            style={{ color: 'var(--ink-faded)' }}
             onClick={onCancel}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--shelf)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
@@ -538,8 +537,8 @@ function CommitDialog({
             取消
           </button>
           <button
-            className="rounded-lg px-4 py-1.5 font-medium transition-all duration-150"
-            style={{ background: 'var(--accent)', color: 'var(--accent-contrast)', fontSize: 'var(--text-base)' }}
+            className="rounded-lg px-4 py-1.5 text-base font-medium transition-all duration-150"
+            style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}
             onClick={onConfirm}
             onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.85'; }}
             onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}

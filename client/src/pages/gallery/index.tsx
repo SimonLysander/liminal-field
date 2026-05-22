@@ -294,7 +294,6 @@ function PhotoCarousel({
     left: '50%',
     top: 'calc(50% - 28px)',
     translate: '-50% -50%',
-    borderRadius: 8,
     overflow: 'visible',
   };
 
@@ -310,6 +309,7 @@ function PhotoCarousel({
           <motion.div
             key={slot}
             initial={false}
+            className="rounded-md"
             style={{
               ...baseStyle,
               ...frameStyle,
@@ -329,11 +329,12 @@ function PhotoCarousel({
             onClick={isCenter ? undefined : () => onNavigate(slot === 'left' ? -1 : 1)}
           >
             {/* 滑动 + 交叉淡入：新图从移动方向滑入，旧图反向滑出 */}
-            <div style={{
+            <div
+              className="rounded-md"
+              style={{
               position: 'absolute',
               inset: 0,
               overflow: 'hidden',
-              borderRadius: 8,
               background: 'rgba(255,255,255,0.06)',
             }}>
             <AnimatePresence initial={false}>
@@ -359,15 +360,15 @@ function PhotoCarousel({
             {isCenter && (
               <>
                 {/* 宝丽来白条——叠在照片底部 5%，奶白色 overlay */}
-                <div style={{
+                <div
+                  className="rounded-b-md"
+                  style={{
                   position: 'absolute',
                   bottom: 0, left: 0, right: 0,
                   height: '5%', minHeight: 32,
                   display: 'flex', alignItems: 'center',
                   background: 'linear-gradient(to bottom, rgba(255,255,250,0.96), rgba(255,255,250,0.88))',
                   borderTop: '1px solid rgba(45,45,45,0.08)',
-                  borderBottomLeftRadius: 8,
-                  borderBottomRightRadius: 8,
                 }}>
                   <PhotoFrameBar photo={photo} />
                 </div>
@@ -517,8 +518,10 @@ function PhotoNavBar({
         </div>
       )}
       {/* caption 始终占位，无内容时 invisible 防止 dots 跳动 */}
-      <span style={{
-        fontSize: 13, color: 'rgba(255,255,255,0.55)',
+      <span
+        className="text-base"
+        style={{
+        color: 'rgba(255,255,255,0.55)',
         textAlign: 'center', maxWidth: 500,
         lineHeight: 1.6, fontStyle: 'italic',
         pointerEvents: 'auto',
@@ -615,14 +618,17 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
           transition: 'background-color 0.3s',
         }} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-          <span style={{
-            fontSize: isSelected ? 12 : 11, fontWeight: isSelected ? 600 : 400,
+          <span
+            className={isSelected ? 'text-sm' : 'text-xs'}
+            style={{
+            fontWeight: isSelected ? 600 : 400,
             color: isSelected ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)',
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             transition: 'all 0.3s',
           }}>{album.title}</span>
-          <span style={{
-            fontSize: 9,
+          <span
+            className="text-3xs"
+            style={{
             color: isSelected ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.2)',
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             transition: 'all 0.3s',
@@ -748,9 +754,8 @@ export default function GalleryPage() {
         }
         setLoading(false);
       })
-      .catch((err) => {
+      .catch(() => {
         // 列表加载失败时停止 loading 状态，页面展示空状态
-        console.error('[Gallery] 加载动态列表失败:', err);
         setLoading(false);
       });
      
@@ -777,9 +782,8 @@ export default function GalleryPage() {
         detailCache.current.set(post.id, detail);
         setCurrentDetail(detail);
       })
-      .catch((err) => {
-        // 详情加载失败时静默忽略（依赖缓存/重试），记录错误供调试
-        console.error('[Gallery] 加载动态详情失败:', err);
+      .catch(() => {
+        // 详情加载失败时静默忽略（依赖缓存/重试）
       });
   }, [posts, postIdx]);
 
@@ -840,7 +844,7 @@ export default function GalleryPage() {
       <>
         {blurBg}
         <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', position: 'relative', zIndex: 1 }}>
-          <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>暂无画廊内容</span>
+          <span className="text-base" style={{ color: 'rgba(255,255,255,0.3)' }}>暂无画廊内容</span>
         </div>
       </>
     );

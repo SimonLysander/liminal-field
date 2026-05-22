@@ -43,8 +43,8 @@ export function MessageList({ messages, status, sessionKey }: MessageListProps) 
       {/* 处理中状态指示 */}
       {(status === 'streaming' || status === 'submitted') && (
         <div
-          className="flex items-center gap-1.5"
-          style={{ color: 'var(--ink-ghost)', fontSize: 12 }}
+          className="flex items-center gap-1.5 text-sm"
+          style={{ color: 'var(--ink-ghost)' }}
         >
           <span
             style={{ animation: 'pulse 1.5s ease-in-out infinite' }}

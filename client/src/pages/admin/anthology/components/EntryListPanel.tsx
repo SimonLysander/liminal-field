@@ -163,10 +163,9 @@ export function EntryListPanel({
           <div className="mb-6 flex items-start justify-between">
             <div>
               <h2
-                className="font-bold"
+                className="text-5xl font-bold"
                 style={{
                   color: 'var(--ink)',
-                  fontSize: 'var(--text-5xl)',
                   fontFamily: 'var(--font-serif)',
                   letterSpacing: '-0.025em',
                 }}
@@ -176,7 +175,7 @@ export function EntryListPanel({
               <div className="mt-2 flex items-center gap-2.5">
                 <VersionStatusPill isPublished={isPublished} />
                 {detail.hasUnpublishedChanges && (
-                  <span style={{ color: 'var(--mark-red)', fontSize: 'var(--text-2xs)' }}>
+                  <span className="text-2xs" style={{ color: 'var(--mark-red)' }}>
                     有未发布的变更
                   </span>
                 )}

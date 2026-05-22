@@ -257,7 +257,6 @@ function AgentCard({
       style={{
         background: 'var(--paper-dark)',
         border: '0.5px solid var(--separator)',
-        borderRadius: 'var(--radius-lg)',
       }}
     >
       {/* ── 顶行：名称 + 启用开关 + 操作按钮 ── */}

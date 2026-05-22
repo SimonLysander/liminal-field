@@ -80,7 +80,7 @@ export function GalleryPostListItem({ post, isSelected, onClick }: GalleryPostLi
           <img src={thumbnail} alt="" className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
-            <span style={{ color: 'var(--ink-ghost)', fontSize: 16 }}>📷</span>
+            <span className="text-xl" style={{ color: 'var(--ink-ghost)' }}>📷</span>
           </div>
         )}
       </div>
@@ -153,9 +153,8 @@ export function GalleryPostPreview({
           {/* 版本状态标签 */}
           <div className="mt-2 flex items-center gap-2">
             <span
-              className="inline-flex items-center gap-[5px] rounded-full px-2.5 py-[3px] font-medium"
+              className="inline-flex items-center gap-[5px] rounded-full px-2.5 py-[3px] text-2xs font-medium"
               style={{
-                fontSize: 'var(--text-2xs)',
                 background: isViewingPublished ? 'rgba(52,199,89,0.1)' : 'var(--accent-soft)',
                 color: isViewingPublished ? 'var(--mark-green)' : 'var(--ink-faded)',
               }}
@@ -218,10 +217,9 @@ export function GalleryPostPreview({
 function TextLink({ label, danger, onClick }: { label: string; danger?: boolean; onClick: () => void }) {
   return (
     <button
-      className="transition-colors duration-150"
+      className="text-xs transition-colors duration-150"
       style={{
         color: danger ? 'var(--mark-red)' : 'var(--ink-faded)',
-        fontSize: 'var(--text-xs)',
         background: 'none',
         border: 'none',
         cursor: 'pointer',

@@ -47,9 +47,8 @@ function useFolderLevel(parentId: string | undefined, scope: string) {
         if (!cancelled) {
           setFolders(result.children.filter((n) => n.type === 'FOLDER'));
         }
-      } catch (err) {
-        // 文件夹列表加载失败时静默降级为空列表，记录错误供调试
-        console.error('[MoveToDialog] 加载文件夹失败:', err);
+      } catch {
+        // 文件夹列表加载失败时静默降级为空列表
         if (!cancelled) setFolders([]);
       } finally {
         if (!cancelled) setLoading(false);
@@ -118,10 +117,9 @@ export function MoveToDialog({ node, scope, onConfirm, onClose }: MoveToDialogPr
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <motion.div
-        className="flex w-[420px] flex-col overflow-hidden"
+        className="flex w-[420px] flex-col overflow-hidden rounded-xl"
         style={{
           background: 'var(--paper)',
-          borderRadius: 'var(--radius-xl)',
           boxShadow: 'var(--shadow-lg)',
           maxHeight: '70vh',
         }}
@@ -132,12 +130,12 @@ export function MoveToDialog({ node, scope, onConfirm, onClose }: MoveToDialogPr
         {/* Header */}
         <div className="px-6 pb-1 pt-5">
           <h2
-            className="font-semibold"
-            style={{ color: 'var(--ink)', fontSize: 'var(--text-lg)', letterSpacing: '-0.01em' }}
+            className="text-lg font-semibold"
+            style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}
           >
             移动「{node.name}」
           </h2>
-          <p className="mt-1" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)' }}>
+          <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
             选择目标位置
           </p>
         </div>
@@ -146,8 +144,8 @@ export function MoveToDialog({ node, scope, onConfirm, onClose }: MoveToDialogPr
         <div className="px-6 pt-3 pb-2">
           {breadcrumb.length === 0 ? (
             <span
-              className="font-medium"
-              style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)' }}
+              className="text-xs font-medium"
+              style={{ color: 'var(--ink-ghost)' }}
             >
               根目录
             </span>
@@ -167,8 +165,8 @@ export function MoveToDialog({ node, scope, onConfirm, onClose }: MoveToDialogPr
               <div className="flex min-w-0 items-center gap-1">
                 {breadcrumb.length === 1 ? (
                   <span
-                    className="cursor-pointer truncate rounded px-1 py-0.5"
-                    style={{ color: 'var(--ink-light)', fontSize: 'var(--text-xs)' }}
+                    className="cursor-pointer truncate rounded px-1 py-0.5 text-xs"
+                    style={{ color: 'var(--ink-light)' }}
                     onClick={() => goToBreadcrumb(null)}
                   >
                     根目录
@@ -176,26 +174,26 @@ export function MoveToDialog({ node, scope, onConfirm, onClose }: MoveToDialogPr
                 ) : (
                   <>
                     <span
-                      className="cursor-pointer rounded px-1 py-0.5"
-                      style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)' }}
+                      className="cursor-pointer rounded px-1 py-0.5 text-xs"
+                      style={{ color: 'var(--ink-ghost)' }}
                       onClick={() => goToBreadcrumb(null)}
                     >
                       …
                     </span>
-                    <span style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)' }}>/</span>
+                    <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>/</span>
                     <span
-                      className="cursor-pointer truncate rounded px-1 py-0.5"
-                      style={{ color: 'var(--ink-light)', fontSize: 'var(--text-xs)' }}
+                      className="cursor-pointer truncate rounded px-1 py-0.5 text-xs"
+                      style={{ color: 'var(--ink-light)' }}
                       onClick={() => goToBreadcrumb(breadcrumb.length - 2)}
                     >
                       {breadcrumb[breadcrumb.length - 2]?.name}
                     </span>
-                    <span style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)' }}>/</span>
+                    <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>/</span>
                   </>
                 )}
                 <span
-                  className="truncate font-medium"
-                  style={{ color: 'var(--ink)', fontSize: 'var(--text-xs)' }}
+                  className="truncate text-xs font-medium"
+                  style={{ color: 'var(--ink)' }}
                 >
                   {breadcrumb[breadcrumb.length - 1].name}
                 </span>
@@ -210,7 +208,7 @@ export function MoveToDialog({ node, scope, onConfirm, onClose }: MoveToDialogPr
             {loading ? (
               <LoadingState />
             ) : filteredFolders.length === 0 ? (
-              <div className="py-6 text-center" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)' }}>
+              <div className="py-6 text-center text-xs" style={{ color: 'var(--ink-ghost)' }}>
                 无子文件夹
               </div>
             ) : (
@@ -225,7 +223,7 @@ export function MoveToDialog({ node, scope, onConfirm, onClose }: MoveToDialogPr
                     onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
                   >
                     <Folder size={14} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)' }} />
-                    <span className="min-w-0 flex-1 truncate" style={{ fontSize: 'var(--text-sm)' }}>
+                    <span className="min-w-0 flex-1 truncate text-sm">
                       {folder.name}
                     </span>
                     {folder.hasChildren && (
@@ -241,17 +239,17 @@ export function MoveToDialog({ node, scope, onConfirm, onClose }: MoveToDialogPr
         {/* Footer */}
         <div className="px-6 pb-5 pt-3" style={{ borderTop: '0.5px solid var(--separator)' }}>
           {error && (
-            <p className="mb-2" style={{ color: 'var(--mark-red)', fontSize: 'var(--text-xs)' }}>{error}</p>
+            <p className="mb-2 text-xs" style={{ color: 'var(--mark-red)' }}>{error}</p>
           )}
           <div className="flex items-center justify-between">
-            <span style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)' }}>
+            <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
               目标：{targetLabel}
             </span>
             <div className="flex gap-2">
               <button
                 type="button"
-                className="rounded-lg px-4 py-2 font-medium"
-                style={{ background: 'var(--shelf)', color: 'var(--ink-faded)', fontSize: 'var(--text-sm)' }}
+                className="rounded-lg px-4 py-2 text-sm font-medium"
+                style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
                 onClick={onClose}
               >
                 取消
@@ -259,8 +257,8 @@ export function MoveToDialog({ node, scope, onConfirm, onClose }: MoveToDialogPr
               <button
                 type="button"
                 disabled={submitting || isSamePosition}
-                className="rounded-lg px-4 py-2 font-medium transition-opacity duration-150 disabled:opacity-50"
-                style={{ background: 'var(--accent)', color: 'var(--accent-contrast)', fontSize: 'var(--text-sm)' }}
+                className="rounded-lg px-4 py-2 text-sm font-medium transition-opacity duration-150 disabled:opacity-50"
+                style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}
                 onClick={() => void handleConfirm()}
               >
                 {submitting ? '移动中...' : isSamePosition ? '已在此位置' : '移动到此处'}

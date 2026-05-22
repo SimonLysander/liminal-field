@@ -118,9 +118,8 @@ function useStructureLevel(parentId: string | undefined) {
       try {
         const result = await req;
         if (!cancelled) setNodes(result.children);
-      } catch (err) {
-        // 结构节点加载失败时静默降级为空列表，同时记录错误供调试
-        console.error('[Sidebar] 结构节点加载失败:', err);
+      } catch {
+        // 结构节点加载失败时静默降级为空列表
         if (!cancelled) setNodes([]);
       } finally {
         if (!cancelled) setLoading(false);
@@ -181,9 +180,8 @@ export default function Sidebar() {
           .filter((n) => n.type === 'FOLDER')
           .map((n) => ({ id: n.id, name: n.name }));
         setBreadcrumb(folders);
-      }).catch((err) => {
-        // 面包屑路径加载失败不影响页面功能，仅记录错误
-        console.error('[Sidebar] 面包屑路径加载失败:', err);
+      }).catch(() => {
+        // 面包屑路径加载失败不影响页面功能，静默降级
       });
     } else if (activeTopicId) {
       structureApi.getPathByNodeId(activeTopicId).then((path) => {
@@ -192,9 +190,8 @@ export default function Sidebar() {
           .filter((n) => n.type === 'FOLDER')
           .map((n) => ({ id: n.id, name: n.name }));
         setBreadcrumb(folders);
-      }).catch((err) => {
-        // 面包屑路径加载失败不影响页面功能，仅记录错误
-        console.error('[Sidebar] 面包屑路径加载失败:', err);
+      }).catch(() => {
+        // 面包屑路径加载失败不影响页面功能，静默降级
       });
     } else {
       void Promise.resolve().then(() => {
@@ -230,12 +227,11 @@ export default function Sidebar() {
 
   return (
     <aside
-      className="flex shrink-0 flex-col overflow-y-auto"
+      className="flex shrink-0 flex-col overflow-y-auto rounded-lg"
       style={{
         width: 'var(--layout-sidebar)',
         background: 'var(--sidebar-bg)',
         margin: '12px 0 12px 12px',
-        borderRadius: 'var(--radius-lg)',
         boxShadow: 'var(--shadow-sm)',
       }}
     >
@@ -357,10 +353,9 @@ export default function Sidebar() {
                         <HoverCardContent
                           align="start"
                           sideOffset={4}
-                          className="w-auto min-w-[140px] max-w-[200px] border-none p-1.5"
+                          className="w-auto min-w-[140px] max-w-[200px] rounded-lg border-none p-1.5"
                           style={{
                             background: 'var(--sidebar-bg)',
-                            borderRadius: 'var(--radius-lg)',
                             boxShadow: 'var(--shadow-sm)',
                           }}
                         >

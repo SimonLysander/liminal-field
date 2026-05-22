@@ -63,11 +63,10 @@ export function VersionTimeline({
         return (
           <div
             key={entry.versionId}
-            className="relative cursor-pointer transition-all duration-150 hover:opacity-80"
+            className={`relative cursor-pointer transition-all duration-150 hover:opacity-80${isActive ? ' rounded-sm' : ''}`}
             style={{
               padding: '8px 0 8px 12px',
               background: isActive ? 'var(--accent-soft)' : 'transparent',
-              borderRadius: isActive ? 'var(--radius-sm)' : 0,
             }}
             onClick={() => onSelect?.(entry.versionId)}
           >
@@ -101,19 +100,17 @@ export function VersionTimeline({
               }}
             />
             <div
-              className="flex items-center gap-1.5"
+              className="flex items-center gap-1.5 text-xs"
               style={{
                 color: isNonUser
                   ? 'var(--ink-ghost)'
                   : isFirst ? 'var(--ink)' : 'var(--ink-light)',
-                fontSize: 'var(--text-xs)',
                 marginBottom: 3,
               }}
             >
               <span
-                className="rounded px-1 py-[1px] font-semibold uppercase"
+                className="rounded px-1 py-[1px] text-3xs font-semibold uppercase"
                 style={{
-                  fontSize: '0.5625rem',
                   background: tag.bg,
                   color: tag.color,
                   letterSpacing: '0.03em',
@@ -126,8 +123,8 @@ export function VersionTimeline({
               </span>
             </div>
             <div
-              className="flex items-center gap-1.5"
-              style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-2xs)' }}
+              className="flex items-center gap-1.5 text-2xs"
+              style={{ color: 'var(--ink-ghost)' }}
             >
               <span style={{ fontFamily: 'var(--font-mono)' }}>
                 {entry.commitHash ? entry.commitHash.slice(0, 8) : entry.versionId.slice(0, 8)}
@@ -135,8 +132,8 @@ export function VersionTimeline({
               <span>· {formatCommitTime(entry.committedAt)}</span>
               {isPublished && (
                 <span
-                  className="rounded px-1.5 py-[1px] font-semibold"
-                  style={{ background: 'rgba(48,209,88,0.12)', color: 'var(--mark-green)', fontSize: '0.5625rem' }}
+                  className="rounded px-1.5 py-[1px] text-3xs font-semibold"
+                  style={{ background: 'rgba(48,209,88,0.12)', color: 'var(--mark-green)' }}
                 >
                   已发布
                 </span>
