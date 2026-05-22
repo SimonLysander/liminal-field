@@ -6,13 +6,27 @@
  * 功能分组：
  * - config：全量配置读取 + 分区保存（sync / storage / integration）
  * - remote-config：远端仓库验证（独立，不修改配置）
+ * - ai-providers：多提供商管理（添加 / 删除 / 切换启用 / 编辑 tier 绑定 / 连接验证）
+ * - ai-system-prompt：全局 system prompt 保存
  * - status：综合状态（本地计数 + 远端连通）
  * - storage-status：存储诊断（OSS 连通 + Git 仓库状态）
  * - push-to-remote / sync-from-remote：数据同步操作
  */
-import { Body, Controller, Get, Logger, Post, Put } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Logger,
+  Param,
+  Post,
+  Put,
+} from '@nestjs/common';
 import { readdir, rm } from 'fs/promises';
 import { join } from 'path';
+import { nanoid } from 'nanoid';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { generateText } from 'ai';
 import simpleGit from 'simple-git';
 import { ContentRepository } from '../content/content.repository';
 import { ContentSnapshotRepository } from '../content/content-snapshot.repository';
@@ -32,6 +46,16 @@ import {
   applyKbGitTokenToGithubHttps,
   redactKbRemoteUrlForLog,
 } from '../../common/kb-remote-url';
+
+/**
+ * AI 提供商预设（baseUrl 由后端维护，前端只传 provider id）。
+ * 添加新提供商时只需在此处追加，无需改动其他逻辑。
+ */
+const AI_PROVIDER_PRESETS: Record<string, { name: string; baseUrl: string }> = {
+  deepseek: { name: 'DeepSeek', baseUrl: 'https://api.deepseek.com' },
+  zhipu: { name: '智谱 GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4' },
+  moonshot: { name: 'Moonshot', baseUrl: 'https://api.moonshot.cn/v1' },
+};
 
 @Controller('settings')
 export class SettingsController {
@@ -85,6 +109,211 @@ export class SettingsController {
     @Body() dto: { mineruToken?: string },
   ): Promise<{ success: boolean }> {
     await this.systemConfigService.saveIntegrationConfig(dto);
+    return { success: true };
+  }
+
+  // ── AI 多提供商管理 ────────────────────────────────────────
+
+  /**
+   * 添加 AI 提供商（三 tier 模型绑定）。
+   * baseUrl 从 AI_PROVIDER_PRESETS 查找，不由前端传入，防止任意 URL 注入。
+   */
+  @Post('ai-providers')
+  async addAiProvider(
+    @Body()
+    dto: {
+      provider: string;
+      apiKey: string;
+      flashModel: string;
+      standardModel: string;
+      thinkModel: string;
+    },
+  ): Promise<{ success: boolean; id: string }> {
+    const preset = AI_PROVIDER_PRESETS[dto.provider];
+    if (!preset) {
+      throw new Error(`Unknown provider: ${dto.provider}`);
+    }
+    const id = nanoid(8);
+    await this.systemConfigService.addAiProvider({
+      id,
+      provider: dto.provider,
+      name: preset.name,
+      baseUrl: preset.baseUrl,
+      apiKey: dto.apiKey,
+      flashModel: dto.flashModel,
+      standardModel: dto.standardModel,
+      thinkModel: dto.thinkModel,
+    });
+    return { success: true, id };
+  }
+
+  /** 删除 AI 提供商（by id） */
+  @Delete('ai-providers/:id')
+  async deleteAiProvider(
+    @Param('id') id: string,
+  ): Promise<{ success: boolean }> {
+    await this.systemConfigService.deleteAiProvider(id);
+    return { success: true };
+  }
+
+  /** 切换当前启用的 AI 提供商 */
+  @Put('ai-providers/:id/activate')
+  async activateAiProvider(
+    @Param('id') id: string,
+  ): Promise<{ success: boolean }> {
+    await this.systemConfigService.setActiveAiProvider(id);
+    return { success: true };
+  }
+
+  /**
+   * 编辑 AI 提供商的 tier 绑定或 API Key。
+   * 只更新传入的字段，未传字段保持不变。
+   */
+  @Put('ai-providers/:id')
+  async updateAiProvider(
+    @Param('id') id: string,
+    @Body()
+    dto: {
+      flashModel?: string;
+      standardModel?: string;
+      thinkModel?: string;
+      apiKey?: string;
+    },
+  ): Promise<{ success: boolean }> {
+    await this.systemConfigService.updateAiProvider(id, dto);
+    return { success: true };
+  }
+
+  /**
+   * 获取提供商的可用模型列表。
+   * 调用提供商的 GET /models 端点（OpenAI 兼容标准），返回模型 ID 列表。
+   */
+  @Post('ai-providers/list-models')
+  async listProviderModels(
+    @Body() dto: { provider: string; apiKey: string },
+  ): Promise<{ models: string[] }> {
+    const preset = AI_PROVIDER_PRESETS[dto.provider];
+    if (!preset) {
+      return { models: [] };
+    }
+    try {
+      const url = `${preset.baseUrl}/models`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${dto.apiKey}` },
+      });
+      if (!res.ok) {
+        this.logger.warn(
+          `listProviderModels 失败 (${dto.provider}): ${res.status}`,
+        );
+        return { models: [] };
+      }
+      const json = (await res.json()) as {
+        data?: Array<{ id: string }>;
+      };
+      // OpenAI 标准格式：{ data: [{ id: 'model-name', ... }] }
+      const models = (json.data ?? [])
+        .map((m) => m.id)
+        .sort((a, b) => a.localeCompare(b));
+      return { models };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`listProviderModels 异常 (${dto.provider}): ${msg}`);
+      return { models: [] };
+    }
+  }
+
+  /**
+   * 验证 AI 提供商连接：用标准 tier 模型发送一条极小请求。
+   * 返回 valid: true/false 和错误信息，前端在"验证并保存"时先调用此接口。
+   */
+  @Post('ai-providers/validate')
+  async validateAiProvider(
+    @Body() dto: { provider: string; apiKey: string; standardModel: string },
+  ): Promise<{ valid: boolean; message: string }> {
+    const preset = AI_PROVIDER_PRESETS[dto.provider];
+    if (!preset) {
+      return { valid: false, message: `未知提供商: ${dto.provider}` };
+    }
+    try {
+      const provider = createOpenAICompatible({
+        name: dto.provider,
+        baseURL: preset.baseUrl,
+        apiKey: dto.apiKey,
+      });
+      await generateText({
+        model: provider(dto.standardModel),
+        prompt: 'Hi',
+        maxTokens: 8,
+      });
+      return { valid: true, message: '连接验证成功' };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `validateAiProvider 失败 (${dto.provider}/${dto.standardModel}): ${msg}`,
+      );
+      return { valid: false, message: msg };
+    }
+  }
+
+  /** 保存全局 AI system prompt */
+  @Put('ai-system-prompt')
+  async saveAiSystemPrompt(
+    @Body() dto: { prompt: string },
+  ): Promise<{ success: boolean }> {
+    await this.systemConfigService.saveAiSystemPrompt(dto.prompt);
+    return { success: true };
+  }
+
+  // ── 所有者身份管理 ─────────────────────────────────────────
+
+  @Get('owner-profile')
+  async getOwnerProfile() {
+    return this.systemConfigService.getOwnerProfile();
+  }
+
+  @Put('owner-profile')
+  async saveOwnerProfile(
+    @Body() dto: { name?: string; bio?: string },
+  ): Promise<{ success: boolean }> {
+    await this.systemConfigService.saveOwnerProfile(dto);
+    return { success: true };
+  }
+
+  // ── Agent 入口配置管理 ────────────────────────────────────
+
+  /** 获取所有 agent 入口配置 */
+  @Get('agent-configs')
+  async getAgentConfigs() {
+    return this.systemConfigService.getAgentConfigs();
+  }
+
+  /**
+   * 保存 agent 入口配置（upsert by key）。
+   * key 匹配则更新，不存在则新增。
+   */
+  @Put('agent-configs/:key')
+  async saveAgentConfig(
+    @Param('key') key: string,
+    @Body()
+    dto: {
+      name?: string;
+      description?: string;
+      enabled?: boolean;
+      systemPrompt?: string;
+      tools?: string[];
+      tier?: string;
+    },
+  ): Promise<{ success: boolean }> {
+    await this.systemConfigService.saveAgentConfig(key, dto);
+    return { success: true };
+  }
+
+  /** 删除 agent 入口配置（by key） */
+  @Delete('agent-configs/:key')
+  async deleteAgentConfig(
+    @Param('key') key: string,
+  ): Promise<{ success: boolean }> {
+    await this.systemConfigService.deleteAgentConfig(key);
     return { success: true };
   }
 

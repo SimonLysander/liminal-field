@@ -25,6 +25,8 @@ import { parseError } from './helpers';
 import { LoadingState } from '@/components/LoadingState';
 import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
 import { DraftAssetProvider } from '@/contexts/DraftAssetContext';
+import { AiAdvisorPanel } from '@/components/ai-advisor/AiAdvisorPanel';
+import { settingsApi } from '@/services/settings';
 
 type EditorState = {
   title: string;
@@ -215,6 +217,24 @@ const DraftEditPage = () => {
     [id, state],
   );
 
+  /* AI 顾问面板状态 */
+  /* 按 writing-advisor 入口配置的 enabled 字段控制面板是否渲染 */
+  const [agentEnabled, setAgentEnabled] = useState(true);
+
+  useEffect(() => {
+    // 加载 agent 入口配置，按 enabled 决定是否渲染 AI 顾问面板
+    settingsApi.getAgentConfigs().then((configs) => {
+      const writingAdvisor = configs.find((c) => c.key === 'writing-advisor');
+      // 配置不存在时保守降级为 false（不渲染），避免无配置时的歧义行为
+      setAgentEnabled(writingAdvisor?.enabled ?? false);
+    }).catch(() => {
+      // 请求失败时保持 true，确保正常使用时不受影响
+    });
+  }, []);
+
+  /* 编辑器内当前选中文本（暂未接入 Plate 选区监听，预留入口） */
+  const [selectedText] = useState<string | undefined>(undefined);
+
   const [committing, setCommitting] = useState(false);
   const navigateTimerRef = useRef<number | undefined>(undefined);
   useEffect(() => () => { window.clearTimeout(navigateTimerRef.current); }, []);
@@ -293,159 +313,177 @@ const DraftEditPage = () => {
     );
   }
 
+  /*
+   * CSS Grid 三栏布局：
+   *   列：AI 面板 | 编辑器 | 大纲
+   *   行：顶栏(48px) | 内容(1fr)
+   * 顶栏各单元格自然对齐到下方的列，工具栏不会溢出到 AI 面板。
+   */
+  const gridColumns = 'clamp(18rem, 22vw, 22rem) 1fr var(--layout-sidebar)';
+
   return (
-    <div className="flex h-screen" style={{ background: 'var(--paper)' }}>
+    <div
+      className="grid h-screen overflow-hidden"
+      style={{
+        background: 'var(--paper)',
+        gridTemplateColumns: gridColumns,
+        gridTemplateRows: '48px 1fr',
+      }}
+    >
       <ThresholdOverlay visible={committing} label="正在提交版本..." />
 
-      <main className="relative z-0 flex flex-1 flex-col overflow-hidden">
-        {/* 顶栏：1fr | auto | 1fr 让 Portal 工具栏相对视口水平居中（不随左右胶囊宽度漂移） */}
-        <header
-          className="grid shrink-0 items-center"
+      {/* ── Row 1: 顶栏，分成三个 grid cell ── */}
+
+      {/* [1,1] AI 面板上方：返回 + 标题 */}
+      <div className="flex items-center px-3">
+        <div
+          className="flex min-w-0 items-center gap-2"
           style={{
-            height: 48,
-            padding: '8px 16px',
-            gridTemplateColumns: '1fr auto 1fr',
-            columnGap: 12,
+            background: 'var(--glass-bg)',
+            backdropFilter: 'blur(12px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(12px) saturate(180%)',
+            border: '1px solid var(--glass-border)',
+            borderRadius: 20,
+            padding: '4px 12px',
+            boxShadow: 'var(--glass-shadow)',
           }}
         >
-          {/* 左侧胶囊：返回导航 + 标题输入 */}
-          <div
-            className="flex min-w-0 shrink-0 items-center justify-self-start gap-2"
-            style={{
-              background: 'var(--glass-bg)',
-              backdropFilter: 'blur(12px) saturate(180%)',
-              WebkitBackdropFilter: 'blur(12px) saturate(180%)',
-              border: '1px solid var(--glass-border)',
-              borderRadius: 20,
-              padding: '4px 12px',
-              boxShadow: 'var(--glass-shadow)',
-            }}
+          <button
+            className="hover-shelf shrink-0 rounded-md px-2 py-1 transition-colors duration-150"
+            style={{ color: 'var(--ink-faded)' }}
+            onClick={() => navigate(-1)}
           >
-            <button
-              className="hover-shelf shrink-0 rounded-md px-2 py-1 transition-colors duration-150"
-              style={{ color: 'var(--ink-faded)', fontSize: 'var(--text-base)' }}
-              onClick={() => navigate(-1)}
-            >
-              ←
-            </button>
-            <span className="shrink-0" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-base)' }}>/</span>
-            <input
-              type="text"
-              value={state.title}
-              onChange={(e) => handleChange('title', e.target.value)}
-              placeholder="无标题"
-              className="w-[160px] shrink-0 truncate border-none bg-transparent font-medium outline-none placeholder:text-[var(--ink-ghost)]"
-              style={{ color: 'var(--ink)', fontSize: 'var(--text-base)' }}
-            />
-          </div>
-
-          {/* 工具栏 Portal 挂在中列，列宽随内容；左右 1fr 均分剩余宽度 → 视觉中心落在视口中间 */}
-          <div
-            ref={setToolbarPortal}
-            className="flex min-w-0 max-w-full justify-center justify-self-center overflow-x-auto"
+            ←
+          </button>
+          <span style={{ color: 'var(--ink-ghost)' }}>/</span>
+          <input
+            type="text"
+            value={state.title}
+            onChange={(e) => handleChange('title', e.target.value)}
+            placeholder="无标题"
+            className="w-[120px] shrink-0 truncate border-none bg-transparent text-sm font-medium outline-none placeholder:text-[var(--ink-ghost)]"
+            style={{ color: 'var(--ink)' }}
           />
+        </div>
+      </div>
 
-          {/* 右侧胶囊：状态指示 + 主题切换 + 操作按钮 */}
-          <div
-            className="flex min-w-0 shrink-0 items-center justify-self-end gap-3"
-            style={{
-              background: 'var(--glass-bg)',
-              backdropFilter: 'blur(12px) saturate(180%)',
-              WebkitBackdropFilter: 'blur(12px) saturate(180%)',
-              border: '1px solid var(--glass-border)',
-              borderRadius: 20,
-              padding: '4px 12px',
-              boxShadow: 'var(--glass-shadow)',
-            }}
+      {/* [1,2-3] 工具栏居中 + 右胶囊靠右 */}
+      <div
+        className="flex min-w-0 items-center px-4"
+        style={{ gridColumn: '2 / -1' }}
+      >
+        {/* 工具栏：flex-1 吃满空间，内容居中，超出滚动 */}
+        <div
+          ref={setToolbarPortal}
+          className="flex min-w-0 flex-1 items-center justify-center overflow-x-auto"
+        />
+
+        {/* 右侧胶囊 */}
+        <div
+          className="ml-4 flex shrink-0 items-center gap-3"
+          style={{
+            background: 'var(--glass-bg)',
+            backdropFilter: 'blur(12px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(12px) saturate(180%)',
+            border: '1px solid var(--glass-border)',
+            borderRadius: 20,
+            padding: '4px 12px',
+            boxShadow: 'var(--glass-shadow)',
+          }}
+        >
+          <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            {isAutosaving && <StatusDot color="var(--mark-blue)" />}
+            {isDirty && !isAutosaving && <StatusDot color="var(--mark-red)" />}
+            {!isDirty && !isAutosaving && lastSavedAt && <StatusDot color="var(--mark-green)" />}
+            {lastSavedAt && (
+              <span>{new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</span>
+            )}
+            {autosaveError && <span style={{ color: 'var(--mark-red)' }}>{autosaveError}</span>}
+          </div>
+          <button
+            className="hover-shelf flex h-7 w-7 items-center justify-center rounded-lg transition-colors duration-200"
+            style={{ color: 'var(--ink-faded)' }}
+            onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}
+            aria-label="切换主题"
           >
-            <div className="flex items-center gap-2" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-sm)' }}>
-              {isAutosaving && <StatusDot color="var(--mark-blue)" />}
-              {isDirty && !isAutosaving && <StatusDot color="var(--mark-red)" />}
-              {!isDirty && !isAutosaving && lastSavedAt && <StatusDot color="var(--mark-green)" />}
-              {lastSavedAt && (
-                <span>{new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</span>
-              )}
-              {autosaveError && <span style={{ color: 'var(--mark-red)' }}>{autosaveError}</span>}
-            </div>
-            <button
-              className="hover-shelf flex h-7 w-7 items-center justify-center rounded-lg transition-all duration-200"
-              style={{ color: 'var(--ink-faded)' }}
-              onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}
-              aria-label="切换主题"
-            >
-              <Sun size={14} strokeWidth={1.5} className="theme-icon-light" />
-              <Moon size={14} strokeWidth={1.5} className="theme-icon-dark" />
-            </button>
-            <div className="flex items-center gap-1">
-              <ActionPill label="保存" shortcut="⇧⌘S" onClick={() => void saveDraft()} />
-              <ActionPill label="提交" shortcut="⌘S" primary onClick={() => setShowCommitDialog(true)} />
-              <ActionPill label="丢弃" danger onClick={() => void discardDraft()} />
-            </div>
-          </div>
-        </header>
-
-        {error && contentDetail && (
-          <div className="px-6 py-2" style={{ background: 'rgba(255,59,48,0.06)' }}>
-            <p style={{ color: 'var(--mark-red)', fontSize: 'var(--text-base)' }}>{error}</p>
-          </div>
-        )}
-
-        {/* Body — editor + right outline */}
-        <div className="flex flex-1 overflow-hidden">
-          {/* 左侧留白和 Outline 等宽，让编辑器 mx-auto 相对视口居中 */}
-          <div className="shrink-0" style={{ width: 'var(--layout-sidebar)' }} />
-          <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden" data-scroll-container>
-            <div className="mx-auto w-full max-w-[var(--layout-editor-max)] pb-40 pt-10">
-              <DraftAssetProvider contentItemId={id!}>
-                <PlateMarkdownEditor
-                  key={`${id}-${resetKey}`}
-                  initialMarkdown={state.bodyMarkdown}
-                  onChange={(md) => handleChange('bodyMarkdown', md)}
-                  toolbarContainer={toolbarPortal}
-                />
-              </DraftAssetProvider>
-
-            </div>
-          </div>
-
-          {/* Right — outline */}
-          <div
-            className="flex shrink-0 flex-col overflow-y-auto px-4 py-10"
-            style={{ width: 'var(--layout-sidebar)' }}
-          >
-            <div
-              className="mb-3 font-semibold uppercase"
-              style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)', letterSpacing: '0.04em' }}
-            >
-              大纲
-            </div>
-            <nav className="flex-1">
-              {headings.length === 0 ? (
-                <p className="py-6 text-center" style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-sm)' }}>
-                  使用标题构建文档结构
-                </p>
-              ) : (
-                headings.map((h) => (
-                  <button
-                    key={`${h.index}-${h.text}`}
-                    className="outline-heading-btn w-full truncate rounded-md py-1.5 text-left transition-colors duration-100"
-                    style={{
-                      paddingLeft: `${(h.level - 1) * 8 + 10}px`,
-                      paddingRight: 8,
-                      color: 'var(--ink-faded)',
-                      fontSize: 'var(--text-sm)',
-                      fontWeight: 400,
-                    }}
-                    onClick={() => scrollToHeading(h.index)}
-                  >
-                    {h.text}
-                  </button>
-                ))
-              )}
-            </nav>
+            <Sun size={14} strokeWidth={1.5} className="theme-icon-light" />
+            <Moon size={14} strokeWidth={1.5} className="theme-icon-dark" />
+          </button>
+          <div className="flex items-center gap-1">
+            <ActionPill label="保存" shortcut="⇧⌘S" onClick={() => void saveDraft()} />
+            <ActionPill label="提交" shortcut="⌘S" primary onClick={() => setShowCommitDialog(true)} />
+            <ActionPill label="丢弃" danger onClick={() => void discardDraft()} />
           </div>
         </div>
-      </main>
+      </div>
+
+      {/* ── Row 2: 内容区 ── */}
+
+      {/* [2,1] AI 面板：按 AgentEntryConfig.enabled 控制是否渲染 */}
+      {agentEnabled ? (
+        <AiAdvisorPanel
+          sessionKey={`draft-${id}`}
+          contentItemId={id}
+          title={state.title}
+          bodyMarkdown={state.bodyMarkdown}
+          selectedText={selectedText}
+        />
+      ) : (
+        // 未启用时渲染空 div 占位，保持三栏 grid 结构不变
+        <div />
+      )}
+
+      {/* [2,2] 编辑器 */}
+      <div className="min-w-0 overflow-y-auto overflow-x-hidden" data-scroll-container>
+        {error && contentDetail && (
+          <div className="px-6 py-2" style={{ background: 'rgba(255,59,48,0.06)' }}>
+            <p className="text-sm" style={{ color: 'var(--mark-red)' }}>{error}</p>
+          </div>
+        )}
+        <div className="mx-auto w-full max-w-[var(--layout-editor-max)] pb-40 pt-10">
+          <DraftAssetProvider contentItemId={id!}>
+            <PlateMarkdownEditor
+              key={`${id}-${resetKey}`}
+              initialMarkdown={state.bodyMarkdown}
+              onChange={(md) => handleChange('bodyMarkdown', md)}
+              toolbarContainer={toolbarPortal}
+            />
+          </DraftAssetProvider>
+        </div>
+      </div>
+
+      {/* [2,3] 大纲 */}
+      <div className="overflow-y-auto px-4 py-10">
+        <div
+          className="mb-3 font-semibold uppercase"
+          style={{ color: 'var(--ink-ghost)', fontSize: 'var(--text-xs)', letterSpacing: '0.04em' }}
+        >
+          大纲
+        </div>
+        <nav>
+          {headings.length === 0 ? (
+            <p className="py-6 text-center text-sm" style={{ color: 'var(--ink-ghost)' }}>
+              使用标题构建文档结构
+            </p>
+          ) : (
+            headings.map((h) => (
+              <button
+                key={`${h.index}-${h.text}`}
+                className="outline-heading-btn w-full truncate rounded-md py-1.5 text-left text-sm transition-colors duration-100"
+                style={{
+                  paddingLeft: `${(h.level - 1) * 8 + 10}px`,
+                  paddingRight: 8,
+                  color: 'var(--ink-faded)',
+                  fontWeight: 400,
+                }}
+                onClick={() => scrollToHeading(h.index)}
+              >
+                {h.text}
+              </button>
+            ))
+          )}
+        </nav>
+      </div>
 
       {/* Commit dialog */}
       {showCommitDialog && (

@@ -650,6 +650,12 @@ body.theme-transitioning [data-slate-leaf] {
   50% { opacity: 1; transform: scale(1.15); }
 }
 
+/* AI 面板：工具调用 / 思考中的 pulse 点 */
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
 /* ========== Immersive Mode Hint ========== */
 
 @keyframes hint-fade {

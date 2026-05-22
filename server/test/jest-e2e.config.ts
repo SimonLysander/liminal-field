@@ -19,6 +19,10 @@ const config: Config = {
   rootDir: '..',
   testRegex: 'test/.*\\.e2e-spec\\.ts$',
   testEnvironment: 'node',
+  // 将 nodenext 风格的 .js 扩展名映射到 .ts（Jest 以 CJS 运行，不识别 .js 后缀）
+  moduleNameMapper: {
+    '^(\\.\\.?/.*)\\.js$': '$1',
+  },
   // mongodb-memory-server 首次需下载二进制（可达数分钟），beforeAll 与单测共用此时长
   testTimeout: 600_000,
   // 每个测试文件独立进程，避免 MongoDB 连接/Git 目录相互污染
