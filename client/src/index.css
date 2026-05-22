@@ -574,6 +574,21 @@ pre code {
   }
 
   a { color: inherit; text-decoration: none; }
+
+  /* 透明文本输入：看起来像纯文本，点击可编辑。用于顶栏标题等场景。 */
+  .input-ghost {
+    border: none;
+    outline: none;
+    background: transparent;
+    box-shadow: none;
+    font: inherit;
+    color: inherit;
+  }
+  .input-ghost:focus {
+    border: none;
+    outline: none;
+    box-shadow: none;
+  }
 }
 
 /*

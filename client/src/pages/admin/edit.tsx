@@ -347,7 +347,7 @@ const DraftEditPage = () => {
             value={state.title}
             onChange={(e) => handleChange('title', e.target.value)}
             placeholder="无标题"
-            className="min-w-[60px] max-w-[240px] truncate border-0 bg-transparent text-sm font-medium shadow-none outline-none ring-0 focus:border-0 focus:shadow-none focus:outline-none focus:ring-0 placeholder:text-[var(--ink-ghost)]"
+            className="input-ghost min-w-[60px] max-w-[240px] truncate text-sm font-medium placeholder:text-[var(--ink-ghost)]"
             style={{ color: 'var(--ink)' }}
           />
         </div>
