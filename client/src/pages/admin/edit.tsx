@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { motion } from 'motion/react';
-import { Sun, Moon, ChevronLeft, Save, MoreHorizontal } from 'lucide-react';
+import { Sun, Moon, ChevronLeft, Save, Trash2 } from 'lucide-react';
 import { smoothBounce } from '@/lib/motion';
 import { useTheme } from '@/hooks/use-theme';
 import { notesApi as contentItemsApi } from '@/services/workspace';
@@ -379,7 +379,7 @@ const DraftEditPage = () => {
             </button>
             <button className="rounded-sm p-1.5 transition-colors hover:bg-[var(--shelf)]" style={{ color: 'var(--ink-ghost)' }}
               onClick={() => void discardDraft()} title="丢弃草稿">
-              <MoreHorizontal size={15} strokeWidth={1.5} />
+              <Trash2 size={15} strokeWidth={1.5} />
             </button>
           </div>
         </div>
