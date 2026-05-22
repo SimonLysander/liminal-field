@@ -1,4 +1,4 @@
-import { Dot } from '@/components/ui/dot';
+import { Dot, type DotVariant } from '@/components/ui/dot';
 
 /**
  * SaveStatus — 自动保存状态(L3)
@@ -8,9 +8,10 @@ import { Dot } from '@/components/ui/dot';
  */
 export type SaveState = 'saving' | 'saved' | 'dirty' | 'error';
 
+// 复用 DotVariant,Dot 增减变体时此处类型自动同步,避免两处手写变体名漂移
 const SAVE_META: Record<
   SaveState,
-  { variant: 'accent' | 'success' | 'neutral' | 'danger'; pulse?: boolean; label: string }
+  { variant: DotVariant; pulse?: boolean; label: string }
 > = {
   saving: { variant: 'accent', pulse: true, label: '保存中…' },
   saved: { variant: 'success', label: '已同步' },
