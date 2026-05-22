@@ -412,7 +412,7 @@ const DraftEditPage = () => {
             <p className="text-sm" style={{ color: 'var(--mark-red)' }}>{error}</p>
           </div>
         )}
-        <div className="mx-auto w-full max-w-[var(--layout-editor-max)] pb-40 pt-10">
+        <div className="mx-auto w-full max-w-[var(--layout-editor-max)] pb-40">
           <DraftAssetProvider contentItemId={id!}>
             <PlateMarkdownEditor
               key={`${id}-${resetKey}`}
