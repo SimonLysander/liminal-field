@@ -198,6 +198,13 @@ export const settingsApi = {
       },
     ),
 
+  // 一键发布全部内容最新版(灾后/恢复后重新上线)
+  publishAll: () =>
+    request<{ success: boolean; published: number; skipped: number }>(
+      '/settings/publish-all',
+      { method: 'POST' },
+    ),
+
   // 同步操作
   pushToRemote: () =>
     request<{ success: boolean; message: string }>(

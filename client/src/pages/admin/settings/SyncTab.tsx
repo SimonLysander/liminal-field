@@ -156,7 +156,8 @@ export function SyncTab() {
 
   const [pushing, setPushing] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const busy = pushing || syncing;
+  const [publishingAll, setPublishingAll] = useState(false);
+  const busy = pushing || syncing || publishingAll;
 
   const isConfigured = !!config?.remoteUrl;
   const localIsEmpty = (status?.local.contentCount ?? 0) === 0;
@@ -193,6 +194,29 @@ export function SyncTab() {
       banner.error('推送失败');
     } finally {
       setPushing(false);
+    }
+  };
+
+  // 一键发布全部最新版(本地操作,不依赖远端;常用于恢复后重新上线)
+  const handlePublishAll = async () => {
+    const ok = await confirm({
+      title: '发布全部最新版',
+      message:
+        '把所有内容（笔记 / 画廊 / 文集条目）的最新提交版本一键上线。常用于从远端恢复后重新上线。',
+      confirmLabel: '确认发布',
+    });
+    if (!ok) return;
+    setPublishingAll(true);
+    try {
+      const result = await settingsApi.publishAll();
+      banner.success(
+        `已发布 ${result.published} 项${result.skipped ? `，跳过 ${result.skipped} 项` : ''}`,
+      );
+      await loadData();
+    } catch {
+      banner.error('发布失败');
+    } finally {
+      setPublishingAll(false);
     }
   };
 
@@ -382,6 +406,20 @@ export function SyncTab() {
             </div>
           </div>
         )}
+      </Section>
+
+      {/* ── 内容发布（本地操作,不依赖远端;恢复后一键重新上线） ── */}
+      <Section
+        title="内容发布"
+        description="发布状态不进 Git，从远端恢复后所有内容默认未发布"
+      >
+        <SyncAction
+          title="发布全部最新版"
+          description="把所有内容（笔记 / 画廊 / 文集条目）的最新提交版本一键上线"
+          buttonLabel={publishingAll ? '发布中...' : '发布全部'}
+          onClick={() => void handlePublishAll()}
+          disabled={busy}
+        />
       </Section>
 
       {/* ── Git 配置（仅配置了远端时展示） ── */}
