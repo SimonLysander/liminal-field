@@ -81,8 +81,8 @@ const DropdownMenuItem = React.forwardRef<
   <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      // Notion 紧凑:行 28、文字 14、图标 20 灰、hover 淡底
-      "relative flex h-7 cursor-default select-none items-center gap-2 rounded-sm px-2 text-md outline-none transition-colors focus:bg-[var(--hover-overlay)] data-[disabled]:pointer-events-none data-[disabled]:opacity-40 [&_svg]:pointer-events-none [&_svg]:size-5 [&_svg]:shrink-0 [&_svg]:text-[var(--ink-faded)]",
+      // Notion 紧凑:行 28、文字 14、图标 16 灰(20 偏胖)、hover 淡底
+      "relative flex h-7 cursor-default select-none items-center gap-2 rounded-sm px-2 text-md outline-none transition-colors focus:bg-[var(--hover-overlay)] data-[disabled]:pointer-events-none data-[disabled]:opacity-40 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-[var(--ink-faded)]",
       inset && "pl-8",
       className
     )}
