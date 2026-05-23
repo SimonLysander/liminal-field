@@ -299,7 +299,8 @@ export default function HomePage() {
             </Link>
           </motion.div>
 
-          <div className="flex gap-3.5">
+          {/* 横排图集:窄屏行内横滑,不把整页撑宽溢出(桌面够宽则不出现滚动条) */}
+          <div className="flex gap-3.5 overflow-x-auto pb-1">
             {galleries.map((gallery, i) => (
               <motion.div
                 key={gallery.id}

@@ -288,7 +288,7 @@ function NoteReader({ id }: { id: string }) {
       {/* Right — TOC panel（始终预留宽度，避免内容加载后布局抖动） */}
       <div
         ref={tocPanelRef}
-        className="flex min-h-0 shrink-0 flex-col gap-7 self-start overflow-y-auto px-4 py-10"
+        className="hidden min-h-0 shrink-0 flex-col gap-7 self-start overflow-y-auto px-4 py-10 md:flex"
         style={{
           width: 'var(--layout-sidebar)',
           // 离屏幕顶留距离(下移到主题按钮下方):目录是悬在中上部的容器,
@@ -333,7 +333,7 @@ function NoteReader({ id }: { id: string }) {
         <AnimatePresence>
           {aiOpen && (
             <motion.div
-              className="ai-chat-panel flex w-[340px] flex-col overflow-hidden rounded-xl"
+              className="ai-chat-panel flex w-[340px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl"
               style={{
                 maxHeight: 420,
                 background: 'var(--paper)',
