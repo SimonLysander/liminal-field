@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type { AnthologyAdminDetail, AnthologyAdminEntryMeta } from '@/services/workspace';
 import { VersionStatusPill, TextLink } from './primitives';
-import { AddEntryModal } from './AddEntryModal';
+import { AddEntryPopover } from './AddEntryPopover';
 
 // ─── 条目列表行 ───
 
@@ -152,12 +152,10 @@ export function EntryListPanel({
   onPublishAll,
   onDeleteAnthology,
 }: EntryListPanelProps) {
-  const [addEntryOpen, setAddEntryOpen] = useState(false);
   const isPublished = detail.status === 'published';
 
   return (
-    <>
-      <div className="flex-1 overflow-y-auto px-10 py-9 max-[520px]:px-4">
+    <div className="flex-1 overflow-y-auto px-10 py-9 max-[520px]:px-4">
         <div className="mx-auto w-full max-w-[var(--layout-reading-max)]">
           {/* 标题行 — 与 Notes ContentVersionView 完全对齐 */}
           <div className="mb-6 flex items-start justify-between">
@@ -229,16 +227,18 @@ export function EntryListPanel({
             >
               条目 · {detail.entries.length} 篇
             </span>
-            <button
-              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors duration-150"
-              style={{ color: 'var(--ink-faded)' }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--shelf)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-              onClick={() => setAddEntryOpen(true)}
-            >
-              <Plus size={11} strokeWidth={2} />
-              添加条目
-            </button>
+            {/* AddEntryPopover 以按钮为锚点就近弹出,无需外部 open state */}
+            <AddEntryPopover onSubmit={onAddEntry}>
+              <button
+                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors duration-150"
+                style={{ color: 'var(--ink-faded)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--shelf)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                <Plus size={11} strokeWidth={2} />
+                添加条目
+              </button>
+            </AddEntryPopover>
           </div>
 
           {detail.entries.length === 0 ? (
@@ -260,13 +260,6 @@ export function EntryListPanel({
             </div>
           )}
         </div>
-      </div>
-
-      <AddEntryModal
-        open={addEntryOpen}
-        onClose={() => setAddEntryOpen(false)}
-        onSubmit={onAddEntry}
-      />
-    </>
+    </div>
   );
 }
