@@ -19,8 +19,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useConfirm } from '@/contexts/ConfirmContext';
-import { Sun, Moon } from 'lucide-react';
-import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { ChevronLeft, Sun, Trash2, MoreHorizontal } from 'lucide-react';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 import { useTheme } from '@/hooks/use-theme';
 import { anthologyApi } from '@/services/workspace';
 import type { EditorDraft } from '@/services/workspace';
@@ -304,44 +312,28 @@ const AnthologyEntryEditPage = () => {
         <header
           className="grid shrink-0 items-center"
           style={{
-            height: 48,
+            height: 52,
             padding: '8px 16px',
             gridTemplateColumns: '1fr auto 1fr',
             columnGap: 12,
           }}
         >
-          {/* 左侧胶囊：返回导航 + 标题输入 */}
-          <div
-            className="flex min-w-0 shrink-0 items-center justify-self-start gap-2"
-            style={{
-              background: 'var(--glass-bg)',
-              backdropFilter: 'blur(12px) saturate(180%)',
-              WebkitBackdropFilter: 'blur(12px) saturate(180%)',
-              border: '1px solid var(--glass-border)',
-              borderRadius: 20,
-              padding: '4px 12px',
-              boxShadow: 'var(--glass-shadow)',
-            }}
-          >
+          {/* 左组：扁平，ChevronLeft 返回 + input-ghost 标题 */}
+          <div className="flex min-w-0 shrink-0 items-center justify-self-start gap-1.5">
             <button
-              className="hover-shelf shrink-0 rounded-md px-2 py-1 text-base transition-colors duration-150"
+              className="rounded-md p-1.5 outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none"
               style={{ color: 'var(--ink-faded)' }}
               onClick={goBack}
+              aria-label="返回"
             >
-              ←
+              <ChevronLeft size={18} strokeWidth={1.5} />
             </button>
-            <span
-              className="shrink-0 text-base"
-              style={{ color: 'var(--ink-ghost)' }}
-            >
-              /
-            </span>
             <input
               type="text"
               value={state.title}
               onChange={(e) => handleChange('title', e.target.value)}
               placeholder="条目标题"
-              className="w-[160px] shrink-0 truncate border-none bg-transparent text-base font-medium outline-none placeholder:text-[var(--ink-ghost)]"
+              className="input-ghost min-w-[60px] max-w-[240px] truncate text-base font-medium placeholder:text-[var(--ink-ghost)]"
               style={{ color: 'var(--ink)' }}
             />
           </div>
@@ -352,72 +344,68 @@ const AnthologyEntryEditPage = () => {
             className="flex min-w-0 max-w-full justify-center justify-self-center overflow-x-auto"
           />
 
-          {/* 右侧胶囊：状态指示 + 主题切换 + 操作按钮 */}
-          <div
-            className="flex min-w-0 shrink-0 items-center justify-self-end gap-3"
-            style={{
-              background: 'var(--glass-bg)',
-              backdropFilter: 'blur(12px) saturate(180%)',
-              WebkitBackdropFilter: 'blur(12px) saturate(180%)',
-              border: '1px solid var(--glass-border)',
-              borderRadius: 20,
-              padding: '4px 12px',
-              boxShadow: 'var(--glass-shadow)',
-            }}
-          >
-            <div
-              className="flex items-center gap-2 text-sm"
-              style={{ color: 'var(--ink-ghost)' }}
-            >
-              {isAutosaving && <StatusDot color="var(--mark-blue)" />}
-              {isDirty && !isAutosaving && <StatusDot color="var(--mark-red)" />}
-              {!isDirty && !isAutosaving && lastSavedAt && (
-                <StatusDot color="var(--mark-green)" />
-              )}
-              {lastSavedAt && (
-                <span>
-                  {new Date(lastSavedAt).toLocaleTimeString('zh-CN', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </span>
-              )}
-              {autosaveError && (
-                <span style={{ color: 'var(--mark-red)' }}>{autosaveError}</span>
-              )}
-            </div>
-            <button
-              className="hover-shelf flex h-7 w-7 items-center justify-center rounded-lg transition-all duration-200"
-              style={{ color: 'var(--ink-faded)' }}
-              onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}
-              aria-label="切换主题"
-            >
-              <Sun size={14} strokeWidth={1.5} className="theme-icon-light" />
-              <Moon size={14} strokeWidth={1.5} className="theme-icon-dark" />
-            </button>
-            <div className="flex items-center gap-1">
-              <ActionPill label="保存" shortcut="⇧⌘S" onClick={() => void saveDraft()} />
-              {/* 提交就近浮层:以「提交」Pill 为锚点弹出(⌘S 也走 showCommitDialog) */}
-              <Popover open={showCommitDialog} onOpenChange={setShowCommitDialog}>
-                <PopoverAnchor>
-                  <ActionPill
-                    label="提交"
-                    shortcut="⌘S"
-                    primary
-                    onClick={() => setShowCommitDialog(true)}
-                  />
-                </PopoverAnchor>
-                <PopoverContent align="end" sideOffset={6} className="w-64 p-3">
-                  <CommitForm
-                    changeNote={state.changeNote}
-                    onChangeNote={(v) => handleChange('changeNote', v)}
-                    onConfirm={() => void commitDraft()}
-                    onCancel={() => setShowCommitDialog(false)}
-                  />
-                </PopoverContent>
-              </Popover>
-              <ActionPill label="丢弃" danger onClick={() => void discardDraft()} />
-            </div>
+          {/* 右组：扁平，文字状态 + 保存(ghost) + 提交(secondary→浮层) + ⋯ DropdownMenu */}
+          <div className="flex items-center gap-1.5 justify-self-end">
+            {/* 文字状态：保存中 / 未保存 / 上次编辑 hh:mm */}
+            <span className="mr-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+              {isAutosaving
+                ? '保存中...'
+                : isDirty
+                  ? '未保存'
+                  : lastSavedAt
+                    ? `上次编辑 ${new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
+                    : ''}
+            </span>
+            {autosaveError && (
+              <span className="text-xs" style={{ color: 'var(--mark-red)' }}>
+                {autosaveError}
+              </span>
+            )}
+
+            {/* 保存：ghost 轻量，快捷键 ⇧⌘S */}
+            <Button variant="ghost" size="default" onClick={() => void saveDraft()} title="保存 ⇧⌘S">
+              保存
+            </Button>
+
+            {/* 提交：secondary 中性，点开就近浮层（⌘S 也走 showCommitDialog） */}
+            <Popover open={showCommitDialog} onOpenChange={setShowCommitDialog}>
+              <PopoverTrigger asChild>
+                <Button variant="secondary" size="default">提交</Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" sideOffset={6} className="w-64 p-3">
+                <CommitForm
+                  changeNote={state.changeNote}
+                  onChangeNote={(v) => handleChange('changeNote', v)}
+                  onConfirm={() => void commitDraft()}
+                  onCancel={() => setShowCommitDialog(false)}
+                />
+              </PopoverContent>
+            </Popover>
+
+            {/* ⋯ 菜单：切换主题 / 丢弃草稿（危险） */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="rounded-md p-1.5 outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none data-[state=open]:bg-[var(--shelf)]"
+                  style={{ color: 'var(--ink-ghost)' }}
+                  title="更多"
+                >
+                  <MoreHorizontal size={18} strokeWidth={1.5} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}>
+                  <Sun />切换主题
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => void discardDraft()}
+                  className="text-[var(--danger)] focus:bg-[color-mix(in_srgb,var(--danger)_9%,transparent)] [&_svg]:text-[var(--danger)]"
+                >
+                  <Trash2 />丢弃草稿
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
 
@@ -459,50 +447,5 @@ const AnthologyEntryEditPage = () => {
     </div>
   );
 };
-
-// ─── 原语组件 ────────────────────────────────────────────────────────────────
-
-function StatusDot({ color }: { color: string }) {
-  return (
-    <span
-      className="h-[6px] w-[6px] rounded-full"
-      style={{ background: color, boxShadow: `0 0 6px ${color}40` }}
-    />
-  );
-}
-
-function ActionPill({
-  label,
-  shortcut,
-  primary,
-  danger,
-  onClick,
-}: {
-  label: string;
-  shortcut?: string;
-  primary?: boolean;
-  danger?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      className="rounded-md px-2.5 py-1 text-base transition-all duration-150"
-      style={{
-        color: danger ? 'var(--mark-red)' : primary ? 'var(--ink)' : 'var(--ink-faded)',
-        fontWeight: primary ? 600 : 400,
-      }}
-      onClick={onClick}
-      onMouseEnter={(e) => {
-        if (!danger) e.currentTarget.style.background = 'var(--shelf)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'transparent';
-      }}
-      title={shortcut}
-    >
-      {label}
-    </button>
-  );
-}
 
 export default AnthologyEntryEditPage;
