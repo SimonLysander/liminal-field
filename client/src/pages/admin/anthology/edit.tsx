@@ -346,14 +346,14 @@ const AnthologyEntryEditPage = () => {
 
           {/* 右组：扁平，文字状态 + 保存(ghost) + 提交(secondary→浮层) + ⋯ DropdownMenu */}
           <div className="flex items-center gap-1.5 justify-self-end">
-            {/* 文字状态：保存中 / 未保存 / 上次编辑 hh:mm */}
+            {/* 自动保存状态：保存中 / 未保存 / 已自动保存 hh:mm */}
             <span className="mr-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
               {isAutosaving
-                ? '保存中...'
+                ? '保存中…'
                 : isDirty
                   ? '未保存'
                   : lastSavedAt
-                    ? `上次编辑 ${new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
+                    ? `已自动保存 ${new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
                     : ''}
             </span>
             {autosaveError && (
@@ -362,15 +362,15 @@ const AnthologyEntryEditPage = () => {
               </span>
             )}
 
-            {/* 保存：ghost 轻量，快捷键 ⇧⌘S */}
-            <Button variant="ghost" size="default" onClick={() => void saveDraft()} title="保存 ⇧⌘S">
+            {/* 保存：ghost 轻量，快捷键 ⇧⌘S；字号 text-base(13px)压过基类 text-md,顶栏更轻、从属于 15px 正文 */}
+            <Button variant="ghost" size="default" className="text-base" onClick={() => void saveDraft()} title="保存 ⇧⌘S">
               保存
             </Button>
 
             {/* 提交：secondary 中性，点开就近浮层（⌘S 也走 showCommitDialog） */}
             <Popover open={showCommitDialog} onOpenChange={setShowCommitDialog}>
               <PopoverTrigger asChild>
-                <Button variant="secondary" size="default">提交</Button>
+                <Button variant="secondary" size="default" className="text-base">提交</Button>
               </PopoverTrigger>
               <PopoverContent align="end" sideOffset={6} className="w-64 p-3">
                 <CommitForm

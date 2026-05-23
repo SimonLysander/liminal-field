@@ -343,20 +343,21 @@ const DraftEditPage = () => {
 
         {/* 右：状态 + 保存(ghost) + 提交(中性胶囊→就近浮层) + … 菜单(主题/丢弃);按钮统一用设计系统 <Button> */}
         <div className="flex items-center gap-1.5">
+          {/* 自动保存状态:保存中 / 未保存 / 已自动保存 hh:mm(末态是草稿上次自动保存时间) */}
           <span className="mr-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-            {isAutosaving ? '保存中...' : isDirty ? '未保存' :
-             lastSavedAt ? `上次编辑 ${new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` : ''}
+            {isAutosaving ? '保存中…' : isDirty ? '未保存' :
+             lastSavedAt ? `已自动保存 ${new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` : ''}
           </span>
 
-          {/* 保存:ghost(轻),直接快捷(⇧⌘S) */}
-          <Button variant="ghost" size="default" onClick={() => void saveDraft()} title="保存 ⇧⌘S">
+          {/* 保存:ghost(轻),直接快捷(⇧⌘S);字号 text-base(13px)压过基类 text-md,顶栏更轻、从属于 15px 正文 */}
+          <Button variant="ghost" size="default" className="text-base" onClick={() => void saveDraft()} title="保存 ⇧⌘S">
             保存
           </Button>
 
           {/* 提交:secondary 中性胶囊(paper-dark 淡底,非色块);点开就近浮层,长春花紫只用在浮层里"确认提交"(认知关口)。⌘S 也走 showCommitDialog */}
           <Popover open={showCommitDialog} onOpenChange={setShowCommitDialog}>
             <PopoverTrigger asChild>
-              <Button variant="secondary" size="default">提交</Button>
+              <Button variant="secondary" size="default" className="text-base">提交</Button>
             </PopoverTrigger>
             {/* 浮层容器与 ⋯ 菜单同基准:w-64=256、圆角 xl、细边、柔阴影、入场动画 */}
             <PopoverContent align="end" sideOffset={6} className="w-64 p-3">
