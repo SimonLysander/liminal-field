@@ -17,7 +17,7 @@ import {
 // ─── parseAnthologyIndex ────────────────────────────────────────────────────
 
 describe('parseAnthologyIndex', () => {
-  it('完整 frontmatter → 解析出 title/description/entries', () => {
+  it('完整 frontmatter → 解析出 title/description/entries(只 key/title/date)', () => {
     const raw = [
       '---',
       'title: 旅行文集',
@@ -26,10 +26,8 @@ describe('parseAnthologyIndex', () => {
       '  - key: e001',
       '    title: 北京初见',
       '    date: "2026-03-01"',
-      '    publishedVersionId: snapshot-abc',
       '  - key: e002',
       '    title: 上海漫步',
-      '    publishedVersionId: null',
       '---',
     ].join('\n');
 
@@ -38,12 +36,12 @@ describe('parseAnthologyIndex', () => {
     expect(result.title).toBe('旅行文集');
     expect(result.description).toBe('记录各地见闻');
     expect(result.entries).toHaveLength(2);
-    expect(result.entries[0]).toEqual({ key: 'e001', title: '北京初见', date: '2026-03-01', publishedVersionId: 'snapshot-abc' });
-    // 无 date 字段 → null；publishedVersionId: null → null
-    expect(result.entries[1]).toEqual({ key: 'e002', title: '上海漫步', date: null, publishedVersionId: null });
+    expect(result.entries[0]).toEqual({ key: 'e001', title: '北京初见', date: '2026-03-01' });
+    // 无 date 字段 → null
+    expect(result.entries[1]).toEqual({ key: 'e002', title: '上海漫步', date: null });
   });
 
-  it('旧格式 frontmatter（无 publishedVersionId 字段）→ publishedVersionId 默认 null（向后兼容）', () => {
+  it('旧索引里残留的 publishedVersionId 被忽略(发布状态已迁出 Git,只存 Mongo)', () => {
     const raw = [
       '---',
       'title: 旧格式文集',
@@ -51,11 +49,13 @@ describe('parseAnthologyIndex', () => {
       '  - key: e001',
       '    title: 老条目',
       '    date: "2025-01-01"',
+      '    publishedVersionId: snapshot-abc',
       '---',
     ].join('\n');
 
     const result = parseAnthologyIndex(raw);
-    expect(result.entries[0].publishedVersionId).toBeNull();
+    expect(result.entries[0]).toEqual({ key: 'e001', title: '老条目', date: '2025-01-01' });
+    expect(result.entries[0]).not.toHaveProperty('publishedVersionId');
   });
 
   it('无 frontmatter（纯文本）→ 返回空默认值（含空 entries 数组）', () => {
@@ -112,27 +112,25 @@ describe('parseAnthologyIndex', () => {
       '  - key: e001',
       '    title: 测试条目',
       '    date: 2026-05-01',
-      '    publishedVersionId: null',
       '---',
     ].join('\n');
 
     const result = parseAnthologyIndex(raw);
     // normalizeDate 将 Date 对象转为 ISO 日期字符串
     expect(result.entries[0].date).toBe('2026-05-01');
-    expect(result.entries[0].publishedVersionId).toBeNull();
   });
 });
 
 // ─── serializeAnthologyIndex ─────────────────────────────────────────────────
 
 describe('serializeAnthologyIndex', () => {
-  it('有 title/description/entries → 生成合法 YAML frontmatter，含 publishedVersionId', () => {
+  it('生成合法 YAML frontmatter,只含内容+结构(不写 publishedVersionId 进 Git)', () => {
     const result = serializeAnthologyIndex({
       title: '旅行文集',
       description: '记录各地见闻',
       entries: [
-        { key: 'e001', title: '北京初见', date: '2026-03-01', publishedVersionId: 'snap-abc' },
-        { key: 'e002', title: '上海漫步', date: null, publishedVersionId: null },
+        { key: 'e001', title: '北京初见', date: '2026-03-01' },
+        { key: 'e002', title: '上海漫步', date: null },
       ],
     });
 
@@ -142,9 +140,9 @@ describe('serializeAnthologyIndex', () => {
     expect(result).toContain('"记录各地见闻"');
     expect(result).toContain('e001');
     expect(result).toContain('北京初见');
-    expect(result).toContain('snap-abc');
-    // e002 无 date → date 字段不出现在其条目中
     expect(result).toContain('e002');
+    // 发布状态不进 Git
+    expect(result).not.toContain('publishedVersionId');
   });
 
   it('空 entries 列表 → 生成合法 frontmatter（entries: []）', () => {
@@ -158,32 +156,30 @@ describe('serializeAnthologyIndex', () => {
     expect(result).toContain('entries: []');
   });
 
-  it('date: null 的条目 → 序列化时不包含 date 字段；publishedVersionId: null → 含 publishedVersionId: null', () => {
+  it('date: null 的条目 → 不含 date 字段,也不含 publishedVersionId', () => {
     const result = serializeAnthologyIndex({
       title: '测试',
       description: '',
-      entries: [{ key: 'e001', title: '无日期条目', date: null, publishedVersionId: null }],
+      entries: [{ key: 'e001', title: '无日期条目', date: null }],
     });
 
-    // 找到 e001 条目的区域，不应包含 date 字段
     expect(result).toContain('e001');
     expect(result).not.toContain('date:');
-    // publishedVersionId: null 应写出（便于调试）
-    expect(result).toContain('publishedVersionId:');
+    expect(result).not.toContain('publishedVersionId');
   });
 });
 
 // ─── index round-trip ────────────────────────────────────────────────────────
 
 describe('serializeAnthologyIndex → parseAnthologyIndex round-trip', () => {
-  it('序列化后再解析，结果与原始数据一致（含 publishedVersionId）', () => {
+  it('序列化后再解析，内容+结构一致(发布状态不参与序列化)', () => {
     const original = {
       title: '旅行文集',
       description: '跨越山与海的记录',
       entries: [
-        { key: 'e001', title: '北京初见', date: '2026-03-01', publishedVersionId: 'snap-v1' },
-        { key: 'e002', title: '上海漫步', date: null, publishedVersionId: null },
-        { key: 'e003', title: '成都慢生活', date: '2026-04-15', publishedVersionId: 'snap-v3' },
+        { key: 'e001', title: '北京初见', date: '2026-03-01' },
+        { key: 'e002', title: '上海漫步', date: null },
+        { key: 'e003', title: '成都慢生活', date: '2026-04-15' },
       ],
     };
 
@@ -192,10 +188,7 @@ describe('serializeAnthologyIndex → parseAnthologyIndex round-trip', () => {
 
     expect(parsed.title).toBe(original.title);
     expect(parsed.description).toBe(original.description);
-    expect(parsed.entries).toHaveLength(3);
-    expect(parsed.entries[0]).toEqual(original.entries[0]);
-    expect(parsed.entries[1]).toEqual(original.entries[1]);
-    expect(parsed.entries[2]).toEqual(original.entries[2]);
+    expect(parsed.entries).toEqual(original.entries);
   });
 });
 

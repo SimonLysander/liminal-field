@@ -33,6 +33,7 @@ import { RecoveryService } from '../src/modules/settings/recovery.service';
 import { ContentRepository } from '../src/modules/content/content.repository';
 import { ContentSnapshotRepository } from '../src/modules/content/content-snapshot.repository';
 import { NavigationRepository } from '../src/modules/navigation/navigation.repository';
+import { AnthologyViewService } from '../src/modules/workspace/anthology-view.service';
 
 const MARKER = '这段条目正文必须穿越归档与恢复存活下来';
 const BODY = `# 关于主体\n\n${MARKER}。`;
@@ -123,5 +124,58 @@ describe('Anthology 归档 → 恢复 全流程 (e2e regression)', () => {
       .set('Cookie', cookie)
       .expect(200);
     expect(detailRes.body.data.bodyMarkdown).toContain(MARKER);
+  });
+
+  it('条目发布状态只存 Mongo、不写进 Git main.md,恢复后重置为未发布', async () => {
+    const anthologyId = await createAnthologyItem(ctx.app, cookie, '发布状态测试文集');
+    const { entryKey } = await addAnthologyEntry(ctx.app, cookie, anthologyId, {
+      title: '会被发布的条目',
+      bodyMarkdown: '正文内容',
+    });
+
+    // 发布条目 + 整集上线
+    await supertest(ctx.app.getHttpServer())
+      .put(`/api/v1/spaces/anthology/items/${anthologyId}/entries/${entryKey}/publish`)
+      .set('Cookie', cookie)
+      .expect(200);
+    await supertest(ctx.app.getHttpServer())
+      .put(`/api/v1/spaces/anthology/items/${anthologyId}/publish`)
+      .set('Cookie', cookie)
+      .expect(200);
+
+    const anthologySvc = ctx.app.get(AnthologyViewService);
+    const contentRepo = ctx.app.get(ContentRepository);
+
+    // 发布生效:发布状态落在 Mongo ContentItem.entryPublishStates
+    const itemAfterPublish = await contentRepo.findById(anthologyId);
+    expect(itemAfterPublish?.entryPublishStates?.length).toBe(1);
+    const adminAfter = await anthologySvc.toAdminDetail(anthologyId);
+    expect(adminAfter.entries[0].publishedVersionId).not.toBeNull();
+
+    // flush Git + manifest,断言 main.md(进 Git 的文件)里【不含】publishedVersionId
+    const gitSvc = ctx.app.get(ContentGitService);
+    await gitSvc.retryPendingArchives();
+    await ctx.app.get(ManifestService).writeManifest();
+    await gitSvc.commitManifestIfChanged();
+    const mainMd = await readFile(
+      join(ctx.tmpGitDir, 'content', anthologyId, 'main.md'),
+      'utf8',
+    );
+    expect(mainMd).toContain(entryKey); // 结构(条目)在
+    expect(mainMd).not.toContain('publishedVersionId'); // 发布状态不在 Git
+
+    // 清空 Mongo → 从 Git 恢复
+    await contentRepo.deleteAll();
+    await ctx.app.get(ContentSnapshotRepository).deleteAll();
+    await ctx.app.get(NavigationRepository).deleteAll();
+    const recovery = ctx.app.get(RecoveryService);
+    await recovery.execute((await recovery.scan()).missingInDb);
+
+    // 恢复后:条目结构回来了,但发布状态被重置为未发布(需手动重发)
+    const itemAfterRecover = await contentRepo.findById(anthologyId);
+    expect(itemAfterRecover?.entryPublishStates ?? []).toHaveLength(0);
+    const adminAfterRecover = await anthologySvc.toAdminDetail(anthologyId);
+    expect(adminAfterRecover.entries).toHaveLength(1); // 条目还在
+    expect(adminAfterRecover.entries[0].publishedVersionId).toBeNull(); // 但未发布
   });
 });

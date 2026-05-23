@@ -5,6 +5,7 @@ import {
   ContentChangeLog,
   ContentItem,
   ContentVersion,
+  EntryPublishState,
 } from './content-item.entity';
 
 export interface CreateContentItemInput {
@@ -67,6 +68,20 @@ export class ContentRepository {
       },
       { returnDocument: 'after' },
     );
+  }
+
+  /**
+   * 设置文集条目级发布状态(只 $set entryPublishStates,不触碰其它字段)。
+   * 独立方法而非走 update():update() 会重写 publishedVersion 等,语义不符;
+   * 且发布/取消发布只该动这一个字段。
+   */
+  async setEntryPublishStates(
+    id: string,
+    states: EntryPublishState[],
+  ): Promise<void> {
+    await this.contentItemModel.findByIdAndUpdate(id, {
+      $set: { entryPublishStates: states },
+    });
   }
 
   async list(options?: {
