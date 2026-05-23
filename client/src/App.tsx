@@ -25,6 +25,8 @@ import { smoothBounce } from './lib/motion';
 import { authApi } from '@/services/auth';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ConfirmProvider } from '@/contexts/ConfirmContext';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { DesktopOnlyNotice } from '@/components/shared/DesktopOnlyNotice';
 
 import Sidebar from './components/global/Sidebar';
 import Topbar from './components/global/Topbar';
@@ -55,6 +57,8 @@ let authChecked = false;
 let isAuthenticated = false;
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
+  // 管理端 + 编辑器桌面优先:移动端统一拦截到提示页(不再走鉴权/渲染重布局)
+  const isMobile = useIsMobile();
   const [status, setStatus] = useState<'checking' | 'ok' | 'redirect'>(
     authChecked ? (isAuthenticated ? 'ok' : 'redirect') : 'checking',
   );
@@ -75,6 +79,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
       });
   }, []);
 
+  if (isMobile) return <DesktopOnlyNotice />;
   if (status === 'checking') return <LoadingState variant="full" />;
   if (status === 'redirect') return <Navigate to="/login" replace />;
   return <>{children}</>;
