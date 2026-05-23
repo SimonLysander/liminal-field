@@ -24,42 +24,20 @@ import { SearchPanel } from '@/components/global/SearchPanel';
 import { structureApi } from '@/services/structure';
 import type { StructureNode } from '@/services/structure';
 import {
-  Home,
   FileText,
-  Image,
-  BookOpen,
-  Sparkles,
   Search,
   Folder,
   ChevronRight,
   ChevronLeft,
 } from 'lucide-react';
+import { type Space, spaces, labels, NavIcons, spaceToPath, pathToSpace } from './nav-spaces';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import { LoadingState } from '@/components/LoadingState';
 
 /* ---------- Data ---------- */
 
-type Space = 'home' | 'notes' | 'anthology' | 'gallery' | 'agent';
-const spaces: Space[] = ['home', 'notes', 'anthology', 'gallery'];
-
-const labels: Record<Space, string> = {
-  home: '首页',
-  notes: '笔记',
-  anthology: '文集',
-  gallery: '画廊',
-  agent: '助手',
-};
-
-/* Lucide 统一配置 */
-const NAV_ICON = { size: 16, strokeWidth: 1.5 } as const;
-
-const icons: Record<Space, React.ReactNode> = {
-  home: <Home {...NAV_ICON} />,
-  notes: <FileText {...NAV_ICON} />,
-  anthology: <BookOpen {...NAV_ICON} />,
-  gallery: <Image {...NAV_ICON} />,
-  agent: <Sparkles {...NAV_ICON} />,
-};
+/* Space / spaces / labels / NavIcons / spaceToPath / pathToSpace
+ * 均从 nav-spaces 共享模块导入（Sidebar 与 BottomTabBar 单一来源）。 */
 
 /* Placeholder data for agent sub-nav */
 
@@ -79,21 +57,6 @@ function getAmbientPhrase() {
   if (h < 19) return '傍晚，收集今天的碎片';
   if (h < 22) return '晚上好，记录一些什么吧';
   return '夜晚适合回看';
-}
-
-/* ---------- Path ↔ Space mapping ---------- */
-
-function pathToSpace(pathname: string): Space {
-  const seg = pathname.split('/')[1];
-  if (seg === 'note') return 'notes';
-  if (seg === 'anthology') return 'anthology';
-  if (spaces.includes(seg as Space)) return seg as Space;
-  return 'notes';
-}
-
-function spaceToPath(space: Space): string {
-  if (space === 'notes') return '/note';
-  return `/${space}`;
 }
 
 /* ---------- Notes tree navigation ---------- */
@@ -230,7 +193,7 @@ export default function Sidebar() {
 
   return (
     <aside
-      className="flex shrink-0 flex-col overflow-y-auto rounded-lg"
+      className="hidden md:flex shrink-0 flex-col overflow-y-auto rounded-lg"
       style={{
         width: 'var(--layout-sidebar)',
         background: 'var(--sidebar-bg)',
@@ -281,7 +244,7 @@ export default function Sidebar() {
               className="relative z-[1] flex items-center transition-colors duration-200"
               style={{ color: space === active ? 'var(--accent)' : 'var(--ink-faded)' }}
             >
-              {icons[space]}
+              {(() => { const Icon = NavIcons[space]; return <Icon size={16} strokeWidth={1.5} />; })()}
             </span>
             <span
               className="relative z-[1] text-base transition-colors duration-200"

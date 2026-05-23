@@ -29,6 +29,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { DesktopOnlyNotice } from '@/components/shared/DesktopOnlyNotice';
 
 import Sidebar from './components/global/Sidebar';
+import BottomTabBar from './components/global/BottomTabBar';
 import Topbar from './components/global/Topbar';
 import AgentPage from './pages/agent';
 import AnthologyPage from './pages/anthology';
@@ -124,7 +125,8 @@ function MainLayout() {
   }, [isGallery]);
 
   return (
-    <div data-layout-root className="relative z-[1] flex h-screen" style={{ background: 'var(--paper)' }}>
+    // 移动端竖排([内容][底部 Tab]),桌面端横排([侧栏][内容])
+    <div data-layout-root className="relative z-[1] flex h-screen flex-col md:flex-row" style={{ background: 'var(--paper)' }}>
       {/* Gallery 过渡遮罩：渐入盖住闪帧，0.6s 后消失露出高斯模糊 */}
       <motion.div
         animate={{ opacity: showOverlay ? 1 : 0 }}
@@ -169,6 +171,9 @@ function MainLayout() {
           </motion.div>
         </AnimatePresence>
       </main>
+
+      {/* 移动端底部导航(桌面端 md:hidden 自动隐藏) */}
+      <BottomTabBar />
     </div>
   );
 }
