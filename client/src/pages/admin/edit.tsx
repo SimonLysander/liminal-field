@@ -23,6 +23,8 @@ import { notesApi as contentItemsApi } from '@/services/workspace';
 import type { ContentChangeType, ContentDetail, EditorDraft } from '@/services/workspace';
 import { PlateMarkdownEditor } from './components/PlateEditor';
 import { parseError } from './helpers';
+import { type HeadingEntry, extractHeadingEntriesFromMarkdown } from './lib/markdown-toc';
+import { EditorOutline } from './components/EditorOutline';
 import { LoadingState } from '@/components/LoadingState';
 import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
 import { DraftAssetProvider } from '@/contexts/DraftAssetContext';
@@ -36,39 +38,6 @@ type EditorState = {
   changeNote: string;
   changeType: ContentChangeType;
 };
-
-type HeadingEntry = { level: number; text: string; index: number };
-
-/** 模块级纯函数：避免 useMemo 内对闭包变量重新赋值触发 react-hooks 不可变/纯度规则 */
-/** 清理标题中的 LaTeX 定界符：$$...$$ 移除，$...$ 保留内容 */
-function stripLatexForToc(raw: string): string {
-  return raw
-    .replace(/\$\$[\s\S]*?\$\$/g, ' ')
-    .replace(/\$([^$]+)\$/g, '$1')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function extractHeadingEntriesFromMarkdown(bodyMarkdown: string): HeadingEntry[] {
-  const acc: HeadingEntry[] = [];
-  let idx = 0;
-  let inCodeBlock = false;
-  for (const line of bodyMarkdown.split('\n')) {
-    if (line.startsWith('```')) {
-      inCodeBlock = !inCodeBlock;
-      continue;
-    }
-    if (inCodeBlock) continue;
-    const match = line.match(/^(#{1,3})\s+(.+)$/);
-    if (match) {
-      const text = stripLatexForToc(match[2].trim());
-      if (!text) continue;
-      acc.push({ level: match[1].length, text, index: idx });
-      idx += 1;
-    }
-  }
-  return acc;
-}
 
 const DraftEditPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -446,46 +415,8 @@ const DraftEditPage = () => {
         </div>
       </div>
 
-      {/* [2,3] 大纲 — 与展示端笔记目录同步:黄金比例高度、顶部留距、上下渐隐 */}
-      <div
-        className="min-h-0 self-start overflow-y-auto px-4 py-10"
-        style={{
-          marginTop: '8vh',
-          maxHeight: '61.8vh',
-          maskImage: 'linear-gradient(to bottom, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%)',
-          WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%)',
-        }}
-      >
-        <div
-          className="mb-3 text-xs font-semibold uppercase"
-          style={{ color: 'var(--ink-ghost)', letterSpacing: '0.04em' }}
-        >
-          大纲
-        </div>
-        <nav>
-          {headings.length === 0 ? (
-            <p className="py-6 text-center text-sm" style={{ color: 'var(--ink-ghost)' }}>
-              使用标题构建文档结构
-            </p>
-          ) : (
-            headings.map((h) => (
-              <button
-                key={`${h.index}-${h.text}`}
-                className="outline-heading-btn w-full truncate rounded-lg py-1.5 text-left text-sm transition-colors duration-100"
-                style={{
-                  paddingLeft: `${(h.level - 1) * 10 + 8}px`,
-                  paddingRight: 8,
-                  color: 'var(--ink-faded)',
-                  fontWeight: 400,
-                }}
-                onClick={() => scrollToHeading(h.index)}
-              >
-                {h.text}
-              </button>
-            ))
-          )}
-        </nav>
-      </div>
+      {/* [2,3] 大纲 — 共享组件,与展示端笔记目录同步 */}
+      <EditorOutline headings={headings} onJump={scrollToHeading} />
 
     </div>
   );
