@@ -16,8 +16,6 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { Sun, Moon, ChevronLeft, Save, Trash2 } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import { useTheme } from '@/hooks/use-theme';
 import { notesApi as contentItemsApi } from '@/services/workspace';
 import type { ContentChangeType, ContentDetail, EditorDraft } from '@/services/workspace';
@@ -25,6 +23,7 @@ import { PlateMarkdownEditor } from './components/PlateEditor';
 import { parseError } from './helpers';
 import { type HeadingEntry, extractHeadingEntriesFromMarkdown } from './lib/markdown-toc';
 import { EditorOutline } from './components/EditorOutline';
+import { CommitForm } from './components/CommitForm';
 import { LoadingState } from '@/components/LoadingState';
 import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
 import { DraftAssetProvider } from '@/contexts/DraftAssetContext';
@@ -421,40 +420,5 @@ const DraftEditPage = () => {
     </div>
   );
 };
-
-/* ---------- Commit Form(就近浮层内容)---------- */
-
-function CommitForm({
-  changeNote,
-  onChangeNote,
-  onConfirm,
-  onCancel,
-}: {
-  changeNote: string;
-  onChangeNote: (v: string) => void;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div>
-      <div className="mb-0.5 text-md font-semibold" style={{ color: 'var(--ink)' }}>提交版本</div>
-      <p className="mb-3 text-xs" style={{ color: 'var(--ink-ghost)' }}>将当前草稿提交为正式版本</p>
-      <label className="flex flex-col gap-1.5">
-        <span className="text-2xs font-medium" style={{ color: 'var(--ink-ghost)' }}>变更说明</span>
-        <Input
-          type="text"
-          value={changeNote}
-          onChange={(e) => onChangeNote(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') onConfirm(); }}
-          autoFocus
-        />
-      </label>
-      <div className="mt-3 flex items-center justify-end gap-1.5">
-        <Button variant="ghost" size="sm" type="button" onClick={onCancel}>取消</Button>
-        <Button variant="primary" size="sm" type="button" onClick={onConfirm}>确认提交</Button>
-      </div>
-    </div>
-  );
-}
 
 export default DraftEditPage;
