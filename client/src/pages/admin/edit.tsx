@@ -196,6 +196,7 @@ const DraftEditPage = () => {
       }
 
       // local-first:抓同步 token,成功后仅在期间无新改动时标记本地已同步(防竞态)
+      const startedAt = Date.now();
       const syncToken = beginLocalSync();
       try {
         const draft = await contentItemsApi.saveDraft(id, {
@@ -206,10 +207,13 @@ const DraftEditPage = () => {
         });
         setIsDirty(false);
         setLastSavedAt(draft.savedAt);
-        setIsAutosaving(false);
         endLocalSync(syncToken);
-
-        // 手动保存成功（inline SaveStatus 已提供视觉反馈，无需弹窗）
+        // 自动保存:让"保存中"至少停留 ~800ms,否则呼吸点一闪而过(存盘常 ~50ms)
+        if (options?.silent) {
+          const remain = 800 - (Date.now() - startedAt);
+          if (remain > 0) await new Promise((resolve) => setTimeout(resolve, remain));
+        }
+        setIsAutosaving(false);
       } catch (saveError) {
         setIsAutosaving(false);
         if (options?.silent) {
@@ -368,13 +372,16 @@ const DraftEditPage = () => {
 
         {/* 右：状态 + 保存(ghost) + 提交(中性胶囊→就近浮层) + … 菜单(主题/丢弃);按钮统一用设计系统 <Button> */}
         <div className="flex items-center gap-1.5">
-          {/* 自动保存状态:保存中(长春花紫呼吸点强调) / 未保存 / 已自动保存 hh:mm */}
+          {/* 自动保存状态:只两态——保存中(长春花紫呼吸点强调) / 已自动保存 hh:mm。不显示"未保存"。 */}
           <span className="mr-1 inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
             {isAutosaving && (
-              <span className="size-1.5 shrink-0 animate-pulse rounded-full" style={{ background: 'var(--accent)' }} aria-hidden />
+              <span className="size-1.5 shrink-0 animate-pulse rounded-full [animation-duration:1.2s]" style={{ background: 'var(--accent)' }} aria-hidden />
             )}
-            {isAutosaving ? '保存中…' : isDirty ? '未保存' :
-             lastSavedAt ? `已自动保存 ${new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` : ''}
+            {isAutosaving
+              ? '保存中…'
+              : lastSavedAt
+                ? `已自动保存 ${new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
+                : ''}
           </span>
 
           {/* 保存:ghost(轻),直接快捷(⇧⌘S);字号 text-base(13px)压过基类 text-md,顶栏更轻、从属于 15px 正文 */}
