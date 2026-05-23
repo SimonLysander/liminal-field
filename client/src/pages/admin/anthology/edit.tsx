@@ -17,7 +17,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { Sun, Moon } from 'lucide-react';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
@@ -79,7 +79,17 @@ function extractHeadingEntriesFromMarkdown(bodyMarkdown: string): HeadingEntry[]
 const AnthologyEntryEditPage = () => {
   const { id, entryKey } = useParams<{ id: string; entryKey: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const confirm = useConfirm();
+
+  /**
+   * 安全返回:有 app 内上一页就回退,否则去文集管理后台。
+   * 修复"有时候点返回页面出错"(直接打开/刷新过编辑页时 navigate(-1) 退到 app 外/坏页)。
+   */
+  const goBack = useCallback(() => {
+    if (location.key !== 'default') navigate(-1);
+    else navigate('/admin/anthology');
+  }, [location.key, navigate]);
 
   const { theme, setTheme } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -246,12 +256,12 @@ const AnthologyEntryEditPage = () => {
       setLastSavedAt('');
 
       // 提交成功后跳转回管理页
-      navigateTimerRef.current = window.setTimeout(() => navigate(-1), 800);
+      navigateTimerRef.current = window.setTimeout(() => goBack(), 800);
     } catch (commitError) {
       setCommitting(false);
       setError(parseError(commitError, '提交失败'));
     }
-  }, [id, entryKey, state, navigate]);
+  }, [id, entryKey, state, goBack]);
 
   // ─── 丢弃草稿 ─────────────────────────────────────────────────────────────
 
@@ -267,11 +277,11 @@ const AnthologyEntryEditPage = () => {
 
     try {
       await anthologyApi.deleteEntryDraft(id, entryKey);
-      navigate(-1);
+      goBack();
     } catch (discardError) {
       setError(parseError(discardError, '丢弃失败'));
     }
-  }, [id, entryKey, navigate, confirm]);
+  }, [id, entryKey, goBack, confirm]);
 
   // ─── 快捷键 ──────────────────────────────────────────────────────────────
 
@@ -310,7 +320,7 @@ const AnthologyEntryEditPage = () => {
         <button
           className="text-base"
           style={{ color: 'var(--ink-faded)' }}
-          onClick={() => navigate(-1)}
+          onClick={goBack}
         >
           返回管理后台
         </button>
@@ -349,7 +359,7 @@ const AnthologyEntryEditPage = () => {
             <button
               className="hover-shelf shrink-0 rounded-md px-2 py-1 text-base transition-colors duration-150"
               style={{ color: 'var(--ink-faded)' }}
-              onClick={() => navigate(-1)}
+              onClick={goBack}
             >
               ←
             </button>

@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { Sun, Moon, ChevronLeft, Save, Trash2 } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
@@ -73,7 +73,18 @@ function extractHeadingEntriesFromMarkdown(bodyMarkdown: string): HeadingEntry[]
 const DraftEditPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const confirm = useConfirm();
+
+  /**
+   * 安全返回:有 app 内上一页就回退(保留原来的精确返回),否则去管理后台。
+   * 修复"有时候点返回页面出错"——直接打开/刷新过编辑页时 navigate(-1) 会退到
+   * app 外或坏页(location.key 为 'default' 即没有 app 内历史)。
+   */
+  const goBack = useCallback(() => {
+    if (location.key !== 'default') navigate(-1);
+    else navigate('/admin/notes');
+  }, [location.key, navigate]);
 
   const { theme, setTheme } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -262,12 +273,12 @@ const DraftEditPage = () => {
       setLastSavedAt('');
 
       // 提交成功后立即跳转（页面跳转本身就是成功反馈）
-      navigateTimerRef.current = window.setTimeout(() => navigate(-1), 800);
+      navigateTimerRef.current = window.setTimeout(() => goBack(), 800);
     } catch (commitError) {
       setCommitting(false);
       setError(parseError(commitError, '提交失败'));
     }
-  }, [id, state, navigate]);
+  }, [id, state, goBack]);
 
   const discardDraft = useCallback(async () => {
     if (!id) return;
@@ -276,11 +287,11 @@ const DraftEditPage = () => {
 
     try {
       await contentItemsApi.deleteDraft(id);
-      navigate(-1);
+      goBack();
     } catch (discardError) {
       setError(parseError(discardError, '丢弃失败'));
     }
-  }, [id, navigate, confirm]);
+  }, [id, goBack, confirm]);
 
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
@@ -307,7 +318,7 @@ const DraftEditPage = () => {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-3" style={{ background: 'var(--paper)' }}>
         <p className="text-base" style={{ color: 'var(--mark-red)' }}>{error}</p>
-        <button className="text-base" style={{ color: 'var(--ink-faded)' }} onClick={() => navigate(-1)}>
+        <button className="text-base" style={{ color: 'var(--ink-faded)' }} onClick={goBack}>
           返回管理后台
         </button>
       </div>
@@ -339,7 +350,7 @@ const DraftEditPage = () => {
           <button
             className="rounded-sm p-0.5 transition-colors hover:bg-[var(--shelf)]"
             style={{ color: 'var(--ink-faded)' }}
-            onClick={() => navigate(-1)}
+            onClick={goBack}
           >
             <ChevronLeft size={16} strokeWidth={1.5} />
           </button>
