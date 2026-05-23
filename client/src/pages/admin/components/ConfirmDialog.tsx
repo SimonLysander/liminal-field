@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react';
-import { motion } from 'motion/react';
-import { smoothBounce } from '@/lib/motion';
 import { structureApi, type DeleteStats } from '@/services/structure';
 import { parseError } from '../helpers';
 import type { StructureNode } from '@/services/structure';
 import { LoadingState } from '@/components/LoadingState';
+import { Modal } from '@/components/shared/Modal';
+import { Button } from '@/components/ui/button';
+import { FieldError } from '@/components/ui/field-error';
 
 /**
  * Confirm dialog for destructive actions (delete node).
  *
- * Radius: container uses radius-xl (12px, modal tier).
- * Buttons use rounded-lg. Font sizes use type scale variables.
+ * 外壳迁移：原 fixed inset-0 + blur + motion → 统一 <Modal> 标准组件（L3）。
+ * open 固定传 true：组件只在 workspace.deleteTarget 存在时被渲染，渲染即打开。
+ * 对外 props 签名不变：{ node, onConfirm, onCancel }。
+ * 删除按钮改用 variant="danger"（原 var(--mark-red) 红块 → 设计系统危险语义）。
  */
 export const ConfirmDialog = ({
   node,
@@ -56,68 +59,41 @@ export const ConfirmDialog = ({
   const hasDescendants = stats && (stats.folderCount + stats.docCount > 1);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.2)', backdropFilter: 'blur(4px)' }}
-      onClick={(e) => e.target === e.currentTarget && onCancel()}
-    >
-      <motion.div
-        className="w-[360px] rounded-xl"
-        style={{
-          background: 'var(--paper)',
-          boxShadow: 'var(--shadow-lg)',
-        }}
-        initial={{ opacity: 0, scale: 0.96, y: 8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.2, ease: smoothBounce }}
-      >
-        <div className="px-6 pb-2 pt-5">
-          <div className="text-2xs font-semibold uppercase" style={{ color: 'var(--ink-ghost)', letterSpacing: '0.04em' }}>
-            删除节点
-          </div>
-          <h3 className="mt-1 text-lg font-semibold" style={{ color: 'var(--ink)' }}>
-            确认删除「{node.name}」？
-          </h3>
-          <div className="mt-2 text-sm leading-relaxed" style={{ color: 'var(--ink-faded)' }}>
-            {statsLoading ? (
-              <LoadingState variant="inline" label="正在统计" />
-            ) : stats && hasDescendants ? (
-              <span>
-                将删除 <strong style={{ color: 'var(--mark-red)' }}>{stats.folderCount}</strong> 个主题、
-                <strong style={{ color: 'var(--mark-red)' }}>{stats.docCount}</strong> 个内容节点，此操作不可撤销。
-              </span>
-            ) : (
-              <span>此操作不可撤销。</span>
-            )}
-          </div>
-        </div>
-
-        {error && (
-          <div className="px-6">
-            <p className="text-xs" style={{ color: 'var(--mark-red)' }}>{error}</p>
-          </div>
-        )}
-
-        <div className="flex justify-end gap-2 px-6 pb-5 pt-4">
-          <button
-            type="button"
-            className="rounded-lg px-4 py-2 text-sm font-medium"
-            style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
-            onClick={onCancel}
-          >
+    <Modal
+      open
+      onClose={onCancel}
+      title={`确认删除「${node.name}」？`}
+      footer={
+        <>
+          <Button variant="ghost" size="sm" type="button" onClick={onCancel}>
             取消
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
             type="button"
-            className="rounded-lg px-4 py-2 text-sm font-medium transition-opacity duration-150 disabled:opacity-50"
-            style={{ background: 'var(--mark-red)', color: '#fff' }}
             onClick={() => void handleConfirm()}
             disabled={loading || statsLoading}
           >
             {loading ? '删除中...' : '删除'}
-          </button>
-        </div>
-      </motion.div>
-    </div>
+          </Button>
+        </>
+      }
+    >
+      {/* 统计文案：加载中 / 有子节点 / 无子节点三态 */}
+      <div className="text-sm leading-relaxed" style={{ color: 'var(--ink-faded)' }}>
+        {statsLoading ? (
+          <LoadingState variant="inline" label="正在统计" />
+        ) : stats && hasDescendants ? (
+          <span>
+            将删除 <strong style={{ color: 'var(--mark-red)' }}>{stats.folderCount}</strong> 个主题、
+            <strong style={{ color: 'var(--mark-red)' }}>{stats.docCount}</strong> 个内容节点，此操作不可撤销。
+          </span>
+        ) : (
+          <span>此操作不可撤销。</span>
+        )}
+      </div>
+      <FieldError>{error}</FieldError>
+    </Modal>
   );
 };

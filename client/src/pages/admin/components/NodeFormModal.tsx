@@ -1,13 +1,15 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'motion/react';
 import { Folder, FileText } from 'lucide-react';
-import { smoothBounce } from '@/lib/motion';
 import type { StructureNodeType } from '@/services/structure';
 import { parseError } from '../helpers';
 import { type ModalState, type NodeSubmitPayload } from '../types';
 import { importApi } from '@/services/import';
 import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
+import { Modal } from '@/components/shared/Modal';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { FieldError } from '@/components/ui/field-error';
 
 /**
  * Modal dialog for creating or editing tree nodes.
@@ -15,6 +17,11 @@ import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
  * Create mode: user picks "主题"(FOLDER) or "文稿"(DOC), enters a name.
  * DOC creation uses node name as content title — no separate title/summary fields.
  * Edit mode: simple rename dialog.
+ *
+ * 外壳迁移：原 fixed inset-0 + blur + motion → 统一 <Modal> 标准组件（L3）。
+ * open 固定传 true：组件只在 workspace.modal.open 时被渲染，渲染即打开。
+ * ThresholdOverlay 放在 Modal 外层，保证导入时全屏遮罩正常显示。
+ * 对外 props 签名不变：{ modal, onClose, onSubmit }。
  */
 export const NodeFormModal = ({
   modal,
@@ -100,36 +107,35 @@ export const NodeFormModal = ({
 
   return (
     <>
-    <ThresholdOverlay visible={importing} label="正在解析文件..." />
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.2)', backdropFilter: 'blur(4px)' }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <motion.div
-        className="w-[420px] overflow-hidden rounded-xl"
-        style={{
-          background: 'var(--paper)',
-          boxShadow: 'var(--shadow-lg)',
-        }}
-        initial={{ opacity: 0, scale: 0.96, y: 8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.2, ease: smoothBounce }}
+      {/* ThresholdOverlay 放在 Modal 外层，确保文件导入时全屏遮罩可见 */}
+      <ThresholdOverlay visible={importing} label="正在解析文件..." />
+      <Modal
+        open
+        onClose={onClose}
+        title={isCreate ? '新建' : '重命名'}
+        footer={
+          <>
+            <Button variant="ghost" size="sm" type="button" onClick={onClose}>
+              取消
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              type="submit"
+              form="node-form-modal-form"
+              disabled={submitting}
+            >
+              {submitting ? '提交中...' : isCreate ? '创建' : '保存'}
+            </Button>
+          </>
+        }
       >
-        <div className="px-6 pb-1 pt-5">
-          <h2 className="text-lg font-semibold" style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}>
-            {isCreate ? '新建' : '重命名'}
-          </h2>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4 px-6 pb-6 pt-3">
+        <form id="node-form-modal-form" onSubmit={handleSubmit} className="space-y-4">
           <FieldLabel label="名称">
-            <input
+            <Input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border-none px-3 py-2 text-sm outline-none"
-              style={{ background: 'var(--shelf)', color: 'var(--ink)', fontFamily: 'var(--font-sans)' }}
               placeholder={isCreate && type === 'DOC' ? '例如：世界观构建笔记' : '例如：世界观构建'}
               autoFocus
             />
@@ -137,6 +143,7 @@ export const NodeFormModal = ({
 
           {isCreate && (
             <FieldLabel label="类型">
+              {/* 类型切换按钮组：自定义选中态（accent），原样保留逻辑与样式 */}
               <div className="flex gap-1.5">
                 {typeOptions.map((option) => (
                   <button
@@ -182,31 +189,9 @@ export const NodeFormModal = ({
             </>
           )}
 
-          {error && (
-            <p className="text-xs" style={{ color: 'var(--mark-red)' }}>{error}</p>
-          )}
-
-          <div className="flex justify-end gap-2 pt-1">
-            <button
-              type="button"
-              className="rounded-lg px-4 py-2 text-sm font-medium"
-              style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
-              onClick={onClose}
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-lg px-4 py-2 text-sm font-medium transition-opacity duration-150 disabled:opacity-50"
-              style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}
-            >
-              {submitting ? '提交中...' : isCreate ? '创建' : '保存'}
-            </button>
-          </div>
+          <FieldError>{error}</FieldError>
         </form>
-      </motion.div>
-    </div>
+      </Modal>
     </>
   );
 };

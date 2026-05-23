@@ -5,15 +5,20 @@
  * 交互模式与 AdminStructurePanel / 展示端 Sidebar 一致：
  * 一次显示一个层级的文件夹，点击进入下一层，面包屑回退。
  * 选定目标后点"移动到此处"确认。
+ *
+ * 外壳迁移：原 fixed inset-0 + blur + motion → 统一 <Modal> 标准组件（L3）。
+ * open 固定传 true：组件只在 workspace.moveTarget 存在时被渲染，渲染即打开。
+ * 对外 props 签名不变：{ node, scope, onConfirm, onClose }。
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { motion } from 'motion/react';
 import { ChevronLeft, ChevronRight, Folder } from 'lucide-react';
-import { smoothBounce } from '@/lib/motion';
 import { structureApi } from '@/services/structure';
 import type { StructureNode } from '@/services/structure';
 import { LoadingState, ContentFade } from '@/components/LoadingState';
+import { Modal } from '@/components/shared/Modal';
+import { Button } from '@/components/ui/button';
+import { FieldError } from '@/components/ui/field-error';
 
 type BreadcrumbItem = { id: string; name: string };
 
@@ -112,162 +117,131 @@ export function MoveToDialog({ node, scope, onConfirm, onClose }: MoveToDialogPr
     : '根目录';
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.2)', backdropFilter: 'blur(4px)' }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <motion.div
-        className="flex w-[420px] flex-col overflow-hidden rounded-xl"
-        style={{
-          background: 'var(--paper)',
-          boxShadow: 'var(--shadow-lg)',
-          maxHeight: '70vh',
-        }}
-        initial={{ opacity: 0, scale: 0.96, y: 8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.2, ease: smoothBounce }}
-      >
-        {/* Header */}
-        <div className="px-6 pb-1 pt-5">
-          <h2
-            className="text-lg font-semibold"
-            style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}
-          >
-            移动「{node.name}」
-          </h2>
-          <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-            选择目标位置
-          </p>
-        </div>
-
-        {/* Breadcrumb */}
-        <div className="px-6 pt-3 pb-2">
-          {breadcrumb.length === 0 ? (
-            <span
-              className="text-xs font-medium"
-              style={{ color: 'var(--ink-ghost)' }}
+    <Modal
+      open
+      onClose={onClose}
+      title={`移动「${node.name}」`}
+      description="选择目标位置"
+      footer={
+        /* footer 区：目标位置标签 + 取消 + 确认，使用 flex 撑开让标签靠左 */
+        <div className="flex w-full items-center justify-between">
+          <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            目标：{targetLabel}
+          </span>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" type="button" onClick={onClose}>
+              取消
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              type="button"
+              disabled={submitting || isSamePosition}
+              onClick={() => void handleConfirm()}
             >
-              根目录
+              {submitting ? '移动中...' : isSamePosition ? '已在此位置' : '移动到此处'}
+            </Button>
+          </div>
+        </div>
+      }
+    >
+      {/* 面包屑导航 */}
+      <div className="pb-1 pt-0">
+        {breadcrumb.length === 0 ? (
+          <span
+            className="text-xs font-medium"
+            style={{ color: 'var(--ink-ghost)' }}
+          >
+            根目录
+          </span>
+        ) : (
+          <div className="flex items-center whitespace-nowrap">
+            <span
+              className="shrink-0 cursor-pointer rounded p-0.5 transition-colors duration-150"
+              style={{ color: 'var(--ink-faded)' }}
+              onClick={() =>
+                breadcrumb.length >= 2
+                  ? goToBreadcrumb(breadcrumb.length - 2)
+                  : goToBreadcrumb(null)
+              }
+            >
+              <ChevronLeft size={14} strokeWidth={2} />
             </span>
-          ) : (
-            <div className="flex items-center whitespace-nowrap">
-              <span
-                className="shrink-0 cursor-pointer rounded p-0.5 transition-colors duration-150"
-                style={{ color: 'var(--ink-faded)' }}
-                onClick={() =>
-                  breadcrumb.length >= 2
-                    ? goToBreadcrumb(breadcrumb.length - 2)
-                    : goToBreadcrumb(null)
-                }
-              >
-                <ChevronLeft size={14} strokeWidth={2} />
-              </span>
-              <div className="flex min-w-0 items-center gap-1">
-                {breadcrumb.length === 1 ? (
+            <div className="flex min-w-0 items-center gap-1">
+              {breadcrumb.length === 1 ? (
+                <span
+                  className="cursor-pointer truncate rounded px-1 py-0.5 text-xs"
+                  style={{ color: 'var(--ink-light)' }}
+                  onClick={() => goToBreadcrumb(null)}
+                >
+                  根目录
+                </span>
+              ) : (
+                <>
+                  <span
+                    className="cursor-pointer rounded px-1 py-0.5 text-xs"
+                    style={{ color: 'var(--ink-ghost)' }}
+                    onClick={() => goToBreadcrumb(null)}
+                  >
+                    …
+                  </span>
+                  <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>/</span>
                   <span
                     className="cursor-pointer truncate rounded px-1 py-0.5 text-xs"
                     style={{ color: 'var(--ink-light)' }}
-                    onClick={() => goToBreadcrumb(null)}
+                    onClick={() => goToBreadcrumb(breadcrumb.length - 2)}
                   >
-                    根目录
+                    {breadcrumb[breadcrumb.length - 2]?.name}
                   </span>
-                ) : (
-                  <>
-                    <span
-                      className="cursor-pointer rounded px-1 py-0.5 text-xs"
-                      style={{ color: 'var(--ink-ghost)' }}
-                      onClick={() => goToBreadcrumb(null)}
-                    >
-                      …
-                    </span>
-                    <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>/</span>
-                    <span
-                      className="cursor-pointer truncate rounded px-1 py-0.5 text-xs"
-                      style={{ color: 'var(--ink-light)' }}
-                      onClick={() => goToBreadcrumb(breadcrumb.length - 2)}
-                    >
-                      {breadcrumb[breadcrumb.length - 2]?.name}
-                    </span>
-                    <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>/</span>
-                  </>
-                )}
-                <span
-                  className="truncate text-xs font-medium"
-                  style={{ color: 'var(--ink)' }}
-                >
-                  {breadcrumb[breadcrumb.length - 1].name}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Folder list */}
-        <div className="flex-1 overflow-y-auto px-4 pb-2" style={{ minHeight: 120 }}>
-          <ContentFade stateKey={loading ? 'loading' : `folders-${selectedParentId || 'root'}`}>
-            {loading ? (
-              <LoadingState />
-            ) : filteredFolders.length === 0 ? (
-              <div className="py-6 text-center text-xs" style={{ color: 'var(--ink-ghost)' }}>
-                无子文件夹
-              </div>
-            ) : (
-              <div>
-                {filteredFolders.map((folder) => (
-                  <div
-                    key={folder.id}
-                    className="flex cursor-pointer items-center gap-2 rounded-[10px] px-2.5 py-[7px] transition-colors duration-150"
-                    style={{ color: 'var(--ink-light)' }}
-                    onClick={() => enterFolder(folder)}
-                    onMouseOver={(e) => { e.currentTarget.style.background = 'var(--shelf)'; }}
-                    onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                  >
-                    <Folder size={14} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)' }} />
-                    <span className="min-w-0 flex-1 truncate text-sm">
-                      {folder.name}
-                    </span>
-                    {folder.hasChildren && (
-                      <ChevronRight size={12} strokeWidth={2} className="shrink-0" style={{ color: 'var(--ink-ghost)' }} />
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </ContentFade>
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 pb-5 pt-3" style={{ borderTop: '0.5px solid var(--separator)' }}>
-          {error && (
-            <p className="mb-2 text-xs" style={{ color: 'var(--mark-red)' }}>{error}</p>
-          )}
-          <div className="flex items-center justify-between">
-            <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
-              目标：{targetLabel}
-            </span>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="rounded-lg px-4 py-2 text-sm font-medium"
-                style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
-                onClick={onClose}
+                  <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>/</span>
+                </>
+              )}
+              <span
+                className="truncate text-xs font-medium"
+                style={{ color: 'var(--ink)' }}
               >
-                取消
-              </button>
-              <button
-                type="button"
-                disabled={submitting || isSamePosition}
-                className="rounded-lg px-4 py-2 text-sm font-medium transition-opacity duration-150 disabled:opacity-50"
-                style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}
-                onClick={() => void handleConfirm()}
-              >
-                {submitting ? '移动中...' : isSamePosition ? '已在此位置' : '移动到此处'}
-              </button>
+                {breadcrumb[breadcrumb.length - 1].name}
+              </span>
             </div>
           </div>
-        </div>
-      </motion.div>
-    </div>
+        )}
+      </div>
+
+      {/* 文件夹列表（限高保证弹窗不撑满屏幕） */}
+      <div className="overflow-y-auto" style={{ minHeight: 120, maxHeight: '40vh' }}>
+        <ContentFade stateKey={loading ? 'loading' : `folders-${selectedParentId || 'root'}`}>
+          {loading ? (
+            <LoadingState />
+          ) : filteredFolders.length === 0 ? (
+            <div className="py-6 text-center text-xs" style={{ color: 'var(--ink-ghost)' }}>
+              无子文件夹
+            </div>
+          ) : (
+            <div>
+              {filteredFolders.map((folder) => (
+                <div
+                  key={folder.id}
+                  className="flex cursor-pointer items-center gap-2 rounded-[10px] px-2.5 py-[7px] transition-colors duration-150"
+                  style={{ color: 'var(--ink-light)' }}
+                  onClick={() => enterFolder(folder)}
+                  onMouseOver={(e) => { e.currentTarget.style.background = 'var(--shelf)'; }}
+                  onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <Folder size={14} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)' }} />
+                  <span className="min-w-0 flex-1 truncate text-sm">
+                    {folder.name}
+                  </span>
+                  {folder.hasChildren && (
+                    <ChevronRight size={12} strokeWidth={2} className="shrink-0" style={{ color: 'var(--ink-ghost)' }} />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </ContentFade>
+      </div>
+
+      <FieldError>{error}</FieldError>
+    </Modal>
   );
 }
