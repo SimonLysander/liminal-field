@@ -247,6 +247,11 @@ export class GalleryViewService {
     private readonly snapshotRepository: ContentSnapshotRepository,
   ) {}
 
+  /** 发布最新版本(供一键发布全部 publish-all 统一派发;实现 ScopePublisher)。 */
+  async publishLatest(contentItemId: string): Promise<void> {
+    await this.contentService.publishVersion(contentItemId);
+  }
+
   /** 构建照片的统一访问 URL（走 /spaces/gallery/items/:id/assets/:fileName）。 */
   /**
    * 构建图片 URL：优先使用 OSS 直连（带图片处理参数），

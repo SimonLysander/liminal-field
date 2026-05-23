@@ -726,6 +726,15 @@ export class AnthologyViewService {
     return this.toAdminDetail(contentItemId);
   }
 
+  /**
+   * 发布最新版(供一键发布全部 publish-all 统一派发;实现 ScopePublisher)。
+   * 文集特有:先发布所有有内容的条目,再整集上线(无可发布条目时 publishAnthology 抛错)。
+   */
+  async publishLatest(contentItemId: string): Promise<void> {
+    await this.publishAllEntries(contentItemId);
+    await this.publishAnthology(contentItemId);
+  }
+
   // ── 条目草稿 CRUD ────────────────────────────────────────────────────────
 
   /** 将 EditorDraft 实体转为 EditorDraftDto。 */

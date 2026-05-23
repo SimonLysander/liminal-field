@@ -111,6 +111,11 @@ export class NoteViewService {
     private readonly minioService: OssService,
   ) {}
 
+  /** 发布最新版本(供一键发布全部 publish-all 统一派发;实现 ScopePublisher)。 */
+  async publishLatest(contentItemId: string): Promise<void> {
+    await this.contentService.publishVersion(contentItemId);
+  }
+
   private toDraftDto(draft: EditorDraft): EditorDraftDto {
     return {
       id: draft._id,
