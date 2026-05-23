@@ -14,8 +14,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useConfirm } from '@/contexts/ConfirmContext';
-import { ChevronLeft, Save, Sun, Trash2, MoreHorizontal } from 'lucide-react';
+import { ChevronLeft, Sun, Trash2, MoreHorizontal } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -313,7 +314,7 @@ const DraftEditPage = () => {
       style={{
         background: 'var(--paper)',
         gridTemplateColumns: gridColumns,
-        gridTemplateRows: '36px 1fr',
+        gridTemplateRows: '52px 1fr',
       }}
     >
       <ThresholdOverlay visible={committing} label="正在提交版本..." />
@@ -323,50 +324,42 @@ const DraftEditPage = () => {
         {/* 左：← + 可编辑页面名 */}
         <div className="flex items-center gap-1.5">
           <button
-            className="rounded-sm p-0.5 transition-colors hover:bg-[var(--shelf)]"
+            className="rounded-md p-1.5 outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none"
             style={{ color: 'var(--ink-faded)' }}
             onClick={goBack}
+            aria-label="返回"
           >
-            <ChevronLeft size={16} strokeWidth={1.5} />
+            <ChevronLeft size={18} strokeWidth={1.5} />
           </button>
           <input
             type="text"
             value={state.title}
             onChange={(e) => handleChange('title', e.target.value)}
             placeholder="无标题"
-            className="input-ghost min-w-[60px] max-w-[240px] truncate text-sm font-medium placeholder:text-[var(--ink-ghost)]"
+            className="input-ghost min-w-[60px] max-w-[280px] truncate text-base font-medium placeholder:text-[var(--ink-ghost)]"
             style={{ color: 'var(--ink)' }}
           />
         </div>
 
-        {/* 右：状态 + 保存(直接) + 提交(开就近浮层填变更说明) + … 菜单(主题/丢弃) */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
+        {/* 右：状态 + 保存(ghost) + 提交(中性胶囊→就近浮层) + … 菜单(主题/丢弃);按钮统一用设计系统 <Button> */}
+        <div className="flex items-center gap-1.5">
+          <span className="mr-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
             {isAutosaving ? '保存中...' : isDirty ? '未保存' :
              lastSavedAt ? `上次编辑 ${new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` : ''}
           </span>
 
-          {/* 保存:直接快捷按钮(⇧⌘S) */}
-          <button
-            onClick={() => void saveDraft()}
-            className="flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none"
-            style={{ color: 'var(--ink-faded)' }}
-            title="保存 ⇧⌘S"
-          >
-            <Save size={14} strokeWidth={1.5} />保存
-          </button>
+          {/* 保存:ghost(轻),直接快捷(⇧⌘S) */}
+          <Button variant="ghost" size="default" onClick={() => void saveDraft()} title="保存 ⇧⌘S">
+            保存
+          </Button>
 
-          {/* 提交:从按钮直接弹就近浮层,变更说明在浮层里确认;长春花紫淡底强调(⌘S 也走 showCommitDialog) */}
+          {/* 提交:secondary 中性胶囊(paper-dark 淡底,非色块);点开就近浮层,长春花紫只用在浮层里"确认提交"(认知关口)。⌘S 也走 showCommitDialog */}
           <Popover open={showCommitDialog} onOpenChange={setShowCommitDialog}>
             <PopoverTrigger asChild>
-              <button
-                className="rounded-md px-2.5 py-1 text-xs font-medium outline-none transition-colors hover:bg-[var(--accent-hover)] hover:text-[var(--accent-contrast)] focus-visible:outline-none"
-                style={{ color: 'var(--accent)', background: 'var(--accent-soft)' }}
-              >
-                提交
-              </button>
+              <Button variant="secondary" size="default">提交</Button>
             </PopoverTrigger>
-            <PopoverContent align="end" sideOffset={6} className="w-72 p-3">
+            {/* 浮层容器与 ⋯ 菜单同基准:w-64=256、圆角 xl、细边、柔阴影、入场动画 */}
+            <PopoverContent align="end" sideOffset={6} className="w-64 p-3">
               <CommitForm
                 changeNote={state.changeNote}
                 onChangeNote={(v) => handleChange('changeNote', v)}
@@ -379,8 +372,8 @@ const DraftEditPage = () => {
           {/* … 菜单:切换主题 / 丢弃(危险) */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="rounded-sm p-1.5 outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none data-[state=open]:bg-[var(--shelf)]" style={{ color: 'var(--ink-ghost)' }} title="更多">
-                <MoreHorizontal size={16} strokeWidth={1.5} />
+              <button className="rounded-md p-1.5 outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none data-[state=open]:bg-[var(--shelf)]" style={{ color: 'var(--ink-ghost)' }} title="更多">
+                <MoreHorizontal size={18} strokeWidth={1.5} />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">

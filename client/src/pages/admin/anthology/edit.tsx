@@ -407,7 +407,7 @@ const AnthologyEntryEditPage = () => {
                     onClick={() => setShowCommitDialog(true)}
                   />
                 </PopoverAnchor>
-                <PopoverContent align="end" sideOffset={6} className="w-72 p-3">
+                <PopoverContent align="end" sideOffset={6} className="w-64 p-3">
                   <CommitForm
                     changeNote={state.changeNote}
                     onChangeNote={(v) => handleChange('changeNote', v)}

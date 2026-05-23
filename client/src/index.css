@@ -9,6 +9,9 @@
 @plugin "tailwind-scrollbar-hide";
 
 @import "tailwindcss";
+/* v4 版 tailwindcss-animate:提供 animate-in/out、fade/zoom/slide 工具,
+   让所有 shadcn 浮层(Popover/DropdownMenu/Dialog)有入场过渡动画 */
+@import "tw-animate-css";
 
 /* ── Logo 字体 ── */
 @font-face { font-family: 'Alex Brush'; src: url('/fonts/AlexBrush.ttf') format('truetype'); font-display: swap; }
