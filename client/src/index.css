@@ -969,10 +969,14 @@ body.gallery-immersive [data-layout-root] {
 body.gallery-immersive aside {
   position: absolute;
   z-index: 10;
+  /* 沉浸态侧栏只剩导航,收窄让左侧留白更干净(仅画廊;不影响满幅照片) */
+  --layout-sidebar: 150px;
   --sidebar-bg: transparent;
   --shadow-sm: none;
   --ink: rgba(255,255,255,0.9);
   --ink-faded: rgba(255,255,255,0.45);
-  --shelf: rgba(255,255,255,0.08);
+  /* 沉浸态:选中/hover 不用浅色底块(透明侧栏下会变成糊在照片上的孤儿光块);
+     选中态由文字/图标加亮区分(active=ink 白.9+字重, inactive=ink-faded 白.45) */
+  --shelf: transparent;
   --accent: rgba(255,255,255,0.9);
 }
