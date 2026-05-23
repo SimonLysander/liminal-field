@@ -428,18 +428,19 @@ export class ContentService {
         // commitHash 有意省略——异步回填
       });
 
-      // 异步归档到 Git，不阻塞请求；错误由 archiveToGit 内部捕获并记录日志
-      if (!isSubFile) {
-        void this.archiveToGit(
-          id,
-          versionId,
-          dto.bodyMarkdown,
-          dto.changeNote ?? '',
-          dto.title,
-          summary,
-          nextChangeLogs,
-        );
-      }
+      // 异步归档到 Git，不阻塞请求；错误由 archiveToGit 内部捕获并记录日志。
+      // 主文件(main.md)与子文件(entries/*.md)都归档:传 fileName 让子文件按其路径
+      // 写入,否则文集条目正文永远进不了 Git、恢复时丢失(历史踩坑)。
+      void this.archiveToGit(
+        id,
+        versionId,
+        dto.bodyMarkdown,
+        dto.changeNote ?? '',
+        dto.title,
+        summary,
+        nextChangeLogs,
+        dto.fileName ?? null,
+      );
     }
 
     if (dto.action === ContentSaveAction.publish) {
@@ -564,29 +565,43 @@ export class ContentService {
     title: string,
     summary: string,
     changeLogs: ContentChangeLog[],
+    fileName: string | null = null, // 子文件路径(如 entries/e001.md);null = 主文件 main.md
   ): Promise<void> {
     try {
       await this.contentGitService.prepareWritableWorkspace();
-      await this.contentRepoService.writeMainMarkdown(contentId, bodyMarkdown);
 
-      // README 需要 content 信息，从 MongoDB 重新读取，确保拿到最新数据
-      const content = await this.contentRepository.findById(contentId);
-      if (content) {
-        const assetRefs =
-          this.contentRepoService.extractAssetRefs(bodyMarkdown);
-        // toObject() 把 Mongoose document 转为普通 JS 对象，
-        // 否则 _id / createdAt 等字段在 spread 时均为 undefined
-        const plainContent = (
-          content as { toObject(): ContentItem }
-        ).toObject();
-        await this.contentRepoService.writeReadme(
-          {
-            ...plainContent,
-            latestVersion: { commitHash: '', title, summary, versionId },
-            changeLogs,
-          } as ContentItem,
-          assetRefs,
+      if (fileName) {
+        // 子文件(文集条目 entries/eXXX.md):只写该文件本身。
+        // 不动 main.md / README / latestVersion——它们只由主文件提交维护,
+        // 子文件正文与内容索引无关。历史踩坑:此处若漏写,条目正文永远进不了
+        // Git,恢复时被丢弃(见 docs / CLAUDE.md「恢复丢结构」)。
+        await this.contentRepoService.writeFileMarkdown(
+          contentId,
+          fileName,
+          bodyMarkdown,
         );
+      } else {
+        await this.contentRepoService.writeMainMarkdown(contentId, bodyMarkdown);
+
+        // README 需要 content 信息，从 MongoDB 重新读取，确保拿到最新数据
+        const content = await this.contentRepository.findById(contentId);
+        if (content) {
+          const assetRefs =
+            this.contentRepoService.extractAssetRefs(bodyMarkdown);
+          // toObject() 把 Mongoose document 转为普通 JS 对象，
+          // 否则 _id / createdAt 等字段在 spread 时均为 undefined
+          const plainContent = (
+            content as { toObject(): ContentItem }
+          ).toObject();
+          await this.contentRepoService.writeReadme(
+            {
+              ...plainContent,
+              latestVersion: { commitHash: '', title, summary, versionId },
+              changeLogs,
+            } as ContentItem,
+            assetRefs,
+          );
+        }
       }
 
       const committedHash =

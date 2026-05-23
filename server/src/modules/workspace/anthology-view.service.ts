@@ -558,7 +558,24 @@ export class AnthologyViewService {
     }
 
     if (!entrySnapshot) {
-      throw new NotFoundException(`Entry ${entryKey} has no content snapshot`);
+      // 展示端:已发布条目却查不到正文快照(发布版本被删/悬空)→ 维持严格 404,
+      // 不向读者露出空的"已发布"内容。
+      if (usePublished) {
+        throw new NotFoundException(`Entry ${entryKey} has no content snapshot`);
+      }
+      // 管理端:条目在索引里登记、但正文快照缺失(历史恢复丢正文 / 归档未回填子文件)。
+      // 这是可恢复态——返回空正文让编辑器正常打开,用户重写保存即重建正文快照(自愈),
+      // 不应以 404 把用户堵死在原始错误页。
+      const { prev, next } = this.buildPrevNext(visibleEntries, entryIdx);
+      return {
+        key: entryKey,
+        title: entryRef.title,
+        date: entryRef.date ?? new Date().toISOString().split('T')[0],
+        updatedAt: new Date().toISOString(),
+        bodyMarkdown: '',
+        prev,
+        next,
+      };
     }
 
     // updatedAt：始终取该条目最新 snapshot 的 createdAt（与 NoteReader 的 updatedAt 同语义）

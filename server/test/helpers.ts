@@ -21,7 +21,7 @@ import { ConfigModule } from '@nestjs/config';
 import { TypegooseModule } from 'nestjs-typegoose';
 import { ScheduleModule } from '@nestjs/schedule';
 import { Reflector } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, ModuleMetadata } from '@nestjs/common';
 import multipart from '@fastify/multipart';
 import cookie from '@fastify/cookie';
 import { MongoMemoryServer } from 'mongodb-memory-server';
@@ -58,7 +58,13 @@ export class TestContext {
    */
   ossStore!: Map<string, Buffer>;
 
-  async setup(): Promise<void> {
+  /**
+   * @param extraModules 仅本套件需要的额外模块(如归档恢复 e2e 需要 SettingsModule)。
+   *   按需注入,避免让全部套件都加载它们、徒增启动成本。
+   */
+  async setup(
+    extraModules: NonNullable<ModuleMetadata['imports']> = [],
+  ): Promise<void> {
     // ─── 1. 启动内存 MongoDB（下载/解压可能很慢，与 jest-e2e testTimeout 对齐）───
     this.mongod = await MongoMemoryServer.create({
       startTimeout: 120_000,
@@ -116,6 +122,7 @@ export class TestContext {
         WorkspaceModule,
         ImportModule,
         AgentModule,
+        ...extraModules,
       ],
     })
       // OssService.onModuleInit 会尝试连真实 OSS，E2E 中完全 mock 掉。
