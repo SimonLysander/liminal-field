@@ -598,6 +598,8 @@ pre code {
     box-shadow: none;
     font: inherit;
     color: inherit;
+    /* 留内边距:聚焦出现边框/底色时文字不贴边 */
+    padding: 2px 8px;
   }
   .input-ghost:focus {
     border: none;

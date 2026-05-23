@@ -14,8 +14,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useConfirm } from '@/contexts/ConfirmContext';
-import { Sun, Moon, ChevronLeft, Save, Trash2 } from 'lucide-react';
+import { ChevronLeft, Save, Sun, Trash2, MoreHorizontal } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+} from '@/components/ui/dropdown-menu';
 import { useTheme } from '@/hooks/use-theme';
 import { notesApi as contentItemsApi } from '@/services/workspace';
 import type { ContentChangeType, ContentDetail, EditorDraft } from '@/services/workspace';
@@ -332,19 +340,19 @@ const DraftEditPage = () => {
           />
         </div>
 
-        {/* 右：状态文字 + 提交按钮（Notion"共享"风格） + 图标组 */}
+        {/* 右：状态文字 + 提交(主操作) + … 溢出菜单(Notion 式精简) */}
         <div className="flex items-center gap-2">
           <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
             {isAutosaving ? '保存中...' : isDirty ? '未保存' :
              lastSavedAt ? `上次编辑 ${new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` : ''}
           </span>
 
-          {/* 提交按钮：Notion "共享" 风格 — 从按钮就近弹出提交浮层(⌘S 也走 showCommitDialog) */}
+          {/* 提交:主操作,长春花紫淡底强调;从按钮就近弹出提交浮层(⌘S 也走 showCommitDialog) */}
           <Popover open={showCommitDialog} onOpenChange={setShowCommitDialog}>
             <PopoverTrigger asChild>
               <button
-                className="rounded-md border px-2.5 py-1 text-xs font-medium transition-colors hover:bg-[var(--shelf)]"
-                style={{ color: 'var(--ink)', borderColor: 'var(--separator)' }}
+                className="rounded-md px-2.5 py-1 text-xs font-medium transition-colors hover:bg-[var(--accent-hover)] hover:text-[var(--accent-contrast)]"
+                style={{ color: 'var(--accent)', background: 'var(--accent-soft)' }}
               >
                 提交
               </button>
@@ -359,24 +367,30 @@ const DraftEditPage = () => {
             </PopoverContent>
           </Popover>
 
-          {/* 图标按钮组 */}
-          <div className="flex items-center gap-0.5">
-            <button className="rounded-sm p-1.5 transition-colors hover:bg-[var(--shelf)]" style={{ color: 'var(--ink-ghost)' }}
-              onClick={() => void saveDraft()} title="保存 ⇧⌘S">
-              <Save size={15} strokeWidth={1.5} />
-            </button>
-            <button className="rounded-sm p-1.5 transition-colors hover:bg-[var(--shelf)]" style={{ color: 'var(--ink-ghost)' }}
-              onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')} title="切换主题">
-              <Sun size={15} strokeWidth={1.5} className="theme-icon-light" />
-              <Moon size={15} strokeWidth={1.5} className="theme-icon-dark" />
-            </button>
-            <button
-              className="rounded-sm p-1.5 text-[var(--ink-ghost)] transition-colors hover:bg-[color-mix(in_srgb,var(--mark-red)_10%,transparent)] hover:text-[var(--mark-red)]"
-              onClick={() => void discardDraft()} title="丢弃草稿"
-            >
-              <Trash2 size={15} strokeWidth={1.5} />
-            </button>
-          </div>
+          {/* … 溢出菜单:保存 / 切换主题 / 丢弃(危险),把次要+破坏性操作收进去 */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="rounded-sm p-1.5 transition-colors hover:bg-[var(--shelf)]" style={{ color: 'var(--ink-ghost)' }} title="更多">
+                <MoreHorizontal size={16} strokeWidth={1.5} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => void saveDraft()}>
+                <Save />保存草稿
+                <DropdownMenuShortcut>⇧⌘S</DropdownMenuShortcut>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}>
+                <Sun />切换主题
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => void discardDraft()}
+                className="text-[var(--danger)] focus:bg-[color-mix(in_srgb,var(--danger)_9%,transparent)] [&_svg]:text-[var(--danger)]"
+              >
+                <Trash2 />丢弃草稿
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
