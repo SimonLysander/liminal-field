@@ -138,13 +138,15 @@ const AnthologyEntryEditPage = () => {
 
         if (cancelled) return;
 
+        let loaded: EditorState | null = null;
         if (draft) {
           // 有草稿：直接恢复
-          setState({
+          loaded = {
             title: draft.title,
             bodyMarkdown: draft.bodyMarkdown,
             changeNote: draft.changeNote,
-          });
+          };
+          setState(loaded);
           setLastSavedAt(draft.savedAt);
         } else {
           // 无草稿：从正式版本读取，创建初始草稿
@@ -157,19 +159,29 @@ const AnthologyEntryEditPage = () => {
             changeNote: '更新条目',
           });
           if (cancelled) return;
-          setState({
+          loaded = {
             title: newDraft.title,
             bodyMarkdown: newDraft.bodyMarkdown,
             changeNote: newDraft.changeNote,
-          });
+          };
+          setState(loaded);
           setLastSavedAt(newDraft.savedAt);
         }
 
-        // local-first reconcile:本地有未同步改动(上次崩溃/刷新前没存完)→ 覆盖恢复并标脏重存
+        // local-first reconcile:仅当本地内容与服务器【确实不同】才覆盖恢复+标脏重传;
+        // 内容一致(陈旧 pending)则清掉,避免无谓重存把时间戳跳到刷新时刻
         const localPending = loadLocalPending();
-        if (localPending && !cancelled) {
-          setState(localPending);
-          setIsDirty(true);
+        if (localPending && loaded && !cancelled) {
+          const sameContent =
+            localPending.title === loaded.title &&
+            localPending.bodyMarkdown === loaded.bodyMarkdown &&
+            localPending.changeNote === loaded.changeNote;
+          if (sameContent) {
+            clearLocalDraft();
+          } else {
+            setState(localPending);
+            setIsDirty(true);
+          }
         }
       } catch (initError) {
         if (!cancelled) setError(parseError(initError, '加载条目失败'));
@@ -180,7 +192,7 @@ const AnthologyEntryEditPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [id, entryKey, loadLocalPending]);
+  }, [id, entryKey, loadLocalPending, clearLocalDraft]);
 
   // ─── 变更处理 ─────────────────────────────────────────────────────────────
 

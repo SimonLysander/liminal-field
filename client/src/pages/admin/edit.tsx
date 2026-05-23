@@ -130,15 +130,17 @@ const DraftEditPage = () => {
 
         if (cancelled) return;
 
+        let loaded: EditorState | null = null;
         if (draft) {
           // 有草稿：直接恢复，不请求正式版（避免多余请求）
-          setState({
+          loaded = {
             title: draft.title,
             summary: draft.summary,
             bodyMarkdown: draft.bodyMarkdown,
             changeNote: draft.changeNote,
             changeType: 'patch',
-          });
+          };
+          setState(loaded);
           setLastSavedAt(draft.savedAt);
         } else {
           // 无草稿：请求正式版，并创建初始草稿供自动保存使用
@@ -152,21 +154,32 @@ const DraftEditPage = () => {
             changeNote: '更新内容',
           });
           if (cancelled) return;
-          setState({
+          loaded = {
             title: newDraft.title,
             summary: newDraft.summary,
             bodyMarkdown: newDraft.bodyMarkdown,
             changeNote: newDraft.changeNote,
             changeType: 'patch',
-          });
+          };
+          setState(loaded);
           setLastSavedAt(newDraft.savedAt);
         }
 
-        // local-first reconcile:本地有未同步改动(上次崩溃/刷新前没存完)→ 覆盖恢复并标脏重存
+        // local-first reconcile:仅当本地内容与服务器【确实不同】(上次崩溃/刷新前没存完的真改动)
+        // 才覆盖恢复+标脏重传;若内容一致(陈旧 pending 标记)则清掉,避免无谓重存把时间戳跳到刷新时刻
         const localPending = loadLocalPending();
-        if (localPending && !cancelled) {
-          setState(localPending);
-          setIsDirty(true);
+        if (localPending && loaded && !cancelled) {
+          const sameContent =
+            localPending.title === loaded.title &&
+            localPending.bodyMarkdown === loaded.bodyMarkdown &&
+            (localPending.summary ?? '') === (loaded.summary ?? '') &&
+            localPending.changeNote === loaded.changeNote;
+          if (sameContent) {
+            clearLocalDraft();
+          } else {
+            setState(localPending);
+            setIsDirty(true);
+          }
         }
       } catch (initError) {
         if (!cancelled) setError(parseError(initError, '加载内容失败'));
@@ -177,7 +190,7 @@ const DraftEditPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [id, loadLocalPending]);
+  }, [id, loadLocalPending, clearLocalDraft]);
 
   const handleChange = useCallback(
     <K extends keyof EditorState>(key: K, value: EditorState[K]) => {
