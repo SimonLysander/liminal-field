@@ -37,6 +37,7 @@ import { OssService } from '../oss/oss.service';
 import { ManifestService } from './manifest.service';
 import { RecoveryService } from './recovery.service';
 import { ArchiveService } from './archive.service';
+import { LocalResetService } from './local-reset.service';
 import {
   SystemConfigService,
   SettingsConfigView,
@@ -72,6 +73,7 @@ export class SettingsController {
     private readonly recoveryService: RecoveryService,
     private readonly archiveService: ArchiveService,
     private readonly systemConfigService: SystemConfigService,
+    private readonly localResetService: LocalResetService,
   ) {}
 
   // ── 全量配置（脱敏读取） ─────────────────────────────────
@@ -446,7 +448,10 @@ export class SettingsController {
       this.contentSnapshotRepository.deleteAll(),
       this.navigationRepository.deleteAll(),
     ]);
-    this.logger.log('MongoDB cleared');
+    // 同清草稿:草稿是本地 WIP、远端没有,内容用远端覆盖后旧草稿即孤儿。
+    // 不清 project 记忆/OSS——内容会以相同 id 从远端恢复,记忆仍有效、资产由恢复链重传。
+    const draftsCleared = await this.localResetService.clearDrafts();
+    this.logger.log(`MongoDB cleared (含 ${draftsCleared} 条草稿)`);
 
     const contentDir = join(this.contentRepoService.repoRoot, 'content');
     const manifestPath = join(
@@ -514,14 +519,22 @@ export class SettingsController {
       }
     }
 
-    // 清 MongoDB
+    // 清 MongoDB:content/snapshot/navigation 三件套
     const [items, snapshots, nav] = await Promise.all([
       this.contentRepository.deleteAll(),
       this.contentSnapshotRepository.deleteAll(),
       this.navigationRepository.deleteAll(),
     ]);
+    // 连带清内容耦合的本地数据:草稿 + project 记忆 + OSS 资产(保留 user 画像)。
+    // 历史踩坑:漏清草稿 → 内容删了草稿成孤儿、下次撞 id 读到幽灵草稿。
+    const [drafts, projectMemories] = await Promise.all([
+      this.localResetService.clearDrafts(),
+      this.localResetService.clearProjectMemories(),
+    ]);
+    await this.localResetService.clearContentAssets();
     this.logger.log(
-      `Cleared MongoDB: ${items} items, ${snapshots} snapshots, ${nav} nav nodes`,
+      `Cleared MongoDB: ${items} items, ${snapshots} snapshots, ${nav} nav nodes, ` +
+        `${drafts} drafts, ${projectMemories} project memories (+ OSS assets)`,
     );
 
     // 清空 Git 仓库（删除目录内所有内容，包括 .git）
