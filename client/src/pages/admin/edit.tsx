@@ -343,8 +343,11 @@ const DraftEditPage = () => {
 
         {/* 右：状态 + 保存(ghost) + 提交(中性胶囊→就近浮层) + … 菜单(主题/丢弃);按钮统一用设计系统 <Button> */}
         <div className="flex items-center gap-1.5">
-          {/* 自动保存状态:保存中 / 未保存 / 已自动保存 hh:mm(末态是草稿上次自动保存时间) */}
-          <span className="mr-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+          {/* 自动保存状态:保存中(长春花紫呼吸点强调) / 未保存 / 已自动保存 hh:mm */}
+          <span className="mr-1 inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            {isAutosaving && (
+              <span className="size-1.5 shrink-0 animate-pulse rounded-full" style={{ background: 'var(--accent)' }} aria-hidden />
+            )}
             {isAutosaving ? '保存中…' : isDirty ? '未保存' :
              lastSavedAt ? `已自动保存 ${new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` : ''}
           </span>

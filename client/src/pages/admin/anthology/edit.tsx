@@ -346,8 +346,11 @@ const AnthologyEntryEditPage = () => {
 
           {/* 右组：扁平，文字状态 + 保存(ghost) + 提交(secondary→浮层) + ⋯ DropdownMenu */}
           <div className="flex items-center gap-1.5 justify-self-end">
-            {/* 自动保存状态：保存中 / 未保存 / 已自动保存 hh:mm */}
-            <span className="mr-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            {/* 自动保存状态：保存中(长春花紫呼吸点强调) / 未保存 / 已自动保存 hh:mm */}
+            <span className="mr-1 inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+              {isAutosaving && (
+                <span className="size-1.5 shrink-0 animate-pulse rounded-full" style={{ background: 'var(--accent)' }} aria-hidden />
+              )}
               {isAutosaving
                 ? '保存中…'
                 : isDirty
