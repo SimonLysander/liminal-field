@@ -172,11 +172,11 @@
   --ink-faded: #6E6E73;
   --ink-ghost: #AEAEB2;
 
-  /* Accent — 主题色 = 长春花紫 / Very Peri(accent = 激活/主要/进行中,见 design-language.md §3) */
+  /* Accent — 主题色 = 长春花紫 / Very Peri(daylight) */
   --accent: #6667AB;
   --accent-hover: #5A5B9C;
-  --accent-soft: color-mix(in srgb, #6667AB 10%, transparent);
-  --accent-border: color-mix(in srgb, #6667AB 28%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
+  --accent-border: color-mix(in srgb, var(--accent) 28%, transparent);
   --accent-contrast: #FFFFFF;
 
   /* Marks — semantic annotation colors (only non-monochrome elements) */
