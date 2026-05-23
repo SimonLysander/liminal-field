@@ -21,7 +21,7 @@ import { galleryApi, type GalleryAdminListItem, type GalleryAdminDetail, type Co
 import { smoothBounce } from '@/lib/motion';
 import { GalleryPostListItem, GalleryPostPreview } from './components/GalleryFeedCard';
 import { PhotoLightbox } from './components/PhotoLightbox';
-import { CreateGalleryModal } from './components/CreateGalleryModal';
+import { CreateGalleryPopover } from './components/CreateGalleryPopover';
 import { VersionTimeline } from '../components/VersionTimeline';
 
 // ─── 空状态 ───
@@ -46,8 +46,6 @@ export default function GalleryAdmin() {
   const [posts, setPosts] = useState<GalleryAdminListItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  /* 新建 Modal */
-  const [createModalOpen, setCreateModalOpen] = useState(false);
 
   /* 选中帖子的完整详情（含所有照片） */
   const [detail, setDetail] = useState<GalleryAdminDetail | null>(null);
@@ -327,14 +325,15 @@ export default function GalleryAdmin() {
             <RefreshCw size={9} strokeWidth={1.5} />
             刷新
           </button>
-          <button
-            className="hover-shelf flex items-center gap-1 rounded px-1.5 py-0.5 text-base font-medium transition-colors duration-150"
-            style={{ color: 'var(--ink)' }}
-            onClick={() => setCreateModalOpen(true)}
-          >
-            <Plus size={10} strokeWidth={2} />
-            新建
-          </button>
+          <CreateGalleryPopover onSubmit={handleCreate}>
+            <button
+              className="hover-shelf flex items-center gap-1 rounded px-1.5 py-0.5 text-base font-medium transition-colors duration-150"
+              style={{ color: 'var(--ink)' }}
+            >
+              <Plus size={10} strokeWidth={2} />
+              新建
+            </button>
+          </CreateGalleryPopover>
         </div>
       </aside>
 
@@ -504,12 +503,6 @@ export default function GalleryAdmin() {
         />
       )}
 
-      {/* 新建 Modal */}
-      <CreateGalleryModal
-        open={createModalOpen}
-        onClose={() => setCreateModalOpen(false)}
-        onSubmit={handleCreate}
-      />
     </>
   );
 }
