@@ -38,6 +38,7 @@ import { ManifestService } from './manifest.service';
 import { RecoveryService } from './recovery.service';
 import { ArchiveService } from './archive.service';
 import { LocalResetService } from './local-reset.service';
+import { PublishAllService } from './publish-all.service';
 import {
   SystemConfigService,
   SettingsConfigView,
@@ -74,6 +75,7 @@ export class SettingsController {
     private readonly archiveService: ArchiveService,
     private readonly systemConfigService: SystemConfigService,
     private readonly localResetService: LocalResetService,
+    private readonly publishAllService: PublishAllService,
   ) {}
 
   // ── 全量配置（脱敏读取） ─────────────────────────────────
@@ -555,6 +557,18 @@ export class SettingsController {
       archived,
       message: `已清空 ${items} 个内容项${note}`,
     };
+  }
+
+  // ── 一键发布全部最新版 ───────────────────────────────────
+
+  /**
+   * 发布全部内容的最新提交版本(按 scope 分派:anthology 发布所有条目+整集,其余发布最新)。
+   * 用于灾后/从远端恢复后一键重新上线(发布状态不进 Git,恢复后默认全未发布)。
+   */
+  @Post('publish-all')
+  async publishAll(): Promise<{ success: boolean; published: number; skipped: number }> {
+    const { published, skipped } = await this.publishAllService.publishAllLatest();
+    return { success: true, published, skipped };
   }
 
   // ── Git 同步状态（兼容 SyncDialog） ─────────────────────

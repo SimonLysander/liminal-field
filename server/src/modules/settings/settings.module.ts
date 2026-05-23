@@ -9,6 +9,9 @@ import { TypegooseModule } from 'nestjs-typegoose';
 import { ContentModule } from '../content/content.module';
 import { NavigationModule } from '../navigation/navigation.module';
 import { OssModule } from '../oss/oss.module';
+// WorkspaceModule:PublishAllService 需要 AnthologyViewService。无循环依赖
+// (WorkspaceModule 不 import SettingsModule)。
+import { WorkspaceModule } from '../workspace/workspace.module';
 import { SystemConfig } from './system-config.entity';
 // EditorDraft / AgentMemory:LocalResetService 经 forFeature 直接持有其 model,
 // 用于「清空本地」时连带清草稿与 project 记忆(不能 import AgentModule——它已 import 本模块,会循环)。
@@ -20,6 +23,7 @@ import { ManifestService } from './manifest.service';
 import { RecoveryService } from './recovery.service';
 import { ArchiveService } from './archive.service';
 import { LocalResetService } from './local-reset.service';
+import { PublishAllService } from './publish-all.service';
 import { SettingsController } from './settings.controller';
 
 @Module({
@@ -28,6 +32,7 @@ import { SettingsController } from './settings.controller';
     ContentModule,
     NavigationModule,
     OssModule,
+    WorkspaceModule,
   ],
   controllers: [SettingsController],
   providers: [
@@ -37,6 +42,7 @@ import { SettingsController } from './settings.controller';
     RecoveryService,
     ArchiveService,
     LocalResetService,
+    PublishAllService,
   ],
   exports: [
     ManifestService,
