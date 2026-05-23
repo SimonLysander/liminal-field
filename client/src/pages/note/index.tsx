@@ -288,8 +288,8 @@ function NoteReader({ id }: { id: string }) {
       {/* Right — TOC panel（始终预留宽度，避免内容加载后布局抖动） */}
       <div
         ref={tocPanelRef}
-        className="flex shrink-0 flex-col gap-7 overflow-y-auto px-4 py-10"
-        style={{ width: 'var(--layout-sidebar)' }}
+        className="flex min-h-0 shrink-0 flex-col gap-7 self-start overflow-y-auto px-4 py-10"
+        style={{ width: 'var(--layout-sidebar)', maxHeight: '61.8vh' }}
       >
         {toc.length > 0 && (
           <div>
@@ -300,22 +300,20 @@ function NoteReader({ id }: { id: string }) {
               目录
             </div>
             {toc.map((item) => (
-              <motion.div
+              <div
                 key={item.id}
                 data-toc-id={item.id}
-                className="cursor-pointer border-l-2 rounded-r-lg py-[5px] text-sm transition-all duration-200 hover:bg-[var(--shelf)]"
+                className="cursor-pointer truncate rounded-lg py-[5px] pr-2 text-sm transition-colors duration-200 hover:bg-[var(--shelf)]"
                 style={{
-                  color: activeToc === item.id ? 'var(--ink-light)' : 'var(--ink-faded)',
-                  fontWeight: activeToc === item.id ? 500 : 400,
-                  borderColor: activeToc === item.id ? 'var(--ink-light)' : 'transparent',
-                  paddingLeft: `${(item.level - 1) * 8 + 10}px`,
+                  // 当前阅读章节 = 长春花紫(进行中,符合 accent 纲领),其余墨灰
+                  color: activeToc === item.id ? 'var(--accent)' : 'var(--ink-faded)',
+                  fontWeight: activeToc === item.id ? 600 : 400,
+                  paddingLeft: `${(item.level - 1) * 10 + 8}px`,
                 }}
-                animate={{ paddingLeft: activeToc === item.id ? (item.level - 1) * 8 + 12 : (item.level - 1) * 8 + 10 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                 onClick={() => scrollToHeading(item.id)}
               >
                 {item.text}
-              </motion.div>
+              </div>
             ))}
           </div>
         )}
