@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>浮层 / 菜单 / 按钮 — 设计参考稿</title>
+<!--
+  mockup-popover.html — 就近浮层 / 下拉菜单 / 按钮的视觉规格参考稿(2026-05-23 重建)。
+  这是「权威视觉参考」:改这些组件前先看这里、改完同步这里,不要凭感觉调。
+  数值与 design-system.md 的「Notion 紧凑基准」一致,实现见 ui/popover.tsx · ui/dropdown-menu.tsx · ui/button.tsx。
+  (此处用 daylight 主题的固定色值演示。)
+-->
+<style>
+  :root{
+    --paper:#fff; --paper-dark:#F4F4F5; --ink:#1D1D1F; --ink-faded:#6B6B70;
+    --ink-ghost:#9A9AA0; --separator:rgba(0,0,0,.10); --shelf:rgba(0,0,0,.04);
+    --accent:#6667AB; --accent-soft:#ECECF6; --accent-contrast:#fff;
+    --shadow:0 4px 14px rgba(0,0,0,.06), 0 18px 44px rgba(0,0,0,.14);
+    --danger:#D24B3E;
+  }
+  *{box-sizing:border-box;margin:0;font-family:-apple-system,"PingFang SC",system-ui,sans-serif}
+  body{background:#FAFAFA;color:var(--ink);padding:48px;display:flex;flex-wrap:wrap;gap:48px;align-items:flex-start}
+  .col{display:flex;flex-direction:column;gap:14px;max-width:320px}
+  h2{font-size:13px;font-weight:600;color:var(--ink-faded);letter-spacing:.04em;text-transform:uppercase}
+  .spec{font-size:12px;line-height:1.7;color:var(--ink-faded)}
+  .spec b{color:var(--ink)}
+
+  /* ── 浮层容器基准(Popover / DropdownMenu 同一套)── */
+  .layer{width:256px;border:1px solid var(--separator);border-radius:12px;background:var(--paper);box-shadow:var(--shadow)}
+  /* 入场动画:fade + zoom-95 + slight slide(由 tw-animate-css 提供) */
+
+  /* 就近浮层:表单(p-3=12px) */
+  .pop{padding:12px}
+  .pop .title{font-size:14px;font-weight:600}
+  .pop .desc{font-size:12px;color:var(--ink-ghost);margin:2px 0 12px}
+  .pop label{font-size:11px;font-weight:500;color:var(--ink-ghost);display:block;margin-bottom:6px}
+  .pop input{width:100%;height:28px;border:1px solid transparent;border-radius:6px;background:var(--shelf);padding:0 10px;font-size:14px;outline:none}
+  .pop .row{display:flex;justify-content:flex-end;gap:6px;margin-top:12px}
+
+  /* 下拉菜单:列表(p-1=4px),项 h-28 / 图标16 / 字14 */
+  .menu{padding:4px}
+  .item{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:6px;font-size:14px;color:var(--ink);cursor:default}
+  .item:hover{background:var(--shelf)}
+  .item svg{width:16px;height:16px;color:var(--ink-faded);flex:none}
+  .item .sc{margin-left:auto;font-size:12px;color:var(--ink-ghost)}
+  .item.danger{color:var(--danger)} .item.danger svg{color:var(--danger)}
+  .sep{height:1px;background:var(--separator);margin:4px -0px}
+
+  /* 按钮(h-28 / 字14 / 圆角6) */
+  .btn{height:28px;padding:0 10px;border-radius:6px;font-size:14px;font-weight:500;border:none;cursor:pointer;display:inline-flex;align-items:center}
+  .btn.ghost{background:transparent;color:var(--ink-faded)} .btn.ghost:hover{background:var(--shelf)}
+  .btn.secondary{background:var(--paper-dark);color:var(--ink)}      /* 顶栏「提交」:中性胶囊,非色块 */
+  .btn.primary{background:var(--accent);color:var(--accent-contrast)} /* 仅认知关口:浮层里「确认提交」*/
+  .btn.dangertext{background:transparent;color:var(--danger)}
+  .bar{display:flex;gap:6px;align-items:center}
+</style>
+</head>
+<body>
+
+  <div class="col">
+    <h2>就近浮层(表单)</h2>
+    <div class="layer pop">
+      <div class="title">提交版本</div>
+      <div class="desc">将当前草稿提交为正式版本</div>
+      <label>变更说明</label>
+      <input placeholder="描述本次修改…" />
+      <div class="row">
+        <button class="btn ghost">取消</button>
+        <button class="btn primary">确认提交</button>
+      </div>
+    </div>
+    <div class="spec">
+      宽 <b>256</b> · 圆角 <b>12(xl)</b> · 边 <b>1px separator</b> · 柔阴影 · padding <b>12(p-3)</b><br>
+      入场:<b>fade + zoom-95 + slide</b>(tw-animate-css)<br>
+      色块只在<b>认知关口</b>:仅「确认提交」用长春花紫
+    </div>
+  </div>
+
+  <div class="col">
+    <h2>下拉菜单(列表)</h2>
+    <div class="layer menu">
+      <div class="item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6"/></svg>切换主题</div>
+      <div class="sep"></div>
+      <div class="item danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0v14h10V6"/></svg>丢弃草稿</div>
+    </div>
+    <div class="spec">
+      宽 <b>256</b>(同浮层基准)· 项高 <b>28</b> · 图标 <b>16 灰</b>(密集行,非一般 20)· 字 <b>14</b><br>
+      hover 淡灰底 · 危险项墨字转<b>红</b>
+    </div>
+  </div>
+
+  <div class="col">
+    <h2>按钮 & 顶栏</h2>
+    <div class="bar">
+      <span style="font-size:12px;color:var(--ink-ghost);margin-right:4px">上次编辑 15:08</span>
+      <button class="btn ghost">保存</button>
+      <button class="btn secondary">提交</button>
+      <button class="btn ghost" style="padding:0 6px">⋯</button>
+    </div>
+    <div class="spec">
+      顶栏全<b>中性、无色块</b>、文字为主(照 Notion 共享)。<br>
+      保存 = <b>ghost</b>(轻)· 提交 = <b>secondary</b> 中性胶囊(paper-dark 淡底)· ⋯ = 图标<br>
+      统一用设计系统 <b>&lt;Button&gt;</b>,不手搓。控件高 <b>28</b>、顶栏行高 <b>52</b>。
+    </div>
+  </div>
+
+</body>
+</html>
