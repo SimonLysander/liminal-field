@@ -435,8 +435,16 @@ const DraftEditPage = () => {
         </div>
       </div>
 
-      {/* [2,3] 大纲 */}
-      <div className="overflow-y-auto px-4 py-10">
+      {/* [2,3] 大纲 — 与展示端笔记目录同步:黄金比例高度、顶部留距、上下渐隐 */}
+      <div
+        className="min-h-0 self-start overflow-y-auto px-4 py-10"
+        style={{
+          marginTop: '8vh',
+          maxHeight: '61.8vh',
+          maskImage: 'linear-gradient(to bottom, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%)',
+        }}
+      >
         <div
           className="mb-3 text-xs font-semibold uppercase"
           style={{ color: 'var(--ink-ghost)', letterSpacing: '0.04em' }}
@@ -452,9 +460,9 @@ const DraftEditPage = () => {
             headings.map((h) => (
               <button
                 key={`${h.index}-${h.text}`}
-                className="outline-heading-btn w-full truncate rounded-md py-1.5 text-left text-sm transition-colors duration-100"
+                className="outline-heading-btn w-full truncate rounded-lg py-1.5 text-left text-sm transition-colors duration-100"
                 style={{
-                  paddingLeft: `${(h.level - 1) * 8 + 10}px`,
+                  paddingLeft: `${(h.level - 1) * 10 + 8}px`,
                   paddingRight: 8,
                   color: 'var(--ink-faded)',
                   fontWeight: 400,

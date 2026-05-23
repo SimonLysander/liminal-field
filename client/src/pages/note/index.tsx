@@ -289,7 +289,16 @@ function NoteReader({ id }: { id: string }) {
       <div
         ref={tocPanelRef}
         className="flex min-h-0 shrink-0 flex-col gap-7 self-start overflow-y-auto px-4 py-10"
-        style={{ width: 'var(--layout-sidebar)', maxHeight: '61.8vh' }}
+        style={{
+          width: 'var(--layout-sidebar)',
+          // 离屏幕顶留距离(下移到主题按钮下方):目录是悬在中上部的容器,
+          // 渐隐发生在容器边缘而非屏幕边缘,滚动不再贴边硬切/划出屏幕
+          marginTop: '8vh',
+          maxHeight: '61.8vh',
+          // 滚动时上下边缘渐隐,内容柔和淡出而非硬切
+          maskImage: 'linear-gradient(to bottom, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%)',
+        }}
       >
         {toc.length > 0 && (
           <div>
