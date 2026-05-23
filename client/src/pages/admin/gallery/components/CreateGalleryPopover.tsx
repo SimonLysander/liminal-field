@@ -52,7 +52,7 @@ export function CreateGalleryPopover({ children, onSubmit }: CreateGalleryPopove
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       {/* 按钮在左栏底部:向上 + 向右展开(左侧触发朝屏幕中心开,不往左边缘挤) */}
-      <PopoverContent side="top" align="start" sideOffset={6} className="w-60 p-2">
+      <PopoverContent side="top" align="start" sideOffset={6} className="p-3">
         <div className="mb-1.5 px-0.5 text-xs text-[var(--ink-faded)]">新建画廊动态</div>
         <Input
           autoFocus

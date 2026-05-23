@@ -47,7 +47,7 @@ export function AddEntryPopover({ children, onSubmit }: AddEntryPopoverProps) {
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       {/* 按钮上方 + 向右展开(朝内容区开,不往边缘挤);w-72 比左栏新建稍宽 */}
-      <PopoverContent side="top" align="start" sideOffset={6} className="w-72 p-2">
+      <PopoverContent side="top" align="start" sideOffset={6} className="p-3">
         <div className="mb-1.5 px-0.5 text-xs text-[var(--ink-faded)]">添加条目</div>
         <Input
           autoFocus

@@ -42,7 +42,7 @@ export function CommitPopover({ children, onSubmit }: CommitPopoverProps) {
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
-      <PopoverContent align="end" sideOffset={6} className="w-72 p-3">
+      <PopoverContent align="end" sideOffset={6} className="p-3">
         <div className="mb-0.5 text-md font-semibold" style={{ color: 'var(--ink)' }}>提交版本</div>
         <p className="mb-3 text-xs" style={{ color: 'var(--ink-ghost)' }}>提交为新的正式版本</p>
         <label className="flex flex-col gap-1.5">
