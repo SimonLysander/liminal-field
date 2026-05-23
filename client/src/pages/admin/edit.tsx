@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { Sun, Moon, ChevronLeft, Save, Trash2 } from 'lucide-react';
-import { Modal } from '@/components/shared/Modal';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useTheme } from '@/hooks/use-theme';
@@ -360,14 +360,25 @@ const DraftEditPage = () => {
              lastSavedAt ? `上次编辑 ${new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` : ''}
           </span>
 
-          {/* 提交按钮：Notion "共享" 风格 */}
-          <button
-            className="rounded-md border px-2.5 py-1 text-xs font-medium transition-colors hover:bg-[var(--shelf)]"
-            style={{ color: 'var(--ink)', borderColor: 'var(--separator)' }}
-            onClick={() => setShowCommitDialog(true)}
-          >
-            提交
-          </button>
+          {/* 提交按钮：Notion "共享" 风格 — 从按钮就近弹出提交浮层(⌘S 也走 showCommitDialog) */}
+          <Popover open={showCommitDialog} onOpenChange={setShowCommitDialog}>
+            <PopoverTrigger asChild>
+              <button
+                className="rounded-md border px-2.5 py-1 text-xs font-medium transition-colors hover:bg-[var(--shelf)]"
+                style={{ color: 'var(--ink)', borderColor: 'var(--separator)' }}
+              >
+                提交
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" sideOffset={6} className="w-72 p-3">
+              <CommitForm
+                changeNote={state.changeNote}
+                onChangeNote={(v) => handleChange('changeNote', v)}
+                onConfirm={() => void commitDraft()}
+                onCancel={() => setShowCommitDialog(false)}
+              />
+            </PopoverContent>
+          </Popover>
 
           {/* 图标按钮组 */}
           <div className="flex items-center gap-0.5">
@@ -457,22 +468,13 @@ const DraftEditPage = () => {
         </nav>
       </div>
 
-      {/* Commit dialog */}
-      {showCommitDialog && (
-        <CommitDialog
-          changeNote={state.changeNote}
-          onChangeNote={(v) => handleChange('changeNote', v)}
-          onConfirm={() => void commitDraft()}
-          onCancel={() => setShowCommitDialog(false)}
-        />
-      )}
     </div>
   );
 };
 
-/* ---------- Commit Dialog ---------- */
+/* ---------- Commit Form(就近浮层内容)---------- */
 
-function CommitDialog({
+function CommitForm({
   changeNote,
   onChangeNote,
   onConfirm,
@@ -484,23 +486,24 @@ function CommitDialog({
   onCancel: () => void;
 }) {
   return (
-    <Modal
-      open
-      onClose={onCancel}
-      title="提交版本"
-      description="将当前草稿提交为正式版本"
-      footer={
-        <>
-          <Button variant="ghost" size="sm" type="button" onClick={onCancel}>取消</Button>
-          <Button variant="primary" size="sm" type="button" onClick={onConfirm}>确认提交</Button>
-        </>
-      }
-    >
+    <div>
+      <div className="mb-0.5 text-md font-semibold" style={{ color: 'var(--ink)' }}>提交版本</div>
+      <p className="mb-3 text-xs" style={{ color: 'var(--ink-ghost)' }}>将当前草稿提交为正式版本</p>
       <label className="flex flex-col gap-1.5">
         <span className="text-2xs font-medium" style={{ color: 'var(--ink-ghost)' }}>变更说明</span>
-        <Input type="text" value={changeNote} onChange={(e) => onChangeNote(e.target.value)} autoFocus />
+        <Input
+          type="text"
+          value={changeNote}
+          onChange={(e) => onChangeNote(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') onConfirm(); }}
+          autoFocus
+        />
       </label>
-    </Modal>
+      <div className="mt-3 flex items-center justify-end gap-1.5">
+        <Button variant="ghost" size="sm" type="button" onClick={onCancel}>取消</Button>
+        <Button variant="primary" size="sm" type="button" onClick={onConfirm}>确认提交</Button>
+      </div>
+    </div>
   );
 }
 

@@ -19,7 +19,7 @@ import { PhotoGrid } from './components/PhotoGrid';
 import { PhotoEditModal } from './components/PhotoEditModal';
 import { GalleryProseEditor } from './components/GalleryProseEditor';
 import { MetadataFields } from './components/LocationSelect';
-import { CommitModal } from './components/CommitModal';
+import { CommitPopover } from './components/CommitPopover';
 import { useGalleryEditor } from './hooks/useGalleryEditor';
 
 // ─── 保存状态展示 ───
@@ -112,8 +112,6 @@ export default function GalleryEditPage() {
   // 照片编辑弹窗状态
   const [modalOpen, setModalOpen] = useState(false);
   const [modalPhotoIndex, setModalPhotoIndex] = useState(0);
-  // 提交 Modal 状态
-  const [commitModalOpen, setCommitModalOpen] = useState(false);
 
   const handlePhotoClick = (index: number) => {
     setModalPhotoIndex(index);
@@ -207,14 +205,16 @@ export default function GalleryEditPage() {
           >
             保存草稿
           </button>
-          <button
-            className="rounded-full px-3 py-1 text-sm font-medium transition-colors duration-150"
-            style={{ background: 'var(--ink)', color: 'var(--paper)', opacity: uploading ? 0.4 : 1 }}
-            onClick={() => setCommitModalOpen(true)}
-            disabled={uploading}
-          >
-            提交
-          </button>
+          {/* 提交就近浮层:以「提交」按钮为锚点弹出 */}
+          <CommitPopover onSubmit={handleCommit}>
+            <button
+              className="rounded-full px-3 py-1 text-sm font-medium transition-colors duration-150"
+              style={{ background: 'var(--ink)', color: 'var(--paper)', opacity: uploading ? 0.4 : 1 }}
+              disabled={uploading}
+            >
+              提交
+            </button>
+          </CommitPopover>
         </div>
       </header>
 
@@ -273,12 +273,6 @@ export default function GalleryEditPage() {
         onDelete={deletePhoto}
       />
 
-      {/* 提交 Modal */}
-      <CommitModal
-        open={commitModalOpen}
-        onClose={() => setCommitModalOpen(false)}
-        onSubmit={handleCommit}
-      />
     </div>
   );
 }
