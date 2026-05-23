@@ -30,6 +30,7 @@ import type { ContentChangeType, ContentDetail, EditorDraft } from '@/services/w
 import { PlateMarkdownEditor } from './components/PlateEditor';
 import { parseError } from './helpers';
 import { type HeadingEntry, extractHeadingEntriesFromMarkdown } from './lib/markdown-toc';
+import { useLocalDraftBuffer } from './lib/use-local-draft-buffer';
 import { EditorOutline } from './components/EditorOutline';
 import { CommitForm } from './components/CommitForm';
 import { LoadingState } from '@/components/LoadingState';
@@ -76,7 +77,15 @@ const DraftEditPage = () => {
   const [isDirty, setIsDirty] = useState(false);
   const [isAutosaving, setIsAutosaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState('');
-  const [_autosaveError, setAutosaveError] = useState('');
+  // local-first 草稿缓冲:每次改动即时落 localStorage,崩溃/刷新/关页不丢字
+  const {
+    loadPending: loadLocalPending,
+    onChange: writeLocalDraft,
+    beginSync: beginLocalSync,
+    endSync: endLocalSync,
+    clear: clearLocalDraft,
+  } = useLocalDraftBuffer<EditorState>(id ?? null);
+  const [, setAutosaveError] = useState(''); // 值未在笔记编辑器展示,只保留 setter 供 saveDraft 调用
   const [resetKey] = useState(0);
   const [showCommitDialog, setShowCommitDialog] = useState(false);
   /* Portal 目标：Plate 工具栏通过 Portal 渲染到此元素内 */
@@ -152,6 +161,13 @@ const DraftEditPage = () => {
           });
           setLastSavedAt(newDraft.savedAt);
         }
+
+        // local-first reconcile:本地有未同步改动(上次崩溃/刷新前没存完)→ 覆盖恢复并标脏重存
+        const localPending = loadLocalPending();
+        if (localPending && !cancelled) {
+          setState(localPending);
+          setIsDirty(true);
+        }
       } catch (initError) {
         if (!cancelled) setError(parseError(initError, '加载内容失败'));
       } finally {
@@ -161,7 +177,7 @@ const DraftEditPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, loadLocalPending]);
 
   const handleChange = useCallback(
     <K extends keyof EditorState>(key: K, value: EditorState[K]) => {
@@ -181,6 +197,8 @@ const DraftEditPage = () => {
         setAutosaveError('');
       }
 
+      // local-first:抓同步 token,成功后仅在期间无新改动时标记本地已同步(防竞态)
+      const syncToken = beginLocalSync();
       try {
         const draft = await contentItemsApi.saveDraft(id, {
           title: state.title,
@@ -191,6 +209,7 @@ const DraftEditPage = () => {
         setIsDirty(false);
         setLastSavedAt(draft.savedAt);
         setIsAutosaving(false);
+        endLocalSync(syncToken);
 
         // 手动保存成功（inline SaveStatus 已提供视觉反馈，无需弹窗）
       } catch (saveError) {
@@ -202,7 +221,7 @@ const DraftEditPage = () => {
         }
       }
     },
-    [id, state],
+    [id, state, beginLocalSync, endLocalSync],
   );
 
   /* AI 顾问面板状态 */
@@ -244,6 +263,7 @@ const DraftEditPage = () => {
       });
 
       await contentItemsApi.deleteDraft(id);
+      clearLocalDraft(); // 已提交,本地草稿失效,清掉防下次打开被当未同步草稿恢复
       setContentDetail(saved);
       setIsDirty(false);
       setLastSavedAt('');
@@ -254,7 +274,7 @@ const DraftEditPage = () => {
       setCommitting(false);
       setError(parseError(commitError, '提交失败'));
     }
-  }, [id, state, goBack]);
+  }, [id, state, goBack, clearLocalDraft]);
 
   const discardDraft = useCallback(async () => {
     if (!id) return;
@@ -263,11 +283,12 @@ const DraftEditPage = () => {
 
     try {
       await contentItemsApi.deleteDraft(id);
+      clearLocalDraft(); // 已丢弃,清本地草稿
       goBack();
     } catch (discardError) {
       setError(parseError(discardError, '丢弃失败'));
     }
-  }, [id, goBack, confirm]);
+  }, [id, goBack, confirm, clearLocalDraft]);
 
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
@@ -279,6 +300,12 @@ const DraftEditPage = () => {
     window.addEventListener('keydown', handleKeydown);
     return () => window.removeEventListener('keydown', handleKeydown);
   }, [saveDraft]);
+
+  // local-first:每次改动即时镜像到 localStorage(零延迟,崩溃/刷新也不丢字)
+  useEffect(() => {
+    if (loading || !isDirty) return;
+    writeLocalDraft(state);
+  }, [state, isDirty, loading, writeLocalDraft]);
 
   useEffect(() => {
     if (!isDirty || loading) return;

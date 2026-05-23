@@ -35,6 +35,7 @@ import type { EditorDraft } from '@/services/workspace';
 import { PlateMarkdownEditor } from '../components/PlateEditor';
 import { parseError } from '../helpers';
 import { type HeadingEntry, extractHeadingEntriesFromMarkdown } from '../lib/markdown-toc';
+import { useLocalDraftBuffer } from '../lib/use-local-draft-buffer';
 import { EditorOutline } from '../components/EditorOutline';
 import { CommitForm } from '../components/CommitForm';
 import { LoadingState } from '@/components/LoadingState';
@@ -78,6 +79,14 @@ const AnthologyEntryEditPage = () => {
   const [isAutosaving, setIsAutosaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState('');
   const [autosaveError, setAutosaveError] = useState('');
+  // local-first 草稿缓冲(按 文集id:条目key 隔离):改动即时落盘,崩溃/刷新/关页不丢字
+  const {
+    loadPending: loadLocalPending,
+    onChange: writeLocalDraft,
+    beginSync: beginLocalSync,
+    endSync: endLocalSync,
+    clear: clearLocalDraft,
+  } = useLocalDraftBuffer<EditorState>(id && entryKey ? `${id}:${entryKey}` : null);
   const [showCommitDialog, setShowCommitDialog] = useState(false);
   const [committing, setCommitting] = useState(false);
 
@@ -155,6 +164,13 @@ const AnthologyEntryEditPage = () => {
           });
           setLastSavedAt(newDraft.savedAt);
         }
+
+        // local-first reconcile:本地有未同步改动(上次崩溃/刷新前没存完)→ 覆盖恢复并标脏重存
+        const localPending = loadLocalPending();
+        if (localPending && !cancelled) {
+          setState(localPending);
+          setIsDirty(true);
+        }
       } catch (initError) {
         if (!cancelled) setError(parseError(initError, '加载条目失败'));
       } finally {
@@ -164,7 +180,7 @@ const AnthologyEntryEditPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [id, entryKey]);
+  }, [id, entryKey, loadLocalPending]);
 
   // ─── 变更处理 ─────────────────────────────────────────────────────────────
 
@@ -188,6 +204,8 @@ const AnthologyEntryEditPage = () => {
         setAutosaveError('');
       }
 
+      // local-first:抓同步 token,成功后仅在期间无新改动时标记本地已同步(防竞态)
+      const syncToken = beginLocalSync();
       try {
         const draft = await anthologyApi.saveEntryDraft(id, entryKey, {
           title: state.title,
@@ -198,6 +216,7 @@ const AnthologyEntryEditPage = () => {
         setIsDirty(false);
         setLastSavedAt(draft.savedAt);
         setIsAutosaving(false);
+        endLocalSync(syncToken);
       } catch (saveError) {
         setIsAutosaving(false);
         if (options?.silent) {
@@ -207,7 +226,7 @@ const AnthologyEntryEditPage = () => {
         }
       }
     },
-    [id, entryKey, state],
+    [id, entryKey, state, beginLocalSync, endLocalSync],
   );
 
   // ─── 提交 ─────────────────────────────────────────────────────────────────
@@ -227,6 +246,7 @@ const AnthologyEntryEditPage = () => {
         bodyMarkdown: state.bodyMarkdown,
         changeNote: state.changeNote,
       });
+      clearLocalDraft(); // 已提交,本地草稿失效,清掉防下次打开被当未同步草稿恢复
       setIsDirty(false);
       setLastSavedAt('');
 
@@ -236,7 +256,7 @@ const AnthologyEntryEditPage = () => {
       setCommitting(false);
       setError(parseError(commitError, '提交失败'));
     }
-  }, [id, entryKey, state, goBack]);
+  }, [id, entryKey, state, goBack, clearLocalDraft]);
 
   // ─── 丢弃草稿 ─────────────────────────────────────────────────────────────
 
@@ -252,11 +272,12 @@ const AnthologyEntryEditPage = () => {
 
     try {
       await anthologyApi.deleteEntryDraft(id, entryKey);
+      clearLocalDraft(); // 已丢弃,清本地草稿
       goBack();
     } catch (discardError) {
       setError(parseError(discardError, '丢弃失败'));
     }
-  }, [id, entryKey, goBack, confirm]);
+  }, [id, entryKey, goBack, confirm, clearLocalDraft]);
 
   // ─── 快捷键 ──────────────────────────────────────────────────────────────
 
@@ -270,6 +291,12 @@ const AnthologyEntryEditPage = () => {
     window.addEventListener('keydown', handleKeydown);
     return () => window.removeEventListener('keydown', handleKeydown);
   }, [saveDraft]);
+
+  // local-first:每次改动即时镜像到 localStorage(零延迟,崩溃/刷新也不丢字)
+  useEffect(() => {
+    if (loading || !isDirty) return;
+    writeLocalDraft(state);
+  }, [state, isDirty, loading, writeLocalDraft]);
 
   // ─── 1.5s autosave ───────────────────────────────────────────────────────
 
