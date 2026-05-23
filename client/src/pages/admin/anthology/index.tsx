@@ -44,7 +44,6 @@ import { EntryListPanel } from './components/EntryListPanel';
 import { EntryPreviewPanel } from './components/EntryPreviewPanel';
 import { AnthologySidePanel } from './components/AnthologySidePanel';
 import { EntrySidePanel } from './components/EntrySidePanel';
-import { CreateAnthologyModal } from './components/CreateAnthologyModal';
 import { EmptyState } from './components/primitives';
 
 // ─── 主组件 ───
@@ -55,7 +54,6 @@ export default function AnthologyAdmin() {
 
   const [anthologies, setAnthologies] = useState<AnthologyAdminListItem[]>([]);
   const [listLoading, setListLoading] = useState(true);
-  const [createModalOpen, setCreateModalOpen] = useState(false);
 
   /* 文集详情 */
   const [detail, setDetail] = useState<AnthologyAdminDetail | null>(null);
@@ -474,7 +472,7 @@ export default function AnthologyAdmin() {
         selectedId={selectedId}
         onSelect={(id) => setSelectedId(id)}
         onReload={() => void loadAnthologies()}
-        onCreateOpen={() => setCreateModalOpen(true)}
+        onCreateSubmit={handleCreate}
       />
 
       {/* ── 右侧：Topbar + 内容区（中栏 + 右侧面板）── */}
@@ -570,12 +568,6 @@ export default function AnthologyAdmin() {
         </div>
       </div>
 
-      {/* 新建文集弹窗 */}
-      <CreateAnthologyModal
-        open={createModalOpen}
-        onClose={() => setCreateModalOpen(false)}
-        onSubmit={handleCreate}
-      />
     </>
   );
 }

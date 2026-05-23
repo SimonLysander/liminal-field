@@ -8,6 +8,7 @@
 import { Plus, RefreshCw } from 'lucide-react';
 import { LoadingState, ContentFade } from '@/components/LoadingState';
 import type { AnthologyAdminListItem } from '@/services/workspace';
+import { CreateAnthologyPopover } from './CreateAnthologyPopover';
 
 // ─── 列表项 ───
 
@@ -64,7 +65,8 @@ interface AnthologyListProps {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onReload: () => void;
-  onCreateOpen: () => void;
+  /** 提交新建文集(就近浮层内调用) */
+  onCreateSubmit: (title: string) => Promise<void>;
 }
 
 export function AnthologyList({
@@ -73,7 +75,7 @@ export function AnthologyList({
   selectedId,
   onSelect,
   onReload,
-  onCreateOpen,
+  onCreateSubmit,
 }: AnthologyListProps) {
   return (
     <aside
@@ -128,14 +130,15 @@ export function AnthologyList({
           <RefreshCw size={9} strokeWidth={1.5} />
           刷新
         </button>
-        <button
-          className="hover-shelf flex items-center gap-1 rounded px-1.5 py-0.5 text-base font-medium transition-colors duration-150"
-          style={{ color: 'var(--ink)' }}
-          onClick={onCreateOpen}
-        >
-          <Plus size={10} strokeWidth={2} />
-          新建
-        </button>
+        <CreateAnthologyPopover onSubmit={onCreateSubmit}>
+          <button
+            className="hover-shelf flex items-center gap-1 rounded px-1.5 py-0.5 text-base font-medium transition-colors duration-150"
+            style={{ color: 'var(--ink)' }}
+          >
+            <Plus size={10} strokeWidth={2} />
+            新建
+          </button>
+        </CreateAnthologyPopover>
       </div>
     </aside>
   );
