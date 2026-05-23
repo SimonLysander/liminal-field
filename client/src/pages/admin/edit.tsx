@@ -14,8 +14,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useConfirm } from '@/contexts/ConfirmContext';
-import { ChevronLeft, Save, Send, Sun, Trash2, MoreHorizontal } from 'lucide-react';
-import { Modal } from '@/components/shared/Modal';
+import { ChevronLeft, Save, Sun, Trash2, MoreHorizontal } from 'lucide-react';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -318,16 +318,6 @@ const DraftEditPage = () => {
     >
       <ThresholdOverlay visible={committing} label="正在提交版本..." />
 
-      {/* 提交版本:由 … 菜单触发(无固定锚点)→ 居中 Modal,稳定;内容复用 CommitForm。⌘S 也走 showCommitDialog */}
-      <Modal open={showCommitDialog} onClose={() => setShowCommitDialog(false)} className="max-w-[360px]">
-        <CommitForm
-          changeNote={state.changeNote}
-          onChangeNote={(v) => handleChange('changeNote', v)}
-          onConfirm={() => void commitDraft()}
-          onCancel={() => setShowCommitDialog(false)}
-        />
-      </Modal>
-
       {/* ── Row 1: Notion 风格顶栏（无底边框，与内容自然融合） ── */}
       <div className="col-span-full flex items-center justify-between px-4">
         {/* 左：← + 可编辑页面名 */}
@@ -349,14 +339,14 @@ const DraftEditPage = () => {
           />
         </div>
 
-        {/* 右：状态 + 保存(外,高频) + … 菜单(提交在里,低频) */}
+        {/* 右：状态 + 保存(直接) + 提交(开就近浮层填变更说明) + … 菜单(主题/丢弃) */}
         <div className="flex items-center gap-2">
           <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
             {isAutosaving ? '保存中...' : isDirty ? '未保存' :
              lastSavedAt ? `上次编辑 ${new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` : ''}
           </span>
 
-          {/* 保存:外面的高频快捷按钮(⇧⌘S) */}
+          {/* 保存:直接快捷按钮(⇧⌘S) */}
           <button
             onClick={() => void saveDraft()}
             className="flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none"
@@ -366,7 +356,27 @@ const DraftEditPage = () => {
             <Save size={14} strokeWidth={1.5} />保存
           </button>
 
-          {/* … 菜单:提交版本(低频,开居中 Modal)/ 切换主题 / 丢弃(危险) */}
+          {/* 提交:从按钮直接弹就近浮层,变更说明在浮层里确认;长春花紫淡底强调(⌘S 也走 showCommitDialog) */}
+          <Popover open={showCommitDialog} onOpenChange={setShowCommitDialog}>
+            <PopoverTrigger asChild>
+              <button
+                className="rounded-md px-2.5 py-1 text-xs font-medium outline-none transition-colors hover:bg-[var(--accent-hover)] hover:text-[var(--accent-contrast)] focus-visible:outline-none"
+                style={{ color: 'var(--accent)', background: 'var(--accent-soft)' }}
+              >
+                提交
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" sideOffset={6} className="w-72 p-3">
+              <CommitForm
+                changeNote={state.changeNote}
+                onChangeNote={(v) => handleChange('changeNote', v)}
+                onConfirm={() => void commitDraft()}
+                onCancel={() => setShowCommitDialog(false)}
+              />
+            </PopoverContent>
+          </Popover>
+
+          {/* … 菜单:切换主题 / 丢弃(危险) */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="rounded-sm p-1.5 outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none data-[state=open]:bg-[var(--shelf)]" style={{ color: 'var(--ink-ghost)' }} title="更多">
@@ -374,9 +384,6 @@ const DraftEditPage = () => {
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setShowCommitDialog(true)}>
-                <Send />提交版本
-              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}>
                 <Sun />切换主题
               </DropdownMenuItem>
