@@ -1,0 +1,166 @@
+/**
+ * useAdvisorChat — Lux 对话核心(侧栏写作顾问 + 全页总助手共用)。
+ *
+ * 抽出 useChat + transport + 会话加载/保存 + tier + tasks 这套 plumbing,
+ * 让不同布局(编辑器侧栏 / 独立 agent 页)复用同一份功能逻辑,不重复造。
+ *
+ * 选区(选中文字 add-to-chat)、输入框状态、空态问候、渲染 → 留给各自布局组件,
+ * 它们用 send(text) 把最终文本发出去。
+ *
+ * 生命周期(对应后端 hooks):
+ * 1. mount → loadSession(sessionKey,title) → 恢复对话 + 自动 recall 相关记忆
+ * 2. send → transport body 携带 summary + relatedMemories + entryContext(可选文档)
+ * 3. 回复完成 → saveSession(sessionKey, messages),刷新 tasks
+ */
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { DefaultChatTransport } from 'ai';
+import type { UIMessage } from 'ai';
+import { useChat } from '@ai-sdk/react';
+import { loadSession, saveSession, type SessionTask } from '@/services/agent';
+
+export type Tier = 'flash' | 'standard' | 'think';
+
+const TIER_NEXT: Record<Tier, Tier> = {
+  flash: 'standard',
+  standard: 'think',
+  think: 'flash',
+};
+
+export interface UseAdvisorChatOptions {
+  /** 会话标识,不透明字符串 */
+  sessionKey: string;
+  /** 后端 agent 入口 key(如 'writing-advisor') */
+  agentKey: string;
+  /** entryContext.source 标记来源(如 'notes-editor' / 'agent-page') */
+  source: string;
+  /** 可选:绑定的文档(侧栏写作顾问传;全页总助手不传) */
+  documentContext?: {
+    contentItemId?: string;
+    title?: string;
+    bodyMarkdown?: string;
+  };
+}
+
+export function useAdvisorChat({
+  sessionKey,
+  agentKey,
+  source,
+  documentContext,
+}: UseAdvisorChatOptions) {
+  const [tier, setTier] = useState<Tier>('standard');
+  const [sessionReady, setSessionReady] = useState(false);
+  const [tasks, setTasks] = useState<SessionTask[]>([]);
+
+  // Ref 层:持有最新值供 transport body 回调读取(transport 只创建一次)
+  const docRef = useRef(documentContext);
+  const tierRef = useRef(tier);
+  const summaryRef = useRef('');
+  const relatedMemoriesRef = useRef<
+    Array<{ key: string; type: string; title: string; content: string }>
+  >([]);
+
+  useEffect(() => {
+    docRef.current = documentContext;
+  }, [documentContext]);
+
+  useEffect(() => {
+    tierRef.current = tier;
+  }, [tier]);
+
+  /* eslint-disable react-hooks/refs */
+  const [transport] = useState(
+    () =>
+      new DefaultChatTransport({
+        api: '/api/v1/agent/chat',
+        body: () => ({
+          tier: tierRef.current,
+          agentKey,
+          sessionSummary: summaryRef.current || undefined,
+          relatedMemories:
+            relatedMemoriesRef.current.length > 0
+              ? relatedMemoriesRef.current
+              : undefined,
+          entryContext: {
+            source,
+            sessionKey,
+            document: docRef.current?.contentItemId
+              ? {
+                  contentItemId: docRef.current.contentItemId,
+                  title: docRef.current.title,
+                  bodyMarkdown: docRef.current.bodyMarkdown,
+                }
+              : undefined,
+          },
+        }),
+      }),
+  );
+
+  const { messages, sendMessage, setMessages, status } = useChat({ transport });
+  /* eslint-enable react-hooks/refs */
+
+  // SessionLoad:加载历史消息 + 自动 recall 记忆
+  useEffect(() => {
+    let cancelled = false;
+    loadSession(sessionKey, documentContext?.title)
+      .then((data) => {
+        if (cancelled) return;
+        summaryRef.current = data.summary || '';
+        relatedMemoriesRef.current = data.relatedMemories || [];
+        if (data.messages.length > 0) {
+          setMessages(data.messages as unknown as UIMessage[]);
+        }
+        if (data.tasks?.length > 0) setTasks(data.tasks);
+        setSessionReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) setSessionReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // documentContext?.title 只用于首次 recall 提示,变化不需重载会话
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionKey, setMessages]);
+
+  // AfterChat:回复完成自动保存 + 刷新 tasks
+  const prevStatusRef = useRef(status);
+  useEffect(() => {
+    const wasActive =
+      prevStatusRef.current === 'streaming' || prevStatusRef.current === 'submitted';
+    const nowReady = status === 'ready';
+    prevStatusRef.current = status;
+
+    if (wasActive && nowReady && messages.length > 0) {
+      void saveSession(
+        sessionKey,
+        messages as unknown as Record<string, unknown>[],
+      ).then((res) => {
+        if (res?.tasks) setTasks(res.tasks);
+      });
+    }
+  }, [status, messages, sessionKey]);
+
+  const send = useCallback(
+    (text: string) => {
+      const t = text.trim();
+      if (!t) return;
+      void sendMessage({ text: t });
+    },
+    [sendMessage],
+  );
+
+  const cycleTier = useCallback(() => setTier((t) => TIER_NEXT[t]), []);
+
+  const isStreaming = status === 'streaming' || status === 'submitted';
+
+  return {
+    messages,
+    status,
+    isStreaming,
+    sessionReady,
+    tasks,
+    tier,
+    cycleTier,
+    send,
+  };
+}
