@@ -754,16 +754,26 @@ export class ContentGitService implements OnModuleInit {
         // 5. 切到当月 workspace
         const targetBranch = this.resolveWorkBranch();
         const updated = await freshGit.branchLocal();
-        if (!updated.all.includes(targetBranch)) {
-          const remoteTarget = `origin/${targetBranch}`;
-          const allRemote = await freshGit.branch(['-r']);
-          if (allRemote.all.includes(remoteTarget)) {
-            await freshGit.checkout(['-b', targetBranch, remoteTarget]);
-          } else {
-            await freshGit.checkout(['-b', targetBranch, 'main']);
+        if (updated.all.includes(targetBranch)) {
+          if (updated.current !== targetBranch) {
+            await freshGit.checkout(targetBranch);
           }
-        } else if (updated.current !== targetBranch) {
-          await freshGit.checkout(targetBranch);
+        } else {
+          // 选恢复源:优先当月 workspace;否则取 origin 上【最近的 workspace 分支】
+          // (按名字字典序=YYYY-MM 时间序,最新月在前);都没有才用 main。
+          // 关键修复:旧逻辑直接 fallback 到 main——但本月推送、未跨月归档时 main 是空的,
+          // 隔月恢复会丢光内容。改为落到最近月的 workspace 分支(它必含最新内容)。
+          const allRemote = await freshGit.branch(['-r']);
+          const remoteTarget = `origin/${targetBranch}`;
+          const latestRemoteWorkspace = allRemote.all
+            .filter((b) => b.startsWith('origin/workspace/'))
+            .sort()
+            .reverse()[0];
+          const sourceRef = allRemote.all.includes(remoteTarget)
+            ? remoteTarget
+            : (latestRemoteWorkspace ?? 'main');
+          await freshGit.checkout(['-b', targetBranch, sourceRef]);
+          this.logger.log(`Restore source branch: ${sourceRef} → ${targetBranch}`);
         }
 
         // 重建 git 实例，确保指向 clone 后的新 .git
