@@ -12,9 +12,11 @@ interface MessageListProps {
   messages: UIMessage[];
   status: string;
   sessionKey?: string;
+  /** 舒适密度(全页 agent);默认紧凑(侧栏) */
+  comfortable?: boolean;
 }
 
-export function MessageList({ messages, status, sessionKey }: MessageListProps) {
+export function MessageList({ messages, status, sessionKey, comfortable }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -22,7 +24,7 @@ export function MessageList({ messages, status, sessionKey }: MessageListProps) 
   }, [messages, status]);
 
   return (
-    <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-4 py-6">
+    <div className={`flex flex-1 flex-col overflow-y-auto py-6 ${comfortable ? 'gap-6 px-1' : 'gap-5 px-4'}`}>
       {messages.map((msg) => {
         const textContent = msg.parts
           .filter((p) => p.type === 'text')
@@ -36,6 +38,7 @@ export function MessageList({ messages, status, sessionKey }: MessageListProps) 
             content={textContent}
             parts={msg.role === 'assistant' ? msg.parts : undefined}
             sessionKey={sessionKey}
+            comfortable={comfortable}
           />
         );
       })}

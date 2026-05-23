@@ -17,6 +17,8 @@ interface ChatMessageProps {
   parts?: UIMessagePart<UIDataTypes, UITools>[];
   /** sub_agent 实时进度需要 sessionKey */
   sessionKey?: string;
+  /** 舒适密度(全页 agent 用大字距;侧栏默认紧凑) */
+  comfortable?: boolean;
 }
 
 /** 将 DynamicToolUIPart 的 state 映射到 ToolCallCard 的 state 类型 */
@@ -28,13 +30,13 @@ function mapToolState(state: string): 'call' | 'result' | 'error' {
   }
 }
 
-export function ChatMessage({ role, content, parts, sessionKey }: ChatMessageProps) {
+export function ChatMessage({ role, content, parts, sessionKey, comfortable }: ChatMessageProps) {
   if (role === 'user') {
     return (
       /* 用户消息：右对齐，轻量 shelf 背景，不喧宾夺主 */
       <div className="flex justify-end">
         <div
-          className="max-w-[85%] rounded-2xl px-3.5 py-2 text-sm"
+          className={`max-w-[85%] rounded-xl ${comfortable ? 'px-4 py-2.5 text-md' : 'px-3.5 py-2 text-sm'}`}
           style={{
             background: 'var(--shelf)',
             color: 'var(--ink)',
@@ -54,7 +56,7 @@ export function ChatMessage({ role, content, parts, sessionKey }: ChatMessagePro
         {parts.map((part, i) => {
           if (part.type === 'text') {
             return (
-              <AssistantMarkdown key={i} content={part.text} />
+              <AssistantMarkdown key={i} content={part.text} comfortable={comfortable} />
             );
           }
 
@@ -90,15 +92,15 @@ export function ChatMessage({ role, content, parts, sessionKey }: ChatMessagePro
   }
 
   // 无 parts 时直接渲染 content 字符串
-  return <AssistantMarkdown content={content} />;
+  return <AssistantMarkdown content={content} comfortable={comfortable} />;
 }
 
 /** 助手消息的 Markdown 渲染块，含基础 prose 样式 */
-function AssistantMarkdown({ content }: { content: string }) {
+function AssistantMarkdown({ content, comfortable }: { content: string; comfortable?: boolean }) {
   return (
     <div
-      className="prose prose-sm max-w-none text-xs"
-      style={{ color: 'var(--ink-faded)', lineHeight: 1.7 }}
+      className={`prose prose-sm max-w-none leading-relaxed ${comfortable ? 'text-md' : 'text-xs'}`}
+      style={{ color: 'var(--ink-faded)' }}
     >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
@@ -112,11 +114,10 @@ function AssistantMarkdown({ content }: { content: string }) {
             const isBlock = className?.startsWith('language-');
             return (
               <code
-                className={`text-xs${className ? ` ${className}` : ''}`}
+                className={`rounded-sm ${comfortable ? 'text-sm' : 'text-xs'}${className ? ` ${className}` : ''}`}
                 style={{
                   color: 'var(--ink-faded)',
                   background: 'var(--shelf)',
-                  borderRadius: 4,
                   padding: isBlock ? undefined : '1px 4px',
                 }}
               >
@@ -130,13 +131,13 @@ function AssistantMarkdown({ content }: { content: string }) {
             </a>
           ),
           h1: ({ children }) => (
-            <h1 className="mb-1 mt-3 text-sm font-semibold" style={{ color: 'var(--ink)' }}>{children}</h1>
+            <h1 className={`mb-1 mt-3 font-semibold ${comfortable ? 'text-base' : 'text-sm'}`} style={{ color: 'var(--ink)' }}>{children}</h1>
           ),
           h2: ({ children }) => (
-            <h2 className="mb-1 mt-2.5 text-xs font-semibold" style={{ color: 'var(--ink)' }}>{children}</h2>
+            <h2 className={`mb-1 mt-2.5 font-semibold ${comfortable ? 'text-sm' : 'text-xs'}`} style={{ color: 'var(--ink)' }}>{children}</h2>
           ),
           h3: ({ children }) => (
-            <h3 className="mb-1 mt-2 text-xs font-medium" style={{ color: 'var(--ink)' }}>{children}</h3>
+            <h3 className={`mb-1 mt-2 font-medium ${comfortable ? 'text-sm' : 'text-xs'}`} style={{ color: 'var(--ink)' }}>{children}</h3>
           ),
           ul: ({ children }) => (
             <ul className="my-1.5 list-disc pl-4" style={{ color: 'var(--ink)' }}>{children}</ul>
