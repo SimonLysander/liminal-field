@@ -143,43 +143,28 @@ const DraftEditPage = () => {
           setState(loaded);
           setLastSavedAt(draft.savedAt);
         } else {
-          // 无草稿：请求正式版，并创建初始草稿供自动保存使用
+          // 无草稿：只加载正式版,不急着建草稿。打开本身不算保存——
+          // 首次真实编辑触发自动保存时才创建草稿(saveDraft 是 upsert),时间戳才是真实保存时刻。
           const detail = await contentItemsApi.getById(id, { visibility: 'all' });
           if (cancelled) return;
           setContentDetail(detail);
-          const newDraft = await contentItemsApi.saveDraft(id, {
+          loaded = {
             title: detail.latestVersion.title,
             summary: detail.latestVersion.summary,
             bodyMarkdown: detail.bodyMarkdown,
             changeNote: '更新内容',
-          });
-          if (cancelled) return;
-          loaded = {
-            title: newDraft.title,
-            summary: newDraft.summary,
-            bodyMarkdown: newDraft.bodyMarkdown,
-            changeNote: newDraft.changeNote,
             changeType: 'patch',
           };
           setState(loaded);
-          setLastSavedAt(newDraft.savedAt);
+          // 不 setLastSavedAt:还没有草稿,无"已自动保存"时间(用户编辑后才有)
         }
 
-        // local-first reconcile:仅当本地内容与服务器【确实不同】(上次崩溃/刷新前没存完的真改动)
-        // 才覆盖恢复+标脏重传;若内容一致(陈旧 pending 标记)则清掉,避免无谓重存把时间戳跳到刷新时刻
+        // local-first reconcile:本地缓存"存在即未同步"(成功同步会清空)。有未同步内容
+        // (上次没存完就崩了/刷新了)→ 恢复并标脏重传,无需再和服务器逐字比对。
         const localPending = loadLocalPending();
-        if (localPending && loaded && !cancelled) {
-          const sameContent =
-            localPending.title === loaded.title &&
-            localPending.bodyMarkdown === loaded.bodyMarkdown &&
-            (localPending.summary ?? '') === (loaded.summary ?? '') &&
-            localPending.changeNote === loaded.changeNote;
-          if (sameContent) {
-            clearLocalDraft();
-          } else {
-            setState(localPending);
-            setIsDirty(true);
-          }
+        if (localPending && !cancelled) {
+          setState(localPending);
+          setIsDirty(true);
         }
       } catch (initError) {
         if (!cancelled) setError(parseError(initError, '加载内容失败'));
@@ -190,7 +175,7 @@ const DraftEditPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [id, loadLocalPending, clearLocalDraft]);
+  }, [id, loadLocalPending]);
 
   const handleChange = useCallback(
     <K extends keyof EditorState>(key: K, value: EditorState[K]) => {
@@ -464,7 +449,15 @@ const DraftEditPage = () => {
             <PlateMarkdownEditor
               key={`${id}-${resetKey}`}
               initialMarkdown={state.bodyMarkdown}
-              onChange={(md) => handleChange('bodyMarkdown', md)}
+              onChange={(md, isUserEdit) => {
+                // 始终同步正文(让 state 与编辑器一致),但仅用户真实编辑才标脏触发自动保存——
+                // 加载时 Plate 的规范化/往返不算编辑,不能让"打开页面"更新保存时间戳。
+                setState((prev) => (prev.bodyMarkdown === md ? prev : { ...prev, bodyMarkdown: md }));
+                if (isUserEdit) {
+                  setIsDirty(true);
+                  setAutosaveError('');
+                }
+              }}
             />
           </DraftAssetProvider>
         </div>

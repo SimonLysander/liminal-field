@@ -149,39 +149,24 @@ const AnthologyEntryEditPage = () => {
           setState(loaded);
           setLastSavedAt(draft.savedAt);
         } else {
-          // 无草稿：从正式版本读取，创建初始草稿
+          // 无草稿：只读正式版,不急着建草稿。首次真实编辑触发自动保存时才建(saveEntryDraft 是 upsert)。
           const entry = await anthologyApi.getEntry(id, entryKey);
           if (cancelled) return;
-          const newDraft = await anthologyApi.saveEntryDraft(id, entryKey, {
+          loaded = {
             title: entry.title,
-            summary: '',
             bodyMarkdown: entry.bodyMarkdown,
             changeNote: '更新条目',
-          });
-          if (cancelled) return;
-          loaded = {
-            title: newDraft.title,
-            bodyMarkdown: newDraft.bodyMarkdown,
-            changeNote: newDraft.changeNote,
           };
           setState(loaded);
-          setLastSavedAt(newDraft.savedAt);
+          // 不 setLastSavedAt:还没有草稿,无"已自动保存"时间(用户编辑后才有)
         }
 
-        // local-first reconcile:仅当本地内容与服务器【确实不同】才覆盖恢复+标脏重传;
-        // 内容一致(陈旧 pending)则清掉,避免无谓重存把时间戳跳到刷新时刻
+        // local-first reconcile:本地缓存"存在即未同步"(成功同步会清空)。有未同步内容
+        // (上次没存完就崩了/刷新了)→ 恢复并标脏重传,无需再和服务器逐字比对。
         const localPending = loadLocalPending();
-        if (localPending && loaded && !cancelled) {
-          const sameContent =
-            localPending.title === loaded.title &&
-            localPending.bodyMarkdown === loaded.bodyMarkdown &&
-            localPending.changeNote === loaded.changeNote;
-          if (sameContent) {
-            clearLocalDraft();
-          } else {
-            setState(localPending);
-            setIsDirty(true);
-          }
+        if (localPending && !cancelled) {
+          setState(localPending);
+          setIsDirty(true);
         }
       } catch (initError) {
         if (!cancelled) setError(parseError(initError, '加载条目失败'));
@@ -192,7 +177,7 @@ const AnthologyEntryEditPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [id, entryKey, loadLocalPending, clearLocalDraft]);
+  }, [id, entryKey, loadLocalPending]);
 
   // ─── 变更处理 ─────────────────────────────────────────────────────────────
 
@@ -474,7 +459,14 @@ const AnthologyEntryEditPage = () => {
                 <PlateMarkdownEditor
                   key={`anthology-entry-${id}-${entryKey}`}
                   initialMarkdown={state.bodyMarkdown}
-                  onChange={(md) => handleChange('bodyMarkdown', md)}
+                  onChange={(md, isUserEdit) => {
+                    // 始终同步正文,但仅用户真实编辑才标脏触发自动保存(加载规范化/往返不算编辑)
+                    setState((prev) => (prev.bodyMarkdown === md ? prev : { ...prev, bodyMarkdown: md }));
+                    if (isUserEdit) {
+                      setIsDirty(true);
+                      setAutosaveError('');
+                    }
+                  }}
                   toolbarContainer={toolbarPortal}
                 />
               </DraftAssetProvider>

@@ -53,7 +53,13 @@ export function PlateMarkdownEditor({
   toolbarContainer: _toolbarContainer,
 }: {
   initialMarkdown: string;
-  onChange: (markdown: string) => void;
+  /**
+   * @param markdown 序列化后的正文
+   * @param isUserEdit 是否为用户真实编辑。加载内容时 Slate 规范化 / markdown 往返也会
+   *   触发 onValueChange,但那时编辑器【没有焦点】——据此区分,避免把"打开页面"误判为
+   *   编辑、触发无谓自动保存(把保存时间戳跳到打开时刻)。
+   */
+  onChange: (markdown: string, isUserEdit: boolean) => void;
   /** @deprecated 固定工具栏已移除，保留参数兼容文集编辑器 */
   toolbarContainer?: HTMLElement | null;
 }) {
@@ -91,7 +97,12 @@ export function PlateMarkdownEditor({
     if (hasPlaceholder) return; // 上传中，跳过本次序列化
     try {
       const md = toStoredAssetPaths(serializeMd(editor), contentItemId);
-      onChange(md);
+      // 编辑器有焦点 = 用户在打字/用工具栏 → 真实编辑;无焦点 = 加载时的规范化/往返 → 非编辑。
+      // data-slate-editor 是 Slate 标准属性,判断与 Plate 版本无关。
+      const isUserEdit =
+        typeof document !== 'undefined' &&
+        !!document.activeElement?.closest('[data-slate-editor="true"]');
+      onChange(md, isUserEdit);
     } catch {
       /* Serialize can fail during rapid edits — skip, next change will catch up */
     }

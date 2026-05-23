@@ -2,87 +2,63 @@
  * useLocalDraftBuffer — local-first 草稿本地缓冲。
  *
  * 目标:写作工具"一个字都不丢"。每次改动即时同步写 localStorage(零延迟),服务器草稿仍按
- * 1.5s 防抖同步(跨设备/持久)。崩溃/强退/刷新/关页时,本地内容已落盘 → 重开时若本地有
- * 未同步到服务器的改动,优先恢复本地。不依赖任何 unload 钩子(那些本就不可靠)。
+ * 1.5s 防抖同步。崩溃/刷新/关页时本地已落盘 → 重开时若本地还有"没同步上去的内容"则恢复。
  *
- * 竞态防护:onChange 自增 rev;endSync 仅在同步期间无新改动(rev 未变)时才标记已同步,
- * 避免"服务器同步在途时又改了字 → 成功回调误标已同步 → 那次改动丢失"。
- *
- * 失效清理:提交/丢弃后必须 clear(),否则下次打开会把已提交/已丢弃的内容当未同步草稿恢复。
+ * 设计要点(为何这版可靠):
+ * - **本地缓存的存在本身 = 有未同步的改动**。一旦成功同步到服务器,立刻 clear() 清空。
+ *   所以正常刷新(都同步过)时本地缓存是空的,reconcile 不会误判、不会重存,时间戳保持真实。
+ * - 判断"同步期间有没有又改"用 beginSync/endSync 的**本地↔本地内容快照**比对(同一份客户端
+ *   序列化),**不和服务器内容比**——服务器存草稿会重新序列化 markdown,逐字比对必然不等、
+ *   会每次刷新都误判重存(踩过的坑)。
+ * - 提交/丢弃后 clear(),防失效内容被当未同步草稿恢复。
  */
-import { useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 
 interface StoredDraft<T> {
   data: T;
-  /** 客户端时间:最后一次本地写入 */
   ts: number;
-  /** true = 本地有尚未确认同步到服务器的改动 */
-  pendingSync: boolean;
 }
 
 const PREFIX = 'lf-draft:';
 
 export interface LocalDraftBuffer<T> {
-  /** 打开时调用:本地有未同步改动则返回它(应覆盖服务器草稿恢复),否则 null。 */
+  /** 打开时调用:本地有未同步内容(存在即未同步)则返回它,否则 null。 */
   loadPending: () => T | null;
-  /** 每次改动即时写本地、标记未同步。 */
+  /** 每次改动即时写本地。 */
   onChange: (data: T) => void;
-  /** 服务器同步开始:返回 rev token。 */
-  beginSync: () => number;
-  /** 服务器同步成功:传入 beginSync 的 token,若期间无新改动则标记已同步。 */
-  endSync: (token: number) => void;
-  /** 提交/丢弃后清除本地草稿,防止失效内容被当草稿恢复。 */
+  /** 同步开始:返回当前本地内容快照(传给 endSync)。 */
+  beginSync: () => string;
+  /** 同步成功:若期间本地内容未变(== 快照)则清空本地(内容已安全落服务器)。 */
+  endSync: (snapshot: string) => void;
+  /** 提交/丢弃后清空,防失效内容被当草稿恢复。 */
   clear: () => void;
 }
 
 export function useLocalDraftBuffer<T>(key: string | null): LocalDraftBuffer<T> {
-  const revRef = useRef(0);
   const storageKey = key ? `${PREFIX}${key}` : null;
 
-  const readRaw = useCallback((): StoredDraft<T> | null => {
+  const readData = useCallback((): T | null => {
     if (!storageKey) return null;
     try {
       const raw = localStorage.getItem(storageKey);
-      return raw ? (JSON.parse(raw) as StoredDraft<T>) : null;
+      return raw ? (JSON.parse(raw) as StoredDraft<T>).data : null;
     } catch {
-      return null; // JSON 损坏/隐私模式禁用 localStorage → 视为无本地草稿
+      return null; // JSON 损坏/隐私模式 → 视为无本地草稿
     }
   }, [storageKey]);
 
-  const writeRaw = useCallback(
-    (d: StoredDraft<T>) => {
+  const loadPending = useCallback((): T | null => readData(), [readData]);
+
+  const onChange = useCallback(
+    (data: T) => {
       if (!storageKey) return;
       try {
-        localStorage.setItem(storageKey, JSON.stringify(d));
+        localStorage.setItem(storageKey, JSON.stringify({ data, ts: Date.now() }));
       } catch {
         // 配额满/隐私模式:静默降级,仍有服务器防抖兜底
       }
     },
     [storageKey],
-  );
-
-  const loadPending = useCallback((): T | null => {
-    const d = readRaw();
-    return d && d.pendingSync ? d.data : null;
-  }, [readRaw]);
-
-  const onChange = useCallback(
-    (data: T) => {
-      revRef.current += 1;
-      writeRaw({ data, ts: Date.now(), pendingSync: true });
-    },
-    [writeRaw],
-  );
-
-  const beginSync = useCallback(() => revRef.current, []);
-
-  const endSync = useCallback(
-    (token: number) => {
-      if (revRef.current !== token) return; // 同步期间又改了,保持 pendingSync=true
-      const d = readRaw();
-      if (d && d.pendingSync) writeRaw({ ...d, pendingSync: false });
-    },
-    [readRaw, writeRaw],
   );
 
   const clear = useCallback(() => {
@@ -93,6 +69,20 @@ export function useLocalDraftBuffer<T>(key: string | null): LocalDraftBuffer<T> 
       // 忽略
     }
   }, [storageKey]);
+
+  // 客户端↔客户端快照,不涉及服务器,无序列化/规范化误差
+  const beginSync = useCallback(
+    (): string => JSON.stringify(readData()),
+    [readData],
+  );
+
+  const endSync = useCallback(
+    (snapshot: string) => {
+      // 同步期间没再改(本地内容 == 开始同步时的快照)→ 清空,内容已安全在服务器
+      if (JSON.stringify(readData()) === snapshot) clear();
+    },
+    [readData, clear],
+  );
 
   return { loadPending, onChange, beginSync, endSync, clear };
 }
