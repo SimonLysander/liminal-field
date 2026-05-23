@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { ChevronLeft, Save, Send, Sun, Trash2, MoreHorizontal } from 'lucide-react';
-import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { Modal } from '@/components/shared/Modal';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -318,6 +318,16 @@ const DraftEditPage = () => {
     >
       <ThresholdOverlay visible={committing} label="正在提交版本..." />
 
+      {/* 提交版本:由 … 菜单触发(无固定锚点)→ 居中 Modal,稳定;内容复用 CommitForm。⌘S 也走 showCommitDialog */}
+      <Modal open={showCommitDialog} onClose={() => setShowCommitDialog(false)}>
+        <CommitForm
+          changeNote={state.changeNote}
+          onChangeNote={(v) => handleChange('changeNote', v)}
+          onConfirm={() => void commitDraft()}
+          onCancel={() => setShowCommitDialog(false)}
+        />
+      </Modal>
+
       {/* ── Row 1: Notion 风格顶栏（无底边框，与内容自然融合） ── */}
       <div className="col-span-full flex items-center justify-between px-4">
         {/* 左：← + 可编辑页面名 */}
@@ -356,41 +366,29 @@ const DraftEditPage = () => {
             <Save size={14} strokeWidth={1.5} />保存
           </button>
 
-          {/* … 菜单:提交版本(低频,点开变更说明浮层、锚定 ⋯)/ 切换主题 / 丢弃(危险) */}
-          <Popover open={showCommitDialog} onOpenChange={setShowCommitDialog}>
-            <DropdownMenu>
-              <PopoverAnchor asChild>
-                <DropdownMenuTrigger asChild>
-                  <button className="rounded-sm p-1.5 transition-colors hover:bg-[var(--shelf)]" style={{ color: 'var(--ink-ghost)' }} title="更多">
-                    <MoreHorizontal size={16} strokeWidth={1.5} />
-                  </button>
-                </DropdownMenuTrigger>
-              </PopoverAnchor>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setShowCommitDialog(true)}>
-                  <Send />提交版本
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}>
-                  <Sun />切换主题
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => void discardDraft()}
-                  className="text-[var(--danger)] focus:bg-[color-mix(in_srgb,var(--danger)_9%,transparent)] [&_svg]:text-[var(--danger)]"
-                >
-                  <Trash2 />丢弃草稿
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <PopoverContent align="end" sideOffset={6} className="w-72 p-3">
-              <CommitForm
-                changeNote={state.changeNote}
-                onChangeNote={(v) => handleChange('changeNote', v)}
-                onConfirm={() => void commitDraft()}
-                onCancel={() => setShowCommitDialog(false)}
-              />
-            </PopoverContent>
-          </Popover>
+          {/* … 菜单:提交版本(低频,开居中 Modal)/ 切换主题 / 丢弃(危险) */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="rounded-sm p-1.5 transition-colors hover:bg-[var(--shelf)]" style={{ color: 'var(--ink-ghost)' }} title="更多">
+                <MoreHorizontal size={16} strokeWidth={1.5} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setShowCommitDialog(true)}>
+                <Send />提交版本
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}>
+                <Sun />切换主题
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => void discardDraft()}
+                className="text-[var(--danger)] focus:bg-[color-mix(in_srgb,var(--danger)_9%,transparent)] [&_svg]:text-[var(--danger)]"
+              >
+                <Trash2 />丢弃草稿
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
