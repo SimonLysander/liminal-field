@@ -8,6 +8,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { smoothBounce } from '@/lib/motion';
+import { Button } from '@/components/ui/button';
 
 interface ConfirmOptions {
   title: string;
@@ -64,7 +65,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
         {state && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center"
-            style={{ background: 'rgba(0,0,0,0.2)', backdropFilter: 'blur(4px)' }}
+            style={{ background: 'rgba(0,0,0,0.4)' }}
             onClick={(e) => e.target === e.currentTarget && handleClose(false)}
           >
             <motion.div
@@ -88,25 +89,18 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
               </div>
 
               <div className="flex justify-end gap-2 px-6 pb-5 pt-4">
-                <button
-                  type="button"
-                  className="rounded-lg px-4 py-2 text-sm font-medium"
-                  style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
-                  onClick={() => handleClose(false)}
-                >
+                <Button variant="ghost" size="sm" type="button" onClick={() => handleClose(false)}>
                   {state.cancelLabel ?? '取消'}
-                </button>
-                <button
+                </Button>
+                {/* 危险操作 → danger 红字;否则 → 长春花紫 primary(对齐"主操作=accent"纲领) */}
+                <Button
+                  variant={state.danger ? 'danger' : 'primary'}
+                  size="sm"
                   type="button"
-                  className="rounded-lg px-4 py-2 text-sm font-medium"
-                  style={{
-                    background: state.danger ? 'var(--mark-red)' : 'var(--ink)',
-                    color: '#fff',
-                  }}
                   onClick={() => handleClose(true)}
                 >
                   {state.confirmLabel ?? '确认'}
-                </button>
+                </Button>
               </div>
             </motion.div>
           </div>
