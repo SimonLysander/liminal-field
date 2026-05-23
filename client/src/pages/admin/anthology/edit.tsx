@@ -19,9 +19,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useConfirm } from '@/contexts/ConfirmContext';
-import { motion } from 'motion/react';
 import { Sun, Moon } from 'lucide-react';
-import { smoothBounce } from '@/lib/motion';
+import { Modal } from '@/components/shared/Modal';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { useTheme } from '@/hooks/use-theme';
 import { anthologyApi } from '@/services/workspace';
 import type { EditorDraft } from '@/services/workspace';
@@ -531,98 +532,23 @@ function CommitDialog({
   onCancel: () => void;
 }) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{
-        background: 'rgba(0,0,0,0.4)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-      }}
-      onClick={onCancel}
+    <Modal
+      open
+      onClose={onCancel}
+      title="提交版本"
+      description="将当前草稿提交为正式版本"
+      footer={
+        <>
+          <Button variant="ghost" size="sm" type="button" onClick={onCancel}>取消</Button>
+          <Button variant="primary" size="sm" type="button" onClick={onConfirm}>确认提交</Button>
+        </>
+      }
     >
-      <motion.div
-        className="w-full max-w-[400px] rounded-2xl p-6"
-        style={{
-          background: 'var(--paper-light)',
-          border: '1px solid var(--box-border)',
-          boxShadow: 'var(--shadow-lg)',
-        }}
-        initial={{ opacity: 0, scale: 0.96, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.25, ease: smoothBounce }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3
-          className="mb-1 text-md font-semibold"
-          style={{
-            color: 'var(--ink)',
-            letterSpacing: '-0.01em',
-          }}
-        >
-          提交版本
-        </h3>
-        <p
-          className="mb-5 text-base"
-          style={{ color: 'var(--ink-ghost)' }}
-        >
-          将当前草稿提交为正式版本
-        </p>
-
-        <div className="space-y-3.5">
-          <label className="flex flex-col gap-1.5">
-            <span
-              className="text-base font-medium"
-              style={{ color: 'var(--ink-faded)' }}
-            >
-              变更说明
-            </span>
-            <input
-              type="text"
-              value={changeNote}
-              onChange={(e) => onChangeNote(e.target.value)}
-              autoFocus
-              className="rounded-lg border-none px-3 py-2 text-base outline-none"
-              style={{
-                background: 'var(--shelf)',
-                color: 'var(--ink)',
-              }}
-            />
-          </label>
-        </div>
-
-        <div className="mt-6 flex items-center justify-end gap-2.5">
-          <button
-            className="rounded-lg px-3.5 py-1.5 text-base transition-colors duration-150"
-            style={{ color: 'var(--ink-faded)' }}
-            onClick={onCancel}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--shelf)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-            }}
-          >
-            取消
-          </button>
-          <button
-            className="rounded-lg px-4 py-1.5 text-base font-medium transition-all duration-150"
-            style={{
-              background: 'var(--accent)',
-              color: 'var(--accent-contrast)',
-            }}
-            onClick={onConfirm}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.opacity = '0.85';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.opacity = '1';
-            }}
-          >
-            确认提交
-          </button>
-        </div>
-      </motion.div>
-    </div>
+      <label className="flex flex-col gap-1.5">
+        <span className="text-2xs font-medium" style={{ color: 'var(--ink-ghost)' }}>变更说明</span>
+        <Input type="text" value={changeNote} onChange={(e) => onChangeNote(e.target.value)} autoFocus />
+      </label>
+    </Modal>
   );
 }
 
