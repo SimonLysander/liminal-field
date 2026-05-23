@@ -319,7 +319,7 @@ const DraftEditPage = () => {
       <ThresholdOverlay visible={committing} label="正在提交版本..." />
 
       {/* 提交版本:由 … 菜单触发(无固定锚点)→ 居中 Modal,稳定;内容复用 CommitForm。⌘S 也走 showCommitDialog */}
-      <Modal open={showCommitDialog} onClose={() => setShowCommitDialog(false)}>
+      <Modal open={showCommitDialog} onClose={() => setShowCommitDialog(false)} className="max-w-[360px]">
         <CommitForm
           changeNote={state.changeNote}
           onChangeNote={(v) => handleChange('changeNote', v)}
@@ -359,7 +359,7 @@ const DraftEditPage = () => {
           {/* 保存:外面的高频快捷按钮(⇧⌘S) */}
           <button
             onClick={() => void saveDraft()}
-            className="flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors hover:bg-[var(--shelf)]"
+            className="flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none"
             style={{ color: 'var(--ink-faded)' }}
             title="保存 ⇧⌘S"
           >
@@ -369,7 +369,7 @@ const DraftEditPage = () => {
           {/* … 菜单:提交版本(低频,开居中 Modal)/ 切换主题 / 丢弃(危险) */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="rounded-sm p-1.5 transition-colors hover:bg-[var(--shelf)]" style={{ color: 'var(--ink-ghost)' }} title="更多">
+              <button className="rounded-sm p-1.5 outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none data-[state=open]:bg-[var(--shelf)]" style={{ color: 'var(--ink-ghost)' }} title="更多">
                 <MoreHorizontal size={16} strokeWidth={1.5} />
               </button>
             </DropdownMenuTrigger>
