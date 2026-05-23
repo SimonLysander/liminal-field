@@ -1,11 +1,12 @@
 // src/pages/admin/gallery/components/CommitModal.tsx
 //
 // 画廊提交 Modal — 输入变更说明后提交版本。
-// 与 CreateGalleryModal / NodeFormModal 同级设计。
+// 使用统一 <Modal> 标准组件（居中面板，无毛玻璃）。
 
 import { useState } from 'react';
-import { motion } from 'motion/react';
-import { smoothBounce } from '@/lib/motion';
+import { Modal } from '@/components/shared/Modal';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 
 interface CommitModalProps {
   open: boolean;
@@ -16,8 +17,6 @@ interface CommitModalProps {
 export function CommitModal({ open, onClose, onSubmit }: CommitModalProps) {
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
-
-  if (!open) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,66 +33,39 @@ export function CommitModal({ open, onClose, onSubmit }: CommitModalProps) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.2)', backdropFilter: 'blur(4px)' }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <motion.div
-        className="w-[420px] overflow-hidden rounded-xl"
-        style={{
-          background: 'var(--paper)',
-          boxShadow: 'var(--shadow-lg)',
-        }}
-        initial={{ opacity: 0, scale: 0.96, y: 8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.2, ease: smoothBounce }}
-      >
-        <div className="px-6 pb-1 pt-5">
-          <h2
-            className="text-lg font-semibold"
-            style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="提交版本"
+      footer={
+        <>
+          <Button variant="ghost" size="sm" type="button" onClick={onClose}>
+            取消
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            type="submit"
+            form="commit-modal-form"
+            disabled={submitting}
           >
-            提交版本
-          </h2>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4 px-6 pb-6 pt-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-2xs font-medium" style={{ color: 'var(--ink-ghost)' }}>
-              变更说明
-            </span>
-            <input
-              type="text"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              className="w-full rounded-lg border-none px-3 py-2 text-sm outline-none"
-              style={{ background: 'var(--shelf)', color: 'var(--ink)', fontFamily: 'var(--font-sans)' }}
-              placeholder="描述本次修改的内容..."
-              autoFocus
-            />
-          </label>
-
-          <div className="flex justify-end gap-2 pt-1">
-            <button
-              type="button"
-              className="rounded-lg px-4 py-2 text-sm font-medium"
-              style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
-              onClick={onClose}
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-lg px-4 py-2 text-sm font-medium transition-opacity duration-150 disabled:opacity-50"
-              style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}
-            >
-              {submitting ? '提交中...' : '提交'}
-            </button>
-          </div>
-        </form>
-      </motion.div>
-    </div>
+            {submitting ? '提交中...' : '提交'}
+          </Button>
+        </>
+      }
+    >
+      <form id="commit-modal-form" onSubmit={handleSubmit} className="flex flex-col gap-1.5">
+        <label className="text-2xs font-medium" style={{ color: 'var(--ink-ghost)' }}>
+          变更说明
+        </label>
+        <Input
+          type="text"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="描述本次修改的内容..."
+          autoFocus
+        />
+      </form>
+    </Modal>
   );
 }

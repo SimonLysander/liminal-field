@@ -3,6 +3,10 @@
 /*
  * PhotoEditModal — 照片详情编辑弹窗
  *
+ * 使用统一 <Modal> 标准组件（居中面板，无毛玻璃）。
+ * 因内部布局高度定制（图片预览+信息区，760px宽，p-0，自定义关闭按钮），
+ * 通过 className 覆盖 DialogContent 样式，不传 title/footer，children 自由布局。
+ *
  * 布局规则（由图片方向决定）：
  *   横幅（宽 >= 高）：flex-col，照片区全宽上方，信息区下方
  *   竖幅（高 > 宽）：flex-row，照片区左侧 320px，信息区右侧 flex-1
@@ -24,7 +28,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Modal } from '@/components/shared/Modal';
+import { Button } from '@/components/ui/button';
 import { PhotoMetadataFields } from './LocationSelect';
 
 // ---------- Props ----------
@@ -164,7 +169,7 @@ export function PhotoEditModal({
       setImgDimensions({ w: img.naturalWidth, h: img.naturalHeight });
     };
     img.src = photo.url;
-     
+
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅 URL 变时需重测尺寸；caption 等字段不应触发重新 decode
   }, [photo?.url]);
 
@@ -198,7 +203,7 @@ export function PhotoEditModal({
       prevPhotoIdRef.current = photo.id;
       setCaptionDraft(photo.caption ?? '');
     });
-     
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photo?.id]);
 
@@ -226,200 +231,174 @@ export function PhotoEditModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) handleClose(); }}>
-      {/*
-       * 覆盖 DialogContent 的默认样式：
-       * - 最大宽度扩大到 760px，去掉 gap / padding，使左右两侧各自控制内边距
-       * - 隐藏 shadcn 内置的关闭按钮（右侧 header 有自定义关闭按钮）
-       * - 使用 [&>button:last-child]:hidden 隐藏 DialogPrimitive.Close
-       */}
-      <DialogContent
-        aria-describedby={undefined}
-        className={`flex overflow-hidden rounded-xl p-0 [&>button:last-child]:hidden ${isLandscape ? 'flex-col' : 'flex-row'}`}
+    // title 传入 sr-only span，满足 Radix Dialog 无障碍要求（不渲染可见标题）。
+    // className 覆盖 DialogContent 默认样式：p-0 去内边距，border-0 去边框，flex 覆盖 grid，
+    // [&>button:last-child]:hidden 隐藏 shadcn 内置关闭按钮，使用自定义绝对定位关闭按钮。
+    <Modal
+      open={open}
+      onClose={handleClose}
+      title={<span className="sr-only">照片编辑</span>}
+      className={`flex overflow-hidden rounded-xl p-0 border-0 [&>button:last-child]:hidden ${isLandscape ? 'flex-col' : 'flex-row'} max-w-[760px] w-[760px]`}
+    >
+      {/* 文件名 — 整个 modal 左上角 */}
+      <span
+        className="absolute left-3 top-3 z-10 flex h-6 items-center rounded-full px-2.5 text-2xs"
         style={{
-          maxWidth: '760px',
-          width: '760px',
-          border: 'none',
+          background: 'rgba(0,0,0,0.35)',
+          color: 'rgba(255,255,255,0.85)',
+          fontFamily: FRAME_FONT,
+          letterSpacing: '0.02em',
+          lineHeight: 1,
         }}
       >
-        {/* 文件名 — 整个 modal 左上角 */}
-        <span
-          className="absolute left-3 top-3 z-10 flex h-6 items-center rounded-full px-2.5 text-2xs"
-          style={{
-            background: 'rgba(0,0,0,0.35)',
-            color: 'rgba(255,255,255,0.85)',
-            fontFamily: FRAME_FONT,
-            letterSpacing: '0.02em',
-            lineHeight: 1,
-          }}
-        >
-          {photo.fileName}
-        </span>
+        {photo.fileName}
+      </span>
 
-        {/* 关闭按钮 — 整个 modal 右上角，与文件名等高对齐 */}
-        <button
-          className="absolute right-3 top-3 z-10 flex h-6 w-6 items-center justify-center rounded-full transition-colors duration-150"
-          style={{ background: 'rgba(0,0,0,0.35)', color: '#fff' }}
-          onClick={handleClose}
-          aria-label="关闭"
-        >
-          <X size={12} strokeWidth={2} />
-        </button>
-        {/* 无障碍：隐藏的 DialogTitle，消除 Radix 警告 */}
-        <DialogTitle className="sr-only">照片编辑</DialogTitle>
+      {/* 关闭按钮 — 整个 modal 右上角，与文件名等高对齐 */}
+      <button
+        className="absolute right-3 top-3 z-10 flex h-6 w-6 items-center justify-center rounded-full transition-colors duration-150"
+        style={{ background: 'rgba(0,0,0,0.35)', color: '#fff' }}
+        onClick={handleClose}
+        aria-label="关闭"
+      >
+        <X size={12} strokeWidth={2} />
+      </button>
 
-        {/* ── 照片预览区：横幅在上方（全宽），竖幅在左侧（固定宽） ── */}
-        <div
-          className={`relative flex shrink-0 items-center justify-center ${isLandscape ? 'w-full' : 'w-[320px]'}`}
-          style={{
-            background: 'var(--shelf)',
-            ...(isLandscape ? { height: '340px' } : { minHeight: '480px' }),
-          }}
-        >
-          {/* 大图预览 */}
-          <img
-            src={photo.url}
-            alt={photo.fileName}
-            className="h-full w-full object-contain"
-            style={isLandscape ? { maxHeight: '320px' } : { maxHeight: '420px' }}
-            draggable={false}
-          />
+      {/* ── 照片预览区：横幅在上方（全宽），竖幅在左侧（固定宽） ── */}
+      <div
+        className={`relative flex shrink-0 items-center justify-center ${isLandscape ? 'w-full' : 'w-[320px]'}`}
+        style={{
+          background: 'var(--shelf)',
+          ...(isLandscape ? { height: '340px' } : { minHeight: '480px' }),
+        }}
+      >
+        {/* 大图预览 */}
+        <img
+          src={photo.url}
+          alt={photo.fileName}
+          className="h-full w-full object-contain"
+          style={isLandscape ? { maxHeight: '320px' } : { maxHeight: '420px' }}
+          draggable={false}
+        />
 
-          {/* 左箭头 — 仅有上一张时显示 */}
-          {hasPrev && (
-            <button
-              className="absolute left-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full transition-colors duration-150"
-              style={{ background: 'rgba(255,255,255,0.15)', color: '#fff' }}
-              onClick={goToPrev}
-              aria-label="上一张"
-            >
-              <ChevronLeft size={18} strokeWidth={2} />
-            </button>
-          )}
-
-          {/* 右箭头 — 仅有下一张时显示 */}
-          {hasNext && (
-            <button
-              className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full transition-colors duration-150"
-              style={{ background: 'rgba(255,255,255,0.15)', color: '#fff' }}
-              onClick={goToNext}
-              aria-label="下一张"
-            >
-              <ChevronRight size={18} strokeWidth={2} />
-            </button>
-          )}
-
-          {/* 底部计数器 pill */}
-          <div
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full px-2.5 py-0.5 text-xs"
-            style={{
-              background: 'rgba(0,0,0,0.45)',
-              color: 'rgba(255,255,255,0.85)',
-              letterSpacing: '0.04em',
-              userSelect: 'none',
-            }}
+        {/* 左箭头 — 仅有上一张时显示 */}
+        {hasPrev && (
+          <button
+            className="absolute left-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full transition-colors duration-150"
+            style={{ background: 'rgba(255,255,255,0.15)', color: '#fff' }}
+            onClick={goToPrev}
+            aria-label="上一张"
           >
-            {currentIndex + 1} / {photos.length}
-          </div>
-        </div>
+            <ChevronLeft size={18} strokeWidth={2} />
+          </button>
+        )}
 
-        {/* ── 信息区（横幅在下方，竖幅在右侧）── */}
+        {/* 右箭头 — 仅有下一张时显示 */}
+        {hasNext && (
+          <button
+            className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full transition-colors duration-150"
+            style={{ background: 'rgba(255,255,255,0.15)', color: '#fff' }}
+            onClick={goToNext}
+            aria-label="下一张"
+          >
+            <ChevronRight size={18} strokeWidth={2} />
+          </button>
+        )}
+
+        {/* 底部计数器 pill */}
         <div
-          className="flex flex-1 flex-col"
-          style={{ background: 'var(--paper)' }}
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full px-2.5 py-0.5 text-xs"
+          style={{
+            background: 'rgba(0,0,0,0.45)',
+            color: 'rgba(255,255,255,0.85)',
+            letterSpacing: '0.04em',
+            userSelect: 'none',
+          }}
         >
-          {/* 信息条 — 收起态合并为一行（方案 D），展开态显示编辑网格 */}
-          <div className="px-5 pt-4">
-            {isEditingExif ? (
-              <div>
-                <div className="mb-1.5 flex items-center justify-between">
-                  <span className="text-2xs font-semibold uppercase" style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}>
-                    拍摄参数
-                  </span>
-                  <button
-                    className="text-2xs transition-opacity hover:opacity-70"
-                    style={{ color: 'var(--ink-ghost)' }}
-                    onClick={() => setIsEditingExif(false)}
-                  >
-                    收起
-                  </button>
-                </div>
-                <PhotoMetadataFields
-                  tags={photo.tags}
-                  fileSize={photo.size}
-                  dimensions={imgDimensions}
-                  onChange={(tags) => onTagsChange(photo.id, tags)}
-                />
+          {currentIndex + 1} / {photos.length}
+        </div>
+      </div>
+
+      {/* ── 信息区（横幅在下方，竖幅在右侧）── */}
+      <div
+        className="flex flex-1 flex-col"
+        style={{ background: 'var(--paper)' }}
+      >
+        {/* 信息条 — 收起态合并为一行（方案 D），展开态显示编辑网格 */}
+        <div className="px-5 pt-4">
+          {isEditingExif ? (
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-2xs font-semibold uppercase" style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}>
+                  拍摄参数
+                </span>
+                <button
+                  className="text-2xs transition-opacity hover:opacity-70"
+                  style={{ color: 'var(--ink-ghost)' }}
+                  onClick={() => setIsEditingExif(false)}
+                >
+                  收起
+                </button>
               </div>
-            ) : (
-              <ExifSummary
+              <PhotoMetadataFields
                 tags={photo.tags}
                 fileSize={photo.size}
                 dimensions={imgDimensions}
-                onEdit={() => setIsEditingExif(true)}
+                onChange={(tags) => onTagsChange(photo.id, tags)}
               />
-            )}
-          </div>
-
-          <div style={{ height: '0.5px', background: 'var(--separator)', margin: '12px 20px 0' }} />
-
-          {/* Caption — 参数下方 */}
-          <div className="flex-1 px-5 pt-3">
-            <div className="relative">
-              <textarea
-                className="w-full resize-none rounded-md px-3 py-2.5 text-sm outline-none transition-colors duration-150"
-                style={{
-                  background: 'var(--shelf)',
-                  color: 'var(--ink)',
-                  border: '1px solid var(--separator)',
-                  minHeight: '72px',
-                }}
-                placeholder="添加说明..."
-                maxLength={30}
-                value={captionDraft}
-                onChange={(e) => setCaptionDraft(e.target.value)}
-                onBlur={() => onCaptionChange(photo.id, captionDraft)}
-              />
-              {/* 字符计数：右下角，达到上限时变红 */}
-              <div
-                className="absolute bottom-2 right-3 text-2xs"
-                style={{
-                  color: captionDraft.length >= 30 ? 'var(--mark-red)' : 'var(--ink-ghost)',
-                  pointerEvents: 'none',
-                }}
-              >
-                {captionDraft.length} / 30
-              </div>
             </div>
-          </div>
+          ) : (
+            <ExifSummary
+              tags={photo.tags}
+              fileSize={photo.size}
+              dimensions={imgDimensions}
+              onEdit={() => setIsEditingExif(true)}
+            />
+          )}
+        </div>
 
-          {/* 操作栏：左"设为封面"，右"完成" */}
-          <div className="flex items-center justify-between px-5 py-4">
-            <button
-              className="rounded-md px-3 py-1.5 text-sm font-medium transition-colors duration-150"
+        <div style={{ height: '0.5px', background: 'var(--separator)', margin: '12px 20px 0' }} />
+
+        {/* Caption — 参数下方，保持原生 textarea 并用 token 写法 */}
+        <div className="flex-1 px-5 pt-3">
+          <div className="relative">
+            <textarea
+              className="w-full resize-none rounded-sm px-3 py-2.5 text-sm outline-none transition-colors duration-150"
               style={{
                 background: 'var(--shelf)',
                 color: 'var(--ink)',
                 border: '1px solid var(--separator)',
+                minHeight: '72px',
               }}
-              onClick={handleSetCover}
-            >
-              设为封面
-            </button>
-
-            <button
-              className="rounded-md px-3 py-1.5 text-sm font-medium transition-colors duration-150"
+              placeholder="添加说明..."
+              maxLength={30}
+              value={captionDraft}
+              onChange={(e) => setCaptionDraft(e.target.value)}
+              onBlur={() => onCaptionChange(photo.id, captionDraft)}
+            />
+            {/* 字符计数：右下角，达到上限时变红 */}
+            <div
+              className="absolute bottom-2 right-3 text-2xs"
               style={{
-                background: 'var(--ink)',
-                color: 'var(--paper)',
+                color: captionDraft.length >= 30 ? 'var(--mark-red)' : 'var(--ink-ghost)',
+                pointerEvents: 'none',
               }}
-              onClick={handleClose}
             >
-              完成
-            </button>
+              {captionDraft.length} / 30
+            </div>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+
+        {/* 操作栏：左"设为封面"，右"完成" */}
+        <div className="flex items-center justify-between px-5 py-4">
+          <Button variant="ghost" size="sm" onClick={handleSetCover}>
+            设为封面
+          </Button>
+          <Button variant="primary" size="sm" onClick={handleClose}>
+            完成
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
