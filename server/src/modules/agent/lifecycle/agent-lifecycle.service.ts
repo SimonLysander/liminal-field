@@ -25,7 +25,6 @@ import { SystemConfigService } from '../../settings/system-config.service';
 import { AgentMemoryRepository } from '../memory/agent-memory.repository';
 import { AgentSessionRepository } from '../session/agent-session.repository';
 import { sliceSessionPage } from './session-pagination';
-import type { AgentMemory } from '../memory/agent-memory.entity';
 import type { AgentChatDto } from '../dto/agent-chat.dto';
 
 /** 跨段聚合分页默认每页条数 */
@@ -41,7 +40,7 @@ export class AgentLifecycle {
     private readonly eventEmitter: EventEmitter2,
     private readonly systemConfigService: SystemConfigService,
     // 直接注入记忆 repository:session 记忆(content + tasks)是草稿级,
-    // 由 agentKey(=entryContext.sessionKey)定位,不经 MemoryHandler 的全局召回路径
+    // 由 agentKey(=entryContext.sessionKey)定位,MemoryHandler 只管 user 记忆全文加载
     private readonly memoryRepo: AgentMemoryRepository,
     // 跨段聚合分页：getAllMessages 跨段全量后内存 slice（对话量可控，YAGNI）
     private readonly sessionRepo: AgentSessionRepository,
@@ -55,12 +54,14 @@ export class AgentLifecycle {
    * - 有 before：返回 before index 之前的 limit 条（懒加载更早历史）
    * 实现：getAllMessages 全量加载后内存 slice，agent 对话量可控（YAGNI，真很大再优化）。
    *
-   * 同时触发自动召回——如果有文档标题，尝试找到相关 project 记忆。
-   * autoRecall 失败降级为空数组，不影响会话加载。
+   * 返回的 summary = 本草稿 session 记忆 content(对话脉络);tasks = session 记忆的写作计划。
+   * 不再有 totalRounds(轮数概念已废弃)。
+   *
+   * relatedMemories 恒为空数组:project 自动召回已随 project 记忆类型一并删除;
+   * 该字段为兼容前端响应结构暂留(前端契约清理留到 U7)。
    */
   async onSessionLoad(
     agentKey: string,
-    documentTitle?: string,
     /** 分页游标：返回此绝对 index 之前的消息；无则取最近 limit 条 */
     before?: number,
     /** 每页条数，默认 SESSION_PAGE_LIMIT */
@@ -72,11 +73,12 @@ export class AgentLifecycle {
     hasMore: boolean;
     /** 当前返回的第一条消息的绝对 index（前端下次懒加载传 before=firstIndex） */
     firstIndex: number;
+    /** session 记忆 content（对话脉络，由 compaction 提炼） */
     summary: string;
-    totalRounds: number;
     tasks: Array<Record<string, unknown>>;
     lastActiveAt: Date | null;
-    relatedMemories: AgentMemory[];
+    /** 兼容前端结构暂留，恒为空（project 召回已删，清理留到 U7） */
+    relatedMemories: never[];
   }> {
     // 并行加载：全量消息（分页用）+ session 记忆（脉络/tasks）+ 最新段（lastActiveAt）
     const [allMessages, sessionMem, latestSeg] = await Promise.all([
@@ -88,25 +90,16 @@ export class AgentLifecycle {
     // 内存分页：before 是绝对 index（全量数组下标），纯函数 sliceSessionPage 算切片
     const page = sliceSessionPage(allMessages, before, limit);
 
-    let relatedMemories: AgentMemory[] = [];
-    try {
-      relatedMemories = await this.memory.autoRecall(documentTitle);
-    } catch {
-      // 自动召回失败不影响会话加载，降级为空数组
-    }
-
     return {
       sessionKey: agentKey,
       messages: page.messages,
       hasMore: page.hasMore,
       firstIndex: page.firstIndex,
-      // summary 字段沿用返回结构,值改为 session 记忆 content(脉络)
+      // summary 字段沿用返回结构,值即 session 记忆 content(脉络)
       summary: sessionMem?.content ?? '',
-      // totalRounds 过渡保留为 assistant 消息条数近似（旧字段 U6 清理）
-      totalRounds: allMessages.filter((m) => m['role'] === 'assistant').length,
       tasks: (sessionMem?.tasks as Array<Record<string, unknown>>) ?? [],
       lastActiveAt: latestSeg?.lastActiveAt ?? null,
-      relatedMemories,
+      relatedMemories: [],
     };
   }
 
@@ -133,26 +126,21 @@ export class AgentLifecycle {
   }> {
     // agentKey = 草稿级标识(现阶段即 entryContext.sessionKey 的值;前端字段改名留到 U7)
     const agentKey = dto.entryContext.sessionKey;
-    // 并行加载:user 记忆全文 + project 索引 + 所有者身份 + 本草稿 session 记忆(content + tasks)
-    const [coreMemories, indexMemories, ownerProfile, sessionMem] =
-      await Promise.all([
-        this.memory.loadCore(),
-        this.memory.loadIndex(),
-        this.systemConfigService.getOwnerProfile(),
-        agentKey
-          ? this.memoryRepo.findSession(agentKey)
-          : Promise.resolve(null),
-      ]);
+    // 并行加载:user 记忆全文 + 所有者身份 + 本草稿 session 记忆(content + tasks)
+    const [coreMemories, ownerProfile, sessionMem] = await Promise.all([
+      this.memory.loadCore(),
+      this.systemConfigService.getOwnerProfile(),
+      agentKey ? this.memoryRepo.findSession(agentKey) : Promise.resolve(null),
+    ]);
 
-    // tasks 从 session 记忆记录取(替代旧 AgentSession.tasks);content 替代旧 sessionSummary 注入
+    // tasks 从 session 记忆记录取(替代旧 AgentSession.tasks);content 注入对话脉络
     const tasks = (sessionMem?.tasks as Array<Record<string, unknown>>) ?? [];
 
     const systemPrompt = this.prompt.buildSystemPrompt({
       ownerProfile: ownerProfile.name ? ownerProfile : undefined,
       coreMemories,
-      indexMemories,
       relatedMemories: dto.relatedMemories,
-      // session 记忆 content = 旧对话提炼出的会话脉络,替代旧 sessionSummary
+      // session 记忆 content = 旧对话提炼出的会话脉络
       sessionMemory: sessionMem?.content || undefined,
       document: dto.entryContext.document,
       customSystemPrompt: aiConfig.aiSystemPrompt,

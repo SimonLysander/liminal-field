@@ -4,7 +4,7 @@
  * 守护的 bug:clear-local 历史上只删 content/snapshot/navigation,漏删 editor_drafts(草稿),
  * 内容删了草稿成孤儿 → 下次撞 id 读到幽灵草稿。本用例断言 clear-local 连带清掉:
  * - 草稿(全部)
- * - project 类 Lux 记忆(绑定文章,内容没了即孤儿)
+ * - session 类 Lux 记忆(绑定草稿,内容没了即孤儿)
  * 同时【保留】user 类记忆(所有者画像,与具体内容无关,不应随内容清空被抹)。
  */
 import supertest from 'supertest';
@@ -35,8 +35,8 @@ describe('清空本地 clear-local 补清 (e2e regression)', () => {
     await ctx.teardown();
   });
 
-  it('清内容时连带清草稿 + project 记忆,保留 user 画像', async () => {
-    // ── 建内容 + 播种草稿、user 记忆、project 记忆 ──
+  it('清内容时连带清草稿 + session 记忆,保留 user 画像', async () => {
+    // ── 建内容 + 播种草稿、user 记忆、session 记忆 ──
     const noteId = await createNoteItem(ctx.app, cookie, '待清笔记');
     await draftModel.create({
       _id: `draft:${noteId}`,
@@ -57,9 +57,11 @@ describe('清空本地 clear-local 补清 (e2e regression)', () => {
     });
     await memoryModel.create({
       _id: new Types.ObjectId(),
-      type: 'project',
-      title: '某文进展',
+      type: 'session',
+      agentKey: `draft:${noteId}`,
+      title: `session:draft:${noteId}`,
       content: '写到第三章,待补论证',
+      tasks: [],
       createdAt: now,
       updatedAt: now,
     });
@@ -75,10 +77,10 @@ describe('清空本地 clear-local 补清 (e2e regression)', () => {
       .send({})
       .expect(201);
 
-    // ── 断言:内容 / 草稿 / project 记忆清空,user 画像保留 ──
+    // ── 断言:内容 / 草稿 / session 记忆清空,user 画像保留 ──
     expect(await ctx.app.get(ContentRepository).countAll()).toBe(0);
     expect(await draftModel.countDocuments({})).toBe(0); // 草稿清(以前漏清,本断言守住)
-    expect(await memoryModel.countDocuments({ type: 'project' })).toBe(0);
+    expect(await memoryModel.countDocuments({ type: 'session' })).toBe(0);
     expect(await memoryModel.countDocuments({ type: 'user' })).toBe(1); // 画像保留
   });
 });

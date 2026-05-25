@@ -115,19 +115,16 @@ export class AgentController {
    * - before：取此 index 之前的消息，无则取最近 limit 条（初始加载）
    * - limit：每页条数，默认 50
    * 响应额外包含 hasMore（是否有更早历史）+ firstIndex（下次传 before 的值）。
-   *
-   * title 参数用于自动召回相关记忆，前端在编辑器入口打开对话时传入文档标题。
    */
   @Get('agent/sessions/:key')
   async getSession(
     @Param('key') key: string,
-    @Query('title') title?: string,
     @Query('before') before?: string,
     @Query('limit') limit?: string,
   ) {
     const beforeIdx = before !== undefined ? parseInt(before, 10) : undefined;
     const limitNum = limit !== undefined ? parseInt(limit, 10) : undefined;
-    return this.lifecycle.onSessionLoad(key, title, beforeIdx, limitNum);
+    return this.lifecycle.onSessionLoad(key, beforeIdx, limitNum);
   }
 
   /**

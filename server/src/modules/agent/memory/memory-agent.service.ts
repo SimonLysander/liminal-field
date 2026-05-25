@@ -16,7 +16,6 @@ import type { AgentMemory } from './agent-memory.entity';
 
 interface RememberResult {
   action: 'create' | 'update';
-  type: 'user' | 'project';
   title: string;
   content: string;
 }
@@ -52,14 +51,15 @@ export class MemoryAgentService {
         tier,
       );
 
+      // remember 只写 user 记忆(所有者画像):project 类型已废弃,session 记忆由 compaction 内部维护。
       await this.memoryRepo.upsert({
-        type: result.type,
+        type: 'user',
         title: result.title,
         content: result.content,
       });
 
       const verb = result.action === 'update' ? '合并到' : '新建';
-      return `已记住：${verb} [${result.type}] ${result.title}`;
+      return `已记住：${verb} ${result.title}`;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(`Remember 失败: ${msg}`);
@@ -223,7 +223,9 @@ export class MemoryAgentService {
     const model = await this.getModel(tier);
     const { text } = await generateText({
       model,
-      prompt: `你是一个记忆管理器。将新信息整合到记忆库中。
+      // 记忆只存所有者画像(user):背景/偏好/习惯/写作风格等跨会话长期有效的信息。
+      // project 类型已废弃,不再让模型区分类型。
+      prompt: `你是一个记忆管理器。将关于所有者的新信息整合到记忆库中。
 
 已有记忆：
 ${this.formatExistingMemories(existingMemories)}
@@ -232,15 +234,13 @@ ${this.formatExistingMemories(existingMemories)}
 ${newContent}
 
 规则：
-- 判断新信息是关于所有者本人（type: user）还是关于某件具体事（type: project）
+- 只记关于所有者本人的长期信息：通用偏好、背景、习惯、写作风格等
 - 检查已有记忆中是否有相关条目：有 → action: update，合并内容；没有 → action: create
-- user 类型：通用偏好、背景、习惯。只有明确表达为通用时才归 user
-- project 类型：特定事情的进展、决策、上下文。不确定时归 project
 - update 时保留已有内容中仍然有效的部分，追加新信息
 - title 要简洁明确（中文）
 
 请只输出 JSON，格式：
-{"action": "create 或 update", "type": "user 或 project", "title": "标题", "content": "完整内容"}`,
+{"action": "create 或 update", "title": "标题", "content": "完整内容"}`,
     });
     return extractJSON<RememberResult>(text);
   }

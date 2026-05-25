@@ -5,10 +5,10 @@
  * 背景(踩坑):clear-local / sync-from-remote 历史上只删 content_items / content_snapshots /
  * navigation_nodes + Git 仓,漏删了 editor_drafts(草稿),导致内容删了草稿还在 → 下次撞 id
  * 会读到陈旧"幽灵草稿"。本服务把这类清理收口到一处,按操作语义粒度调用:
- * - clear-local(彻底清空本地):草稿 + project 类 Lux 记忆(绑定文章,文章没了即孤儿)+ OSS 资产。
+ * - clear-local(彻底清空本地):草稿 + session 类 Lux 记忆(绑定草稿,草稿没了即孤儿)+ OSS 资产。
  *   保留 user 类记忆(所有者画像,与具体内容无关)。
  * - sync-from-remote(用远端覆盖本地):只清草稿(本地 WIP,远端没有);记忆/资产由恢复链处理,
- *   内容会以相同 id 回来,project 记忆仍有效,故不清。
+ *   内容会以相同 id 回来,session 记忆仍有效,故不清。
  *
  * 不直接复用 AgentMemoryRepository / EditorDraftRepository:前者所在的 AgentModule 已 import
  * SettingsModule(单向依赖),反向 import 会形成循环;后者未被 WorkspaceModule 导出。故本服务
@@ -40,12 +40,12 @@ export class LocalResetService {
   }
 
   /**
-   * 清空 project 类 Lux 记忆(绑定具体文章)。仅 clear-local 用——彻底清空后这些记忆已成孤儿。
+   * 清空 session 类 Lux 记忆(绑定具体草稿)。仅 clear-local 用——彻底清空后这些记忆已成孤儿。
    * 刻意保留 user 类(所有者画像),它与具体内容无关,不应随内容清空一并抹掉。
    */
-  async clearProjectMemories(): Promise<number> {
+  async clearSessionMemories(): Promise<number> {
     const { deletedCount } = await this.agentMemoryModel.deleteMany({
-      type: 'project',
+      type: 'session',
     });
     return deletedCount ?? 0;
   }

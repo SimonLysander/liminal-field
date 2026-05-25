@@ -8,8 +8,8 @@
  * 它们用 send(text) 把最终文本发出去。
  *
  * 生命周期(对应后端 hooks):
- * 1. mount → loadSession(sessionKey,title) → 恢复对话 + 自动 recall 相关记忆
- * 2. send → transport body 携带 summary + relatedMemories + entryContext(可选文档)
+ * 1. mount → loadSession(sessionKey,title) → 恢复对话(session 记忆脉络由后端注入,前端不再回传)
+ * 2. send → transport body 携带 relatedMemories + entryContext(可选文档)
  * 3. 回复完成 → saveSession(sessionKey, messages)
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -53,7 +53,6 @@ export function useAdvisorChat({
   // Ref 层:持有最新值供 transport body 回调读取(transport 只创建一次)
   const docRef = useRef(documentContext);
   const tierRef = useRef(tier);
-  const summaryRef = useRef('');
   const relatedMemoriesRef = useRef<
     Array<{ key: string; type: string; title: string; content: string }>
   >([]);
@@ -74,7 +73,6 @@ export function useAdvisorChat({
         body: () => ({
           tier: tierRef.current,
           agentKey,
-          sessionSummary: summaryRef.current || undefined,
           relatedMemories:
             relatedMemoriesRef.current.length > 0
               ? relatedMemoriesRef.current
@@ -125,7 +123,6 @@ export function useAdvisorChat({
     loadSession(sessionKey, documentContext?.title)
       .then((data) => {
         if (cancelled) return;
-        summaryRef.current = data.summary || '';
         relatedMemoriesRef.current = data.relatedMemories || [];
         if (data.messages.length > 0) {
           setMessages(data.messages as unknown as UIMessage[]);

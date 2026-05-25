@@ -464,7 +464,7 @@ export class SettingsController {
       this.navigationRepository.deleteAll(),
     ]);
     // 同清草稿:草稿是本地 WIP、远端没有,内容用远端覆盖后旧草稿即孤儿。
-    // 不清 project 记忆/OSS——内容会以相同 id 从远端恢复,记忆仍有效、资产由恢复链重传。
+    // 不清 session 记忆/OSS——内容会以相同 id 从远端恢复,记忆仍有效、资产由恢复链重传。
     const draftsCleared = await this.localResetService.clearDrafts();
     this.logger.log(`MongoDB cleared (含 ${draftsCleared} 条草稿)`);
 
@@ -540,16 +540,16 @@ export class SettingsController {
       this.contentSnapshotRepository.deleteAll(),
       this.navigationRepository.deleteAll(),
     ]);
-    // 连带清内容耦合的本地数据:草稿 + project 记忆 + OSS 资产(保留 user 画像)。
+    // 连带清内容耦合的本地数据:草稿 + session 记忆 + OSS 资产(保留 user 画像)。
     // 历史踩坑:漏清草稿 → 内容删了草稿成孤儿、下次撞 id 读到幽灵草稿。
-    const [drafts, projectMemories] = await Promise.all([
+    const [drafts, sessionMemories] = await Promise.all([
       this.localResetService.clearDrafts(),
-      this.localResetService.clearProjectMemories(),
+      this.localResetService.clearSessionMemories(),
     ]);
     await this.localResetService.clearContentAssets();
     this.logger.log(
       `Cleared MongoDB: ${items} items, ${snapshots} snapshots, ${nav} nav nodes, ` +
-        `${drafts} drafts, ${projectMemories} project memories (+ OSS assets)`,
+        `${drafts} drafts, ${sessionMemories} session memories (+ OSS assets)`,
     );
 
     // 清空 Git 仓库（删除目录内所有内容，包括 .git）

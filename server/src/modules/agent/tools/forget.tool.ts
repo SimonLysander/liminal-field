@@ -8,7 +8,7 @@ import { toolResult } from './tool-result';
 export function createForgetTool(memoryAgent: MemoryAgentService) {
   return tool({
     description:
-      '删除一条已过时或错误的记忆。尽量使用记忆的原始标题（可在 system prompt 的 core_memories 和 memory_index 中看到）。',
+      '删除一条已过时或错误的记忆。尽量使用记忆的原始标题（可在 system prompt 的 core_memories 中看到）。',
     inputSchema: jsonSchema<{ target: string }>({
       type: 'object',
       properties: {

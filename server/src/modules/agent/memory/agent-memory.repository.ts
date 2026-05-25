@@ -99,7 +99,7 @@ export class AgentMemoryRepository {
   // 设计要点：
   // 1. 一草稿一条 session 记忆——由 agentKey partial unique index 在数据库层保证，
   //    而非应用层 if-else，防止并发写入产生重复记录。
-  // 2. title 用 `session:${agentKey}` 占位——满足 title unique 全局约束（不与 user/project 冲突），
+  // 2. title 用 `session:${agentKey}` 占位——满足 title unique 全局约束（不与 user 冲突），
   //    但 session 的唯一性语义以 agentKey 为准，不靠 title。
   // 3. tasks 与 content 分开更新（setTasks vs upsertSession），方便 Agent 独立更新写作计划，
   //    不必每次把 content 也一起传。

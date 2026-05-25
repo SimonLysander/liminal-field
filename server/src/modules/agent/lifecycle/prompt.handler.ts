@@ -10,12 +10,11 @@
  * 2. <role>      — Aurora 是谁（灵魂/人设：另一个自我、最懂你的朋友；固定）
  * 3. <tools>     — 工具能力 + remember 记忆协议（引导主动调用，固定）
  * 4. <core_memories>   — type=user 记忆全文（有才注入）
- * 5. <memory_index>    — type=project 标题索引（有才注入）
- * 6. <related_memories> + <conversation_summary> — 本 session 的召回记忆与摘要（有才注入）
- * 7. <instructions>    — 行为约束（固定）
- * 8. <current_context> — 当前业务场景：在写哪篇（只点名，正文靠 get_current_draft 读）
- * 9. <tasks>           — 写作计划（有未完成才注入）
- * 10. 入口级 / 全局自定义 system prompt（有才注入）
+ * 5. <related_memories> + <conversation_summary> — 本 session 的召回记忆与脉络（有才注入）
+ * 6. <instructions>    — 行为约束（固定）
+ * 7. <current_context> — 当前业务场景：在写哪篇（只点名，正文靠 get_current_draft 读）
+ * 8. <tasks>           — 写作计划（有未完成才注入）
+ * 9. 入口级 / 全局自定义 system prompt（有才注入）
  *
  * 设计原则：current_context 不再注入正文预览——模型有 get_current_draft 工具，
  * 让它按需读，避免把正文灌进每一轮的 system prompt（省 token、长文也不截断）。
@@ -33,9 +32,7 @@ export interface BuildSystemPromptParams {
   };
   /** type=user 的记忆（始终全文注入） */
   coreMemories: AgentMemory[];
-  /** type=project 的记忆（只注入 key: title 索引） */
-  indexMemories: AgentMemory[];
-  /** SessionLoad 阶段自动召回的相关 project 记忆（全文注入） */
+  /** 前端传入的相关召回记忆（全文注入，可选） */
   relatedMemories?: Array<{ title: string; content: string }>;
   /**
    * 本草稿 session 记忆的 content（compaction 把超窗口旧对话提炼出的会话脉络）。
@@ -97,15 +94,7 @@ export class PromptHandler {
       sections.push(`<core_memories>\n${lines}\n</core_memories>`);
     }
 
-    // 6. ——— Memory Index：type=project 标题索引（详情按需用工具读） ———
-    if (params.indexMemories.length > 0) {
-      const lines = params.indexMemories.map((m) => `- ${m.title}`).join('\n');
-      sections.push(
-        `<memory_index>\n可用记忆（需要时调用工具获取详情）：\n${lines}\n</memory_index>`,
-      );
-    }
-
-    // 7. ——— 本 session 的召回记忆 + 对话摘要 ———
+    // 6. ——— 本 session 的召回记忆 + 对话脉络 ———
     if (params.relatedMemories && params.relatedMemories.length > 0) {
       const lines = params.relatedMemories
         .map((m) => `[${m.title}]\n${m.content}`)
@@ -120,7 +109,7 @@ export class PromptHandler {
       );
     }
 
-    // 8. ——— 行为约束 ———
+    // 7. ——— 行为约束 ———
     sections.push(`<instructions>
 - 需要文档内容或知识库信息时，先调工具，不要凭空假设
 - 用中文回答，除非 ${ownerName} 明确要求其他语言
@@ -129,7 +118,7 @@ export class PromptHandler {
 - 多步任务先用 write_tasks 列计划再动手；每步更新清单（同一时刻只一个进行中）；全部完成后传空列表清空。简单一步的事不必列计划
 </instructions>`);
 
-    // 9. ——— 当前业务场景：只点名在编辑哪篇，正文靠 get_current_draft 工具读（不塞进 context） ———
+    // 8. ——— 当前业务场景：只点名在编辑哪篇，正文靠 get_current_draft 工具读（不塞进 context） ———
     if (params.document) {
       const { title, bodyMarkdown } = params.document;
       const wordCount = bodyMarkdown.length;

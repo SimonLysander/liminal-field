@@ -136,14 +136,15 @@ describe('Owner Profile & Memory Management (E2E)', () => {
     });
 
     it('PUT /agent/memories/:id 应能更新记忆', async () => {
+      // 只更新 content;type 保持 user(project 类型已废弃,记忆类型不再由管理端切换)
       const res = await supertest(ctx.app.getHttpServer())
         .put(`/api/v1/agent/memories/${memoryId}`)
         .set('Cookie', cookie)
-        .send({ content: '用户喜欢喝红茶', type: 'project' })
+        .send({ content: '用户喜欢喝红茶' })
         .expect(200);
 
       expect(res.body.data.content).toBe('用户喜欢喝红茶');
-      expect(res.body.data.type).toBe('project');
+      expect(res.body.data.type).toBe('user');
       expect(res.body.data.title).toBe('测试记忆'); // title 未改
     });
 

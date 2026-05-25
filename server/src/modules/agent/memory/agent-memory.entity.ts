@@ -5,9 +5,8 @@ import { Types } from 'mongoose';
  * AgentMemory 类型：
  * - user：以所有者为中心——背景、偏好、风格、习惯（始终全文注入 system prompt）
  * - session：草稿级会话记忆——某草稿 agentKey 对应的写作上下文与计划（一草稿一条）
- * - project：以事情为中心——某篇文章的进展、决策、上下文（仅保留过渡，后续单元清理）
  */
-export type AgentMemoryType = 'user' | 'session' | 'project';
+export type AgentMemoryType = 'user' | 'session';
 
 /**
  * AgentMemory — lux-stirring 的持久记忆。
@@ -17,7 +16,7 @@ export type AgentMemoryType = 'user' | 'session' | 'project';
  * 所有记忆写入通过 MemoryAgentService，不直接操作数据库。
  *
  * 索引说明：
- * - title unique index（全局）：user/project 记忆由 LLM 命名去重
+ * - title unique index（全局）：user 记忆由 LLM 命名去重
  * - agentKey partial unique index（仅 session 类型）：保证一草稿一条会话记忆
  */
 @index(
@@ -36,11 +35,11 @@ export class AgentMemory {
   @prop()
   _id!: Types.ObjectId;
 
-  /** 记忆类型：user（始终全文注入）/ session（草稿级会话）/ project（过渡保留） */
+  /** 记忆类型：user（始终全文注入）/ session（草稿级会话） */
   @prop({
     required: true,
     type: () => String,
-    enum: ['user', 'session', 'project'],
+    enum: ['user', 'session'],
   })
   type!: AgentMemoryType;
 
@@ -54,7 +53,7 @@ export class AgentMemory {
 
   /**
    * session 类型专用：所属草稿的 agentKey（即草稿 ID）。
-   * user/project 类型为 null。
+   * user 类型为 null。
    * partial unique index 保证同一 agentKey 只存一条 session 记忆。
    */
   @prop({ type: () => String, default: null })

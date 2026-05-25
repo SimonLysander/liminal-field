@@ -79,35 +79,3 @@ export class CompactionService {
     );
   }
 }
-
-/**
- * 按轮数切分消息:保留最后 keepRounds 轮,其余归入 toCompact。
- *
- * @deprecated 旧的轮数切分逻辑,已被 context/compaction-split 的 token 占比切分替代。
- * 暂留以兼容历史测试,U6 清理时随旧字段一并删除。
- */
-export function splitMessages(
-  messages: Record<string, unknown>[],
-  keepRounds: number,
-): {
-  toCompact: Record<string, unknown>[];
-  toKeep: Record<string, unknown>[];
-} {
-  let assistantCount = 0;
-  let splitIndex = 0;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === 'assistant') {
-      assistantCount++;
-      if (assistantCount === keepRounds) {
-        let j = i - 1;
-        while (j >= 0 && messages[j].role !== 'user') j--;
-        splitIndex = j >= 0 ? j : i;
-        break;
-      }
-    }
-  }
-  return {
-    toCompact: messages.slice(0, splitIndex),
-    toKeep: messages.slice(splitIndex),
-  };
-}

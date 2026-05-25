@@ -15,12 +15,11 @@ import type { AgentMemory } from '../memory/agent-memory.entity';
 const mem = (title: string, content: string): AgentMemory =>
   ({ title, content }) as unknown as AgentMemory;
 
-// 必填字段(coreMemories/indexMemories 非可选)给空数组,其余按用例覆盖。
+// 必填字段(coreMemories 非可选)给空数组,其余按用例覆盖。
 const baseParams = (
   over: Partial<BuildSystemPromptParams> = {},
 ): BuildSystemPromptParams => ({
   coreMemories: [],
-  indexMemories: [],
   ...over,
 });
 
@@ -154,15 +153,6 @@ describe('PromptHandler.buildSystemPrompt', () => {
       expect(out).toContain('<core_memories>');
       expect(out).toContain('[身份]');
       expect(out).toContain('我是写作者');
-    });
-
-    it('indexMemories 只注入标题索引,不含正文', () => {
-      const out = handler.buildSystemPrompt(
-        baseParams({ indexMemories: [mem('项目A', '项目A的详细正文')] }),
-      );
-      expect(out).toContain('<memory_index>');
-      expect(out).toContain('- 项目A');
-      expect(out).not.toContain('项目A的详细正文');
     });
 
     it('relatedMemories / sessionMemory 有才注入', () => {

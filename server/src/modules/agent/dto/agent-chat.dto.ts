@@ -60,12 +60,7 @@ export class AgentChatDto {
   @IsOptional()
   tier?: 'flash' | 'standard' | 'think';
 
-  /** 旧消息的压缩摘要（compaction 产生的），注入 system prompt */
-  @IsString()
-  @IsOptional()
-  sessionSummary?: string;
-
-  /** SessionLoad hook 自动召回的相关 project 记忆，注入 system prompt */
+  /** 前端传入的相关召回记忆，注入 system prompt */
   @Allow()
   relatedMemories?: Array<{
     key: string;
