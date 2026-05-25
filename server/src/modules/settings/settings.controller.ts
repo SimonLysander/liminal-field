@@ -51,12 +51,28 @@ import {
 
 /**
  * AI 提供商预设（baseUrl 由后端维护，前端只传 provider id）。
+ * contextWindow:各家旗舰模型的上下文窗口(token)，作为 compaction 计算的分母预设值，用户可在 UI 覆盖。
  * 添加新提供商时只需在此处追加，无需改动其他逻辑。
  */
-const AI_PROVIDER_PRESETS: Record<string, { name: string; baseUrl: string }> = {
-  deepseek: { name: 'DeepSeek', baseUrl: 'https://api.deepseek.com' },
-  zhipu: { name: '智谱 GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4' },
-  moonshot: { name: 'Moonshot', baseUrl: 'https://api.moonshot.cn/v1' },
+const AI_PROVIDER_PRESETS: Record<
+  string,
+  { name: string; baseUrl: string; contextWindow: number }
+> = {
+  deepseek: {
+    name: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com',
+    contextWindow: 64000,
+  },
+  zhipu: {
+    name: '智谱 GLM',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    contextWindow: 32000,
+  },
+  moonshot: {
+    name: 'Moonshot',
+    baseUrl: 'https://api.moonshot.cn/v1',
+    contextWindow: 32000,
+  },
 };
 
 @Controller('settings')
@@ -149,6 +165,7 @@ export class SettingsController {
       flashModel: dto.flashModel,
       standardModel: dto.standardModel,
       thinkModel: dto.thinkModel,
+      contextWindow: preset.contextWindow,
     });
     return { success: true, id };
   }

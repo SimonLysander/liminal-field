@@ -81,6 +81,14 @@ export class AiProviderConfig {
   /** 深思级模型名 */
   @prop({ required: true, trim: true })
   thinkModel!: string;
+
+  /**
+   * 模型上下文窗口(token)。
+   * 算 compaction 占比的分母,预设默认、可在 UI 改。
+   * deepseek-v3/r1 支持 64k,通义/智谱视具体模型而定,保守默认 32k。
+   */
+  @prop({ required: true, default: 32000 })
+  contextWindow!: number;
 }
 
 /** 受信任设备条目 */

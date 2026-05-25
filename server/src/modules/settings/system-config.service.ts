@@ -252,6 +252,8 @@ export class SystemConfigService implements OnModuleInit {
     flashModel: string;
     standardModel: string;
     thinkModel: string;
+    /** 模型上下文窗口(token)，来自提供商预设，用于 compaction 占比计算的分母 */
+    contextWindow: number;
   }): Promise<void> {
     const config = await this.repo.get();
     const providers = config?.aiProviders ?? [];
@@ -264,6 +266,7 @@ export class SystemConfigService implements OnModuleInit {
       flashModel: input.flashModel,
       standardModel: input.standardModel,
       thinkModel: input.thinkModel,
+      contextWindow: input.contextWindow,
     });
     await this.repo.patch({ aiProviders: providers });
 
