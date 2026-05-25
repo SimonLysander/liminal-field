@@ -15,6 +15,24 @@
 - **禁止**：裸 `console.log` 散落；记敏感信息（token/password/正文全文 → 只记长度/摘要）；空 catch（catch 必 log）。
 - 颗粒度接近“关键步骤一步一个”，但分级可开关，不牺牲可读性。
 
+\# 配置归属准则（.env vs 管理页面/Mongo）
+
+**判断轴 = 谁管 + 何时变**（不是"是不是机密"——git token 是机密但归 UI）：
+
+- **`.env`**：部署/运维设定、机器级、换部署才变、应用没它起不来。
+  - 机密凭证：`JWT_SECRET`、`ADMIN_PASSWORD`、`MONGO_PASSWORD`、`OSS_ACCESS_KEY_*`
+  - 基础设施/连接：`MONGO_HOST/PORT/USER/DATABASE`、`OSS_REGION/BUCKET`、`CONTENT_REPO_ROOT`
+  - 运行环境：`NODE_ENV`、`PORT`、`COOKIE_SECURE`、`TZ`
+  - **系统内部容错定时**：`GIT_ARCHIVE_RETRY_CRON`（归档失败重试，管理员不该 care）
+- **管理页面 → Mongo**：管理员运行时通过 UI 自助配置/变更、非部署绑定、要在界面看状态。
+  - 同步：`remoteUrl`、`gitToken`、`gitAuthorName/Email`、`gitSyncEnabled`、**业务定时** `gitSyncCron`（多久推一次远端，管理员关心的节奏）
+  - 集成：`mineruToken`；AI：providers（key/baseUrl/models/`contextWindow`）、`aiSystemPrompt`
+  - 身份与 agent：`ownerProfile`、`agentConfigs`
+
+**定时任务的区分**：管理员可调的业务节奏（`gitSyncCron`）→ UI；系统内部容错机制（`GIT_ARCHIVE_RETRY_CRON`）→ .env。看的是"管理员会不会去调它"，不是"它是不是 cron"。
+
+**消费侧统一**：UI/Mongo 类配置启动时由 `SystemConfigService.applyAllToEnv` 投影进 `process.env`、UI 改时同步——消费方一律读 `process.env`，不到处注入 `SystemConfigService`。机密在 config view 里**必须脱敏**（只回 `hasXxx` / 长度，不回原文）。
+
 \# 设计系统
 
 核心原则：**展示端和管理端相同语义角色的组件，视觉规格完全一致。**
