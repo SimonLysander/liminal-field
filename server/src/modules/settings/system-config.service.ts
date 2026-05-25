@@ -350,6 +350,8 @@ export class SystemConfigService implements OnModuleInit {
     apiKey: string;
     model: string;
     aiSystemPrompt: string;
+    /** 模型上下文窗口(token):compaction 占比触发与上下文组装的分母。无配置时回退 32000。 */
+    contextWindow: number;
   }> {
     const config = await this.repo.get();
     const activeId = config?.activeAiProviderId || '';
@@ -368,6 +370,8 @@ export class SystemConfigService implements OnModuleInit {
       apiKey: active?.apiKey || '',
       model,
       aiSystemPrompt: config?.aiSystemPrompt || '',
+      // 历史 provider 可能未存 contextWindow,回退一个保守默认,避免 compaction 分母为 0
+      contextWindow: active?.contextWindow || 32000,
     };
   }
 

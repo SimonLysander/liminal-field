@@ -17,7 +17,13 @@ export class CompactionListener {
    * compaction 失败不应影响主流程，CompactionService 内部已有 try/catch 保障。
    */
   @OnEvent('agent.afterChat', { async: true })
-  async handleAfterChat(payload: { sessionKey: string }): Promise<void> {
-    await this.compactionService.compactIfNeeded(payload.sessionKey);
+  async handleAfterChat(payload: {
+    agentKey: string;
+    window: number;
+  }): Promise<void> {
+    await this.compactionService.compactIfNeeded(
+      payload.agentKey,
+      payload.window,
+    );
   }
 }
