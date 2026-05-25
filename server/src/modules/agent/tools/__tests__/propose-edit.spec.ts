@@ -29,4 +29,12 @@ describe('propose_edit', () => {
     ] }));
     expect(r.meta?.count).toBe(1);
   });
+  it('过滤掉 find 超长(>4000)的项', async () => {
+    const longFind = 'x'.repeat(4001);
+    const r = parse(await run(createProposeEditTool(), { edits: [
+      { find: longFind, replace: 'y', reason: 'r' },
+      { find: 'a', replace: 'b', reason: 'r' },
+    ] }));
+    expect(r.meta?.count).toBe(1);
+  });
 });

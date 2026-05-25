@@ -37,7 +37,11 @@ export function createProposeEditTool() {
       required: ['edits'],
     }),
     execute: ({ edits }: { edits: Array<{ find: string; replace: string; reason: string }> }) => {
-      const valid = (edits ?? []).filter(
+      // 防御:模型可能传出非数组结构(单对象/null),先挡住再过滤,避免 filter 抛错
+      if (!Array.isArray(edits)) {
+        return toolResult('没有有效的修改项', undefined, { status: 'invalid', count: 0 });
+      }
+      const valid = edits.filter(
         (e) =>
           typeof e?.find === 'string' &&
           e.find.trim().length > 0 &&
