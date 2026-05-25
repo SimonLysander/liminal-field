@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowUp, Square, X, Paperclip } from 'lucide-react';
+import type { EditOutcome } from '@/pages/admin/lib/apply-proposed-edits';
 import { MessageList } from './MessageList';
 import { TaskChecklist } from './TaskChecklist';
 import TextareaAutosize from 'react-textarea-autosize';
@@ -39,6 +40,13 @@ export interface AiAdvisorPanelProps {
    * 父级应用 useCallback 保证引用稳定,避免 useEffect 循环触发。
    */
   onProposedEdits?: (edits: Array<{ find: string; replace: string; reason: string }>, key: string) => void;
+  /**
+   * 改稿应用结果(失败项标红回流):由编辑器侧落痕迹后上报,经此透传到消息渲染。
+   * 与 outcomesKey(对应 propose_edit 的 toolCallId)配套,定位到具体那张卡片。
+   */
+  outcomes?: EditOutcome[];
+  /** 与 outcomes 配套的 key(propose_edit 的 toolCallId),用于匹配对应卡片 */
+  outcomesKey?: string;
 }
 
 export function AiAdvisorPanel({
@@ -48,6 +56,8 @@ export function AiAdvisorPanel({
   bodyMarkdown,
   selectedText,
   onProposedEdits,
+  outcomes,
+  outcomesKey,
 }: AiAdvisorPanelProps) {
   const [inputValue, setInputValue] = useState('');
   const [greeting] = useState(pickGreeting);
@@ -129,6 +139,8 @@ export function AiAdvisorPanel({
             hasMore={hasMore}
             isLoadingMore={isLoadingMore}
             onLoadMore={loadMore}
+            outcomes={outcomes}
+            outcomesKey={outcomesKey}
           />
         )}
       </div>

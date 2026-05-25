@@ -11,6 +11,7 @@
 
 import { useEffect, useRef } from 'react';
 import type { UIMessage } from 'ai';
+import type { EditOutcome } from '@/pages/admin/lib/apply-proposed-edits';
 import { ChatMessage } from './ChatMessage';
 
 interface MessageListProps {
@@ -28,6 +29,10 @@ interface MessageListProps {
   isLoadingMore?: boolean;
   /** 触发加载更早历史（滚到顶时调用） */
   onLoadMore?: () => void;
+  /** 改稿应用结果(失败项标红);透传给 ChatMessage,按 toolCallId 匹配对应 propose_edit 卡片 */
+  outcomes?: EditOutcome[];
+  /** 与 outcomes 配套的 key(propose_edit 的 toolCallId) */
+  outcomesKey?: string;
 }
 
 export function MessageList({
@@ -39,6 +44,8 @@ export function MessageList({
   hasMore,
   isLoadingMore,
   onLoadMore,
+  outcomes,
+  outcomesKey,
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -126,6 +133,8 @@ export function MessageList({
               parts={msg.role === 'assistant' ? msg.parts : undefined}
               sessionKey={sessionKey}
               comfortable={comfortable}
+              outcomes={outcomes}
+              outcomesKey={outcomesKey}
             />
           </div>
         );

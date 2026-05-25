@@ -15,6 +15,7 @@ import rehypeHighlight from 'rehype-highlight';
 import 'katex/dist/katex.min.css';
 import { Copy, Check } from 'lucide-react';
 import type { UIMessagePart, UIDataTypes, UITools } from 'ai';
+import type { EditOutcome } from '@/pages/admin/lib/apply-proposed-edits';
 import { ToolCallCard } from './ToolCallCard';
 import { ProposedEditCard } from './ProposedEditCard';
 
@@ -26,6 +27,10 @@ interface ChatMessageProps {
   sessionKey?: string;
   /** 舒适密度(全页 agent 用大字距;侧栏默认紧凑) */
   comfortable?: boolean;
+  /** 改稿应用结果(失败项标红);仅对 toolCallId === outcomesKey 的 propose_edit 卡片生效 */
+  outcomes?: EditOutcome[];
+  /** 与 outcomes 配套的 key(propose_edit 的 toolCallId) */
+  outcomesKey?: string;
 }
 
 /** 将 DynamicToolUIPart 的 state 映射到 ToolCallCard 的 state 类型 */
@@ -37,7 +42,7 @@ function mapToolState(state: string): 'call' | 'result' | 'error' {
   }
 }
 
-export function ChatMessage({ role, content, parts, sessionKey, comfortable }: ChatMessageProps) {
+export function ChatMessage({ role, content, parts, sessionKey, comfortable, outcomes, outcomesKey }: ChatMessageProps) {
   if (role === 'user') {
     return (
       /* 用户消息：右对齐，轻量 shelf 背景，不喧宾夺主 */
@@ -94,8 +99,11 @@ export function ChatMessage({ role, content, parts, sessionKey, comfortable }: C
                   />
                 );
               }
-              // edits 到位后渲染专属卡片(本 task 不传 outcomes/onJumpFirst)
-              return <ProposedEditCard key={i} edits={edits} />;
+              // edits 到位后渲染专属卡片。若该 part 的 toolCallId 命中 outcomesKey,
+              // 把对应 outcomes 传入,卡片会标红定位失败的条目 —— 失败绝不静默。
+              const toolCallId = typeof p.toolCallId === 'string' ? p.toolCallId : undefined;
+              const matched = outcomesKey && toolCallId === outcomesKey ? outcomes : undefined;
+              return <ProposedEditCard key={i} edits={edits} outcomes={matched} />;
             }
 
             const resultStr =

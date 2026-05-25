@@ -25,7 +25,7 @@ import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
 import { DraftAssetProvider } from '@/contexts/DraftAssetContext';
 import { AiAdvisorPanel } from '@/components/ai-advisor/AiAdvisorPanel';
 import { PlateMarkdownEditor } from './PlateEditor';
-import type { ProposedEdit } from '@/pages/admin/lib/apply-proposed-edits';
+import type { EditOutcome, ProposedEdit } from '@/pages/admin/lib/apply-proposed-edits';
 import { EditorOutline } from './EditorOutline';
 import { CommitForm } from './CommitForm';
 import type { BaseDraftState, DraftEditorController } from '../lib/use-draft-editor';
@@ -67,6 +67,24 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
   const handleProposedEdits = useCallback(
     (edits: ProposedEdit[], key: string) => setPending({ edits, key }),
     [],
+  );
+
+  // 改稿应用结果中转:PlateEditor 落痕迹后上报 outcomes(含失败项),透传给 AiAdvisorPanel,
+  // 由聊天卡片按 toolCallId 匹配后标红失败项 —— 定位失败绝不静默。
+  const [editOutcomes, setEditOutcomes] = useState<{ outcomes: EditOutcome[]; key: string }>({
+    outcomes: [],
+    key: '',
+  });
+  const handleOutcomes = useCallback(
+    (outcomes: EditOutcome[], key: string) => setEditOutcomes({ outcomes, key }),
+    [],
+  );
+
+  // 裁决完毕→干净正文回流:强制标脏(isUserEdit=true)触发自动保存,并随 hasPending 解除而解锁。
+  // 裁决时焦点不在编辑器,onChange 会判"非用户编辑"漏存,故走 controller 主动回流这条路。
+  const handleResolved = useCallback(
+    (markdown: string) => editor.setBody(markdown, true),
+    [editor],
   );
 
   if (editor.loading) {
@@ -206,6 +224,8 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
           bodyMarkdown={editor.state.bodyMarkdown}
           selectedText={selectedText}
           onProposedEdits={handleProposedEdits}
+          outcomes={editOutcomes.outcomes}
+          outcomesKey={editOutcomes.key}
         />
       ) : (
         <div />
@@ -226,6 +246,8 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
               onChange={editor.setBody}
               pendingEdits={pending.edits}
               editsKey={pending.key}
+              onResolved={handleResolved}
+              onOutcomes={handleOutcomes}
             />
           </DraftAssetProvider>
         </div>

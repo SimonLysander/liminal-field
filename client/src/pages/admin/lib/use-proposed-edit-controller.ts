@@ -19,23 +19,38 @@ import {
   keyId2SuggestionId,
   rejectSuggestion,
 } from '@platejs/suggestion';
+import { serializeMd } from '@platejs/markdown';
 
 import { applyProposedEdits, type EditOutcome, type ProposedEdit } from './apply-proposed-edits';
 
 export function useProposedEditController(
   pendingEdits: ProposedEdit[] | undefined,
   editsKey: string,
+  // 裁决后(节点树已无未决 suggestion)回调干净正文,供上游主动触发保存 + 解锁。
+  // 因为裁决发生时焦点不在编辑器,onChange 链路会判"非用户编辑"漏存,故主动序列化推上去。
+  onResolved?: (cleanMarkdown: string) => void,
 ) {
   const editor = useEditorRef();
   const [outcomes, setOutcomes] = useState<EditOutcome[]>([]);
+  // 有未决 suggestion 时进入"审阅锁定":编辑器只读、onChange 跳过序列化(防旧+新叠加污染草稿)。
+  const [hasPending, setHasPending] = useState(false);
   // 去重 guard:记录上一次已应用的 editsKey,同一批 edits 只落一次 suggestion
   const lastKeyRef = useRef<string>('');
+  // onResolved 用 ref 取最新,避免把它放进 resolveAll 依赖、引用变动造成多余重建
+  const onResolvedRef = useRef(onResolved);
+  useEffect(() => {
+    onResolvedRef.current = onResolved;
+  }, [onResolved]);
 
   useEffect(() => {
     if (!pendingEdits || pendingEdits.length === 0) return;
     if (lastKeyRef.current === editsKey) return;
     lastKeyRef.current = editsKey;
-    setOutcomes(applyProposedEdits(editor, pendingEdits));
+    const next = applyProposedEdits(editor, pendingEdits);
+    setOutcomes(next);
+    // 至少有一处成功落痕迹 → 进入审阅锁定;全失败(无痕迹)→ 无需锁定(false),失败项已在 outcomes 回流标红。
+    // 无条件 setState(本 effect 因 lastKeyRef 守卫每批 edits 只跑一次,是 editor 节点树这一外部系统的同步点)。
+    setHasPending(next.some((o) => o.ok));
   }, [editor, pendingEdits, editsKey]);
 
   /**
@@ -74,13 +89,30 @@ export function useProposedEditController(
       (accept ? acceptSuggestion : rejectSuggestion)(editor, desc);
     }
 
+    // 裁决后重查节点树是否还有未决 suggestion(api.nodes 返回数组,空即全部已裁决)。
+    // 全部裁决完 → 解除审阅锁定,并主动序列化干净正文回流给上游触发保存。
+    const remaining = api.nodes({ at: [] }).length;
+    if (remaining === 0) {
+      setHasPending(false);
+      try {
+        const md = serializeMd(editor);
+        onResolvedRef.current?.(md);
+      } catch (err) {
+        // 序列化失败不应吞掉:记录错误,后续用户编辑会再触发 onChange 兜底
+        console.error('[proposedEdit] resolveAll 序列化干净正文失败:', err);
+      }
+    }
+
     if (import.meta.env.DEV) {
-      console.debug(`[proposedEdit] resolveAll accept=${accept} ids=${seen.size}`);
+      console.debug(
+        `[proposedEdit] resolveAll accept=${accept} ids=${seen.size} remaining=${remaining}`,
+      );
     }
   };
 
   return {
     outcomes,
+    hasPending,
     acceptAll: () => resolveAll(true),
     rejectAll: () => resolveAll(false),
   };

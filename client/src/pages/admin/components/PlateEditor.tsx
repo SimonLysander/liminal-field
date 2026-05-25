@@ -9,9 +9,10 @@
  *   - 编辑时 serializeMd 将节点树序列化回 Markdown
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useProposedEditController } from '@/pages/admin/lib/use-proposed-edit-controller';
-import type { ProposedEdit } from '@/pages/admin/lib/apply-proposed-edits';
+import type { EditOutcome, ProposedEdit } from '@/pages/admin/lib/apply-proposed-edits';
+import { SuggestionPlugin } from '@platejs/suggestion/react';
 import {
   Plate,
   usePlateEditor,
@@ -27,25 +28,84 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { useDraftAssetContext } from '@/contexts/DraftAssetContext';
 
 /**
- * ProposedEditBridge — 在 <Plate> context 内部把外部传来的 edits 落成 suggestion 痕迹。
+ * ProposedEditBridge — 在 <Plate> context 内部把外部传来的 edits 落成 suggestion 痕迹,
+ * 并提供"审阅锁定 + 全部接受/拒绝"操作条。
  *
  * 为什么需要单独一个子组件:useProposedEditController 内部调用 useEditorRef(),
  * 而 useEditorRef 必须在 <Plate> 的 context 内才能取到 editor 实例。
  * PlateMarkdownEditor 的父级(ProseDraftEditor)在 <Plate> 外面,因此不能在父级调用 controller。
  * 把 bridge 渲染在 <Plate> 内部(与 EditorContainer 同级)即可满足该约束。
  *
- * outcomes/acceptAll/rejectAll 预留给 Task 7/8 的 UI(聊天卡片 + 接受/拒绝按钮),
- * 本 task 只打通数据链,暂不向上暴露。
+ * controller 产出的 hasPending / outcomes 通过回调上报给 PlateMarkdownEditor 层:
+ * - hasPending → 驱动 <Plate readOnly>(只读机制设在 Plate store,统一阻止所有编辑)
+ * - outcomes(+editsKey)→ 透传到聊天卡片,失败项标红回流
  */
 function ProposedEditBridge({
   pendingEdits,
   editsKey,
+  onResolved,
+  onHasPendingChange,
+  onOutcomes,
 }: {
   pendingEdits?: ProposedEdit[];
   editsKey?: string;
+  /** 裁决完毕(节点树干净)→ 干净正文回流,供上游触发保存 */
+  onResolved?: (cleanMarkdown: string) => void;
+  /** 审阅锁定态变化上报,PlateMarkdownEditor 据此给 <Plate> 设 readOnly */
+  onHasPendingChange?: (hasPending: boolean) => void;
+  /** 应用结果上报(供聊天卡片标红失败项) */
+  onOutcomes?: (outcomes: EditOutcome[], key: string) => void;
 }) {
-  useProposedEditController(pendingEdits, editsKey ?? '');
-  return null;
+  const { outcomes, hasPending, acceptAll, rejectAll } = useProposedEditController(
+    pendingEdits,
+    editsKey ?? '',
+    onResolved,
+  );
+
+  // hasPending 变化上报给 PlateMarkdownEditor → 驱动 <Plate readOnly>
+  useEffect(() => {
+    onHasPendingChange?.(hasPending);
+  }, [hasPending, onHasPendingChange]);
+
+  // outcomes 落定后上报(供聊天卡片标红);editsKey 关联到对应的 propose_edit part
+  useEffect(() => {
+    if (outcomes.length > 0) onOutcomes?.(outcomes, editsKey ?? '');
+  }, [outcomes, editsKey, onOutcomes]);
+
+  // 无未决 suggestion → 不渲染操作条
+  if (!hasPending) return null;
+
+  // 顶部审阅操作条:贴在编辑器顶部,提示有待裁决的修改 + 全部接受/拒绝按钮。
+  // 视觉沿用项目变量(accent 主色 / ink 文字 / paper 底),与设计系统一致。
+  return (
+    <div
+      className="sticky top-0 z-10 mb-2 flex items-center justify-between gap-3 rounded-lg px-3 py-2"
+      style={{
+        background: 'color-mix(in srgb, var(--accent) 8%, var(--paper))',
+        border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
+      }}
+    >
+      <span className="text-sm" style={{ color: 'var(--ink)' }}>
+        Aurora 提议了修改，请逐处或全部裁决后继续编辑
+      </span>
+      <div className="flex shrink-0 items-center gap-2">
+        <button
+          onClick={rejectAll}
+          className="rounded-md px-2.5 py-1 text-sm transition-colors hover:bg-[var(--shelf)]"
+          style={{ color: 'var(--ink-faded)' }}
+        >
+          全部拒绝
+        </button>
+        <button
+          onClick={acceptAll}
+          className="rounded-md px-2.5 py-1 text-sm transition-opacity hover:opacity-90"
+          style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}
+        >
+          全部接受
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function escapeRegExp(value: string): string {
@@ -76,6 +136,8 @@ export function PlateMarkdownEditor({
   onChange,
   pendingEdits,
   editsKey,
+  onResolved,
+  onOutcomes,
 }: {
   initialMarkdown: string;
   /**
@@ -91,9 +153,16 @@ export function PlateMarkdownEditor({
   pendingEdits?: ProposedEdit[];
   /** 与 pendingEdits 配套的去重 key(toolCallId),保证同一批 edits 只落一次 suggestion */
   editsKey?: string;
+  /** 裁决完毕→干净正文回流(供上游 setBody(md,true) 强制标脏触发保存) */
+  onResolved?: (cleanMarkdown: string) => void;
+  /** 应用结果上报(供聊天卡片标红失败项),key 关联到 propose_edit part */
+  onOutcomes?: (outcomes: EditOutcome[], key: string) => void;
 }) {
   const { contentItemId } = useDraftAssetContext();
   const [editorId] = useState(() => `plate-${Math.random().toString(36).slice(2)}`);
+  // 审阅锁定态:由 <Plate> 内部 ProposedEditBridge 上报,据此给 <Plate> 设 readOnly。
+  // 锁定时只读,用户只能通过操作条裁决,不能继续编辑(防 suggestion 与编辑交织污染)。
+  const [hasPending, setHasPending] = useState(false);
   const editorMarkdown = useMemo(
     () => toEditorAssetUrls(initialMarkdown || '', contentItemId),
     [contentItemId, initialMarkdown],
@@ -119,6 +188,10 @@ export function PlateMarkdownEditor({
 
   const handleChange = useCallback(() => {
     if (!editor) return;
+    // 有未决 suggestion → 不同步进 bodyMarkdown(防旧+新叠加序列化成 <suggestion> 垃圾污染草稿)。
+    // 裁决完毕后由 controller 主动 serializeMd 干净正文回流(onResolved),不走这条 onChange。
+    // api.nodes({at:[]}) 返回数组,非空即还有未决。
+    if (editor.getApi(SuggestionPlugin).suggestion.nodes({ at: [] }).length > 0) return;
     // 过滤掉上传中的 placeholder 节点再序列化，避免脏 HTML 污染 markdown
     const hasPlaceholder = editor.children.some(
       (node) => 'type' in node && (node as { type: string }).type === 'placeholder',
@@ -141,9 +214,17 @@ export function PlateMarkdownEditor({
 
   return (
     <TooltipProvider>
-      <Plate key={editorId} editor={editor} onValueChange={handleChange}>
+      {/* readOnly 设在 <Plate>(store-level 只读):有未决 suggestion 时锁定整个编辑器,
+          用户只能通过操作条全部接受/拒绝,裁决完毕自动解锁。比单独给 PlateContent 设更彻底。 */}
+      <Plate key={editorId} editor={editor} onValueChange={handleChange} readOnly={hasPending}>
         {/* ProposedEditBridge 必须在 <Plate> 内部,使用 useEditorRef 需要 Plate context */}
-        <ProposedEditBridge pendingEdits={pendingEdits} editsKey={editsKey} />
+        <ProposedEditBridge
+          pendingEdits={pendingEdits}
+          editsKey={editsKey}
+          onResolved={onResolved}
+          onHasPendingChange={setHasPending}
+          onOutcomes={onOutcomes}
+        />
         <EditorContainer>
           <Editor variant="default" placeholder="开始写作..." />
         </EditorContainer>
