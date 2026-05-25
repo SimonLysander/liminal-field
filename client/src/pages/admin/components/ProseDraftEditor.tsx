@@ -8,7 +8,7 @@
  * agent 上下文是场景相关的,由调用方通过 advisor 注入(笔记=本篇 / 文集=本条目+脉络)。
  */
 
-import { useState } from 'react';
+import { useSelectedText } from '@/hooks/use-selected-text';
 import { ChevronLeft, Sun, Moon, Trash2, MoreHorizontal } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
@@ -55,8 +55,8 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
   advisor,
 }: ProseDraftEditorProps<TState>) {
   const { theme, setTheme } = useTheme();
-  // 编辑器内当前选中文本(Cursor 式 add-to-chat);Plate 选区监听暂未接,预留 undefined
-  const [selectedText] = useState<string | undefined>(undefined);
+  // 编辑器内当前选中文本(Cursor 式 add-to-chat):监听 Plate 编辑器 DOM 选区
+  const selectedText = useSelectedText('[data-slate-editor]');
 
   if (editor.loading) {
     return <LoadingState variant="full" />;
