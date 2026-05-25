@@ -16,6 +16,7 @@ import 'katex/dist/katex.min.css';
 import { Copy, Check } from 'lucide-react';
 import type { UIMessagePart, UIDataTypes, UITools } from 'ai';
 import { ToolCallCard } from './ToolCallCard';
+import { ProposedEditCard } from './ProposedEditCard';
 
 interface ChatMessageProps {
   role: 'user' | 'assistant';
@@ -73,8 +74,30 @@ export function ChatMessage({ role, content, parts, sessionKey, comfortable }: C
           if (part.type.startsWith('tool-')) {
             const toolName = part.type.slice(5); // 去掉 "tool-" 前缀
             if (toolName === 'write_tasks') return null; // 清单统一渲染在消息末尾
+
             const p = part as Record<string, unknown>;
             const state = typeof p.state === 'string' ? mapToolState(p.state) : 'call';
+
+            // propose_edit:用专属卡片渲染逐条 reason,不走通用 ToolCallCard。
+            // input-streaming 阶段 edits 还没传完,回退到 ToolCallCard 进行中态。
+            if (toolName === 'propose_edit') {
+              const input = 'input' in p ? (p.input as { edits?: Array<{ find: string; replace: string; reason: string }> }) : undefined;
+              const edits = input?.edits;
+              if (state === 'call' || !edits || edits.length === 0) {
+                // 流式进行中 或 edits 为空:用通用卡片显示进行中态
+                return (
+                  <ToolCallCard
+                    key={i}
+                    toolName={toolName}
+                    state={state}
+                    sessionKey={sessionKey}
+                  />
+                );
+              }
+              // edits 到位后渲染专属卡片(本 task 不传 outcomes/onJumpFirst)
+              return <ProposedEditCard key={i} edits={edits} />;
+            }
+
             const resultStr =
               'output' in p && p.output != null
                 ? typeof p.output === 'string'

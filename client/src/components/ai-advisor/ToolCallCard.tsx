@@ -15,6 +15,7 @@ import {
   BookmarkMinus,
   Workflow,
   Wrench,
+  PencilLine,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -37,6 +38,7 @@ const DISPLAY_NAMES: Record<string, string> = {
   remember: 'Write Memory',
   forget: 'Delete Memory',
   sub_agent: 'Delegate',
+  propose_edit: '提议修改',
 };
 
 /** 每个工具的 lucide 图标(纸墨批注的辨识符) */
@@ -48,6 +50,7 @@ const TOOL_ICON: Record<string, LucideIcon> = {
   remember: Bookmark,
   forget: BookmarkMinus,
   sub_agent: Workflow,
+  propose_edit: PencilLine,
 };
 
 // ── 工具函数 ──────────────────────────────────────────────
