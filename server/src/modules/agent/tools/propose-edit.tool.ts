@@ -1,5 +1,9 @@
+import { Logger } from '@nestjs/common';
 import { tool, jsonSchema } from 'ai';
 import { toolResult } from './tool-result';
+
+// 模块级 logger，与 NestJS 日志体系统一，便于按 LOG_LEVEL 控制详细度
+const logger = new Logger('ProposeEditTool');
 
 /**
  * propose_edit —— 向当前草稿提出【多处】修改(查找-替换块)。
@@ -37,6 +41,11 @@ export function createProposeEditTool() {
       required: ['edits'],
     }),
     execute: ({ edits }: { edits: Array<{ find: string; replace: string; reason: string }> }) => {
+      // 入参摘要日志：只记长度，不记 find/replace 正文（CLAUDE.md 日志准则：禁止记正文全文）
+      logger.debug(
+        `propose_edit 收到 ${edits?.length ?? 0} 处, find长度=[${(edits ?? []).map((e) => e?.find?.length ?? 0).join(',')}]`,
+      );
+
       // 防御:模型可能传出非数组结构(单对象/null),先挡住再过滤,避免 filter 抛错
       if (!Array.isArray(edits)) {
         return toolResult('没有有效的修改项', undefined, { status: 'invalid', count: 0 });
@@ -49,6 +58,10 @@ export function createProposeEditTool() {
           typeof e?.replace === 'string' &&
           e.replace.length > 0,
       );
+
+      // 校验后有效处数（过滤掉空字符串、超长、非字符串的入参）
+      logger.debug(`有效 ${valid.length} 处`);
+
       if (valid.length === 0) {
         return toolResult('没有有效的修改项', undefined, { status: 'invalid', count: 0 });
       }

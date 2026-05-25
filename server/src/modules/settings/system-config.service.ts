@@ -79,6 +79,7 @@ export class SystemConfigService implements OnModuleInit {
     'list_knowledge_base',
     'read_document_content',
     'get_current_draft',
+    'propose_edit', // Aurora 改稿：查找-替换块落成 suggestion 痕迹，与 get_current_draft/write_tasks 同属文档绑定写作工具
     'remember',
     'forget',
     'sub_agent',

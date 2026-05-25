@@ -35,6 +35,7 @@ export type EditOutcome =
 export function applyProposedEdits(editor: PlateEditor, edits: ProposedEdit[]): EditOutcome[] {
   const outcomes: EditOutcome[] = [];
 
+  // outcomes 与 edits 等长一一对应(失败项 ok=false 而非跳过),供卡片按下标标红
   for (const edit of edits) {
     // Step 1: 定位 find 所在块,要求全文唯一
     const found = findBlockByText(editor.children, edit.find);
