@@ -30,6 +30,8 @@ export interface SettingsConfigView {
     gitAuthorName: string;
     gitAuthorEmail: string;
     gitSyncCron: string;
+    /** 同步开关:关闭时即使配了远端也不 push */
+    gitSyncEnabled: boolean;
   };
   integration: {
     hasMineruToken: boolean;
@@ -105,6 +107,7 @@ export const settingsApi = {
     gitAuthorName?: string;
     gitAuthorEmail?: string;
     gitSyncCron?: string;
+    gitSyncEnabled?: boolean;
   }) =>
     request<{ success: boolean }>('/settings/sync-config', {
       method: 'PUT',

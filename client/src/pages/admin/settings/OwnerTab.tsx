@@ -346,7 +346,11 @@ function MemoriesSection() {
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  // 挂载时加载记忆列表：load 内的 setState 在 async 回调里执行（非渲染期同步），属合法用法
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
 
   const handleUpdate = async (
     id: string,

@@ -8,7 +8,7 @@
 import { SlashInputPlugin, SlashPlugin } from '@platejs/slash-command/react';
 import { type SlateEditor, KEYS } from 'platejs';
 
-import { SlashInputElement } from '@/components/ui/slash-node';
+import { SlashInputElement, GallerySlashInputElement } from '@/components/ui/slash-node';
 
 export const SlashKit = [
   SlashPlugin.configure({
@@ -20,4 +20,10 @@ export const SlashKit = [
     },
   }),
   SlashInputPlugin.withComponent(SlashInputElement),
+];
+
+/* 画廊随笔：精简命令菜单（只 GalleryEditorKit 支持的块；画廊无代码块，用默认触发） */
+export const GallerySlashKit = [
+  SlashPlugin,
+  SlashInputPlugin.withComponent(GallerySlashInputElement),
 ];

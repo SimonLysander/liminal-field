@@ -12,8 +12,17 @@
 
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Sun, Moon } from 'lucide-react';
+import { ChevronLeft, Sun, Moon, Trash2, MoreHorizontal } from 'lucide-react';
 import { useTheme } from '@/hooks/use-theme';
+import { useConfirm } from '@/contexts/ConfirmContext';
+import { galleryApi } from '@/services/workspace';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
 import { LoadingState } from '@/components/LoadingState';
 import { PhotoGrid } from './components/PhotoGrid';
 import { PhotoEditModal } from './components/PhotoEditModal';
@@ -25,24 +34,25 @@ import { useGalleryEditor } from './hooks/useGalleryEditor';
 // ─── 保存状态展示 ───
 
 /*
- * SaveStatusBadge — 右侧小徽章，颜色 + 文案传达当前保存状态：
- *   saved  → 绿色  ✓ 已自动保存
- *   dirty  → 橙色  ● 有未保存的更改
- *   saving → 灰色  ↻ 保存中...
+ * SaveStatusBadge — 保存状态,与笔记/文集编辑器统一:
+ *   只两态——保存中(长春花紫呼吸点)/ 已自动保存。不显示"未保存"(自动保存会很快落)。
  */
-function SaveStatusBadge({ status }: { status: 'saved' | 'dirty' | 'saving' }) {
-  const config = {
-    saved:  { symbol: '✓', text: '已自动保存', color: 'var(--mark-green)' },
-    dirty:  { symbol: '●', text: '有未保存的更改', color: 'var(--mark-orange, #f59e0b)' },
-    saving: { symbol: '↻', text: '保存中...', color: 'var(--ink-ghost)' },
-  } as const;
-
-  const { symbol, text, color } = config[status];
-
+function SaveStatusBadge({ status, lastSavedAt }: { status: 'saved' | 'dirty' | 'saving'; lastSavedAt: string }) {
+  // 与笔记/文集一致:saving→"保存中…"+呼吸点;其余(saved / dirty 等待期)→ 保持上次"已自动保存 hh:mm"
+  //（dirty 期间不闪空,只有从没保存过时才为空）。不显示"未保存"。
+  const savedText = lastSavedAt
+    ? `已自动保存 ${new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
+    : '';
   return (
-    <span className="flex items-center gap-1 text-xs" style={{ color }}>
-      <span>{symbol}</span>
-      <span>{text}</span>
+    <span className="mr-1 inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+      {status === 'saving' && (
+        <span
+          className="size-1.5 shrink-0 animate-pulse rounded-full [animation-duration:1.2s]"
+          style={{ background: 'var(--accent)' }}
+          aria-hidden
+        />
+      )}
+      {status === 'saving' ? '保存中…' : savedText}
     </span>
   );
 }
@@ -62,6 +72,7 @@ export default function GalleryEditPage() {
     date,
     location,
     saveStatus,
+    lastSavedAt,
     updateTitle,
     updateProse,
     reorderPhotos,
@@ -107,8 +118,6 @@ export default function GalleryEditPage() {
     navigate(to);
   };
 
-  // Portal 目标：随笔工具栏渲染到 topbar 中间
-  const [toolbarPortal, setToolbarPortal] = useState<HTMLDivElement | null>(null);
   // 照片编辑弹窗状态
   const [modalOpen, setModalOpen] = useState(false);
   const [modalPhotoIndex, setModalPhotoIndex] = useState(0);
@@ -124,97 +133,88 @@ export default function GalleryEditPage() {
     navigate(`/admin/gallery?post=${id}`);
   };
 
+  // 丢弃草稿：确认 → 删草稿 → 回详情(与笔记/文集编辑器 ⋯ 菜单一致)
+  const confirm = useConfirm();
+  const handleDiscard = async () => {
+    if (!id) return;
+    const ok = await confirm({ title: '丢弃草稿', message: '确认丢弃当前草稿？', danger: true, confirmLabel: '丢弃' });
+    if (!ok) return;
+    await galleryApi.deleteDraft(id);
+    navigate(`/admin/gallery?post=${id}`);
+  };
+
   if (loading) {
     return <LoadingState variant="full" />;
   }
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      {/* 顶栏：1fr | auto | 1fr 工具栏居中（与 notes 编辑器一致） */}
-      <header
-        className="grid shrink-0 items-center"
-        style={{ height: 48, padding: '8px 16px', gridTemplateColumns: '1fr auto 1fr', columnGap: 12 }}
-      >
-        {/* 左侧胶囊：← 返回 / 标题输入 */}
-        <div
-          className="flex min-w-0 shrink-0 items-center justify-self-start gap-2 px-3 py-1"
-          style={{
-            background: 'var(--glass-bg)',
-            backdropFilter: 'blur(12px) saturate(180%)',
-            WebkitBackdropFilter: 'blur(12px) saturate(180%)',
-            border: '1px solid var(--glass-border)',
-            borderRadius: 20,
-            boxShadow: 'var(--glass-shadow)',
-          }}
-        >
+      {/* 顶栏：扁平,与笔记/文集编辑器统一(返回图标 + 标题 + 保存/提交/主题切换)。
+          散文工具栏已统一为浮动工具栏,不再 portal 到顶栏中央。 */}
+      <header className="flex shrink-0 items-center justify-between px-4" style={{ height: 52 }}>
+        {/* 左:返回 + 可编辑标题 */}
+        <div className="flex min-w-0 items-center gap-1.5">
           <button
-            className="hover-shelf shrink-0 rounded-full px-1.5 py-0.5 transition-colors duration-150"
+            className="rounded-md p-1.5 outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none"
             style={{ color: 'var(--ink-faded)' }}
             onClick={() => safeNavigate(`/admin/gallery?post=${id}`)}
-            aria-label="返回画廊列表"
+            aria-label="返回"
           >
-            ←
+            <ChevronLeft size={18} strokeWidth={1.5} />
           </button>
-          <span className="shrink-0 text-base" style={{ color: 'var(--ink-ghost)' }}>/</span>
           <input
             type="text"
             value={title}
             onChange={(e) => updateTitle(e.target.value)}
             placeholder="无标题"
-            className="w-[160px] shrink-0 truncate border-none bg-transparent text-base font-medium outline-none placeholder:text-[var(--ink-ghost)]"
+            className="input-ghost min-w-[60px] max-w-[280px] truncate text-base font-medium placeholder:text-[var(--ink-ghost)]"
             style={{ color: 'var(--ink)' }}
           />
         </div>
 
-        {/* 工具栏 Portal 挂在中列 */}
-        <div
-          ref={setToolbarPortal}
-          className="flex min-w-0 max-w-full justify-center justify-self-center overflow-x-auto"
-        />
-
-        {/* 右侧胶囊：保存状态 + 主题切换 + 操作按钮 */}
-        <div
-          className="flex min-w-0 shrink-0 items-center justify-self-end gap-3 px-3 py-1"
-          style={{
-            background: 'var(--glass-bg)',
-            backdropFilter: 'blur(12px) saturate(180%)',
-            WebkitBackdropFilter: 'blur(12px) saturate(180%)',
-            border: '1px solid var(--glass-border)',
-            borderRadius: 20,
-            boxShadow: 'var(--glass-shadow)',
-          }}
-        >
-          <SaveStatusBadge status={saveStatus} />
-
-          {/* 主题切换按钮：亮色模式显示 Sun，暗色模式显示 Moon */}
-          <button
-            className="hover-shelf flex items-center rounded-full p-1 transition-colors duration-150"
-            style={{ color: 'var(--ink-faded)' }}
-            onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}
-            aria-label="切换主题"
-          >
-            <Sun size={14} strokeWidth={1.5} className="theme-icon-light" />
-            <Moon size={14} strokeWidth={1.5} className="theme-icon-dark" />
-          </button>
-
-          <button
-            className="rounded-full px-3 py-1 text-sm transition-colors duration-150"
-            style={{ color: 'var(--ink-faded)', border: '0.5px solid var(--separator)', opacity: uploading ? 0.4 : 1 }}
-            onClick={() => void save()}
-            disabled={uploading}
-          >
-            保存草稿
-          </button>
+        {/* 右:保存状态 + 保存 + 提交 + 主题切换 */}
+        <div className="flex items-center gap-1.5">
+          <SaveStatusBadge status={saveStatus} lastSavedAt={lastSavedAt} />
+          <Button variant="ghost" size="default" className="text-base" onClick={() => void save()} disabled={uploading}>
+            保存
+          </Button>
           {/* 提交就近浮层:以「提交」按钮为锚点弹出 */}
           <CommitPopover onSubmit={handleCommit}>
-            <button
-              className="rounded-full px-3 py-1 text-sm font-medium transition-colors duration-150"
-              style={{ background: 'var(--ink)', color: 'var(--paper)', opacity: uploading ? 0.4 : 1 }}
-              disabled={uploading}
-            >
+            <Button variant="secondary" size="default" className="text-base" disabled={uploading}>
               提交
-            </button>
+            </Button>
           </CommitPopover>
+          {/* 主题切换:对齐编辑器规范(size 18 + rounded-md) */}
+          <button
+            className="rounded-md p-1.5 outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none"
+            style={{ color: 'var(--ink-ghost)' }}
+            onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}
+            aria-label="切换主题"
+            title="切换主题"
+          >
+            <Sun size={18} strokeWidth={1.5} className="theme-icon-light" />
+            <Moon size={18} strokeWidth={1.5} className="theme-icon-dark" />
+          </button>
+          {/* ⋯ 菜单:丢弃草稿(与笔记/文集编辑器一致) */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="rounded-md p-1.5 outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none data-[state=open]:bg-[var(--shelf)]"
+                style={{ color: 'var(--ink-ghost)' }}
+                title="更多"
+              >
+                <MoreHorizontal size={18} strokeWidth={1.5} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() => void handleDiscard()}
+                className="text-[var(--danger)] focus:bg-[color-mix(in_srgb,var(--danger)_9%,transparent)] [&_svg]:text-[var(--danger)]"
+              >
+                <Trash2 />丢弃草稿
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
@@ -256,7 +256,6 @@ export default function GalleryEditPage() {
           <GalleryProseEditor
             initialMarkdown={prose}
             onChange={updateProse}
-            toolbarContainer={toolbarPortal}
           />
         </div>
       </div>

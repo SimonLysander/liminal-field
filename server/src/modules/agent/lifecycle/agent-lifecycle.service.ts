@@ -86,12 +86,15 @@ export class AgentLifecycle {
     systemPrompt: string;
     tools: Record<string, any>;
   }> {
-    // 并行加载记忆 + 所有者身份
-    const [coreMemories, indexMemories, ownerProfile] = await Promise.all([
-      this.memory.loadCore(),
-      this.memory.loadIndex(),
-      this.systemConfigService.getOwnerProfile(),
-    ]);
+    // 并行加载记忆 + 所有者身份 + 当前会话任务(注入 prompt,让模型看得到自己的计划)
+    const sessionKey = dto.entryContext.sessionKey;
+    const [coreMemories, indexMemories, ownerProfile, tasks] =
+      await Promise.all([
+        this.memory.loadCore(),
+        this.memory.loadIndex(),
+        this.systemConfigService.getOwnerProfile(),
+        sessionKey ? this.session.getTasks(sessionKey) : Promise.resolve([]),
+      ]);
 
     const systemPrompt = this.prompt.buildSystemPrompt({
       ownerProfile: ownerProfile.name ? ownerProfile : undefined,
@@ -102,6 +105,7 @@ export class AgentLifecycle {
       document: dto.entryContext.document,
       customSystemPrompt: aiConfig.aiSystemPrompt,
       entrySystemPrompt: aiConfig.entrySystemPrompt,
+      tasks,
     });
 
     // allowedTools 为空时使用全部工具；有白名单时按白名单过滤
@@ -127,7 +131,9 @@ export class AgentLifecycle {
   }
 
   /** 获取会话中的 tasks（保存后返回给前端刷新 TaskBar） */
-  async getSessionTasks(sessionKey: string): Promise<Array<Record<string, unknown>>> {
+  async getSessionTasks(
+    sessionKey: string,
+  ): Promise<Array<Record<string, unknown>>> {
     const tasks = await this.session.getTasks(sessionKey);
     return tasks;
   }

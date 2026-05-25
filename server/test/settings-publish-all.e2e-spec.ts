@@ -38,7 +38,11 @@ describe('一键发布全部最新版 publish-all (e2e)', () => {
     await commitNoteContent(ctx.app, cookie, noteId, '# 正文', '待发布笔记');
 
     // 文集:建 + 加一条带正文的条目
-    const anthologyId = await createAnthologyItem(ctx.app, cookie, '待发布文集');
+    const anthologyId = await createAnthologyItem(
+      ctx.app,
+      cookie,
+      '待发布文集',
+    );
     await addAnthologyEntry(ctx.app, cookie, anthologyId, {
       title: '条目一',
       bodyMarkdown: '条目正文',
@@ -46,8 +50,12 @@ describe('一键发布全部最新版 publish-all (e2e)', () => {
 
     const contentRepo = ctx.app.get(ContentRepository);
     // 初始都未发布
-    expect((await contentRepo.findById(noteId))?.publishedVersion ?? null).toBeNull();
-    expect((await contentRepo.findById(anthologyId))?.publishedVersion ?? null).toBeNull();
+    expect(
+      (await contentRepo.findById(noteId))?.publishedVersion ?? null,
+    ).toBeNull();
+    expect(
+      (await contentRepo.findById(anthologyId))?.publishedVersion ?? null,
+    ).toBeNull();
 
     // 一键发布全部
     const res = await supertest(ctx.app.getHttpServer())

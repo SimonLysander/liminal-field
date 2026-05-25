@@ -1,0 +1,246 @@
+/**
+ * PromptHandler 单测 —— 锁定 Aurora 系统提示词的"组装契约"。
+ *
+ * 这里测的是结构与不变量,不是文案逐字(文案会演进):
+ * - 分节顺序(由近及远:owner→role→tools→记忆→instructions→current_context→tasks)
+ * - current_context 只点名标题/字数,绝不把正文灌进 prompt(靠 get_current_draft 工具按需读)
+ * - tasks 仅在有未完成任务时注入
+ * - 各记忆/自定义分节按需注入
+ * - 不泄露产品名("Liminal Field")或模型名
+ */
+import { PromptHandler, type BuildSystemPromptParams } from './prompt.handler';
+import type { AgentMemory } from '../memory/agent-memory.entity';
+
+// 构造最小记忆对象:buildSystemPrompt 只读 title/content,其余字段无关,故安全 cast。
+const mem = (title: string, content: string): AgentMemory =>
+  ({ title, content }) as unknown as AgentMemory;
+
+// 必填字段(coreMemories/indexMemories 非可选)给空数组,其余按用例覆盖。
+const baseParams = (
+  over: Partial<BuildSystemPromptParams> = {},
+): BuildSystemPromptParams => ({
+  coreMemories: [],
+  indexMemories: [],
+  ...over,
+});
+
+describe('PromptHandler.buildSystemPrompt', () => {
+  let handler: PromptHandler;
+  beforeEach(() => {
+    handler = new PromptHandler();
+  });
+
+  it('始终注入 role 分节,且 role 里点名 Aurora', () => {
+    const out = handler.buildSystemPrompt(baseParams());
+    expect(out).toContain('<role>');
+    expect(out).toContain('Aurora');
+    // tools 也是固定注入的
+    expect(out).toContain('<tools>');
+  });
+
+  it('有 ownerProfile.name → 注入 owner 分节并用真名;role 里也用真名', () => {
+    const out = handler.buildSystemPrompt(
+      baseParams({
+        ownerProfile: { name: '阿秋', birthday: '', bio: '', interests: '' },
+      }),
+    );
+    expect(out).toContain('<owner>');
+    expect(out).toContain('你在陪伴 阿秋');
+    expect(out).toContain('阿秋 的另一个自我');
+  });
+
+  it('无 ownerProfile → 不注入 owner 分节,role 用占位"所有者"', () => {
+    const out = handler.buildSystemPrompt(baseParams());
+    expect(out).not.toContain('<owner>');
+    expect(out).toContain('所有者');
+  });
+
+  it('owner 分节只在对应字段存在时拼接生日/简介/在意的', () => {
+    const out = handler.buildSystemPrompt(
+      baseParams({
+        ownerProfile: {
+          name: '阿秋',
+          birthday: '1999-01-01',
+          bio: '写作者',
+          interests: '哲学',
+        },
+      }),
+    );
+    expect(out).toContain('生日：1999-01-01');
+    expect(out).toContain('简介：写作者');
+    expect(out).toContain('在意的：哲学');
+  });
+
+  describe('current_context —— 只点名,不灌正文', () => {
+    it('有 document → 点名标题与字数,但绝不包含正文内容', () => {
+      const body = '这是一段绝对不应该出现在系统提示词里的正文内容';
+      const out = handler.buildSystemPrompt(
+        baseParams({
+          document: {
+            contentItemId: 'ci_1',
+            title: '我的随笔',
+            bodyMarkdown: body,
+          },
+        }),
+      );
+      expect(out).toContain('<current_context>');
+      expect(out).toContain('《我的随笔》');
+      expect(out).toContain(`约 ${body.length} 字`);
+      expect(out).toContain('get_current_draft');
+      // 关键契约:正文不进 prompt
+      expect(out).not.toContain(body);
+    });
+
+    it('无 document → 不注入 current_context', () => {
+      const out = handler.buildSystemPrompt(baseParams());
+      expect(out).not.toContain('<current_context>');
+    });
+
+    it('document 无标题 → 用"未命名"占位', () => {
+      const out = handler.buildSystemPrompt(
+        baseParams({
+          document: { contentItemId: 'ci_1', title: '', bodyMarkdown: 'x' },
+        }),
+      );
+      expect(out).toContain('《未命名》');
+    });
+  });
+
+  describe('tasks —— 仅未完成才注入', () => {
+    it('有未完成任务 → 注入 tasks,含状态中文标签', () => {
+      const out = handler.buildSystemPrompt(
+        baseParams({
+          tasks: [
+            { title: '列大纲', status: 'done' },
+            { title: '写引言', status: 'in_progress' },
+          ],
+        }),
+      );
+      expect(out).toContain('<tasks>');
+      expect(out).toContain('[完成] 列大纲');
+      expect(out).toContain('[进行中] 写引言');
+    });
+
+    it('全部完成 → 不注入 tasks(避免每轮灌回"全 done"清单)', () => {
+      const out = handler.buildSystemPrompt(
+        baseParams({
+          tasks: [
+            { title: 'a', status: 'done' },
+            { title: 'b', status: 'done' },
+          ],
+        }),
+      );
+      expect(out).not.toContain('<tasks>');
+    });
+
+    it('空任务列表 → 不注入 tasks', () => {
+      const out = handler.buildSystemPrompt(baseParams({ tasks: [] }));
+      expect(out).not.toContain('<tasks>');
+    });
+
+    it('任务缺 status → 视为 pending(待办)注入', () => {
+      const out = handler.buildSystemPrompt(
+        baseParams({ tasks: [{ title: '无状态任务' }] }),
+      );
+      expect(out).toContain('[待办] 无状态任务');
+    });
+  });
+
+  describe('记忆分节按需注入', () => {
+    it('coreMemories 注入全文', () => {
+      const out = handler.buildSystemPrompt(
+        baseParams({ coreMemories: [mem('身份', '我是写作者')] }),
+      );
+      expect(out).toContain('<core_memories>');
+      expect(out).toContain('[身份]');
+      expect(out).toContain('我是写作者');
+    });
+
+    it('indexMemories 只注入标题索引,不含正文', () => {
+      const out = handler.buildSystemPrompt(
+        baseParams({ indexMemories: [mem('项目A', '项目A的详细正文')] }),
+      );
+      expect(out).toContain('<memory_index>');
+      expect(out).toContain('- 项目A');
+      expect(out).not.toContain('项目A的详细正文');
+    });
+
+    it('relatedMemories / sessionSummary 有才注入', () => {
+      const without = handler.buildSystemPrompt(baseParams());
+      expect(without).not.toContain('<related_memories>');
+      expect(without).not.toContain('<conversation_summary>');
+
+      const out = handler.buildSystemPrompt(
+        baseParams({
+          relatedMemories: [{ title: '召回', content: '相关内容' }],
+          sessionSummary: '之前聊过的摘要',
+        }),
+      );
+      expect(out).toContain('<related_memories>');
+      expect(out).toContain('相关内容');
+      expect(out).toContain('<conversation_summary>');
+      expect(out).toContain('之前聊过的摘要');
+    });
+  });
+
+  describe('自定义 system prompt 追加在末尾', () => {
+    it('entrySystemPrompt + customSystemPrompt 都注入,且在 instructions 之后', () => {
+      const out = handler.buildSystemPrompt(
+        baseParams({
+          entrySystemPrompt: '入口级提示',
+          customSystemPrompt: '全局提示',
+        }),
+      );
+      expect(out).toContain('入口级提示');
+      expect(out).toContain('全局提示');
+      expect(out.indexOf('入口级提示')).toBeGreaterThan(
+        out.indexOf('<instructions>'),
+      );
+    });
+
+    it('空白自定义 prompt 不注入', () => {
+      const out = handler.buildSystemPrompt(
+        baseParams({ entrySystemPrompt: '   ', customSystemPrompt: '' }),
+      );
+      // 末尾应是 instructions(无 document/tasks 时),不应有空字符串段落
+      expect(out.trim().endsWith('</instructions>')).toBe(true);
+    });
+  });
+
+  it('分节顺序:owner→role→tools→core_memories→instructions→current_context→tasks', () => {
+    const out = handler.buildSystemPrompt(
+      baseParams({
+        ownerProfile: { name: '阿秋', birthday: '', bio: '', interests: '' },
+        coreMemories: [mem('核心', '核心记忆')],
+        document: { contentItemId: 'ci_1', title: 'T', bodyMarkdown: 'x' },
+        tasks: [{ title: 't', status: 'pending' }],
+      }),
+    );
+    const order = [
+      '<owner>',
+      '<role>',
+      '<tools>',
+      '<core_memories>',
+      '<instructions>',
+      '<current_context>',
+      '<tasks>',
+    ].map((tag) => out.indexOf(tag));
+    // 每段都存在
+    expect(order.every((i) => i >= 0)).toBe(true);
+    // 严格递增 = 顺序正确
+    const sorted = [...order].sort((a, b) => a - b);
+    expect(order).toEqual(sorted);
+  });
+
+  it('不泄露产品名或模型名', () => {
+    const out = handler.buildSystemPrompt(
+      baseParams({
+        ownerProfile: { name: '阿秋', birthday: '', bio: '', interests: '' },
+        document: { contentItemId: 'ci_1', title: 'T', bodyMarkdown: 'x' },
+      }),
+    );
+    expect(out).not.toContain('Liminal Field');
+    expect(out).not.toContain('liminal');
+    expect(out.toLowerCase()).not.toContain('deepseek');
+  });
+});

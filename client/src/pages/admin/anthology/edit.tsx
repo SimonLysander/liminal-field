@@ -2,487 +2,87 @@
  * AnthologyEntryEditPage — 文集条目草稿编辑器
  * 路由：/admin/anthology/:id/entries/:entryKey/edit
  *
- * 心智模型与 DraftEditPage（Notes 编辑器）完全一致：
- * - 打开编辑器 → 加载草稿（有草稿恢复草稿，无草稿从正式版本创建初始草稿）
- * - 编辑时 1.5s debounce autosave 草稿
- * - ⌘S 打开提交对话框 → 确认提交（saveEntry → 后端自动删草稿）
- * - ⇧⌘S 手动保存草稿
- * - 顶栏状态指示（保存中/已保存/未保存）+ 右侧大纲面板
+ * 与笔记编辑页(../edit.tsx)共用同一套「文稿编辑」骨架(useDraftEditor + ProseDraftEditor)。
+ * 本页只提供:
+ *   · anthologyAdapter(条目草稿的数据接口 / 标识 id+entryKey)
+ *   · agent 上下文(本条目;文集脉络——同集其他条目——后续作为集合上下文注入)
  *
- * 与 DraftEditPage 的差异：
- * - URL 参数：id（anthologyId）+ entryKey
- * - 无 summary / changeType 字段
- * - 加载/保存接口均走 anthologyApi 的条目草稿方法
- * - date 不在编辑器里（在条目列表或新建弹窗里设置）
+ * 与笔记的差异仅在 adapter:走 anthologyApi 的条目方法、无 summary/changeType 字段、
+ * 提交由后端自动删草稿(无需单独 deleteDraft)。
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { useConfirm } from '@/contexts/ConfirmContext';
-import { ChevronLeft, Sun, Trash2, MoreHorizontal } from 'lucide-react';
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
-import { useTheme } from '@/hooks/use-theme';
+import { useMemo } from 'react';
+import { useParams } from 'react-router-dom';
 import { anthologyApi } from '@/services/workspace';
-import type { EditorDraft } from '@/services/workspace';
-import { PlateMarkdownEditor } from '../components/PlateEditor';
-import { parseError } from '../helpers';
-import { type HeadingEntry, extractHeadingEntriesFromMarkdown } from '../lib/markdown-toc';
-import { useLocalDraftBuffer } from '../lib/use-local-draft-buffer';
-import { EditorOutline } from '../components/EditorOutline';
-import { CommitForm } from '../components/CommitForm';
-import { LoadingState } from '@/components/LoadingState';
-import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
-import { DraftAssetProvider } from '@/contexts/DraftAssetContext';
-
-// ─── 类型 ─────────────────────────────────────────────────────────────────────
-
-type EditorState = {
-  title: string;
-  bodyMarkdown: string;
-  changeNote: string;
-};
-
-// ─── 主页面 ─────────────────────────────────────────────────────────────────
+import { useDraftEditor, type BaseDraftState, type DraftEditorAdapter } from '../lib/use-draft-editor';
+import { useWritingAdvisorEnabled } from '../lib/use-writing-advisor-enabled';
+import { ProseDraftEditor } from '../components/ProseDraftEditor';
 
 const AnthologyEntryEditPage = () => {
   const { id, entryKey } = useParams<{ id: string; entryKey: string }>();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const confirm = useConfirm();
 
-  /**
-   * 安全返回:有 app 内上一页就回退,否则去文集管理后台。
-   * 修复"有时候点返回页面出错"(直接打开/刷新过编辑页时 navigate(-1) 退到 app 外/坏页)。
-   */
-  const goBack = useCallback(() => {
-    if (location.key !== 'default') navigate(-1);
-    else navigate('/admin/anthology');
-  }, [location.key, navigate]);
+  /* AI 顾问:按 writing-advisor 入口配置的 enabled 决定是否渲染 */
+  const agentEnabled = useWritingAdvisorEnabled();
 
-  const { theme, setTheme } = useTheme();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [state, setState] = useState<EditorState>({
-    title: '',
-    bodyMarkdown: '',
-    changeNote: '更新条目',
-  });
-  const [isDirty, setIsDirty] = useState(false);
-  const [isAutosaving, setIsAutosaving] = useState(false);
-  const [lastSavedAt, setLastSavedAt] = useState('');
-  const [autosaveError, setAutosaveError] = useState('');
-  // local-first 草稿缓冲(按 文集id:条目key 隔离):改动即时落盘,崩溃/刷新/关页不丢字
-  const {
-    loadPending: loadLocalPending,
-    onChange: writeLocalDraft,
-    beginSync: beginLocalSync,
-    endSync: endLocalSync,
-    clear: clearLocalDraft,
-  } = useLocalDraftBuffer<EditorState>(id && entryKey ? `${id}:${entryKey}` : null);
-  const [showCommitDialog, setShowCommitDialog] = useState(false);
-  const [committing, setCommitting] = useState(false);
-
-  /* Portal 目标：Plate 工具栏通过 Portal 渲染到此元素内 */
-  const [toolbarPortal, setToolbarPortal] = useState<HTMLDivElement | null>(null);
-
-  /* 大纲：从 markdown 提取标题层级 */
-  const headings = useMemo<HeadingEntry[]>(
-    () => extractHeadingEntriesFromMarkdown(state.bodyMarkdown),
-    [state.bodyMarkdown],
-  );
-
-  const scrollToHeading = useCallback((index: number) => {
-    const els = document.querySelectorAll(
-      '[data-slate-editor] h1, [data-slate-editor] h2, [data-slate-editor] h3',
-    );
-    const el = els[index] as HTMLElement | undefined;
-    if (!el) return;
-    const container = document.querySelector('[data-scroll-container]') as HTMLElement | null;
-    if (container) {
-      const top =
-        el.getBoundingClientRect().top -
-        container.getBoundingClientRect().top +
-        container.scrollTop -
-        64;
-      container.scrollTo({ top, behavior: 'smooth' });
-    }
-  }, []);
-
-  // ─── 初始化：加载草稿，无草稿则从正式版创建 ──────────────────────────────
-
-  useEffect(() => {
-    if (!id || !entryKey) return;
-    let cancelled = false;
-    void (async () => {
-      await Promise.resolve();
-      if (cancelled) return;
-      setLoading(true);
-      setError('');
-      try {
-        // 先请求草稿，有草稿直接用，跳过正式版请求
-        let draft: EditorDraft | null = null;
-        try {
-          draft = await anthologyApi.getEntryDraft(id, entryKey);
-        } catch (err) {
-          console.error('[AnthologyEntryEditPage] 获取草稿失败, 视为无草稿:', err);
-          // 草稿不存在或请求失败均视为无草稿，继续加载正式版
-        }
-
-        if (cancelled) return;
-
-        let loaded: EditorState | null = null;
-        if (draft) {
-          // 有草稿：直接恢复
-          loaded = {
-            title: draft.title,
-            bodyMarkdown: draft.bodyMarkdown,
-            changeNote: draft.changeNote,
-          };
-          setState(loaded);
-          setLastSavedAt(draft.savedAt);
-        } else {
-          // 无草稿：只读正式版,不急着建草稿。首次真实编辑触发自动保存时才建(saveEntryDraft 是 upsert)。
-          const entry = await anthologyApi.getEntry(id, entryKey);
-          if (cancelled) return;
-          loaded = {
-            title: entry.title,
-            bodyMarkdown: entry.bodyMarkdown,
-            changeNote: '更新条目',
-          };
-          setState(loaded);
-          // 不 setLastSavedAt:还没有草稿,无"已自动保存"时间(用户编辑后才有)
-        }
-
-        // local-first reconcile:本地缓存"存在即未同步"(成功同步会清空)。有未同步内容
-        // (上次没存完就崩了/刷新了)→ 恢复并标脏重传,无需再和服务器逐字比对。
-        const localPending = loadLocalPending();
-        if (localPending && !cancelled) {
-          setState(localPending);
-          setIsDirty(true);
-        }
-      } catch (initError) {
-        if (!cancelled) setError(parseError(initError, '加载条目失败'));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [id, entryKey, loadLocalPending]);
-
-  // ─── 变更处理 ─────────────────────────────────────────────────────────────
-
-  const handleChange = useCallback(
-    <K extends keyof EditorState>(key: K, value: EditorState[K]) => {
-      setState((prev) => ({ ...prev, [key]: value }));
-      setIsDirty(true);
-      setAutosaveError('');
-    },
-    [],
-  );
-
-  // ─── 草稿保存 ─────────────────────────────────────────────────────────────
-
-  const saveDraft = useCallback(
-    async (options?: { silent?: boolean }) => {
-      if (!id || !entryKey) return;
-
-      if (options?.silent) {
-        setIsAutosaving(true);
-        setAutosaveError('');
-      }
-
-      // local-first:抓同步 token,成功后仅在期间无新改动时标记本地已同步(防竞态)
-      const startedAt = Date.now();
-      const syncToken = beginLocalSync();
-      try {
-        const draft = await anthologyApi.saveEntryDraft(id, entryKey, {
+  /* 文集条目场景适配器:条目草稿字段就是 BaseDraftState(无 summary/changeType) */
+  const adapter = useMemo<DraftEditorAdapter<BaseDraftState>>(
+    () => ({
+      ready: !!id && !!entryKey,
+      storageKey: id && entryKey ? `${id}:${entryKey}` : null,
+      initialState: { title: '', bodyMarkdown: '', changeNote: '更新条目' },
+      async loadDraft() {
+        const draft = await anthologyApi.getEntryDraft(id!, entryKey!);
+        if (!draft) return null;
+        return {
+          state: { title: draft.title, bodyMarkdown: draft.bodyMarkdown, changeNote: draft.changeNote },
+          savedAt: draft.savedAt,
+        };
+      },
+      async loadPublished() {
+        const entry = await anthologyApi.getEntry(id!, entryKey!);
+        return { title: entry.title, bodyMarkdown: entry.bodyMarkdown, changeNote: '更新条目' };
+      },
+      async saveDraft(state) {
+        const draft = await anthologyApi.saveEntryDraft(id!, entryKey!, {
           title: state.title,
           summary: '',
           bodyMarkdown: state.bodyMarkdown,
           changeNote: state.changeNote,
         });
-        setIsDirty(false);
-        setLastSavedAt(draft.savedAt);
-        endLocalSync(syncToken);
-        // 自动保存:让"保存中"至少停留 ~800ms,否则呼吸点一闪而过(存盘常 ~50ms)
-        if (options?.silent) {
-          const remain = 800 - (Date.now() - startedAt);
-          if (remain > 0) await new Promise((resolve) => setTimeout(resolve, remain));
-        }
-        setIsAutosaving(false);
-      } catch (saveError) {
-        setIsAutosaving(false);
-        if (options?.silent) {
-          setAutosaveError(parseError(saveError, '自动保存失败'));
-        } else {
-          setError(parseError(saveError, '保存失败'));
-        }
-      }
-    },
-    [id, entryKey, state, beginLocalSync, endLocalSync],
+        return { savedAt: draft.savedAt };
+      },
+      async commit(state) {
+        // saveEntry 后端会自动删除该条目的草稿
+        await anthologyApi.saveEntry(id!, entryKey!, {
+          title: state.title,
+          bodyMarkdown: state.bodyMarkdown,
+          changeNote: state.changeNote,
+        });
+      },
+      async discard() {
+        await anthologyApi.deleteEntryDraft(id!, entryKey!);
+      },
+      // 返回/提交后回到「该文集详情」(带 anthologyId),而非文集管理空首页——保留选中上下文
+      fallbackPath: id ? `/admin/anthology?anthology=${id}` : '/admin/anthology',
+      labels: { loadError: '加载条目失败' },
+    }),
+    [id, entryKey],
   );
 
-  // ─── 提交 ─────────────────────────────────────────────────────────────────
-
-  const navigateTimerRef = useRef<number | undefined>(undefined);
-  useEffect(() => () => { window.clearTimeout(navigateTimerRef.current); }, []);
-
-  const commitDraft = useCallback(async () => {
-    if (!id || !entryKey) return;
-    setCommitting(true);
-    setShowCommitDialog(false);
-
-    try {
-      // saveEntry 后端会自动删除该条目的草稿
-      await anthologyApi.saveEntry(id, entryKey, {
-        title: state.title,
-        bodyMarkdown: state.bodyMarkdown,
-        changeNote: state.changeNote,
-      });
-      clearLocalDraft(); // 已提交,本地草稿失效,清掉防下次打开被当未同步草稿恢复
-      setIsDirty(false);
-      setLastSavedAt('');
-
-      // 提交成功后跳转回管理页
-      navigateTimerRef.current = window.setTimeout(() => goBack(), 800);
-    } catch (commitError) {
-      setCommitting(false);
-      setError(parseError(commitError, '提交失败'));
-    }
-  }, [id, entryKey, state, goBack, clearLocalDraft]);
-
-  // ─── 丢弃草稿 ─────────────────────────────────────────────────────────────
-
-  const discardDraft = useCallback(async () => {
-    if (!id || !entryKey) return;
-    const ok = await confirm({
-      title: '丢弃草稿',
-      message: '确认丢弃当前草稿？',
-      danger: true,
-      confirmLabel: '丢弃',
-    });
-    if (!ok) return;
-
-    try {
-      await anthologyApi.deleteEntryDraft(id, entryKey);
-      clearLocalDraft(); // 已丢弃,清本地草稿
-      goBack();
-    } catch (discardError) {
-      setError(parseError(discardError, '丢弃失败'));
-    }
-  }, [id, entryKey, goBack, confirm, clearLocalDraft]);
-
-  // ─── 快捷键 ──────────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    const handleKeydown = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() !== 's' || !(e.metaKey || e.ctrlKey)) return;
-      e.preventDefault();
-      if (e.shiftKey) void saveDraft();
-      else setShowCommitDialog(true);
-    };
-    window.addEventListener('keydown', handleKeydown);
-    return () => window.removeEventListener('keydown', handleKeydown);
-  }, [saveDraft]);
-
-  // local-first:每次改动即时镜像到 localStorage(零延迟,崩溃/刷新也不丢字)
-  useEffect(() => {
-    if (loading || !isDirty) return;
-    writeLocalDraft(state);
-  }, [state, isDirty, loading, writeLocalDraft]);
-
-  // ─── 1.5s autosave ───────────────────────────────────────────────────────
-
-  useEffect(() => {
-    if (!isDirty || loading) return;
-    const timer = window.setTimeout(() => void saveDraft({ silent: true }), 1500);
-    return () => window.clearTimeout(timer);
-  }, [isDirty, loading, saveDraft]);
-
-  // ─── 渲染 ─────────────────────────────────────────────────────────────────
-
-  if (loading) {
-    return <LoadingState variant="full" />;
-  }
-
-  if (error && !lastSavedAt) {
-    return (
-      <div
-        className="flex h-screen flex-col items-center justify-center gap-3"
-        style={{ background: 'var(--paper)' }}
-      >
-        <p className="text-base" style={{ color: 'var(--mark-red)' }}>{error}</p>
-        <button
-          className="text-base"
-          style={{ color: 'var(--ink-faded)' }}
-          onClick={goBack}
-        >
-          返回管理后台
-        </button>
-      </div>
-    );
-  }
+  const editor = useDraftEditor(adapter);
 
   return (
-    <div className="flex h-screen" style={{ background: 'var(--paper)' }}>
-      <ThresholdOverlay visible={committing} label="正在提交版本..." />
-
-      <main className="relative z-0 flex flex-1 flex-col overflow-hidden">
-        {/* 顶栏：1fr | auto | 1fr 让 Portal 工具栏相对视口水平居中 */}
-        <header
-          className="grid shrink-0 items-center"
-          style={{
-            height: 52,
-            padding: '8px 16px',
-            gridTemplateColumns: '1fr auto 1fr',
-            columnGap: 12,
-          }}
-        >
-          {/* 左组：扁平，ChevronLeft 返回 + input-ghost 标题 */}
-          <div className="flex min-w-0 shrink-0 items-center justify-self-start gap-1.5">
-            <button
-              className="rounded-md p-1.5 outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none"
-              style={{ color: 'var(--ink-faded)' }}
-              onClick={goBack}
-              aria-label="返回"
-            >
-              <ChevronLeft size={18} strokeWidth={1.5} />
-            </button>
-            <input
-              type="text"
-              value={state.title}
-              onChange={(e) => handleChange('title', e.target.value)}
-              placeholder="条目标题"
-              className="input-ghost min-w-[60px] max-w-[240px] truncate text-base font-medium placeholder:text-[var(--ink-ghost)]"
-              style={{ color: 'var(--ink)' }}
-            />
-          </div>
-
-          {/* 工具栏 Portal：中列，左右 1fr 均分剩余宽度 → 视觉中心落在视口中间 */}
-          <div
-            ref={setToolbarPortal}
-            className="flex min-w-0 max-w-full justify-center justify-self-center overflow-x-auto"
-          />
-
-          {/* 右组：扁平，文字状态 + 保存(ghost) + 提交(secondary→浮层) + ⋯ DropdownMenu */}
-          <div className="flex items-center gap-1.5 justify-self-end">
-            {/* 自动保存状态：只两态——保存中(长春花紫呼吸点强调) / 已自动保存 hh:mm。不显示"未保存"。 */}
-            <span className="mr-1 inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-              {isAutosaving && (
-                <span className="size-1.5 shrink-0 animate-pulse rounded-full [animation-duration:1.2s]" style={{ background: 'var(--accent)' }} aria-hidden />
-              )}
-              {isAutosaving
-                ? '保存中…'
-                : lastSavedAt
-                  ? `已自动保存 ${new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
-                  : ''}
-            </span>
-            {autosaveError && (
-              <span className="text-xs" style={{ color: 'var(--mark-red)' }}>
-                {autosaveError}
-              </span>
-            )}
-
-            {/* 保存：ghost 轻量，快捷键 ⇧⌘S；字号 text-base(13px)压过基类 text-md,顶栏更轻、从属于 15px 正文 */}
-            <Button variant="ghost" size="default" className="text-base" onClick={() => void saveDraft()} title="保存 ⇧⌘S">
-              保存
-            </Button>
-
-            {/* 提交：secondary 中性，点开就近浮层（⌘S 也走 showCommitDialog） */}
-            <Popover open={showCommitDialog} onOpenChange={setShowCommitDialog}>
-              <PopoverTrigger asChild>
-                <Button variant="secondary" size="default" className="text-base">提交</Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" sideOffset={6} className="w-64 p-3">
-                <CommitForm
-                  changeNote={state.changeNote}
-                  onChangeNote={(v) => handleChange('changeNote', v)}
-                  onConfirm={() => void commitDraft()}
-                  onCancel={() => setShowCommitDialog(false)}
-                />
-              </PopoverContent>
-            </Popover>
-
-            {/* ⋯ 菜单：切换主题 / 丢弃草稿（危险） */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  className="rounded-md p-1.5 outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none data-[state=open]:bg-[var(--shelf)]"
-                  style={{ color: 'var(--ink-ghost)' }}
-                  title="更多"
-                >
-                  <MoreHorizontal size={18} strokeWidth={1.5} />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}>
-                  <Sun />切换主题
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => void discardDraft()}
-                  className="text-[var(--danger)] focus:bg-[color-mix(in_srgb,var(--danger)_9%,transparent)] [&_svg]:text-[var(--danger)]"
-                >
-                  <Trash2 />丢弃草稿
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </header>
-
-        {error && lastSavedAt && (
-          <div className="px-6 py-2" style={{ background: 'rgba(255,59,48,0.06)' }}>
-            <p className="text-base" style={{ color: 'var(--mark-red)' }}>{error}</p>
-          </div>
-        )}
-
-        {/* 内容区：编辑器 + 右侧大纲 */}
-        <div className="flex flex-1 overflow-hidden">
-          {/* 左侧留白与 Outline 等宽，让编辑器 mx-auto 相对视口居中 */}
-          <div className="shrink-0" style={{ width: 'var(--layout-sidebar)' }} />
-          <div
-            className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden"
-            data-scroll-container
-          >
-            <div className="mx-auto w-full max-w-[var(--layout-editor-max)] pb-40 pt-10">
-              {/*
-               * DraftAssetProvider：PlateMarkdownEditor 依赖此 context 管理资产 URL 替换。
-               * 条目可能包含图片，用 anthologyId 作 scope。
-               */}
-              <DraftAssetProvider contentItemId={id!}>
-                <PlateMarkdownEditor
-                  key={`anthology-entry-${id}-${entryKey}`}
-                  initialMarkdown={state.bodyMarkdown}
-                  onChange={(md, isUserEdit) => {
-                    // 始终同步正文,但仅用户真实编辑才标脏触发自动保存(加载规范化/往返不算编辑)
-                    setState((prev) => (prev.bodyMarkdown === md ? prev : { ...prev, bodyMarkdown: md }));
-                    if (isUserEdit) {
-                      setIsDirty(true);
-                      setAutosaveError('');
-                    }
-                  }}
-                  toolbarContainer={toolbarPortal}
-                />
-              </DraftAssetProvider>
-            </div>
-          </div>
-
-          {/* 右侧大纲面板 — 共享组件,与展示端笔记目录同步 */}
-          <EditorOutline headings={headings} onJump={scrollToHeading} />
-        </div>
-      </main>
-
-    </div>
+    <ProseDraftEditor
+      editor={editor}
+      draftScopeId={id ?? ''}
+      editorKey={`anthology-entry-${id}-${entryKey}`}
+      titlePlaceholder="条目标题"
+      advisor={
+        agentEnabled && id && entryKey
+          ? { enabled: true, sessionKey: `anthology-${id}-${entryKey}`, contentItemId: `${id}:${entryKey}` }
+          : undefined
+      }
+    />
   );
 };
 

@@ -114,7 +114,11 @@ export class MineruService {
     presignedUrl: string,
     buffer: Buffer,
   ): Promise<void> {
-    const res = await fetch(presignedUrl, { method: 'PUT', body: buffer });
+    // Node.js 全局 fetch 的 BodyInit 不含 Buffer 类型，需转为 Uint8Array（Buffer 的超类，运行时等价）
+    const res = await fetch(presignedUrl, {
+      method: 'PUT',
+      body: new Uint8Array(buffer),
+    });
     if (!res.ok) {
       throw new BadRequestException(
         `文件上传到 MinerU 失败 (HTTP ${res.status})`,

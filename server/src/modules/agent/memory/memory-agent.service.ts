@@ -65,21 +65,43 @@ export class MemoryAgentService {
     }
   }
 
-  async forget(description: string): Promise<string> {
+  async forget(
+    description: string,
+  ): Promise<{ status: 'ok' | 'not_found' | 'ambiguous'; message: string }> {
     const allMemories = await this.memoryRepo.findAll();
-    if (allMemories.length === 0) return '没有任何记忆可以删除';
+    if (allMemories.length === 0)
+      return { status: 'not_found', message: '没有任何记忆可以删除' };
 
     const scored = allMemories.map((m) => ({
       memory: m,
-      score: this.matchScore(description, m.title + ' ' + m.content),
+      score: matchScore(description, m.title + ' ' + m.content),
     }));
     scored.sort((a, b) => b.score - a.score);
 
     const best = scored[0];
-    if (best.score === 0) return `没有找到与"${description}"相关的记忆`;
+    if (best.score === 0)
+      return {
+        status: 'not_found',
+        message: `没有找到与「${description}」相关的记忆`,
+      };
+
+    // 歧义:并列最高分,或多条强匹配(≥0.5)——不删,列候选让上层指明(数据安全)
+    const tied = scored.filter((s) => s.score === best.score);
+    const strong = scored.filter((s) => s.score >= 0.5);
+    const candidates = tied.length > 1 ? tied : strong;
+    if (candidates.length > 1) {
+      const list = candidates
+        .slice(0, 5)
+        .map((s) => s.memory.title)
+        .join('、');
+      return {
+        status: 'ambiguous',
+        message: `匹配到多条,未删除,请指明要删哪条:${list}`,
+      };
+    }
 
     await this.memoryRepo.deleteByTitle(best.memory.title);
-    return `已忘记：[${best.memory.type}] ${best.memory.title}`;
+    return { status: 'ok', message: `已忘记「${best.memory.title}」` };
   }
 
   async compact(
@@ -125,13 +147,6 @@ export class MemoryAgentService {
 
   // ── 内部方法 ──
 
-  private matchScore(description: string, target: string): number {
-    const words = description.split(/\s+/).filter((w) => w.length >= 2);
-    if (words.length === 0) return 0;
-    const hits = words.filter((w) => target.includes(w)).length;
-    return hits / words.length;
-  }
-
   private buildConversationText(
     messages: Record<string, unknown>[],
     oldSummary: string,
@@ -176,31 +191,6 @@ export class MemoryAgentService {
       .join('\n');
   }
 
-  /**
-   * 从 LLM 文本响应中提取 JSON。
-   * 兼容：纯 JSON、```json 代码块、markdown 包裹等情况。
-   */
-  private extractJSON<T>(text: string): T {
-    // 尝试直接解析
-    try {
-      return JSON.parse(text) as T;
-    } catch {
-      // 不是纯 JSON
-    }
-    // 尝试从 ```json ... ``` 代码块中提取
-    const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-    if (codeBlockMatch) {
-      return JSON.parse(codeBlockMatch[1]) as T;
-    }
-    // 尝试找到第一个 { 和最后一个 } 之间的内容
-    const firstBrace = text.indexOf('{');
-    const lastBrace = text.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace > firstBrace) {
-      return JSON.parse(text.slice(firstBrace, lastBrace + 1)) as T;
-    }
-    throw new Error('LLM 响应中未找到有效 JSON');
-  }
-
   private async callRememberLLM(
     newContent: string,
     existingMemories: AgentMemory[],
@@ -228,7 +218,7 @@ ${newContent}
 请只输出 JSON，格式：
 {"action": "create 或 update", "type": "user 或 project", "title": "标题", "content": "完整内容"}`,
     });
-    return this.extractJSON<RememberResult>(text);
+    return extractJSON<RememberResult>(text);
   }
 
   private async callCompactLLM(
@@ -260,6 +250,39 @@ ${newContent}
 
 ${inputText}`,
     });
-    return this.extractJSON<CompactResult>(text);
+    return extractJSON<CompactResult>(text);
   }
+}
+
+/** description 按空格分词(过滤 <2 字符)，返回命中 target 的词占比 [0,1]。纯函数，便于单测。 */
+export function matchScore(description: string, target: string): number {
+  const words = description.split(/\s+/).filter((w) => w.length >= 2);
+  if (words.length === 0) return 0;
+  const hits = words.filter((w) => target.includes(w)).length;
+  return hits / words.length;
+}
+
+/**
+ * 从 LLM 文本响应中提取 JSON。纯函数，便于单测——提取失败会让记忆写入整链崩。
+ * 兼容：纯 JSON、```json 代码块、花括号截取。
+ */
+export function extractJSON<T>(text: string): T {
+  // 尝试直接解析
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    // 不是纯 JSON
+  }
+  // 尝试从 ```json ... ``` 代码块中提取
+  const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (codeBlockMatch) {
+    return JSON.parse(codeBlockMatch[1]) as T;
+  }
+  // 尝试找到第一个 { 和最后一个 } 之间的内容
+  const firstBrace = text.indexOf('{');
+  const lastBrace = text.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    return JSON.parse(text.slice(firstBrace, lastBrace + 1)) as T;
+  }
+  throw new Error('LLM 响应中未找到有效 JSON');
 }

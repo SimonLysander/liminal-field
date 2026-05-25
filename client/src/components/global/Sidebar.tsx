@@ -39,14 +39,6 @@ import { LoadingState } from '@/components/LoadingState';
 /* Space / spaces / labels / NavIcons / spaceToPath / pathToSpace
  * 均从 nav-spaces 共享模块导入（Sidebar 与 BottomTabBar 单一来源）。 */
 
-/* Placeholder data for agent sub-nav */
-
-const agentSessions = [
-  { title: '写作模式分析', date: '今天', status: 'active' },
-  { title: '文稿关联发现', date: '昨天', status: 'done' },
-  { title: '本周创作总结', date: 'Apr 20', status: 'done' },
-];
-
 function getAmbientPhrase() {
   const h = new Date().getHours();
   if (h < 6) return '夜深了，灵感不睡';
@@ -126,6 +118,12 @@ export default function Sidebar() {
   const [breadcrumb, setBreadcrumb] = useState<BreadcrumbItem[]>([]);
   /* 导航方向：1 = 进入更深层（右滑入），-1 = 返回上层（左滑入） */
   const navDirection = useRef(1);
+  // 导航方向仅用于子菜单切换动画的方向初值；用 ref 避免方向变化触发额外渲染，
+  // 渲染期读取该值不影响渲染正确性，故局部关闭 react-hooks/refs。
+  /* eslint-disable-next-line react-hooks/refs */
+  const navEnterX = navDirection.current * 20;
+  /* eslint-disable-next-line react-hooks/refs */
+  const navExitX = navDirection.current * -20;
   const currentParentId = activeTopicId ?? undefined;
   const { nodes: currentNodes, loading: notesLoading } = useStructureLevel(currentParentId);
 
@@ -376,9 +374,9 @@ export default function Sidebar() {
               <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={currentParentId || 'root'}
-                initial={{ opacity: 0, x: navDirection.current * 20 }}
+                initial={{ opacity: 0, x: navEnterX }}
                 animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: navDirection.current * -20 }}
+                exit={{ opacity: 0, x: navExitX }}
                 transition={{ duration: 0.15, ease: [0.25, 0.1, 0.25, 1] }}
               >
                 {(() => {
@@ -438,49 +436,6 @@ export default function Sidebar() {
       )}
 
       {/* Gallery 页面是全屏沉浸式，侧边栏不需要额外内容 */}
-
-      {/* Sub-nav: Agent — sessions (placeholder) */}
-      {active === 'agent' && (
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <div className="my-3" />
-          <div
-            className="px-3 pb-2 pt-1.5 text-2xs font-medium uppercase"
-            style={{ color: 'var(--ink-ghost)', letterSpacing: '0.04em' }}
-          >
-            对话
-          </div>
-          {agentSessions.map((s, i) => (
-            <div
-              key={i}
-              className="hover-shelf flex cursor-pointer items-center justify-between rounded-lg px-3 py-[7px] transition-colors duration-150"
-              style={{ background: i === 0 ? 'var(--shelf)' : undefined }}
-            >
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <div
-                  className="truncate text-base"
-                  style={{
-                    color: i === 0 ? 'var(--ink)' : 'var(--ink-light)',
-                    fontWeight: i === 0 ? 500 : 400,
-                  }}
-                >
-                  {s.title}
-                </div>
-                <div className="text-xs" style={{ color: 'var(--ink-ghost)' }}>{s.date}</div>
-              </div>
-              {s.status === 'active' && (
-                /* pip-c（淡紫）作为"进行中"状态的细节语义标记，仅此一处使用 pip 色 */
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: 'var(--pip-c)' }} />
-              )}
-            </div>
-          ))}
-          <div
-            className="hover-shelf hover-ink-faded mt-1 cursor-pointer rounded-lg px-3 py-2 text-xs transition-all duration-150"
-            style={{ color: 'var(--ink-ghost)' }}
-          >
-            + 新对话
-          </div>
-        </div>
-      )}
 
       {/* Bottom — ambient phrase（gallery 沉浸模式隐形占位，保持 sidebar 高度一致） */}
       <div className="mt-auto px-3 py-4" style={isGallery ? { visibility: 'hidden' } : undefined}>

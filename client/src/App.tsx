@@ -10,7 +10,7 @@
  *   - Page background is white (--paper), matching the right side seamlessly.
  *
  * Route split:
- *   - Display pages (home/note/gallery/agent) share MainLayout with the
+ *   - Display pages (home/note/anthology/gallery) share MainLayout with the
  *     display Sidebar component.
  *   - Admin pages (/admin, /admin/edit/:id) are standalone — they have their
  *     own TreePanel sidebar and are code-split via React.lazy.
@@ -31,7 +31,6 @@ import { DesktopOnlyNotice } from '@/components/shared/DesktopOnlyNotice';
 import Sidebar from './components/global/Sidebar';
 import BottomTabBar from './components/global/BottomTabBar';
 import Topbar from './components/global/Topbar';
-import AgentPage from './pages/agent';
 import AnthologyPage from './pages/anthology';
 import GalleryPage from './pages/gallery';
 import HomePage from './pages/home';
@@ -49,6 +48,8 @@ const ImportPreviewPage = lazy(() => import('./pages/admin/import-preview'));
 const BatchImportPage = lazy(() => import('./pages/admin/batch-import'));
 const SettingsPage = lazy(() => import('./pages/admin/settings'));
 const LoginPage = lazy(() => import('./pages/login'));
+// 设计工具:字体样板间(独立、免登录、无布局)
+const FontSampleRoom = lazy(() => import('./pages/design/fonts'));
 
 /**
  * 管理端路由守卫——加载前检查登录态。
@@ -165,7 +166,6 @@ function MainLayout() {
               <Route path="/note" element={<NotePage />} />
               <Route path="/anthology" element={<AnthologyPage />} />
               <Route path="/gallery" element={<GalleryPage />} />
-              <Route path="/agent" element={<AgentPage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </motion.div>
@@ -257,6 +257,14 @@ function App() {
                 <BatchImportPage />
               </Suspense>
             </AuthGuard>
+          }
+        />
+        <Route
+          path="/design/fonts"
+          element={
+            <Suspense fallback={<LoadingState variant="full" />}>
+              <FontSampleRoom />
+            </Suspense>
           }
         />
         <Route path="/*" element={<MainLayout />} />

@@ -180,44 +180,92 @@ const groups: SlashGroup[] = [
   },
 ];
 
+/*
+ * 画廊随笔精简命令：只含 GalleryEditorKit 支持的基础块（无待办/代码块/表格/媒体/公式）。
+ * 从全功能 groups 的「基础块」分组按 value 过滤派生,避免重复维护两份图标/关键词/onSelect
+ * (派生保留原顺序,gallery 支持的块与全功能里的相对顺序一致)。
+ */
+const GALLERY_BLOCK_VALUES = new Set<string>([
+  KEYS.p,
+  'h1',
+  'h2',
+  'h3',
+  KEYS.ul,
+  KEYS.ol,
+  KEYS.blockquote,
+  KEYS.hr,
+]);
+
+const galleryGroups: SlashGroup[] = groups
+  .filter((g) => g.group === '基础块')
+  .map((g) => ({
+    ...g,
+    items: g.items.filter((item) => GALLERY_BLOCK_VALUES.has(item.value)),
+  }));
+
+/* 命令菜单渲染：全功能与画廊精简共用，仅传入的 groups 不同 */
+function SlashMenu({
+  editor,
+  element,
+  groups: menuGroups,
+}: {
+  editor: PlateEditor;
+  element: TComboboxInputElement;
+  groups: SlashGroup[];
+}) {
+  return (
+    <InlineCombobox element={element} trigger="/">
+      <InlineComboboxInput />
+
+      <InlineComboboxContent>
+        <InlineComboboxEmpty>无匹配项</InlineComboboxEmpty>
+
+        {menuGroups.map(({ group, items }) => (
+          <InlineComboboxGroup key={group}>
+            <InlineComboboxGroupLabel>{group}</InlineComboboxGroupLabel>
+
+            {items.map(({ focusEditor, icon, keywords, label, value, onSelect }) => (
+              <InlineComboboxItem
+                key={value}
+                value={value}
+                onClick={() => onSelect(editor, value)}
+                label={label}
+                focusEditor={focusEditor}
+                group={group}
+                keywords={keywords}
+              >
+                <div className="mr-2 text-muted-foreground">{icon}</div>
+                {label ?? value}
+              </InlineComboboxItem>
+            ))}
+          </InlineComboboxGroup>
+        ))}
+      </InlineComboboxContent>
+    </InlineCombobox>
+  );
+}
+
+/* 全功能命令菜单（笔记/文集编辑器用） */
 export function SlashInputElement(
   props: PlateElementProps<TComboboxInputElement>
 ) {
   const { editor, element } = props;
-
   return (
     <PlateElement {...props} as="span">
-      <InlineCombobox element={element} trigger="/">
-        <InlineComboboxInput />
+      <SlashMenu editor={editor} element={element} groups={groups} />
+      {props.children}
+    </PlateElement>
+  );
+}
 
-        <InlineComboboxContent>
-          <InlineComboboxEmpty>无匹配项</InlineComboboxEmpty>
-
-          {groups.map(({ group, items }) => (
-            <InlineComboboxGroup key={group}>
-              <InlineComboboxGroupLabel>{group}</InlineComboboxGroupLabel>
-
-              {items.map(
-                ({ focusEditor, icon, keywords, label, value, onSelect }) => (
-                  <InlineComboboxItem
-                    key={value}
-                    value={value}
-                    onClick={() => onSelect(editor, value)}
-                    label={label}
-                    focusEditor={focusEditor}
-                    group={group}
-                    keywords={keywords}
-                  >
-                    <div className="mr-2 text-muted-foreground">{icon}</div>
-                    {label ?? value}
-                  </InlineComboboxItem>
-                )
-              )}
-            </InlineComboboxGroup>
-          ))}
-        </InlineComboboxContent>
-      </InlineCombobox>
-
+/* 画廊随笔用：精简命令菜单（只 GalleryEditorKit 支持的块） */
+export function GallerySlashInputElement(
+  props: PlateElementProps<TComboboxInputElement>
+) {
+  const { editor, element } = props;
+  return (
+    <PlateElement {...props} as="span">
+      <SlashMenu editor={editor} element={element} groups={galleryGroups} />
       {props.children}
     </PlateElement>
   );

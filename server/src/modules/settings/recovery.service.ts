@@ -17,6 +17,7 @@ import { ContentRepository } from '../content/content.repository';
 import { ContentSnapshotRepository } from '../content/content-snapshot.repository';
 import { ContentRepoService } from '../content/content-repo.service';
 import { NavigationRepository } from '../navigation/navigation.repository';
+import { NavigationNodeType } from '../navigation/navigation.entity';
 import { OssService } from '../oss/oss.service';
 import { Manifest, ManifestNode, ManifestService } from './manifest.service';
 import { parseAnthologyIndex } from '../workspace/anthology-view.service';
@@ -361,7 +362,7 @@ export class RecoveryService {
         await this.navigationRepository.create({
           name: item.latestVersion?.title ?? contentId,
           scope: 'notes',
-          nodeType: 'content',
+          nodeType: NavigationNodeType.content,
           contentItemId: contentId,
           order: 0,
         });
@@ -402,7 +403,10 @@ export class RecoveryService {
       const created = await this.navigationRepository.create({
         name: node.name,
         scope,
-        nodeType: node.type === 'FOLDER' ? 'subject' : 'content',
+        nodeType:
+          node.type === 'FOLDER'
+            ? NavigationNodeType.subject
+            : NavigationNodeType.content,
         contentItemId: node.contentItemId,
         // parentId 存的是 ObjectId，NavigationRepository.create 接受字符串
         parentId: parentId ?? undefined,

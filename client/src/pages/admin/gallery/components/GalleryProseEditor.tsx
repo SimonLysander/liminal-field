@@ -4,12 +4,11 @@
  * 与全功能 PlateMarkdownEditor 的区别：
  *   - 使用 GalleryEditorKit 插件套件（无标题、代码块、表格等）
  *   - 内置工具栏（不通过 Portal 渲染到外部）
- *   - 300 字符限制计数器，超限时计数变红
+ *   - 500 字符限制计数器，超限时计数变红
  *   - 最小高度 100px，适合画廊随笔输入场景
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import {
   BoldIcon,
   Heading1Icon,
@@ -35,9 +34,9 @@ import { GalleryEditorKit } from '@/components/editor/gallery-editor-kit';
 import { Editor, EditorContainer } from '@/components/ui/editor';
 import { LinkToolbarButton } from '@/components/ui/link-toolbar-button';
 import { MarkToolbarButton } from '@/components/ui/mark-toolbar-button';
-import { Toolbar, ToolbarButton, ToolbarGroup } from '@/components/ui/toolbar';
+import { ToolbarButton, ToolbarGroup } from '@/components/ui/toolbar';
+import { FloatingToolbar } from '@/components/ui/floating-toolbar';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { RedoToolbarButton, UndoToolbarButton } from '@/components/ui/history-toolbar-button';
 
 const CHAR_LIMIT = 500;
 
@@ -54,13 +53,10 @@ export const PROSE_CHAR_LIMIT = CHAR_LIMIT;
 export function GalleryProseEditor({
   initialMarkdown,
   onChange,
-  toolbarContainer,
   onCharCountChange,
 }: {
   initialMarkdown: string;
   onChange: (markdown: string) => void;
-  /** 工具栏 Portal 目标；不传时内联显示 */
-  toolbarContainer?: HTMLElement | null;
   /** 字符数变化回调，供外部渲染固定位置的计数器 */
   onCharCountChange?: (count: number) => void;
 }) {
@@ -104,14 +100,14 @@ export function GalleryProseEditor({
   return (
     <TooltipProvider>
       <Plate key={editorId} editor={editor} onValueChange={handleChange}>
-        <GalleryProseEditorInner toolbarContainer={toolbarContainer} onCharCountChange={onCharCountChange} />
+        <GalleryProseEditorInner onCharCountChange={onCharCountChange} />
       </Plate>
     </TooltipProvider>
   );
 }
 
 /* 内层组件：工具栏 Portal 到 topbar，编辑区留在原位 */
-function GalleryProseEditorInner({ toolbarContainer, onCharCountChange }: { toolbarContainer?: HTMLElement | null; onCharCountChange?: (count: number) => void }) {
+function GalleryProseEditorInner({ onCharCountChange }: { onCharCountChange?: (count: number) => void }) {
   const charCount = useEditorSelector(
     (editor) => getEditorPlainText(editor).length,
     [],
@@ -120,47 +116,8 @@ function GalleryProseEditorInner({ toolbarContainer, onCharCountChange }: { tool
   // 通知外部字符数变化
   useEffect(() => { onCharCountChange?.(charCount); }, [charCount, onCharCountChange]);
 
-  const toolbar = (
-    <Toolbar className="flex items-center gap-0 px-1 py-0.5">
-      <ToolbarGroup>
-        <UndoToolbarButton />
-        <RedoToolbarButton />
-      </ToolbarGroup>
-      <ToolbarGroup>
-        <HeadingButton level="h1" icon={<Heading1Icon />} tooltip="标题 1 (⌘⌥1)" />
-        <HeadingButton level="h2" icon={<Heading2Icon />} tooltip="标题 2 (⌘⌥2)" />
-        <HeadingButton level="h3" icon={<Heading3Icon />} tooltip="标题 3 (⌘⌥3)" />
-        <HeadingButton level={KEYS.p} icon={<PilcrowIcon />} tooltip="正文" />
-      </ToolbarGroup>
-      <ToolbarGroup>
-        <MarkToolbarButton nodeType="bold" tooltip="粗体 (⌘B)">
-          <BoldIcon />
-        </MarkToolbarButton>
-        <MarkToolbarButton nodeType="italic" tooltip="斜体 (⌘I)">
-          <ItalicIcon />
-        </MarkToolbarButton>
-        <MarkToolbarButton nodeType="underline" tooltip="下划线 (⌘U)">
-          <UnderlineIcon />
-        </MarkToolbarButton>
-        <MarkToolbarButton nodeType="strikethrough" tooltip="删除线">
-          <StrikethroughIcon />
-        </MarkToolbarButton>
-      </ToolbarGroup>
-      <ToolbarGroup>
-        <LinkToolbarButton tooltip="链接" />
-        <BlockquoteButton />
-        <HorizontalRuleButton />
-      </ToolbarGroup>
-      <ToolbarGroup>
-        <BulletedListButton />
-        <NumberedListButton />
-      </ToolbarGroup>
-    </Toolbar>
-  );
-
   return (
     <div className="relative">
-      {toolbarContainer ? createPortal(toolbar, toolbarContainer) : toolbar}
       <EditorContainer>
         <Editor
           variant="none"
@@ -169,6 +126,38 @@ function GalleryProseEditorInner({ toolbarContainer, onCharCountChange }: { tool
           placeholder="写点什么…"
         />
       </EditorContainer>
+      {/* 浮动工具栏:选中文字时浮现,与笔记/文集编辑器机制统一(撤销/重做走 ⌘Z/⌘⇧Z 快捷键) */}
+      <FloatingToolbar>
+        <ToolbarGroup>
+          <HeadingButton level="h1" icon={<Heading1Icon />} tooltip="标题 1 (⌘⌥1)" />
+          <HeadingButton level="h2" icon={<Heading2Icon />} tooltip="标题 2 (⌘⌥2)" />
+          <HeadingButton level="h3" icon={<Heading3Icon />} tooltip="标题 3 (⌘⌥3)" />
+          <HeadingButton level={KEYS.p} icon={<PilcrowIcon />} tooltip="正文" />
+        </ToolbarGroup>
+        <ToolbarGroup>
+          <MarkToolbarButton nodeType="bold" tooltip="粗体 (⌘B)">
+            <BoldIcon />
+          </MarkToolbarButton>
+          <MarkToolbarButton nodeType="italic" tooltip="斜体 (⌘I)">
+            <ItalicIcon />
+          </MarkToolbarButton>
+          <MarkToolbarButton nodeType="underline" tooltip="下划线 (⌘U)">
+            <UnderlineIcon />
+          </MarkToolbarButton>
+          <MarkToolbarButton nodeType="strikethrough" tooltip="删除线">
+            <StrikethroughIcon />
+          </MarkToolbarButton>
+        </ToolbarGroup>
+        <ToolbarGroup>
+          <LinkToolbarButton tooltip="链接" />
+          <BlockquoteButton />
+          <HorizontalRuleButton />
+        </ToolbarGroup>
+        <ToolbarGroup>
+          <BulletedListButton />
+          <NumberedListButton />
+        </ToolbarGroup>
+      </FloatingToolbar>
       <span
         className="absolute bottom-1 right-1 text-2xs pointer-events-none"
         style={{ color: charCount > CHAR_LIMIT ? 'var(--mark-red)' : 'var(--ink-ghost)' }}

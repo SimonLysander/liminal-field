@@ -127,7 +127,11 @@ describe('Anthology 归档 → 恢复 全流程 (e2e regression)', () => {
   });
 
   it('条目发布状态只存 Mongo、不写进 Git main.md,恢复后重置为未发布', async () => {
-    const anthologyId = await createAnthologyItem(ctx.app, cookie, '发布状态测试文集');
+    const anthologyId = await createAnthologyItem(
+      ctx.app,
+      cookie,
+      '发布状态测试文集',
+    );
     const { entryKey } = await addAnthologyEntry(ctx.app, cookie, anthologyId, {
       title: '会被发布的条目',
       bodyMarkdown: '正文内容',
@@ -135,7 +139,9 @@ describe('Anthology 归档 → 恢复 全流程 (e2e regression)', () => {
 
     // 发布条目 + 整集上线
     await supertest(ctx.app.getHttpServer())
-      .put(`/api/v1/spaces/anthology/items/${anthologyId}/entries/${entryKey}/publish`)
+      .put(
+        `/api/v1/spaces/anthology/items/${anthologyId}/entries/${entryKey}/publish`,
+      )
       .set('Cookie', cookie)
       .expect(200);
     await supertest(ctx.app.getHttpServer())

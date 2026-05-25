@@ -14,9 +14,9 @@
  * SettingsModule(单向依赖),反向 import 会形成循环;后者未被 WorkspaceModule 导出。故本服务
  * 经 TypegooseModule.forFeature 直接持有这两个集合的 model。
  */
-import { Injectable, Logger } from '@nestjs/common';
-import { InjectModel } from 'nestjs-typegoose';
-import { ReturnModelType } from '@typegoose/typegoose';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { getModelToken } from 'nestjs-typegoose';
+import type { ReturnModelType } from '@typegoose/typegoose';
 import { EditorDraft } from '../workspace/editor-draft.entity';
 import { AgentMemory } from '../agent/memory/agent-memory.entity';
 import { OssService } from '../oss/oss.service';
@@ -26,9 +26,9 @@ export class LocalResetService {
   private readonly logger = new Logger(LocalResetService.name);
 
   constructor(
-    @InjectModel(EditorDraft)
+    @Inject(getModelToken(EditorDraft.name))
     private readonly editorDraftModel: ReturnModelType<typeof EditorDraft>,
-    @InjectModel(AgentMemory)
+    @Inject(getModelToken(AgentMemory.name))
     private readonly agentMemoryModel: ReturnModelType<typeof AgentMemory>,
     private readonly ossService: OssService,
   ) {}

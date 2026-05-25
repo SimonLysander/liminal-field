@@ -80,15 +80,19 @@ export class AgentController {
       }) => {
         if (event.sessionKey !== sessionKey) return;
         subscriber.next({
-          data: JSON.stringify({ type: 'step', step: event.step, tools: event.tools }),
-        } as MessageEvent);
+          data: JSON.stringify({
+            type: 'step',
+            step: event.step,
+            tools: event.tools,
+          }),
+        });
       };
 
       const doneHandler = (event: { sessionKey: string }) => {
         if (event.sessionKey !== sessionKey) return;
         subscriber.next({
           data: JSON.stringify({ type: 'done' }),
-        } as MessageEvent);
+        });
         subscriber.complete();
       };
 

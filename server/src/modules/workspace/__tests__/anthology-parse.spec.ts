@@ -36,9 +36,17 @@ describe('parseAnthologyIndex', () => {
     expect(result.title).toBe('旅行文集');
     expect(result.description).toBe('记录各地见闻');
     expect(result.entries).toHaveLength(2);
-    expect(result.entries[0]).toEqual({ key: 'e001', title: '北京初见', date: '2026-03-01' });
+    expect(result.entries[0]).toEqual({
+      key: 'e001',
+      title: '北京初见',
+      date: '2026-03-01',
+    });
     // 无 date 字段 → null
-    expect(result.entries[1]).toEqual({ key: 'e002', title: '上海漫步', date: null });
+    expect(result.entries[1]).toEqual({
+      key: 'e002',
+      title: '上海漫步',
+      date: null,
+    });
   });
 
   it('旧索引里残留的 publishedVersionId 被忽略(发布状态已迁出 Git,只存 Mongo)', () => {
@@ -54,7 +62,11 @@ describe('parseAnthologyIndex', () => {
     ].join('\n');
 
     const result = parseAnthologyIndex(raw);
-    expect(result.entries[0]).toEqual({ key: 'e001', title: '老条目', date: '2025-01-01' });
+    expect(result.entries[0]).toEqual({
+      key: 'e001',
+      title: '老条目',
+      date: '2025-01-01',
+    });
     expect(result.entries[0]).not.toHaveProperty('publishedVersionId');
   });
 
@@ -216,13 +228,9 @@ describe('parseEntryContent', () => {
   });
 
   it('frontmatter 无 date → date: null', () => {
-    const raw = [
-      '---',
-      'title: 无日期条目',
-      '---',
-      '',
-      '正文内容。',
-    ].join('\n');
+    const raw = ['---', 'title: 无日期条目', '---', '', '正文内容。'].join(
+      '\n',
+    );
 
     const result = parseEntryContent(raw);
 

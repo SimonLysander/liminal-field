@@ -16,6 +16,8 @@ export interface SettingsConfigView {
     gitAuthorName: string;
     gitAuthorEmail: string;
     gitSyncCron: string;
+    /** 同步开关：关闭时即使配了远端也不 push */
+    gitSyncEnabled: boolean;
   };
   integration: {
     hasMineruToken: boolean;
@@ -68,6 +70,21 @@ export interface SettingsConfigView {
 export class SystemConfigService implements OnModuleInit {
   private readonly logger = new Logger(SystemConfigService.name);
 
+  /**
+   * writing-advisor 入口的完整工具集——预置新配置与给旧配置补齐缺失工具共用这一份,
+   * 避免两处手抄数组日久不同步(新增工具只需改这里)。
+   */
+  private static readonly WRITING_ADVISOR_TOOLS = [
+    'search_knowledge_base',
+    'list_knowledge_base',
+    'read_document_content',
+    'get_current_draft',
+    'remember',
+    'forget',
+    'sub_agent',
+    'write_tasks',
+  ];
+
   constructor(
     private readonly repo: SystemConfigRepository,
     private readonly contentRepoService: ContentRepoService,
@@ -96,16 +113,7 @@ export class SystemConfigService implements OnModuleInit {
             description: '帮助改善文章结构、逻辑脉络和表达方式',
             enabled: true,
             systemPrompt: '',
-            tools: [
-              'search_knowledge_base',
-              'read_document_content',
-              'get_current_draft',
-              'remember',
-              'forget',
-              'sub_agent',
-              'create_task',
-              'update_task',
-            ],
+            tools: [...SystemConfigService.WRITING_ADVISOR_TOOLS],
             tier: 'standard',
           },
         ] as AgentEntryConfig[],
@@ -113,16 +121,7 @@ export class SystemConfigService implements OnModuleInit {
       this.logger.log('预置 writing-advisor agent 配置已写入');
     } else {
       // 补齐新增工具：已有配置可能缺少后来新加的工具
-      const allTools = [
-        'search_knowledge_base',
-        'read_document_content',
-        'get_current_draft',
-        'remember',
-        'forget',
-        'sub_agent',
-        'create_task',
-        'update_task',
-      ];
+      const allTools = SystemConfigService.WRITING_ADVISOR_TOOLS;
       const wa = config?.agentConfigs?.find((c) => c.key === 'writing-advisor');
       if (wa) {
         const missing = allTools.filter((t) => !wa.tools.includes(t));
@@ -145,6 +144,7 @@ export class SystemConfigService implements OnModuleInit {
         gitAuthorName: config?.gitAuthorName || '',
         gitAuthorEmail: config?.gitAuthorEmail || '',
         gitSyncCron: config?.gitSyncCron || '',
+        gitSyncEnabled: config?.gitSyncEnabled ?? true,
       },
       integration: {
         hasMineruToken: !!config?.mineruToken,
@@ -192,6 +192,7 @@ export class SystemConfigService implements OnModuleInit {
     gitAuthorName?: string;
     gitAuthorEmail?: string;
     gitSyncCron?: string;
+    gitSyncEnabled?: boolean;
   }): Promise<void> {
     const existing = await this.repo.get();
     const fields: Record<string, string> = {
@@ -206,6 +207,11 @@ export class SystemConfigService implements OnModuleInit {
     if (input.gitSyncCron !== undefined) fields.gitSyncCron = input.gitSyncCron;
 
     await this.repo.patch(fields);
+    // gitSyncEnabled 是布尔,单独 patch(不混进字符串 fields)
+    if (input.gitSyncEnabled !== undefined) {
+      await this.repo.patch({ gitSyncEnabled: input.gitSyncEnabled });
+      process.env.GIT_SYNC_ENABLED = input.gitSyncEnabled ? 'true' : 'false';
+    }
 
     // 同步到 env
     process.env.KB_REMOTE_URL = input.remoteUrl;
@@ -334,7 +340,8 @@ export class SystemConfigService implements OnModuleInit {
    * AgentService 调用此方法获取 LLM 连接信息。
    */
   async getAiConfig(
-    tier: 'flash' | 'standard' | 'think' = 'standard',
+    // tier 接受 string：来源含前端传入的运行时值，未知值在下方逻辑兜底为 standard
+    tier: string = 'standard',
   ): Promise<{
     baseUrl: string;
     apiKey: string;
@@ -481,6 +488,7 @@ export class SystemConfigService implements OnModuleInit {
     gitAuthorName?: string;
     gitAuthorEmail?: string;
     gitSyncCron?: string;
+    gitSyncEnabled?: boolean;
     mineruToken?: string;
   }): void {
     if (config.remoteUrl) process.env.KB_REMOTE_URL = config.remoteUrl;
@@ -490,6 +498,9 @@ export class SystemConfigService implements OnModuleInit {
     if (config.gitAuthorEmail)
       process.env.CONTENT_GIT_AUTHOR_EMAIL = config.gitAuthorEmail;
     if (config.gitSyncCron) process.env.GIT_SYNC_CRON = config.gitSyncCron;
+    // 同步开关:只在明确关闭时为 'false',push 路径据此跳过(默认视为开启)
+    process.env.GIT_SYNC_ENABLED =
+      config.gitSyncEnabled === false ? 'false' : 'true';
     if (config.mineruToken) process.env.MINERU_TOKEN = config.mineruToken;
   }
 

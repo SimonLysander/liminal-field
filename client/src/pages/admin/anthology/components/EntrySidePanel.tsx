@@ -26,7 +26,6 @@ interface EntrySidePanelProps {
   historyLoading: boolean;
   activeVersionId: string | null;
   onSelectVersion: (versionId: string) => void;
-  onOverwriteDraft: () => Promise<void>;
 }
 
 export function EntrySidePanel({
@@ -39,7 +38,6 @@ export function EntrySidePanel({
   historyLoading,
   activeVersionId,
   onSelectVersion,
-  onOverwriteDraft,
 }: EntrySidePanelProps) {
   const editUrl = `/admin/anthology/${anthologyId}/entries/${entryKey}/edit`;
 
@@ -67,11 +65,6 @@ export function EntrySidePanel({
                     label="继续编辑 →"
                     primary
                     onClick={() => { window.location.href = editUrl; }}
-                  />
-                  <SideLink
-                    label="覆盖重建"
-                    danger
-                    onClick={() => void onOverwriteDraft()}
                   />
                 </div>
               </div>

@@ -371,13 +371,14 @@ export class GalleryViewService {
     parsedPhotos: FrontmatterPhoto[],
     imageAssets: { fileName: string; size: number }[],
     hasFrontmatter: boolean,
-    preset = OssService.IMAGE_PRESETS.detail,
+    // 显式标注 string 避免字面量推断过窄（调用方可传 IMAGE_PRESETS 任意键值）
+    preset: string = OssService.IMAGE_PRESETS.detail,
   ): GalleryPhotoDto[] {
     // frontmatter 中登记的照片（按 frontmatter 顺序）
     // OSS 就绪时信任 frontmatter（资源已在 OSS 永久 key 上），不要求磁盘存在
     const useOss = this.minioService.isDraftStorageReady();
     const registeredPhotos: GalleryPhotoDto[] = parsedPhotos
-      .map((p) => {
+      .map((p): GalleryPhotoDto | null => {
         const asset = imageAssets.find((a) => a.fileName === p.file);
         // 磁盘和 OSS 都不可用时才跳过
         if (!asset && !useOss) return null;
@@ -389,7 +390,7 @@ export class GalleryViewService {
           size: asset?.size ?? 0,
           caption: p.caption,
           tags: p.tags,
-        } satisfies GalleryPhotoDto;
+        };
       })
       .filter((p): p is GalleryPhotoDto => p !== null);
 
@@ -654,6 +655,7 @@ export class GalleryViewService {
     // 无草稿：从最新版本快照读取正式版数据（V2：不再读磁盘文件）
     const latestVersionId = content.latestVersion?.versionId;
     let parsed: ParsedGalleryContent = {
+      title: '',
       photos: [],
       cover: null,
       date: null,

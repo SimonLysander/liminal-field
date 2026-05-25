@@ -28,7 +28,8 @@ class DocumentContextDto {
 }
 
 class EntryContextDto {
-  @IsIn(['notes-editor'])
+  // notes-editor = 编辑器侧栏写作顾问;agent-page = 全页总助手 Lux
+  @IsIn(['notes-editor', 'agent-page'])
   source!: string;
 
   @ValidateNested()

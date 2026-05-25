@@ -30,6 +30,7 @@ import {
   PrimaryButton,
   SecondaryButton,
   DangerButton,
+  Toggle,
 } from './SettingsUI';
 
 export function SyncTab() {
@@ -157,9 +158,26 @@ export function SyncTab() {
   const [pushing, setPushing] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [publishingAll, setPublishingAll] = useState(false);
+  const [togglingSync, setTogglingSync] = useState(false);
   const busy = pushing || syncing || publishingAll;
 
   const isConfigured = !!config?.remoteUrl;
+  /** 同步开关:关闭时即使配了远端也不 push(默认开启) */
+  const syncEnabled = config?.gitSyncEnabled ?? true;
+
+  /** 切换同步开关:只改 gitSyncEnabled,remoteUrl 保持当前值不动 */
+  const handleToggleSync = async (enabled: boolean) => {
+    setTogglingSync(true);
+    try {
+      await settingsApi.saveSyncConfig({ url: config?.remoteUrl ?? '', gitSyncEnabled: enabled });
+      banner.success(enabled ? '已开启同步' : '已关闭同步');
+      await loadData();
+    } catch {
+      banner.error('保存失败');
+    } finally {
+      setTogglingSync(false);
+    }
+  };
   const localIsEmpty = (status?.local.contentCount ?? 0) === 0;
   const syncState = storageStatus?.git?.syncState ?? 'no_remote';
   const unpushedCount = storageStatus?.git?.unpushedCommits ?? 0;
@@ -349,6 +367,23 @@ export function SyncTab() {
           <Hint warning>远端连接失败，请检查配置</Hint>
         ) : (
           <div className="space-y-4">
+            {/* 同步总开关:关闭时即使配了远端也不 push(自动 cron / 月度归档 / 手动推送都跳过) */}
+            <div className="flex items-center justify-between">
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium" style={{ color: 'var(--ink)' }}>
+                  同步到远端
+                </div>
+                <div className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+                  {syncEnabled ? '已开启：内容会按计划推送到远端' : '已关闭：即使配了远端也不会推送'}
+                </div>
+              </div>
+              <Toggle
+                checked={syncEnabled}
+                onChange={(v) => void handleToggleSync(v)}
+                disabled={togglingSync}
+              />
+            </div>
+            <Divider />
             <div className="space-y-2">
               <StatusRow
                 label="本地仓库"
@@ -378,9 +413,13 @@ export function SyncTab() {
                 }
                 buttonLabel={pushing ? '推送中...' : '推送'}
                 onClick={() => void handlePush()}
-                disabled={busy || !canPush}
+                disabled={busy || !canPush || !syncEnabled}
                 disabledReason={
-                  syncState === 'diverged' ? '本地与远端历史不一致' : undefined
+                  !syncEnabled
+                    ? '同步已关闭'
+                    : syncState === 'diverged'
+                      ? '本地与远端历史不一致'
+                      : undefined
                 }
               />
               <Divider />

@@ -1,54 +1,86 @@
 import { tool, jsonSchema } from 'ai';
 import { extractHeadings } from './markdown.utils.js';
+import { toolResult } from './tool-result';
+
+const DEFAULT_CHUNK = 6000;
 
 export interface DocumentContext {
   contentItemId: string;
   title: string;
   bodyMarkdown: string;
-  /** 前端已提取的标题列表（复用大纲面板逻辑） */
+  /** 前端已提取的标题列表(复用大纲面板逻辑) */
   outline?: string[];
 }
 
 /**
- * get_current_draft — 获取当前编辑草稿的画像。
+ * get_current_draft — 读取当前正在编辑的草稿(与 read_document_content 同策略)。
  *
- * 返回结构化画像：标题 + 字数 + 段落数 + 大纲 + 正文（截断至 8000 字）。
- * agent 看到骨架后决定是否需要读正文细节。
+ * 大纲永远给全 + 从 offset 起一段正文(默认 ~6000 字),长草稿 hasMore 续读。
+ * 无草稿 → status:not_found。
  */
 export function createGetCurrentDraftTool(
   document: DocumentContext | undefined,
 ) {
   return tool({
     description:
-      '获取当前正在编辑的草稿全文。system prompt 中已有文档画像（标题+字数+大纲），只有需要读正文细节时才调用此工具。',
-    parameters: jsonSchema<Record<string, never>>({
+      '读取当前正在编辑的草稿。返回大纲(全)+ 从 offset 起的一段正文(默认约 6000 字),很长时带"还有更多"用 offset 续读。',
+    inputSchema: jsonSchema<{ offset?: number; limit?: number }>({
       type: 'object',
-      properties: {},
+      properties: {
+        offset: { type: 'number', description: '从第几个字符起读,默认 0' },
+        limit: { type: 'number', description: '本次最多读多少字,默认 6000' },
+      },
     }),
-    execute: () => {
-      if (!document) return '当前没有打开的草稿';
+    execute: ({
+      offset = 0,
+      limit = DEFAULT_CHUNK,
+    }: {
+      offset?: number;
+      limit?: number;
+    }) => {
+      if (!document)
+        return toolResult('当前没有打开的草稿', undefined, {
+          status: 'not_found',
+        });
 
-      const body =
-        document.bodyMarkdown.length > 8000
-          ? document.bodyMarkdown.slice(0, 8000) + '\n\n[... 内容过长已截断]'
-          : document.bodyMarkdown;
-
-      // 如果前端没传 outline，从 markdown 中提取
-      const outline =
-        document.outline ?? extractHeadings(document.bodyMarkdown);
-
-      // 计算段落数（以空行分隔的非空文本块）
-      const paragraphs = document.bodyMarkdown
+      const full = document.bodyMarkdown ?? '';
+      const total = full.length;
+      const chunk = full.slice(offset, offset + limit);
+      const hasMore = offset + limit < total;
+      const outline = document.outline ?? extractHeadings(full);
+      const paragraphs = full
         .split(/\n\s*\n/)
         .filter((p) => p.trim().length > 0).length;
 
-      return JSON.stringify({
+      const sizeStr =
+        total >= 10000 ? `${(total / 10000).toFixed(1)} 万字` : `${total} 字`;
+      // 行内不放"章节"(整篇总数,挂 partial 读上误导);只留 标题 + 字数 + 读的行号范围。
+      const summaryBits = [`《${document.title || '当前草稿'}》`, sizeStr];
+      // 读了哪几行 —— 源文件行号范围(无歧义、可核,不说"开头"、不用模糊的"段")
+      const startLine = full.slice(0, offset).split('\n').length;
+      const endLine = full.slice(0, offset + chunk.length).split('\n').length;
+      summaryBits.push(`读了第 ${startLine}–${endLine} 行`);
+
+      const detail = [
+        `# ${document.title}`,
+        outline.length > 0
+          ? `大纲:\n${outline.map((h) => `  ${h}`).join('\n')}`
+          : '',
+        `正文(${offset}–${offset + chunk.length} / 共 ${total}):\n${chunk}`,
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+
+      return toolResult(summaryBits.join(' · '), detail, {
+        status: 'ok',
         contentItemId: document.contentItemId,
-        title: document.title,
-        wordCount: document.bodyMarkdown.length,
+        wordCount: total,
         paragraphs,
-        outline,
-        body,
+        outlineCount: outline.length,
+        offset,
+        shown: chunk.length,
+        hasMore,
+        ...(hasMore ? { nextOffset: offset + limit } : {}),
       });
     },
   });

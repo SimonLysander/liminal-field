@@ -65,7 +65,11 @@ describe('Anthology CRUD (e2e)', () => {
 
   describe('GET /api/v1/spaces/anthology/items（管理端）', () => {
     it('管理端列表包含文集，含 status 字段', async () => {
-      const id = await createAnthologyItem(ctx.app, cookie, '管理端列表测试文集');
+      const id = await createAnthologyItem(
+        ctx.app,
+        cookie,
+        '管理端列表测试文集',
+      );
 
       const res = await supertest(ctx.app.getHttpServer())
         .get('/api/v1/spaces/anthology/items')
@@ -89,11 +93,16 @@ describe('Anthology CRUD (e2e)', () => {
     it('添加条目 → 201，索引更新，条目列表包含新条目', async () => {
       const id = await createAnthologyItem(ctx.app, cookie, '条目测试文集');
 
-      const { entryKey, detail } = await addAnthologyEntry(ctx.app, cookie, id, {
-        title: '第一篇',
-        date: '2026-05-01',
-        bodyMarkdown: '# 第一篇\n\n这是第一篇的内容。',
-      });
+      const { entryKey, detail } = await addAnthologyEntry(
+        ctx.app,
+        cookie,
+        id,
+        {
+          title: '第一篇',
+          date: '2026-05-01',
+          bodyMarkdown: '# 第一篇\n\n这是第一篇的内容。',
+        },
+      );
 
       // addEntry 返回 AnthologyAdminDetailDto
       expect(detail.id).toBe(id);
@@ -226,7 +235,9 @@ describe('Anthology CRUD (e2e)', () => {
         .expect(200);
 
       // 返回的 detail 中索引条目 title 应已同步更新
-      const updatedEntry = res.body.data.entries.find((e: any) => e.key === entryKey);
+      const updatedEntry = res.body.data.entries.find(
+        (e: any) => e.key === entryKey,
+      );
       expect(updatedEntry).toBeDefined();
       expect(updatedEntry.title).toBe('新标题');
     });
@@ -235,14 +246,24 @@ describe('Anthology CRUD (e2e)', () => {
   describe('DELETE /api/v1/spaces/anthology/items/:id/entries/:entryKey', () => {
     it('删除条目 → 索引更新，条目列表不含该条目', async () => {
       const id = await createAnthologyItem(ctx.app, cookie, '删除条目测试文集');
-      const { entryKey: keyToDelete } = await addAnthologyEntry(ctx.app, cookie, id, {
-        title: '待删除',
-        bodyMarkdown: '待删除的正文。',
-      });
-      const { entryKey: keyToKeep } = await addAnthologyEntry(ctx.app, cookie, id, {
-        title: '保留条目',
-        bodyMarkdown: '保留的正文。',
-      });
+      const { entryKey: keyToDelete } = await addAnthologyEntry(
+        ctx.app,
+        cookie,
+        id,
+        {
+          title: '待删除',
+          bodyMarkdown: '待删除的正文。',
+        },
+      );
+      const { entryKey: keyToKeep } = await addAnthologyEntry(
+        ctx.app,
+        cookie,
+        id,
+        {
+          title: '保留条目',
+          bodyMarkdown: '保留的正文。',
+        },
+      );
 
       const res = await supertest(ctx.app.getHttpServer())
         .delete(`/api/v1/spaces/anthology/items/${id}/entries/${keyToDelete}`)
@@ -261,9 +282,18 @@ describe('Anthology CRUD (e2e)', () => {
   describe('PUT /api/v1/spaces/anthology/items/:id/entries/reorder', () => {
     it('重排条目顺序 → 顺序变化', async () => {
       const id = await createAnthologyItem(ctx.app, cookie, '重排测试文集');
-      const { entryKey: keyA } = await addAnthologyEntry(ctx.app, cookie, id, { title: 'A', bodyMarkdown: 'A 正文。' });
-      const { entryKey: keyB } = await addAnthologyEntry(ctx.app, cookie, id, { title: 'B', bodyMarkdown: 'B 正文。' });
-      const { entryKey: keyC } = await addAnthologyEntry(ctx.app, cookie, id, { title: 'C', bodyMarkdown: 'C 正文。' });
+      const { entryKey: keyA } = await addAnthologyEntry(ctx.app, cookie, id, {
+        title: 'A',
+        bodyMarkdown: 'A 正文。',
+      });
+      const { entryKey: keyB } = await addAnthologyEntry(ctx.app, cookie, id, {
+        title: 'B',
+        bodyMarkdown: 'B 正文。',
+      });
+      const { entryKey: keyC } = await addAnthologyEntry(ctx.app, cookie, id, {
+        title: 'C',
+        bodyMarkdown: 'C 正文。',
+      });
 
       // 反向排列：C → B → A
       const res = await supertest(ctx.app.getHttpServer())
@@ -278,7 +308,10 @@ describe('Anthology CRUD (e2e)', () => {
 
     it('newOrder 包含不存在的 key → 400', async () => {
       const id = await createAnthologyItem(ctx.app, cookie, '非法重排测试文集');
-      await addAnthologyEntry(ctx.app, cookie, id, { title: 'A', bodyMarkdown: 'A。' });
+      await addAnthologyEntry(ctx.app, cookie, id, {
+        title: 'A',
+        bodyMarkdown: 'A。',
+      });
 
       await supertest(ctx.app.getHttpServer())
         .put(`/api/v1/spaces/anthology/items/${id}/entries/reorder`)
@@ -292,7 +325,11 @@ describe('Anthology CRUD (e2e)', () => {
 
   describe('Scope 隔离', () => {
     it('anthology scope 的条目不出现在 notes 列表里', async () => {
-      const anthologyId = await createAnthologyItem(ctx.app, cookie, 'scope 隔离文集');
+      const anthologyId = await createAnthologyItem(
+        ctx.app,
+        cookie,
+        'scope 隔离文集',
+      );
       const noteId = await createNoteItem(ctx.app, cookie, 'scope 隔离笔记');
 
       // notes 列表中应有 noteId 但不包含 anthologyId
@@ -307,7 +344,11 @@ describe('Anthology CRUD (e2e)', () => {
     });
 
     it('anthology 条目通过 /notes/items/:id 访问 → 404', async () => {
-      const anthologyId = await createAnthologyItem(ctx.app, cookie, 'scope 隔离跨访问文集');
+      const anthologyId = await createAnthologyItem(
+        ctx.app,
+        cookie,
+        'scope 隔离跨访问文集',
+      );
 
       await supertest(ctx.app.getHttpServer())
         .get(`/api/v1/spaces/notes/items/${anthologyId}?visibility=all`)
@@ -403,7 +444,11 @@ describe('Anthology 发布 (e2e)', () => {
   });
 
   it('展示端可以读取已发布条目详情', async () => {
-    const id = await createAnthologyItem(ctx.app, cookie, '展示端条目详情测试文集');
+    const id = await createAnthologyItem(
+      ctx.app,
+      cookie,
+      '展示端条目详情测试文集',
+    );
     const { entryKey } = await addAnthologyEntry(ctx.app, cookie, id, {
       title: '公开条目',
       bodyMarkdown: '公开的条目内容。',
@@ -468,7 +513,9 @@ describe('Anthology 发布 (e2e)', () => {
       .get(`/api/v1/spaces/anthology/items/${id}?visibility=all`)
       .set('Cookie', cookie)
       .expect(200);
-    const adminEntry = adminRes.body.data.entries.find((e: any) => e.key === entryKey);
+    const adminEntry = adminRes.body.data.entries.find(
+      (e: any) => e.key === entryKey,
+    );
     expect(adminEntry.title).toBe('修改后的标题');
 
     // 展示端读已发布版本的冻结 snapshot（getEntryDetail usePublished=true

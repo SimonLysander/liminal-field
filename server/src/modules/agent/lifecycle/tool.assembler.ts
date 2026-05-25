@@ -6,7 +6,8 @@
  * 并处理 AI SDK v6 的 parameters/inputSchema 桥接问题。
  *
  * 工具清单：
- * - search_knowledge_base：全文搜索知识库
+ * - search_knowledge_base：全文搜索知识库（grep：按内容找）
+ * - list_knowledge_base：列出知识库内容目录（ls/tree：看有哪些）
  * - read_document_content：读取单篇文档完整正文
  * - get_current_draft：获取当前编辑文档
  * - remember：记住信息，走 MemoryAgentService 处理分类/去重/合并
@@ -21,15 +22,14 @@ import { NoteViewService } from '../../workspace/note-view.service';
 import { MemoryAgentService } from '../memory/memory-agent.service';
 import { SubAgentService } from '../sub-agent/sub-agent.service';
 import { createSearchKnowledgeBaseTool } from '../tools/search-content.tool';
+import { createListKnowledgeBaseTool } from '../tools/list-content.tool';
 import { createReadDocumentContentTool } from '../tools/read-content.tool';
 import { createGetCurrentDraftTool } from '../tools/get-current-document.tool';
 import { createRememberTool } from '../tools/remember.tool';
 import { createForgetTool } from '../tools/forget.tool';
 import { createSubAgentTool } from '../tools/sub-agent.tool';
-import { createCreateTaskTool } from '../tools/create-task.tool';
-import { createUpdateTaskTool } from '../tools/update-task.tool';
+import { createWriteTasksTool } from '../tools/write-tasks.tool';
 import { AgentSessionRepository } from '../session/agent-session.repository';
-import { bridgeToolSchemas } from '../agent.utils';
 import type { DocumentContext } from '../tools/get-current-document.tool';
 
 export interface EntryContext {
@@ -62,8 +62,10 @@ export class ToolAssembler {
     tier?: string,
   ): Record<string, any> {
     const rawTools = {
-      // 知识库搜索：全局可用
+      // 知识库搜索（grep：按内容找）：全局可用
       search_knowledge_base: createSearchKnowledgeBaseTool(this.contentService),
+      // 知识库目录（ls/tree：列出有哪些内容）：与 search 互补
+      list_knowledge_base: createListKnowledgeBaseTool(this.contentService),
       // 读取文档正文：只读已发布内容，当前草稿用 get_current_draft
       read_document_content: createReadDocumentContentTool(
         this.noteViewService,
@@ -80,14 +82,10 @@ export class ToolAssembler {
         tier,
         entryContext.sessionKey,
       ),
-      // 任务管理：创建和更新写作任务
+      // 任务管理：write_tasks 整体改写写作计划(TodoWrite 式,模型有最大自由度)
       ...(entryContext.sessionKey
         ? {
-            create_task: createCreateTaskTool(
-              this.sessionRepo,
-              entryContext.sessionKey,
-            ),
-            update_task: createUpdateTaskTool(
+            write_tasks: createWriteTasksTool(
               this.sessionRepo,
               entryContext.sessionKey,
             ),
@@ -105,7 +103,6 @@ export class ToolAssembler {
           )
         : rawTools;
 
-    // AI SDK v6 workaround：bridgeToolSchemas 保证 parameters / inputSchema 两个字段都存在
-    return bridgeToolSchemas(filteredTools);
+    return filteredTools;
   }
 }

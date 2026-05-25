@@ -180,7 +180,11 @@ describe('Owner Profile & Memory Management (E2E)', () => {
     it('PUT session 后应在 response 中返回最新 tasks', async () => {
       // 先通过 repository 插入一个 task
       const sessionRepo = ctx.app.get(AgentSessionRepository);
-      await sessionRepo.upsert(testSessionKey, [{ role: 'user', content: 'hello' }], 1);
+      await sessionRepo.upsert(
+        testSessionKey,
+        [{ role: 'user', content: 'hello' }],
+        1,
+      );
       await sessionRepo.addTask(testSessionKey, {
         id: 'task_001',
         title: '写第一章',

@@ -10,7 +10,7 @@
  *   - 正在查看历史版本 → 额外显示"返回最新"
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { MoreHorizontal, Pencil } from 'lucide-react';
 import { ActionButton } from '@/components/ui/action-button';
 import {
@@ -50,11 +50,13 @@ export const ContentVersionView = ({
   const [localSummary, setLocalSummary] = useState(summary);
   const [saving, setSaving] = useState(false);
 
-  /* 外部 summary 变化时（切换文档），同步并退出编辑态 */
-  useEffect(() => {
+  /* 外部 summary 变化时（切换文档）同步重置——渲染期比较 prev，避免 effect 级联渲染 */
+  const [prevSummary, setPrevSummary] = useState(summary);
+  if (summary !== prevSummary) {
+    setPrevSummary(summary);
     setLocalSummary(summary);
     setEditingSummary(false);
-  }, [summary]);
+  }
 
   const startEditSummary = useCallback(() => {
     setLocalSummary(summary);

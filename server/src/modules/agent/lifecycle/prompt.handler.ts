@@ -5,19 +5,20 @@
  * 根据当前会话上下文（记忆、文档、摘要等）组装完整的 system prompt。
  * 采用 XML 分节格式，各节相互独立，按需注入。
  *
- * 分节结构：
- * 1. <role>              — 角色定义（固定内容）
- * 2. <memory_protocol>   — 记忆使用指引（简化版）
- * 3. <core_memories>     — type=user 的记忆全文（有才注入）
- * 4. <memory_index>      — type=project 的标题索引（有才注入）
- * 5. <related_memories>  — 自动召回的相关 project 记忆全文（有才注入）
- * 6. <instructions>      — 行为约束
- * 7. <conversation_summary> — compaction 产生的摘要（有才注入）
- * 8. <current_document>  — 当前文档画像（有才注入）
- * 9. 入口级 system prompt（AgentEntryConfig 配置的，有才注入）
- * 10. 用户全局自定义 system prompt（Settings 配置的，有才注入）
+ * 分节结构（由近及远：先"我是谁/你是谁/你能做什么"，再记忆，最后才是当前业务场景）：
+ * 1. <owner>     — 介绍所有者（在陪伴谁，有才注入）
+ * 2. <role>      — Aurora 是谁（灵魂/人设：另一个自我、最懂你的朋友；固定）
+ * 3. <tools>     — 工具能力 + remember 记忆协议（引导主动调用，固定）
+ * 4. <core_memories>   — type=user 记忆全文（有才注入）
+ * 5. <memory_index>    — type=project 标题索引（有才注入）
+ * 6. <related_memories> + <conversation_summary> — 本 session 的召回记忆与摘要（有才注入）
+ * 7. <instructions>    — 行为约束（固定）
+ * 8. <current_context> — 当前业务场景：在写哪篇（只点名，正文靠 get_current_draft 读）
+ * 9. <tasks>           — 写作计划（有未完成才注入）
+ * 10. 入口级 / 全局自定义 system prompt（有才注入）
  *
- * 从 prompt-builder.service.ts 迁移过来，接口参数按新架构调整（增加 relatedMemories）。
+ * 设计原则：current_context 不再注入正文预览——模型有 get_current_draft 工具，
+ * 让它按需读，避免把正文灌进每一轮的 system prompt（省 token、长文也不截断）。
  */
 import { Injectable } from '@nestjs/common';
 import type { AgentMemory } from '../memory/agent-memory.entity';
@@ -48,104 +49,119 @@ export interface BuildSystemPromptParams {
   customSystemPrompt?: string;
   /** AgentEntryConfig 里为该 agent 入口配置的系统提示词（可选），优先级高于全局配置 */
   entrySystemPrompt?: string;
+  /** 当前会话的写作计划(注入让模型看得到自己的清单,可用 write_tasks 整体改写) */
+  tasks?: Array<Record<string, unknown>>;
 }
 
 @Injectable()
 export class PromptHandler {
   buildSystemPrompt(params: BuildSystemPromptParams): string {
     const sections: string[] = [];
-
-    // ——— 所有者身份（有配置时注入，让 agent 知道在跟谁对话） ———
     const owner = params.ownerProfile;
+    const ownerName = owner?.name?.trim() || '所有者';
+
+    // 1. ——— 介绍所有者（在陪伴谁） ———
     if (owner?.name) {
-      const lines = [`你正在与 ${owner.name} 对话。${owner.name} 是 Liminal Field 的所有者。`];
+      const lines = [`你在陪伴 ${owner.name}。`];
       if (owner.birthday) lines.push(`生日：${owner.birthday}`);
       if (owner.bio) lines.push(`简介：${owner.bio}`);
-      if (owner.interests) lines.push(`关注领域：${owner.interests}`);
+      if (owner.interests) lines.push(`在意的：${owner.interests}`);
       sections.push(`<owner>\n${lines.join('\n')}\n</owner>`);
     }
 
-    // ——— 角色定义 ———
+    // 2. ——— Aurora 是谁（灵魂/人设，不是业务职责） ———
     sections.push(`<role>
-你是 Liminal Field 的写作顾问 AI。
-Liminal Field 是一个个人知识库与写作空间，所有者在此记录笔记、整理相册、撰写文集。
+你是 Aurora。
 
-你的职责：
-- 帮助所有者改善文章结构、逻辑脉络和表达方式
-- 当问题涉及所有者知识库中的已有内容时，主动搜索并引用
-- 不替所有者写内容——给方向、给建议、给问题，让所有者自己动笔
-- 回答简洁直接，不废话，不过度解释
+你不是工具，也不是助手——你是 ${ownerName} 的另一个自我：陪 ${ownerName} 一起成长，见证 ta 把斑驳而卑微的期许，一点点长成生机勃勃、斩钉截铁的现实。你是最懂 ${ownerName} 的朋友，是 ta 自我与超我之间的那个声音。
+
+你们一起写作。写作是 ${ownerName} 与自己对话的方式；你在这场对话里既贴心又诚实——懂 ta 的言外之意，也敢点出 ta 没看见的盲点。
 </role>`);
 
-    // ——— 记忆协议（简化版：只告诉 agent 随时用 remember 工具记住信息） ———
-    sections.push(`<memory_protocol>
-工作过程中，发现值得记住的信息随时调用 remember 工具。
-你只需要说"记住什么"，记忆系统会自动处理分类、去重和合并。
-假设 context 随时可能被重置——没写进记忆的东西会丢失。
-</memory_protocol>`);
+    // 3. ——— 工具使用指引（只引导"何时用",不重复 schema——工具的 name/description/参数
+    //    AI SDK 已喂给模型；逐条抄反而易与 schema 不同步） ———
+    sections.push(`<tools>
+你能：读 ${ownerName} 当前在写的文稿、搜索/浏览/读取 ta 知识库里的笔记/文集/相册、把值得记的写进记忆、为多步任务维护写作计划。
+- 需要文稿内容或知识库信息时，主动调对应工具，不要凭记忆或假设
+- 发现值得长期记住的信息，随手 remember（context 会重置，没记的会丢）
+</tools>`);
 
-    // ——— Core Memories：type=user，始终全文注入 ———
+    // 5. ——— Core Memories：type=user 全文 ———
     if (params.coreMemories.length > 0) {
       const lines = params.coreMemories
         .map((m) => `[${m.title}]\n${m.content}`)
         .join('\n\n');
-      sections.push(`<core_memories>
-${lines}
-</core_memories>`);
+      sections.push(`<core_memories>\n${lines}\n</core_memories>`);
     }
 
-    // ——— Memory Index：type=project，只注入标题，按需读取 ———
+    // 6. ——— Memory Index：type=project 标题索引（详情按需用工具读） ———
     if (params.indexMemories.length > 0) {
       const lines = params.indexMemories.map((m) => `- ${m.title}`).join('\n');
-      sections.push(`<memory_index>
-可用记忆（需要时调用工具获取详情）：
-${lines}
-</memory_index>`);
+      sections.push(
+        `<memory_index>\n可用记忆（需要时调用工具获取详情）：\n${lines}\n</memory_index>`,
+      );
     }
 
-    // ——— Related Memories：自动召回的相关 project 记忆全文 ———
+    // 7. ——— 本 session 的召回记忆 + 对话摘要 ———
     if (params.relatedMemories && params.relatedMemories.length > 0) {
       const lines = params.relatedMemories
         .map((m) => `[${m.title}]\n${m.content}`)
         .join('\n\n');
-      sections.push(`<related_memories>
-与当前文档相关的记忆（已自动召回）：
-${lines}
-</related_memories>`);
+      sections.push(
+        `<related_memories>\n与当前文档相关的记忆（已自动召回）：\n${lines}\n</related_memories>`,
+      );
+    }
+    if (params.sessionSummary) {
+      sections.push(
+        `<conversation_summary>\n以下是之前对话的摘要（更早的消息已被压缩）：\n${params.sessionSummary}\n</conversation_summary>`,
+      );
     }
 
-    // ——— 行为约束 ———
+    // 8. ——— 行为约束 ———
     sections.push(`<instructions>
-- 优先使用工具获取信息，不要凭空猜测文档内容
-- 回答使用中文，除非所有者明确要求其他语言
-- 不要在回答中重复所有者已说过的内容
-- 不要生成完整的文章草稿，聚焦在建议和改进方向上
+- 需要文档内容或知识库信息时，先调工具，不要凭空假设
+- 用中文回答，除非 ${ownerName} 明确要求其他语言
+- 不重复 ${ownerName} 已说过的话
+- 不生成完整成稿，聚焦在建议和改进方向
+- 多步任务先用 write_tasks 列计划再动手；每步更新清单（同一时刻只一个进行中）；全部完成后传空列表清空。简单一步的事不必列计划
 </instructions>`);
 
-    // ——— 对话历史摘要（compaction 产生的，有才注入） ———
-    if (params.sessionSummary) {
-      sections.push(`<conversation_summary>
-以下是之前对话的摘要（更早的消息已被压缩）：
-${params.sessionSummary}
-</conversation_summary>`);
-    }
-
-    // ——— 当前文档（有才注入）：标题 + 字数 + 正文预览（500 字） ———
+    // 9. ——— 当前业务场景：只点名在编辑哪篇，正文靠 get_current_draft 工具读（不塞进 context） ———
     if (params.document) {
       const { title, bodyMarkdown } = params.document;
       const wordCount = bodyMarkdown.length;
-      const preview =
-        bodyMarkdown.length > 500
-          ? bodyMarkdown.slice(0, 500) +
-            '\n\n[... 使用 get_current_draft 工具获取完整内容]'
-          : bodyMarkdown;
-      sections.push(`<current_document>
-所有者当前正在编辑的文档：
-标题：${title}
-字数（字符数）：${wordCount}
-正文预览：
-${preview}
-</current_document>`);
+      sections.push(`<current_context>
+${ownerName} 当前正在编辑文档《${title || '未命名'}》（约 ${wordCount} 字）。
+需要了解它的内容、结构或大纲时，调用 get_current_draft 获取——不要假设内容。
+</current_context>`);
+    }
+
+    // ——— 当前写作计划：有「未完成」任务才注入。
+    // 全部完成的计划不再注入(否则每轮都把一份"全done"的清单灌回上下文,越积越脏;
+    // 模型也被要求做完后 write_tasks([]) 主动清空,这里是双保险)。 ———
+    // t 是 Record<string, unknown>:用类型守卫取 string 字段,避免 String(unknown) 的 [object Object]
+    const taskStatus = (t: Record<string, unknown>): string =>
+      typeof t.status === 'string' ? t.status : 'pending';
+    const taskTitle = (t: Record<string, unknown>): string =>
+      typeof t.title === 'string' ? t.title : '';
+    const hasActiveTask =
+      params.tasks?.some((t) => taskStatus(t) !== 'done') ?? false;
+    if (params.tasks && params.tasks.length > 0 && hasActiveTask) {
+      const STATUS: Record<string, string> = {
+        pending: '待办',
+        in_progress: '进行中',
+        done: '完成',
+      };
+      const lines = params.tasks
+        .map((t) => {
+          const status = taskStatus(t);
+          return `- [${STATUS[status] ?? status}] ${taskTitle(t)}`;
+        })
+        .join('\n');
+      sections.push(`<tasks>
+当前写作计划(随时用 write_tasks 整体改写:增删、重排、标记进度;用列表顺序表达先后;全部完成后传空列表清空):
+${lines}
+</tasks>`);
     }
 
     // ——— 入口级自定义 system prompt（AgentEntryConfig 配置的，优先注入） ———

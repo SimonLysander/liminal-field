@@ -2,6 +2,8 @@ import { join } from 'path';
 import simpleGit from 'simple-git';
 import { ContentGitService } from '../content-git.service';
 import { ContentRepoService } from '../content-repo.service';
+import type { ContentSnapshotRepository } from '../content-snapshot.repository';
+import type { ContentRepository } from '../content.repository';
 
 jest.mock('simple-git');
 const mockSimpleGit = simpleGit as jest.MockedFunction<typeof simpleGit>;
@@ -43,7 +45,16 @@ describe('ContentGitService', () => {
       ),
     } as unknown as jest.Mocked<ContentRepoService>;
 
-    service = new ContentGitService(contentRepoService);
+    // ContentGitService 构造函数需要 snapshotRepository 和 contentRepository，
+    // 本测试套件不覆盖 archiveLoop，传空 mock 即可
+    const snapshotRepository =
+      {} as unknown as jest.Mocked<ContentSnapshotRepository>;
+    const contentRepository = {} as unknown as jest.Mocked<ContentRepository>;
+    service = new ContentGitService(
+      contentRepoService,
+      snapshotRepository,
+      contentRepository,
+    );
   });
 
   afterEach(() => {

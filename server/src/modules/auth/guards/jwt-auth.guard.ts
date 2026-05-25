@@ -7,6 +7,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import type { FastifyRequest } from 'fastify';
+import type { AuthenticatedUser } from '../../../types/fastify';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 
 @Injectable()
@@ -27,7 +28,7 @@ export class JwtAuthGuard implements CanActivate {
 
     if (token) {
       try {
-        request.user = this.jwtService.verify(token);
+        request.user = this.jwtService.verify<AuthenticatedUser>(token);
       } catch {
         if (!isPublic) {
           throw new UnauthorizedException('登录态已过期');

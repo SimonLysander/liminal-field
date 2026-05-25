@@ -1,5 +1,6 @@
 import { tool, jsonSchema } from 'ai';
 import type { MemoryAgentService } from '../memory/memory-agent.service';
+import { toolResult } from './tool-result';
 
 /**
  * forget 工具：按描述匹配并删除一条记忆。
@@ -8,7 +9,7 @@ export function createForgetTool(memoryAgent: MemoryAgentService) {
   return tool({
     description:
       '删除一条已过时或错误的记忆。尽量使用记忆的原始标题（可在 system prompt 的 core_memories 和 memory_index 中看到）。',
-    parameters: jsonSchema<{ target: string }>({
+    inputSchema: jsonSchema<{ target: string }>({
       type: 'object',
       properties: {
         target: {
@@ -21,7 +22,8 @@ export function createForgetTool(memoryAgent: MemoryAgentService) {
       examples: [{ target: '量子计算入门文章的进展' }],
     }),
     execute: async ({ target }: { target: string }) => {
-      return memoryAgent.forget(target);
+      const r = await memoryAgent.forget(target);
+      return toolResult(r.message, undefined, { status: r.status });
     },
   });
 }

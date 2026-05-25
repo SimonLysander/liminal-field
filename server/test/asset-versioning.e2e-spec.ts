@@ -114,7 +114,7 @@ describe('Asset Versioning (e2e)', () => {
   describe('gallery /assets/:fileName', () => {
     it('gallery 已提交照片通过 /assets/ 路由可访问', async () => {
       // 复用 gallery-publish 中的逻辑：先 seed 图片，再提交，再访问
-      const { createGalleryItem } = await import('./helpers');
+      const { createGalleryItem } = await import('./helpers.js');
       const id = await createGalleryItem(ctx.app, cookie, '画廊资产测试');
       const photoFile = 'gallery-asset-test.png';
       await seedAsset(ctx.tmpGitDir, id, photoFile);

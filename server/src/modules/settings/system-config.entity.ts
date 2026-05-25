@@ -160,6 +160,10 @@ export class SystemConfig {
   @prop({ trim: true, default: '' })
   gitSyncCron!: string;
 
+  /** 同步开关：关闭时即使配置了远端也不 push（自动 cron + 月度归档 + 手动推送都跳过）。默认开启 */
+  @prop({ default: true })
+  gitSyncEnabled!: boolean;
+
   // ── 安全 ──
 
   /** bcrypt hash，用户通过 UI 改密码后持久化 */

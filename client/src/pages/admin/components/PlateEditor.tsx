@@ -50,7 +50,6 @@ function toStoredAssetPaths(markdown: string, contentItemId: string): string {
 export function PlateMarkdownEditor({
   initialMarkdown,
   onChange,
-  toolbarContainer: _toolbarContainer,
 }: {
   initialMarkdown: string;
   /**

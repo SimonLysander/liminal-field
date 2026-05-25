@@ -36,7 +36,8 @@ export class NavigationRepository {
   async create(navigation: CreateNavigationNode): Promise<NavigationNode> {
     return this.navigationModel.create({
       name: navigation.name,
-      scope: navigation.scope ?? NavigationScope.notes,
+      // CreateNavigationNode.scope 为 string，调用方保证值为 NavigationScope 枚举成员
+      scope: (navigation.scope as NavigationScope) ?? NavigationScope.notes,
       parentId: navigation.parentId,
       nodeType: navigation.nodeType,
       contentItemId: navigation.contentItemId,
@@ -107,7 +108,8 @@ export class NavigationRepository {
 
   /** 获取指定 scope 下所有导航节点（不分层级） */
   async listByScope(scope: string): Promise<NavigationNode[]> {
-    return this.navigationModel.find({ scope });
+    // 调用方传入的 string 值运行时为 NavigationScope 枚举成员，cast 消除严格过滤类型报错
+    return this.navigationModel.find({ scope: scope as NavigationScope });
   }
 
   async hasChildren(parentId: string): Promise<boolean> {

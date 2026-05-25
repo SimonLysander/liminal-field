@@ -6,22 +6,11 @@
  */
 
 import { useCallback, useState } from 'react';
-import { Sparkles, Zap, Brain, ArrowUp, X, Paperclip } from 'lucide-react';
+import { ArrowUp, Square, X, Paperclip } from 'lucide-react';
 import { MessageList } from './MessageList';
-import { TaskBar } from './TaskBar';
+import { TaskChecklist } from './TaskChecklist';
 import TextareaAutosize from 'react-textarea-autosize';
-import { useAdvisorChat, type Tier } from './use-advisor-chat';
-
-const TIER_ICON: Record<Tier, typeof Sparkles> = {
-  flash: Zap,
-  standard: Sparkles,
-  think: Brain,
-};
-const TIER_LABEL: Record<Tier, string> = {
-  flash: '闪电',
-  standard: '标准',
-  think: '深思',
-};
+import { useAdvisorChat } from './use-advisor-chat';
 
 const GREETINGS = [
   '写到哪了？',
@@ -60,7 +49,7 @@ export function AiAdvisorPanel({
   const activeSelection =
     selectedText && selectedText !== dismissedText ? selectedText : undefined;
 
-  const { messages, status, isStreaming, sessionReady, tasks, tier, cycleTier, send } =
+  const { messages, status, isStreaming, sessionReady, send, stop, error, tasks, planTitle } =
     useAdvisorChat({
       sessionKey,
       agentKey: 'writing-advisor',
@@ -81,46 +70,42 @@ export function AiAdvisorPanel({
   }, [inputValue, activeSelection, send]);
 
   const isEmpty = inputValue.trim().length === 0;
-  const TierIcon = TIER_ICON[tier];
 
   return (
-    <div className="flex flex-col overflow-hidden">
-      {/* Task bar（有任务时显示） */}
-      {sessionReady && <TaskBar tasks={tasks} />}
+    // h-full:在笔记 grid 里等价于行 stretch(无变化);在文集条目 flex 容器里据此撑满高度
+    <div className="flex h-full flex-col overflow-hidden">
+      {/* 任务计划改为流内联清单(MessageList 末尾渲染),不再在顶部放常驻 TaskBar */}
 
       {/* 消息区 / 空状态 */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {sessionReady && messages.length === 0 && (
-          <div className="flex flex-1 flex-col items-center justify-center gap-6 px-5">
+          // 空状态:仅一句问候,居中留白。
+          // (未来做 Aurora 主动/个性化问候时在此扩展;暂缓,故也不加纸艺装饰)
+          <div className="flex flex-1 flex-col items-center justify-center px-5">
             <p
               className="text-center text-lg font-light"
               style={{ color: 'var(--ink-ghost)', letterSpacing: '0.02em' }}
             >
               {greeting}
             </p>
-            {/* 预设问题卡片 */}
-            <div className="flex w-full max-w-[220px] flex-col gap-2">
-              {[
-                '这篇文章的结构合理吗',
-                '帮我理一下思路',
-                '有没有类似的内容可以参考',
-              ].map((q) => (
-                <button
-                  key={q}
-                  onClick={() => send(q)}
-                  className="rounded-lg px-3 py-2 text-left text-xs transition-colors"
-                  style={{ color: 'var(--ink-faded)', background: 'var(--shelf)' }}
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
           </div>
         )}
         {sessionReady && messages.length > 0 && (
-          <MessageList messages={messages} status={status} sessionKey={sessionKey} />
+          <MessageList messages={messages} status={status} sessionKey={sessionKey} error={error} />
         )}
       </div>
+
+      {/* 独立「计划区」:钉在输入框上方。外层 px-3 对齐输入框盒,内层 px-3 对齐框内文字。 */}
+      {tasks.some((t) => t.status !== 'done') && (
+        <div className="shrink-0 px-3">
+          <div
+            className="px-3 pt-2.5"
+            style={{ borderTop: '1px solid var(--separator)' }}
+          >
+            <TaskChecklist tasks={tasks} title={planTitle} />
+          </div>
+        </div>
+      )}
 
       {/* 输入区 */}
       <div className="shrink-0 px-3 pb-4 pt-2">
@@ -145,21 +130,11 @@ export function AiAdvisorPanel({
           </div>
         )}
 
+        {/* focus 反馈作用在整个容器(输入框真正的边界),内层 textarea 因 composer-input 不再单独描边 */}
         <div
-          className="flex items-end gap-2 rounded-xl px-3 py-2"
+          className="advisor-composer flex items-center gap-2 rounded-xl px-3 py-2 transition-shadow"
           style={{ background: 'var(--shelf)' }}
         >
-          {/* Tier 图标:循环切换 */}
-          <button
-            onClick={cycleTier}
-            disabled={isStreaming}
-            className="mb-px shrink-0 transition-colors duration-150 disabled:opacity-40"
-            style={{ color: 'var(--ink-ghost)' }}
-            title={`${TIER_LABEL[tier]}（点击切换）`}
-          >
-            <TierIcon size={14} strokeWidth={1.5} />
-          </button>
-
           <TextareaAutosize
             minRows={1}
             maxRows={4}
@@ -173,19 +148,34 @@ export function AiAdvisorPanel({
             }}
             disabled={isStreaming}
             placeholder="聊点什么..."
-            className="flex-1 resize-none border-none bg-transparent text-sm leading-normal outline-none placeholder:text-[var(--ink-ghost)]"
+            className="composer-input flex-1 resize-none border-none bg-transparent text-sm leading-normal outline-none placeholder:text-[var(--ink-ghost)]"
             style={{ color: 'var(--ink)', opacity: isStreaming ? 0.5 : 1 }}
           />
 
-          <button
-            onClick={handleSend}
-            disabled={isEmpty || isStreaming}
-            className="mb-px shrink-0 transition-all duration-150"
-            style={{ color: isEmpty || isStreaming ? 'var(--ink-ghost)' : 'var(--ink)' }}
-            aria-label="发送"
-          >
-            <ArrowUp size={16} strokeWidth={2} />
-          </button>
+          {/* 长春花紫圆形键(有内容亮、空置淡灰),与全页一致;流式中变停止 */}
+          {isStreaming ? (
+            <button
+              onClick={stop}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-all duration-200"
+              style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}
+              aria-label="停止"
+            >
+              <Square size={11} strokeWidth={2} fill="currentColor" />
+            </button>
+          ) : (
+            <button
+              onClick={handleSend}
+              disabled={isEmpty}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-all duration-200 disabled:cursor-default"
+              style={{
+                background: isEmpty ? 'color-mix(in srgb, var(--ink) 8%, transparent)' : 'var(--accent)',
+                color: isEmpty ? 'var(--ink-ghost)' : 'var(--accent-contrast)',
+              }}
+              aria-label="发送"
+            >
+              <ArrowUp size={15} strokeWidth={2} />
+            </button>
+          )}
         </div>
       </div>
     </div>

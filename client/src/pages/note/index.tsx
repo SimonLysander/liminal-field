@@ -27,7 +27,8 @@ import { notesApi as contentItemsApi } from '@/services/workspace';
 import type { ContentDetail } from '@/services/workspace';
 import MarkdownBody from '@/components/shared/MarkdownBody';
 import { LoadingState } from '@/components/LoadingState';
-import { BookOpen, X, Sparkles } from 'lucide-react';
+import { X, Sparkles } from 'lucide-react';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 /* ================================================================
  * /note      → NoteListView  已发布文章列表
@@ -43,23 +44,12 @@ export default function NotePage() {
 /* ---------- Empty State ---------- */
 
 function NoteListView() {
+  // 阅读端主从布局右侧未选态:大留白区,用稍繁盛的"邀请"纸艺填充(非"待生长"空花圃)
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4">
-      <motion.div
-        className="flex flex-col items-center gap-3"
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: smoothBounce }}
-      >
-        <BookOpen size={32} strokeWidth={1.2} style={{ color: 'var(--ink-ghost)', opacity: 0.5 }} />
-        <span
-          className="text-lg font-medium"
-          style={{ color: 'var(--ink-ghost)', letterSpacing: '-0.01em' }}
-        >
-          选择一篇笔记开始阅读
-        </span>
-      </motion.div>
-    </div>
+    <EmptyState
+      image="/garden/reading-invite.webp"
+      title="选择一篇笔记开始阅读"
+    />
   );
 }
 

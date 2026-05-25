@@ -97,7 +97,7 @@ export default function LoginPage() {
           className="enter-rise enter-delay-2 max-w-[240px] text-center text-xs leading-relaxed"
           style={{
             color: 'var(--ink-ghost)',
-            fontFamily: 'var(--font-serif)',
+            fontFamily: 'var(--font-reading)',
           }}
         >
           让纸墨见证我斑驳而卑微的期许，如何像云雾升腾一般，生长出生机勃勃、斩钉截铁的现实

@@ -34,7 +34,10 @@ export class ContentSnapshotRepository {
   /** 按 contentItemId 查询版本列表，最新在前（只查 main.md，即 fileName=null） */
   async listByContentItemId(contentItemId: string): Promise<ContentSnapshot[]> {
     return this.model
-      .find({ contentItemId, $or: [{ fileName: null }, { fileName: { $exists: false } }] })
+      .find({
+        contentItemId,
+        $or: [{ fileName: null }, { fileName: { $exists: false } }],
+      })
       .sort({ createdAt: -1 });
   }
 
@@ -53,9 +56,7 @@ export class ContentSnapshotRepository {
     contentItemId: string,
     fileName: string,
   ): Promise<ContentSnapshot[]> {
-    return this.model
-      .find({ contentItemId, fileName })
-      .sort({ createdAt: -1 });
+    return this.model.find({ contentItemId, fileName }).sort({ createdAt: -1 });
   }
 
   /**
@@ -128,7 +129,10 @@ export class ContentSnapshotRepository {
   }
 
   /** 删除某 contentItemId + fileName 下的所有 snapshot（条目删除时清理） */
-  async deleteByFileName(contentItemId: string, fileName: string): Promise<number> {
+  async deleteByFileName(
+    contentItemId: string,
+    fileName: string,
+  ): Promise<number> {
     const result = await this.model.deleteMany({ contentItemId, fileName });
     return result.deletedCount ?? 0;
   }

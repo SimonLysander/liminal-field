@@ -19,6 +19,8 @@ import type { FastifyReply } from 'fastify';
 /** import 路由用的 multipart 形状（与 @fastify/multipart 一致，避免包类型解析失败） */
 type MultipartFilePart = {
   type: 'file';
+  /** 表单字段名（如 'archive'、'file'）——对应 @fastify/multipart MultipartFile.fieldname */
+  fieldname: string;
   filename: string;
   mimetype: string;
   toBuffer(): Promise<Buffer>;

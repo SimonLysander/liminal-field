@@ -261,7 +261,7 @@ export class OssService implements OnModuleInit, MinioDraftStorageStatus {
     const url = this.client.signatureUrl(key, {
       expires,
       process: process || undefined,
-      secure: true,
+      // secure 已从 ali-oss SignatureUrlOptions 类型中移除；外网域名通过下方 replace 得到
     });
     // internal endpoint（-internal.aliyuncs.com）浏览器不可达，替换为外网域名
     return url.replace('-internal.aliyuncs.com', '.aliyuncs.com');

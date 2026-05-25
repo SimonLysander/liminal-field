@@ -48,12 +48,13 @@ import {
 import { SaveGalleryPostDto } from './dto/save-gallery-post.dto';
 import {
   AnthologyAdminDetailDto,
-  AnthologyAdminListItemDto,
   AnthologyEntryDetailDto,
   AnthologyPublicDetailDto,
-  AnthologyPublicListItemDto,
 } from './dto/anthology-view.dto';
-import { SaveAnthologyEntryDto, ReorderAnthologyEntriesDto } from './dto/save-anthology.dto';
+import {
+  SaveAnthologyEntryDto,
+  ReorderAnthologyEntriesDto,
+} from './dto/save-anthology.dto';
 import { BatchOperationDto } from './dto/batch-operation.dto';
 
 type MultipartRequest = {
@@ -90,7 +91,7 @@ export class WorkspaceController {
   }
 
   @Get('notes/items/:id/draft')
-  async getDraft(@Param('id') id: string): Promise<EditorDraftDto> {
+  async getDraft(@Param('id') id: string): Promise<EditorDraftDto | null> {
     return this.noteViewService.getDraft(id);
   }
 
@@ -511,7 +512,9 @@ export class WorkspaceController {
     if (scope === 'anthology') {
       // 管理端（visibility=all）返回含状态信息的管理详情，展示端返回已发布版本
       if (visibility === ContentVisibility.all) {
-        return this.anthologyViewService.toAdminDetail(id) as Promise<AnthologyPublicDetailDto | AnthologyAdminDetailDto>;
+        return this.anthologyViewService.toAdminDetail(id) as Promise<
+          AnthologyPublicDetailDto | AnthologyAdminDetailDto
+        >;
       }
       return this.anthologyViewService.toPublicDetail(id);
     }

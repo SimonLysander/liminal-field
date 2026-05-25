@@ -27,20 +27,28 @@ const mockImportSessionRepo = {
   deleteById: jest.fn(),
 };
 
+const mockBatchSessionRepo = {};
 const mockContentRepoService = {};
 const mockContentGitService = {};
 const mockContentRepository = {};
+const mockSnapshotRepository = {};
+const mockContentService = {};
 const mockNavigationNodeService = {};
+const mockNavigationRepository = {};
 
 function createService(): ImportService {
   return new ImportService(
     mockMinioService as any,
     mockMineruService as any,
     mockImportSessionRepo as any,
+    mockBatchSessionRepo as any,
     mockContentRepoService as any,
     mockContentGitService as any,
     mockContentRepository as any,
+    mockSnapshotRepository as any,
+    mockContentService as any,
     mockNavigationNodeService as any,
+    mockNavigationRepository as any,
   );
 }
 

@@ -157,14 +157,16 @@ export function SearchPanel({ open, onOpenChange, admin }: SearchPanelProps) {
     [doSearch],
   );
 
-  /* 面板关闭时重置状态 */
-  useEffect(() => {
+  /* 面板关闭时重置状态——渲染期比较 prev open，避免 effect 级联渲染 */
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (!open) {
       setQuery('');
       setResults([]);
       setLoading(false);
     }
-  }, [open]);
+  }
 
   /* 面板打开时聚焦输入框 */
   useEffect(() => {

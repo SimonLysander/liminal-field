@@ -80,5 +80,6 @@ export class AnthologyAdminListItemDto extends AnthologyPublicListItemDto {
 export class AnthologyAdminDetailDto extends AnthologyPublicDetailDto {
   status: 'committed' | 'published';
   hasUnpublishedChanges: boolean;
-  entries: AnthologyAdminEntryRef[];
+  // declare：仅收窄 base 的 entries 类型，不重新生成字段（避免覆盖父类初始化）
+  declare entries: AnthologyAdminEntryRef[];
 }

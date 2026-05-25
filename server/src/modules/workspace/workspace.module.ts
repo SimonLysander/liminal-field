@@ -40,6 +40,11 @@ import { WorkspaceController } from './workspace.controller';
     AnthologyViewService,
     EditorDraftRepository,
   ],
-  exports: [WorkspaceService, NoteViewService, GalleryViewService, AnthologyViewService],
+  exports: [
+    WorkspaceService,
+    NoteViewService,
+    GalleryViewService,
+    AnthologyViewService,
+  ],
 })
 export class WorkspaceModule {}

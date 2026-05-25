@@ -58,9 +58,11 @@ async function bootstrap() {
   app.useGlobalFilters(new AllExceptionsFilter());
 
   // Cookie 解析——JwtAuthGuard 从 auth_token cookie 读取 JWT。
+  // @ts-expect-error @fastify/cookie 11.x 与 fastify 5.x 核心类型版本漂移，运行时兼容
   await app.register(cookie);
 
   // 附件上传：fileSize 200MB 覆盖 MinerU 精准 API 的文件上限。
+  // @ts-expect-error @fastify/multipart 10.x 与 fastify 5.x 核心类型版本漂移，运行时兼容
   await app.register(multipart, { limits: { fileSize: 200 * 1024 * 1024 } });
 
   // 2. 服务和路由

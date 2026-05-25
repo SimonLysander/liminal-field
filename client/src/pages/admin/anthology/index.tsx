@@ -157,8 +157,11 @@ export default function AnthologyAdmin() {
   /* 选中条目时加载条目内容、草稿、版本历史；同时清空上一条目的版本预览状态 */
   useEffect(() => {
     // 切换条目时立即清空版本预览，避免闪烁展示旧条目的历史内容
+    // 清空与紧随的异步加载属同一逻辑单元，刻意放 effect（拆分会损害可读性）
+    /* eslint-disable react-hooks/set-state-in-effect */
     setPreviewVersionId(null);
     setPreviewContent(null);
+    /* eslint-enable react-hooks/set-state-in-effect */
 
     let cancelled = false;
     void (async () => {
@@ -295,11 +298,6 @@ export default function AnthologyAdmin() {
     }
   };
 
-  const handleEditEntry = (entryKey: string) => {
-    if (!selectedId) return;
-    window.location.href = `/admin/anthology/${selectedId}/entries/${entryKey}/edit`;
-  };
-
   /* 文集级发布 — 返回 boolean 供 ActionButton 显示 ✓ 反馈 */
   const handlePublish = async (): Promise<boolean> => {
     if (!detail) return false;
@@ -427,18 +425,6 @@ export default function AnthologyAdmin() {
     await handleDeleteEntry(selectedEntryKey, meta.title);
   };
 
-  const handleOverwriteDraft = async () => {
-    if (!selectedId || !selectedEntryKey) return;
-    const ok = await confirm({
-      title: '覆盖草稿',
-      message: '是否覆盖已有草稿？将从最新版本重新创建。',
-      danger: true,
-    });
-    if (!ok) return;
-    await anthologyApi.deleteEntryDraft(selectedId, selectedEntryKey);
-    window.location.href = `/admin/anthology/${selectedId}/entries/${selectedEntryKey}/edit`;
-  };
-
   /* 文集详情刷新（标题行刷新按钮，重新请求 API） */
   const handleReloadDetail = async () => {
     if (!selectedId) return;
@@ -514,7 +500,6 @@ export default function AnthologyAdmin() {
                   historyLoading={entryHistoryLoading}
                   activeVersionId={previewVersionId}
                   onSelectVersion={(versionId) => void handleSelectVersion(versionId)}
-                  onOverwriteDraft={handleOverwriteDraft}
                 />
               </motion.div>
             ) : selectedId ? (
@@ -537,7 +522,6 @@ export default function AnthologyAdmin() {
                       detail={detail}
                       onEntryClick={(entryKey) => setSelectedEntry(entryKey)}
                       onAddEntry={handleAddEntry}
-                      onEditEntry={handleEditEntry}
                       onDeleteEntry={handleDeleteEntry}
                       onReload={() => void handleReloadDetail()}
                       onPublish={handlePublish}

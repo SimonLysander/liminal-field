@@ -6,6 +6,15 @@
 4. 你可以把反复踩的、关键的、影响项目推进的坑持续迭代在 Agents.md
 5. 必须使用业界成熟和现代的库，不手写已有成熟方案的功能（SSE 用框架内置、状态管理用库、协议实现用库），如果有选择
 
+\# 日志准则（分级结构化，开发时必加）
+
+核心：链路必须可见，排错靠看不靠猜。但用结构化分级 logger，不是裸 `console.log` 散落。
+
+- **后端**：每个 service 用 NestJS `Logger`。关键链路每步 `debug`（入参摘要 → 关键决策分支 → 外部 IO[Mongo/OSS/Git/AI] 前后带耗时+结果摘要），失败 `error` 必带上下文+stack。level 控制详细度，开发全开、生产按 `LOG_LEVEL` 收。
+- **前端**：统一 `logger` 封装（模块前缀 + level + env 开关）。打点 API 请求/响应/耗时、草稿 local-first 存取、状态机转换、错误。Vite 生产构建剥离 `debug`，保留 `warn/error`。
+- **禁止**：裸 `console.log` 散落；记敏感信息（token/password/正文全文 → 只记长度/摘要）；空 catch（catch 必 log）。
+- 颗粒度接近“关键步骤一步一个”，但分级可开关，不牺牲可读性。
+
 \# 设计系统
 
 核心原则：**展示端和管理端相同语义角色的组件，视觉规格完全一致。**
@@ -40,10 +49,13 @@
 
 每次修改代码后、提交前，必须运行：
 
-1. **Server**: `cd server && pnpm build` — SWC 编译检查
-2. **Client**: `cd client && npx tsc -b --noEmit` — TypeScript 类型检查
-3. **Server 单元测试**: `cd server && npx jest --passWithNoTests` — 如果改了业务逻辑
-4. **Client build**: `cd client && pnpm build` — 如果要验证生产构建（Docker 部署前必跑）
+1. **Server 类型检查**: `cd server && npx tsc --noEmit -p tsconfig.json` — ⚠️ SWC 构建(`nest build`)和 ts-jest 都**不查类型**，类型错误只能靠这条独立 tsc 抓出来（曾因此潜藏 80 个隐藏类型错误，含 `publishedAt` 从未持久化的真 bug、`ContentSnapshot` 漏 import）
+2. **Server 编译**: `cd server && pnpm build` — SWC 快速编译
+3. **Client 类型检查**: `cd client && npx tsc -b --noEmit`
+4. **Server lint**: `cd server && npx eslint "{src,test}/**/*.ts"` — typed-linting 抓 no-unsafe（any 逃逸）
+5. **Client lint**: `cd client && pnpm lint`
+6. **单元测试**: `cd server && npx jest --passWithNoTests` ＋ `cd client && pnpm test`
+7. **Client build**: `cd client && pnpm build` — 验证生产构建（Docker 部署前必跑）
 
 不通过不提交。
 

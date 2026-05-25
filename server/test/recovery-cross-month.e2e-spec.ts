@@ -43,7 +43,8 @@ describe('跨月恢复 (e2e, 本地 bare 仓当远端)', () => {
 
   afterAll(async () => {
     await ctx.teardown();
-    if (bareRemoteDir) await rm(bareRemoteDir, { recursive: true, force: true });
+    if (bareRemoteDir)
+      await rm(bareRemoteDir, { recursive: true, force: true });
     if (prevRemoteUrl === undefined) delete process.env.KB_REMOTE_URL;
     else process.env.KB_REMOTE_URL = prevRemoteUrl;
     if (prevToken === undefined) delete process.env.KB_GIT_TOKEN;
@@ -57,7 +58,13 @@ describe('跨月恢复 (e2e, 本地 bare 仓当远端)', () => {
 
     // 建内容 + 推远端
     const noteId = await createNoteItem(ctx.app, cookie, '跨月笔记');
-    await commitNoteContent(ctx.app, cookie, noteId, '# 跨月\n\n正文。', '跨月笔记');
+    await commitNoteContent(
+      ctx.app,
+      cookie,
+      noteId,
+      '# 跨月\n\n正文。',
+      '跨月笔记',
+    );
     const anthologyId = await createAnthologyItem(ctx.app, cookie, '跨月文集');
     const { entryKey } = await addAnthologyEntry(ctx.app, cookie, anthologyId, {
       title: '条目',
@@ -79,7 +86,14 @@ describe('跨月恢复 (e2e, 本地 bare 仓当远端)', () => {
       .filter(Boolean);
     const ws = bareBranches.find((b) => b.startsWith('workspace/'));
     expect(ws).toBeTruthy();
-    execFileSync('git', ['-C', bareRemoteDir, 'branch', '-m', ws!, 'workspace/2000-01']);
+    execFileSync('git', [
+      '-C',
+      bareRemoteDir,
+      'branch',
+      '-m',
+      ws!,
+      'workspace/2000-01',
+    ]);
 
     // 从远端恢复(当月分支在 origin 不存在 → 必须落到最近的 workspace/2000-01,而非空 main)
     const sync = await supertest(server)

@@ -26,7 +26,7 @@
 **规则:禁 inline padding/margin px。偏差 22。**
 
 ### 圆角(已有)
-`rounded-sm=6`(pill/按钮/小元素)· `md=8`(卡片/图片)· `lg=10`(面板/卡)· `xl=12`(Modal/大面板)。
+`rounded-sm=6`(pill/按钮/小元素)· `md=8`(卡片/图片)· `lg=10`(面板/卡)· `xl=12`(Modal/大面板)· `2xl=16`(柔和大圆角:agent 输入框等 Claude 式面,2026-05-24 新增)。
 **规则:禁 inline `borderRadius`。偏差 38。**
 
 ### 阴影(已有)

@@ -143,6 +143,7 @@ describe('parseGalleryContent', () => {
 describe('serializeGalleryContent', () => {
   it('有 photos + cover + date + location → 生成完整 frontmatter', () => {
     const result = serializeGalleryContent({
+      title: '测试画廊',
       photos: [
         { file: 'photo-1.jpg', caption: '第一张', tags: { camera: 'GR III' } },
       ],
@@ -163,6 +164,7 @@ describe('serializeGalleryContent', () => {
 
   it('无 photos 无 cover 无 date 无 location → 始终生成 frontmatter（空 photos 字段）', () => {
     const result = serializeGalleryContent({
+      title: '',
       photos: [],
       cover: null,
       date: null,
@@ -178,6 +180,7 @@ describe('serializeGalleryContent', () => {
 
   it('空 photos 但有 cover → 生成 frontmatter（cover 不为 null）', () => {
     const result = serializeGalleryContent({
+      title: '',
       photos: [],
       cover: 'cover.jpg',
       date: null,
@@ -194,7 +197,8 @@ describe('serializeGalleryContent', () => {
 
 describe('serializeGalleryContent → parseGalleryContent round-trip', () => {
   it('序列化后再解析，结果与原始数据一致', () => {
-    const original = {
+    const original: Parameters<typeof serializeGalleryContent>[0] = {
+      title: '广州游记',
       photos: [
         { file: 'a.jpg', caption: '照片 A', tags: { camera: 'Sony' } },
         { file: 'b.jpg', caption: '照片 B', tags: {} },

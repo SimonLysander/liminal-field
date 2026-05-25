@@ -61,6 +61,7 @@ export interface GalleryEditorState {
   /** 封面照片文件名，null 表示未设置 */
   coverPhotoFileName: string | null;
   saveStatus: SaveStatus;
+  lastSavedAt: string;
   /** 照片上传进度，null 表示无上传中 */
   uploadProgress: UploadProgress | null;
 }
@@ -96,6 +97,7 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
   /** 封面文件名 */
   const [coverPhotoFileName, setCoverPhotoFileName] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
+  const [lastSavedAt, setLastSavedAt] = useState('');
 
   // effectiveId：新建时 undefined，创建后更新为真实 ID
   const effectiveIdRef = useRef<string | undefined>(postId);
@@ -174,8 +176,13 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     if (!id) return;
 
     setSaveStatus('saving');
+    const startedAt = Date.now();
     try {
       await galleryApi.saveDraft(id, buildSavePayload());
+      setLastSavedAt(new Date().toISOString());
+      // 与笔记/文集编辑器一致:"保存中"至少停留 ~800ms,否则呼吸点一闪而过
+      const remain = 800 - (Date.now() - startedAt);
+      if (remain > 0) await new Promise((resolve) => setTimeout(resolve, remain));
       setSaveStatus('saved');
     } catch (err) {
       console.error('[useGalleryEditor] 自动保存失败:', err);
@@ -351,6 +358,7 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     location,
     coverPhotoFileName,
     saveStatus,
+    lastSavedAt,
     uploadProgress,
     updateTitle,
     updateProse,

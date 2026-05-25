@@ -13,7 +13,6 @@ import { ContentVersion } from './content-item.entity';
 import { ContentSnapshotRepository } from './content-snapshot.repository';
 import { ContentRepository } from './content.repository';
 import { ContentRepoService } from './content-repo.service';
-import { ContentHistoryEntryDto } from './dto/content-history.dto';
 
 @Injectable()
 export class ContentGitService implements OnModuleInit {
@@ -233,7 +232,9 @@ export class ContentGitService implements OnModuleInit {
       '-m',
       `archive: merge ${branch} into main`,
     ]);
-    if (await this.hasOriginRemote()) {
+    if (!this.isSyncEnabled()) {
+      this.logger.debug('Sync disabled, skipping push after archive');
+    } else if (await this.hasOriginRemote()) {
       const pushResult = await this.tryRun(() =>
         this.git.raw(['push', 'origin', 'main']),
       );
@@ -354,9 +355,8 @@ export class ContentGitService implements OnModuleInit {
       );
       if (!stagedFiles) return null;
 
-      const summary =
+      const commitMsg =
         note.length > 48 ? `${note.slice(0, 45).trimEnd()}...` : note;
-      const commitMsg = summary;
 
       await this.git
         .env({
@@ -652,10 +652,18 @@ export class ContentGitService implements OnModuleInit {
     this.logger.log('Repo reinitialized (empty)');
   }
 
+  /** 同步开关:关闭(GIT_SYNC_ENABLED==='false')时一律不向远端 push(自动 cron / 月度归档 / 手动推送都走这里被拦) */
+  private isSyncEnabled(): boolean {
+    return process.env.GIT_SYNC_ENABLED !== 'false';
+  }
+
   /** 推送指定分支到远端（不切换 HEAD） */
   async pushBranch(
     branch: string,
   ): Promise<{ success: boolean; message: string }> {
+    if (!this.isSyncEnabled()) {
+      return { success: true, message: '同步已关闭，跳过推送' };
+    }
     if (!(await this.hasOriginRemote())) {
       return { success: true, message: '未配置远程仓库，跳过' };
     }
@@ -676,6 +684,10 @@ export class ContentGitService implements OnModuleInit {
    * 无 remote 时静默跳过，避免日志噪音。
    */
   async pushCurrentBranch(): Promise<{ success: boolean; message: string }> {
+    if (!this.isSyncEnabled()) {
+      this.logger.debug('Sync disabled, skipping push');
+      return { success: true, message: '同步已关闭，跳过推送' };
+    }
     if (!(await this.hasOriginRemote())) {
       this.logger.debug('No origin remote configured, skipping push');
       return { success: true, message: '未配置远程仓库，跳过推送' };
@@ -773,7 +785,9 @@ export class ContentGitService implements OnModuleInit {
             ? remoteTarget
             : (latestRemoteWorkspace ?? 'main');
           await freshGit.checkout(['-b', targetBranch, sourceRef]);
-          this.logger.log(`Restore source branch: ${sourceRef} → ${targetBranch}`);
+          this.logger.log(
+            `Restore source branch: ${sourceRef} → ${targetBranch}`,
+          );
         }
 
         // 重建 git 实例，确保指向 clone 后的新 .git
@@ -933,9 +947,18 @@ export class ContentGitService implements OnModuleInit {
     });
   }
 
-  async listContentHistory(
-    contentId: string,
-  ): Promise<ContentHistoryEntryDto[]> {
+  // 注:这是基于 git log 的提交历史(commitHash/作者/message),与 V2 的
+  // ContentHistoryEntryDto(versionId/changeType)语义不同,故返回独立形状。
+  async listContentHistory(contentId: string): Promise<
+    Array<{
+      commitHash: string;
+      committedAt: string;
+      authorName: string;
+      authorEmail: string;
+      message: string;
+      action: 'commit';
+    }>
+  > {
     const trackedPath = this.resolveTrackedContentPath(contentId);
     if (!trackedPath) {
       return [];

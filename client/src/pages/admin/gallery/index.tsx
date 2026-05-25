@@ -179,16 +179,6 @@ export default function GalleryAdmin() {
     }
   };
 
-  /** 丢弃草稿：删除草稿 → 刷新 */
-  const handleDiscardDraft = async (id: string) => {
-    try {
-      await galleryApi.deleteDraft(id);
-      setDraftInfo({ exists: false });
-    } catch {
-      banner.error('丢弃失败');
-    }
-  };
-
   /** 刷新选中帖子的详情 + 历史（发布/取消发布/提交后调用） */
   const reloadDetail = async (id: string) => {
     try {
@@ -443,13 +433,6 @@ export default function GalleryAdmin() {
                         onClick={() => navigateToEdit(detail.id)}
                       >
                         继续编辑 →
-                      </button>
-                      <button
-                        className="text-xs font-medium"
-                        style={{ color: 'var(--mark-red)' }}
-                        onClick={() => void handleDiscardDraft(detail.id)}
-                      >
-                        丢弃
                       </button>
                     </div>
                   </div>

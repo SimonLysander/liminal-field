@@ -20,8 +20,8 @@ import {
   type AnthologyEntryDetail,
 } from '@/services/workspace';
 import MarkdownBody from '@/components/shared/MarkdownBody';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { LoadingState } from '@/components/LoadingState';
-import { BookOpen } from 'lucide-react';
 
 /* ================================================================
  * 路由分发：根据 query params 决定渲染哪个子视图
@@ -64,24 +64,8 @@ function AnthologyListView() {
   }
 
   if (items.length === 0) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-4">
-        <motion.div
-          className="flex flex-col items-center gap-3"
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: smoothBounce }}
-        >
-          <BookOpen size={32} strokeWidth={1.2} style={{ color: 'var(--ink-ghost)', opacity: 0.5 }} />
-          <span
-            className="text-lg font-medium"
-            style={{ color: 'var(--ink-ghost)', letterSpacing: '-0.01em' }}
-          >
-            暂无文集
-          </span>
-        </motion.div>
-      </div>
-    );
+    // 真·空内容 → 统一空态(空花圃土床小苗 = 待生长)
+    return <EmptyState title="暂无文集" />;
   }
 
   return (

@@ -96,6 +96,7 @@ export class SettingsController {
       gitAuthorName?: string;
       gitAuthorEmail?: string;
       gitSyncCron?: string;
+      gitSyncEnabled?: boolean;
     },
   ): Promise<{ success: boolean }> {
     await this.systemConfigService.saveSyncConfig({
@@ -104,6 +105,7 @@ export class SettingsController {
       gitAuthorName: dto.gitAuthorName,
       gitAuthorEmail: dto.gitAuthorEmail,
       gitSyncCron: dto.gitSyncCron,
+      gitSyncEnabled: dto.gitSyncEnabled,
     });
     return { success: true };
   }
@@ -247,7 +249,7 @@ export class SettingsController {
       await generateText({
         model: provider(dto.standardModel),
         prompt: 'Hi',
-        maxTokens: 8,
+        maxOutputTokens: 8,
       });
       return { valid: true, message: '连接验证成功' };
     } catch (err: unknown) {
@@ -364,14 +366,8 @@ export class SettingsController {
   @Get('storage-status')
   async getStorageStatus(): Promise<{
     oss: { connected: boolean; bucket: string; region: string };
-    git: {
-      branch: string;
-      totalCommits: number;
-      unpushedCommits: number;
-      lastCommitMessage: string;
-      lastCommitTime: string;
-      remote: string;
-    } | null;
+    // git 字段类型跟随 getSyncStatus 实际返回(含 syncState),避免手写注解漂移
+    git: Awaited<ReturnType<ContentGitService['getSyncStatus']>>;
   }> {
     // OSS 连通性
     const ossConnected = this.ossService.isDraftStorageReady();
@@ -566,8 +562,13 @@ export class SettingsController {
    * 用于灾后/从远端恢复后一键重新上线(发布状态不进 Git,恢复后默认全未发布)。
    */
   @Post('publish-all')
-  async publishAll(): Promise<{ success: boolean; published: number; skipped: number }> {
-    const { published, skipped } = await this.publishAllService.publishAllLatest();
+  async publishAll(): Promise<{
+    success: boolean;
+    published: number;
+    skipped: number;
+  }> {
+    const { published, skipped } =
+      await this.publishAllService.publishAllLatest();
     return { success: true, published, skipped };
   }
 

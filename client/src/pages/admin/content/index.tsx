@@ -9,8 +9,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 // 编辑页跳转统一用 window.location.href（Plate inputRules 在 SPA 导航后不生效）
 import { smoothBounce } from '@/lib/motion';
-import { useConfirm } from '@/contexts/ConfirmContext';
-import { notesApi as contentItemsApi } from '@/services/workspace';
 import Topbar from '@/components/global/Topbar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ContentVersionView } from '../components/ContentVersionView';
@@ -26,7 +24,6 @@ import { VersionTimeline } from '../components/VersionTimeline';
 
 const ContentAdmin = () => {
   const workspace = useAdminWorkspace();
-  const confirm = useConfirm();
   /* 选中节点的恢复由 useAdminWorkspace 的 URL 同步处理 */
 
   /* ---- TOC ----
@@ -89,14 +86,6 @@ const ContentAdmin = () => {
   const editUrl = workspace.selectedNode?.contentItemId
     ? `/admin/notes/${workspace.selectedNode.contentItemId}/edit`
     : null;
-
-  const handleOverwriteDraft = async () => {
-    if (!workspace.selectedNode?.contentItemId) return;
-    const ok = await confirm({ title: '覆盖草稿', message: '是否覆盖已有草稿？将从正式版本重新创建。', danger: true });
-    if (!ok) return;
-    await contentItemsApi.deleteDraft(workspace.selectedNode.contentItemId);
-    window.location.href = `/admin/notes/${workspace.selectedNode.contentItemId}/edit`;
-  };
 
   return (
     <>
@@ -193,7 +182,6 @@ const ContentAdmin = () => {
                 onEditDraft={() => {
                   if (editUrl) window.location.href = editUrl;
                 }}
-                onOverwriteDraft={handleOverwriteDraft}
                 onSelectVersion={workspace.previewVersion}
               />
             ) : (
@@ -248,7 +236,6 @@ function FormalSidePanel({
   publishedVersionId,
   activeVersionId,
   onEditDraft,
-  onOverwriteDraft,
   onSelectVersion,
 }: {
   toc: Array<{ level: number; text: string; index: number }>;
@@ -260,7 +247,6 @@ function FormalSidePanel({
   publishedVersionId: string | null;
   activeVersionId: string | null;
   onEditDraft: () => void;
-  onOverwriteDraft: () => Promise<void>;
   onSelectVersion: (versionId: string) => Promise<void>;
 }) {
   const tocPanelRef = useRef<HTMLDivElement>(null);
@@ -333,7 +319,6 @@ function FormalSidePanel({
             />
             <div className="flex gap-4 pt-2">
               <SideLink label="继续编辑 →" primary onClick={onEditDraft} />
-              <SideLink label="覆盖重建" danger onClick={() => void onOverwriteDraft()} />
             </div>
           </div>
         ) : (

@@ -67,20 +67,29 @@ export class AgentSessionRepository {
     );
   }
 
-  /** 更新 session 中某个 task 的字段（按 task id 匹配） */
+  /** 更新 session 中某个 task 的字段（按 task id 匹配）。返回是否命中(任务存在)。 */
   async updateTask(
     sessionKey: string,
     taskId: string,
     updates: Record<string, unknown>,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const setFields: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(updates)) {
       setFields[`tasks.$.${key}`] = value;
     }
-    await this.sessionModel.updateOne(
+    const res = await this.sessionModel.updateOne(
       { sessionKey, 'tasks.id': taskId },
       { $set: setFields },
     );
+    return res.matchedCount > 0;
+  }
+
+  /** 整体替换 session 的 tasks 数组(TodoWrite:模型每次给完整清单) */
+  async setTasks(
+    sessionKey: string,
+    tasks: Array<Record<string, unknown>>,
+  ): Promise<void> {
+    await this.sessionModel.updateOne({ sessionKey }, { $set: { tasks } });
   }
 
   /** 获取 session 的 tasks 列表 */

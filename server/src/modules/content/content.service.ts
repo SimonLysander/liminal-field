@@ -1,11 +1,12 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectModel } from 'nestjs-typegoose';
-import { ReturnModelType } from '@typegoose/typegoose';
+import { getModelToken } from 'nestjs-typegoose';
+import type { ReturnModelType } from '@typegoose/typegoose';
 import { randomUUID } from 'crypto';
 import { nanoid } from 'nanoid';
 import {
@@ -19,10 +20,11 @@ import { ContentGitService } from './content-git.service';
 import { ContentRepoService } from './content-repo.service';
 import { ContentRepository } from './content.repository';
 import { ContentSnapshotRepository } from './content-snapshot.repository';
+import type { ContentSnapshot } from './content-snapshot.entity';
 import { OssService } from '../oss/oss.service';
 import { NavigationNode } from '../navigation/navigation.entity';
 import { ChangeLogDto } from './dto/change-log.dto';
-import { ContentDetailDto } from './dto/content-detail.dto';
+import { ContentDetailDto, ContentVersionDto } from './dto/content-detail.dto';
 import { extractHeadings } from '../../common/extract-headings';
 import { ContentHistoryEntryDto } from './dto/content-history.dto';
 import { ContentListItemDto } from './dto/content-list-item.dto';
@@ -41,7 +43,7 @@ export class ContentService {
     private readonly contentGitService: ContentGitService,
     private readonly snapshotRepository: ContentSnapshotRepository,
     private readonly ossService: OssService,
-    @InjectModel(NavigationNode)
+    @Inject(getModelToken(NavigationNode.name))
     private readonly navigationModel: ReturnModelType<typeof NavigationNode>,
   ) {}
 
@@ -56,6 +58,16 @@ export class ContentService {
 
   private toChangeLogDto(changeLog: ContentChangeLog): ChangeLogDto {
     return ChangeLogDto.fromEntity(changeLog);
+  }
+
+  /** entity ContentVersion → DTO：commitHash 可能为空（异步回填中），summary 兜底空串 */
+  private toVersionDto(version: ContentVersion): ContentVersionDto {
+    return {
+      versionId: version.versionId,
+      commitHash: version.commitHash,
+      title: version.title,
+      summary: version.summary ?? '',
+    };
   }
 
   private buildVersionSnapshot(
@@ -111,10 +123,12 @@ export class ContentService {
     return {
       id: content.id,
       title,
-      summary,
+      summary: summary ?? '',
       status: normalizedStatus,
-      latestVersion,
-      publishedVersion,
+      latestVersion: this.toVersionDto(latestVersion),
+      publishedVersion: publishedVersion
+        ? this.toVersionDto(publishedVersion)
+        : null,
       // V2 Phase 3: 用 versionId 比较，commitHash 可能还在异步回填中，versionId 写入即可用
       hasUnpublishedChanges:
         !!publishedVersion &&
@@ -223,7 +237,11 @@ export class ContentService {
   private toDetailDto(
     content: ContentItem,
     source: { bodyMarkdown: string },
-    options?: { publicView?: boolean; snapshotTitle?: string; snapshotSummary?: string },
+    options?: {
+      publicView?: boolean;
+      snapshotTitle?: string;
+      snapshotSummary?: string;
+    },
   ): ContentDetailDto {
     const latestVersion = this.resolveLatestVersion(content);
     const publishedVersion = this.resolvePublishedVersion(content);
@@ -247,10 +265,12 @@ export class ContentService {
     return {
       id: content.id,
       title,
-      summary,
+      summary: summary ?? '',
       status: normalizedStatus,
-      latestVersion,
-      publishedVersion,
+      latestVersion: this.toVersionDto(latestVersion),
+      publishedVersion: publishedVersion
+        ? this.toVersionDto(publishedVersion)
+        : null,
       // V2 Phase 3: 用 versionId 比较，commitHash 可能还在异步回填中，versionId 写入即可用
       hasUnpublishedChanges:
         !!publishedVersion &&
@@ -581,7 +601,10 @@ export class ContentService {
           bodyMarkdown,
         );
       } else {
-        await this.contentRepoService.writeMainMarkdown(contentId, bodyMarkdown);
+        await this.contentRepoService.writeMainMarkdown(
+          contentId,
+          bodyMarkdown,
+        );
 
         // README 需要 content 信息，从 MongoDB 重新读取，确保拿到最新数据
         const content = await this.contentRepository.findById(contentId);
@@ -591,7 +614,7 @@ export class ContentService {
           // toObject() 把 Mongoose document 转为普通 JS 对象，
           // 否则 _id / createdAt 等字段在 spread 时均为 undefined
           const plainContent = (
-            content as { toObject(): ContentItem }
+            content as unknown as { toObject(): ContentItem }
           ).toObject();
           await this.contentRepoService.writeReadme(
             {
@@ -692,7 +715,9 @@ export class ContentService {
     const publishedVersion = this.buildVersionSnapshot(
       snapshot.commitHash ?? '',
       isPublishingLatest ? latestVersion.title : snapshot.title,
-      isPublishingLatest ? (latestVersion.summary ?? '') : (snapshot.summary ?? ''),
+      isPublishingLatest
+        ? (latestVersion.summary ?? '')
+        : (snapshot.summary ?? ''),
       targetVersionId,
     );
 
@@ -822,7 +847,10 @@ export class ContentService {
       return this.toDetailDto(
         content,
         { bodyMarkdown: snapshot.bodyMarkdown },
-        { snapshotTitle: snapshot.title, snapshotSummary: snapshot.summary ?? '' },
+        {
+          snapshotTitle: snapshot.title,
+          snapshotSummary: snapshot.summary ?? '',
+        },
       );
     }
 
@@ -895,9 +923,7 @@ export class ContentService {
    * 两阶段搜索核心：标题/摘要 $regex + 正文全文 aggregation，合并去重。
    * searchContents 和 searchWithScope 共用此逻辑，避免重复。
    */
-  private async twoPhaseSearch(
-    query: ContentQueryDto,
-  ): Promise<ContentItem[]> {
+  private async twoPhaseSearch(query: ContentQueryDto): Promise<ContentItem[]> {
     const keyword = query.q?.trim();
     const pageSize = query.pageSize ?? 20;
 
@@ -944,7 +970,9 @@ export class ContentService {
   async searchContents(query: ContentQueryDto): Promise<ContentListItemDto[]> {
     const publicView = query.visibility !== ContentVisibility.all;
     const matches = await this.twoPhaseSearch(query);
-    return matches.map((content) => this.toListItemDto(content, { publicView }));
+    return matches.map((content) =>
+      this.toListItemDto(content, { publicView }),
+    );
   }
 
   /**
@@ -957,11 +985,18 @@ export class ContentService {
    */
   async searchWithScope(
     query: ContentQueryDto,
+    opts?: { withSnippet?: boolean },
   ): Promise<SearchResultDto[]> {
     const publicView = query.visibility !== ContentVisibility.all;
     const keyword = query.q?.trim() ?? '';
     const matches = await this.twoPhaseSearch(query);
-    return this.enrichWithScopeAndSnippet(matches, keyword, query.scope, publicView);
+    return this.enrichWithScopeAndSnippet(
+      matches,
+      keyword,
+      query.scope,
+      publicView,
+      opts?.withSnippet !== false,
+    );
   }
 
   /**
@@ -972,6 +1007,7 @@ export class ContentService {
     keyword: string,
     scopeFilter: string | undefined,
     publicView: boolean,
+    withSnippet = true,
   ): Promise<SearchResultDto[]> {
     if (items.length === 0) return [];
 
@@ -998,37 +1034,39 @@ export class ContentService {
     // 按 scope 过滤
     let filtered = items;
     if (scopeFilter) {
-      filtered = items.filter(
-        (c) => scopeMap.get(c.id) === scopeFilter,
-      );
+      filtered = items.filter((c) => scopeMap.get(c.id) === scopeFilter);
     }
 
-    // 批量获取最新 snapshot 用于 snippet 提取
-    const snapshots = await Promise.all(
-      filtered.map((c) => {
-        const vid = publicView
-          ? (c.publishedVersion?.versionId ?? c.latestVersion.versionId)
-          : c.latestVersion.versionId;
-        return vid
-          ? this.snapshotRepository.findByVersionId(vid)
-          : Promise.resolve(null);
-      }),
-    );
+    // 批量获取最新 snapshot 用于 snippet 提取(枚举/list 不需要片段时跳过,省 N 次查询)
+    const snapshots = withSnippet
+      ? await Promise.all(
+          filtered.map((c) => {
+            const vid = publicView
+              ? (c.publishedVersion?.versionId ?? c.latestVersion?.versionId)
+              : c.latestVersion?.versionId;
+            return vid
+              ? this.snapshotRepository.findByVersionId(vid)
+              : Promise.resolve(null);
+          }),
+        )
+      : [];
 
     return filtered.map((item, i) => {
       const title = publicView
-        ? (item.publishedVersion?.title ?? item.latestVersion.title)
-        : item.latestVersion.title;
-      const body = snapshots[i]?.bodyMarkdown ?? '';
+        ? (item.publishedVersion?.title ?? item.latestVersion?.title ?? '')
+        : (item.latestVersion?.title ?? '');
+      const body = withSnippet ? (snapshots[i]?.bodyMarkdown ?? '') : '';
 
       return {
         contentItemId: item.id,
         title,
         scope: scopeMap.get(item.id) ?? 'notes',
         path: pathMap.get(item.id) ?? '',
-        snippet: keyword
-          ? this.extractSnippet(body, keyword)
-          : this.extractLeadSnippet(body),
+        snippet: !withSnippet
+          ? ''
+          : keyword
+            ? this.extractSnippet(body, keyword)
+            : this.extractLeadSnippet(body),
         updatedAt: item.updatedAt.toISOString(),
       };
     });
@@ -1046,7 +1084,7 @@ export class ContentService {
 
     // 收集所有需要查询的节点 ID（去重），逐级向上追溯
     const allIds = new Set(parentIdMap.values());
-    const nodeNameMap = new Map<string, string>();   // nodeId → name
+    const nodeNameMap = new Map<string, string>(); // nodeId → name
     const nodeParentMap = new Map<string, string>(); // nodeId → parentId
 
     // 最多查 3 轮（3 级文件夹深度）
@@ -1125,17 +1163,17 @@ export class ContentService {
   /** 清理 Markdown 语法，返回纯文本（只移除成对标记，保留内容中的 * _ 等字符） */
   private stripMarkdown(md: string): string {
     return md
-      .replace(/^---[\s\S]*?---\n*/m, '')          // frontmatter
-      .replace(/^#{1,6}\s+/gm, '')                  // 标题标记
-      .replace(/!\[.*?\]\(.*?\)/g, '')               // 图片
-      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')       // 链接保留文字
-      .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')       // **bold** / *italic*
-      .replace(/_{1,3}([^_]+)_{1,3}/g, '$1')          // __bold__ / _italic_
-      .replace(/~~([^~]+)~~/g, '$1')                  // ~~strikethrough~~
-      .replace(/`([^`]+)`/g, '$1')                    // `inline code`
-      .replace(/^>\s?/gm, '')                         // blockquote 行首 >
-      .replace(/\n{2,}/g, ' ')                        // 多换行变空格
-      .replace(/\n/g, ' ')                            // 单换行变空格
+      .replace(/^---[\s\S]*?---\n*/m, '') // frontmatter
+      .replace(/^#{1,6}\s+/gm, '') // 标题标记
+      .replace(/!\[.*?\]\(.*?\)/g, '') // 图片
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // 链接保留文字
+      .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1') // **bold** / *italic*
+      .replace(/_{1,3}([^_]+)_{1,3}/g, '$1') // __bold__ / _italic_
+      .replace(/~~([^~]+)~~/g, '$1') // ~~strikethrough~~
+      .replace(/`([^`]+)`/g, '$1') // `inline code`
+      .replace(/^>\s?/gm, '') // blockquote 行首 >
+      .replace(/\n{2,}/g, ' ') // 多换行变空格
+      .replace(/\n/g, ' ') // 单换行变空格
       .trim();
   }
 
@@ -1210,12 +1248,17 @@ export class ContentService {
     fileName?: string | null,
   ): Promise<ContentSnapshot | null> {
     if (fileName) {
-      return this.snapshotRepository.findLatestByFileName(contentItemId, fileName);
+      return this.snapshotRepository.findLatestByFileName(
+        contentItemId,
+        fileName,
+      );
     }
     // fileName=null: 取 main.md 的最新 snapshot（即 latestVersion 指向的）
     const item = await this.contentRepository.findById(contentItemId);
     if (!item?.latestVersion?.versionId) return null;
-    return this.snapshotRepository.findByVersionId(item.latestVersion.versionId);
+    return this.snapshotRepository.findByVersionId(
+      item.latestVersion.versionId,
+    );
   }
 
   /**

@@ -86,7 +86,7 @@ function Manifesto() {
     <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 pt-6 pb-2 max-[520px]:px-4">
       <p
         className="text-center text-sm leading-relaxed"
-        style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)', minHeight: '1.5em' }}
+        style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-reading)', minHeight: '1.5em' }}
       >
         {MANIFESTO.slice(0, displayLen)}
         {/* 光标：打字进行中闪烁，完成后淡出 */}

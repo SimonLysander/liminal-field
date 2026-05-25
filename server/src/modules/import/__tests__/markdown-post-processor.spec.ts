@@ -166,9 +166,13 @@ describe('MarkdownPostProcessor', () => {
     });
 
     it('does not convert equality operators inside fenced code blocks', () => {
-      const input = ['```c', 'if (a == b) {', '  return true;', '}', '```'].join(
-        '\n',
-      );
+      const input = [
+        '```c',
+        'if (a == b) {',
+        '  return true;',
+        '}',
+        '```',
+      ].join('\n');
       const result = processMarkdown(input);
       expect(result).toContain('if (a == b)');
       expect(result).not.toContain('<mark>');

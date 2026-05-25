@@ -110,7 +110,7 @@ describe('NavigationNodeService', () => {
     const child = createNode({
       name: 'React Guide',
       nodeType: NavigationNodeType.content,
-      parentId: parent._id,
+      parentId: parent._id.toString(),
     });
     navigationRepository.findById.mockResolvedValue(parent as never);
     navigationRepository.findAllDescendants.mockResolvedValue([child] as never);

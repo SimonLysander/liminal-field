@@ -212,7 +212,12 @@ describe('Navigation (e2e)', () => {
       await supertest(ctx.app.getHttpServer())
         .post('/api/v1/structure-nodes')
         .set('Cookie', cookie)
-        .send({ name: '已有子节点', type: 'FOLDER', scope: 'notes', parentId: targetRes.body.data.id })
+        .send({
+          name: '已有子节点',
+          type: 'FOLDER',
+          scope: 'notes',
+          parentId: targetRes.body.data.id,
+        })
         .expect(201);
 
       // 移动源文件夹到目标文件夹下
@@ -257,7 +262,12 @@ describe('Navigation (e2e)', () => {
       const childFolder = await supertest(ctx.app.getHttpServer())
         .post('/api/v1/structure-nodes')
         .set('Cookie', cookie)
-        .send({ name: '循环子', type: 'FOLDER', scope: 'notes', parentId: parentFolder.body.data.id })
+        .send({
+          name: '循环子',
+          type: 'FOLDER',
+          scope: 'notes',
+          parentId: parentFolder.body.data.id,
+        })
         .expect(201);
 
       // 父移到子下面 → 循环引用
@@ -279,7 +289,12 @@ describe('Navigation (e2e)', () => {
       const child = await supertest(ctx.app.getHttpServer())
         .post('/api/v1/structure-nodes')
         .set('Cookie', cookie)
-        .send({ name: '移到根目录', type: 'FOLDER', scope: 'notes', parentId: folder.body.data.id })
+        .send({
+          name: '移到根目录',
+          type: 'FOLDER',
+          scope: 'notes',
+          parentId: folder.body.data.id,
+        })
         .expect(201);
 
       // 移动到根目录

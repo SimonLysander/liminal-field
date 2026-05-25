@@ -30,10 +30,7 @@ export class CompactionService {
       `Session "${sessionKey}" 达到 ${session.totalRounds} 轮，触发 compaction`,
     );
 
-    const { toCompact, toKeep } = this.splitMessages(
-      session.messages,
-      KEEP_ROUNDS,
-    );
+    const { toCompact, toKeep } = splitMessages(session.messages, KEEP_ROUNDS);
     if (toCompact.length === 0) return;
 
     try {
@@ -59,31 +56,36 @@ export class CompactionService {
       this.logger.error('Compaction 失败', err);
     }
   }
+}
 
-  /** 按轮数切分消息：保留最后 keepRounds 轮，其余归入 toCompact */
-  private splitMessages(
-    messages: Record<string, unknown>[],
-    keepRounds: number,
-  ): {
-    toCompact: Record<string, unknown>[];
-    toKeep: Record<string, unknown>[];
-  } {
-    let assistantCount = 0;
-    let splitIndex = messages.length;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'assistant') {
-        assistantCount++;
-        if (assistantCount === keepRounds) {
-          let j = i - 1;
-          while (j >= 0 && messages[j].role !== 'user') j--;
-          splitIndex = j >= 0 ? j : i;
-          break;
-        }
+/**
+ * 按轮数切分消息：保留最后 keepRounds 轮，其余归入 toCompact。
+ * 纯函数（零依赖 this），独立导出便于单测——压缩切错位置会丢对话，是关键路径。
+ */
+export function splitMessages(
+  messages: Record<string, unknown>[],
+  keepRounds: number,
+): {
+  toCompact: Record<string, unknown>[];
+  toKeep: Record<string, unknown>[];
+} {
+  let assistantCount = 0;
+  // 默认全保留(splitIndex=0)：消息不足 keepRounds 轮时不压缩。
+  // 生产触发 compaction 时 totalRounds>=16>keepRounds，循环必能找到真正的分割点。
+  let splitIndex = 0;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'assistant') {
+      assistantCount++;
+      if (assistantCount === keepRounds) {
+        let j = i - 1;
+        while (j >= 0 && messages[j].role !== 'user') j--;
+        splitIndex = j >= 0 ? j : i;
+        break;
       }
     }
-    return {
-      toCompact: messages.slice(0, splitIndex),
-      toKeep: messages.slice(splitIndex),
-    };
   }
+  return {
+    toCompact: messages.slice(0, splitIndex),
+    toKeep: messages.slice(splitIndex),
+  };
 }

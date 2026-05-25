@@ -1,12 +1,12 @@
-import { Injectable } from '@nestjs/common';
-import { InjectModel } from 'nestjs-typegoose';
-import { ReturnModelType } from '@typegoose/typegoose';
+import { Inject, Injectable } from '@nestjs/common';
+import { getModelToken } from 'nestjs-typegoose';
+import type { ReturnModelType } from '@typegoose/typegoose';
 import { ImportSession, ImportAssetRef } from './import-session.entity';
 
 @Injectable()
 export class ImportSessionRepository {
   constructor(
-    @InjectModel(ImportSession)
+    @Inject(getModelToken(ImportSession.name))
     private readonly model: ReturnModelType<typeof ImportSession>,
   ) {}
 

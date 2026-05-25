@@ -121,7 +121,7 @@ export class NoteViewService {
       id: draft._id,
       contentItemId: draft.contentItemId,
       title: draft.title,
-      summary: draft.summary,
+      summary: draft.summary ?? '',
       bodyMarkdown: draft.bodyMarkdown,
       changeNote: draft.changeNote,
       savedAt: draft.savedAt.toISOString(),

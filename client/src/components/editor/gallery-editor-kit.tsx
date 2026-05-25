@@ -45,6 +45,7 @@ import { BlockquoteElement } from '@/components/ui/blockquote-node';
 import { H1Element, H2Element, H3Element } from '@/components/ui/heading-node';
 import { HrElement } from '@/components/ui/hr-node';
 import { ParagraphElement } from '@/components/ui/paragraph-node';
+import { GallerySlashKit } from './plugins/slash-kit';
 
 export const GalleryEditorKit = [
   /* 基础块：段落 + 标题 H1-H3 + 引用 + 分割线（与 Notes 共享渲染组件，字号一致） */
@@ -123,6 +124,9 @@ export const GalleryEditorKit = [
     ],
     inject: { targetPlugins: [KEYS.p] },
   }),
+
+  /* "/" 命令菜单（精简：只画廊支持的块——正文/标题/列表/引用/分割线） */
+  ...GallerySlashKit,
 
   /* Markdown 序列化 */
   MarkdownPlugin.configure({

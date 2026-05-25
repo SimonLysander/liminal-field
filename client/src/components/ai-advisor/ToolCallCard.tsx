@@ -1,152 +1,176 @@
 /**
- * ToolCallCard — 两行式工具调用展示。
+ * ToolCallCard — 一行式工具调用展示:图标 + 工具名 · 「做了什么 + 结果统计」。
  *
- * 第一行：· ToolName(关键信息)
- * 第二行：  结果摘要
- *
- * sub_agent 特殊处理：执行中通过 SSE 实时接收步骤，
- * Claude Code 风格嵌套展示每步的工具调用。
+ * 「碰了一组东西」的工具(search 命中 / list 构成)在下面挂一段结果反馈(NestedList,⎿ 对齐、截断)。
+ * sub_agent(Delegate)展开内部每一步:每步也是「工具 + 该步反馈统计」一行(执行中走 SSE 实时追加)。
  */
 
 import { useEffect, useRef, useState } from 'react';
+import {
+  Search,
+  List,
+  BookOpen,
+  FileText,
+  Bookmark,
+  BookmarkMinus,
+  Workflow,
+  Wrench,
+  type LucideIcon,
+} from 'lucide-react';
 
 interface ToolCallCardProps {
   toolName: string;
   state: 'call' | 'result' | 'error';
-  args: unknown;
   result?: string;
-  /** sub_agent 实时进度需要 sessionKey 连接 SSE */
+  /** 工具入参 —— sub_agent 用它取委派任务(执行中就能显示参数,不光秃) */
+  args?: unknown;
+  /** sub_agent 执行中实时步骤需要 sessionKey 连接 SSE */
   sessionKey?: string;
 }
 
+// 工具显示名沿用英文(与后端函数名一致,Claude Code 风)
 const DISPLAY_NAMES: Record<string, string> = {
   search_knowledge_base: 'Search',
+  list_knowledge_base: 'List',
   read_document_content: 'Read',
-  get_current_draft: 'Read Draft',
+  get_current_draft: 'Read Current Draft',
   remember: 'Write Memory',
   forget: 'Delete Memory',
   sub_agent: 'Delegate',
-  create_task: 'New Task',
-  update_task: 'Update Task',
 };
 
-/** sub_agent 步骤的显示名称映射 */
-const STEP_DISPLAY: Record<string, string> = {
-  search_knowledge_base: 'Search',
-  read_document_content: 'Read',
-  get_current_draft: 'Read Draft',
+/** 每个工具的 lucide 图标(纸墨批注的辨识符) */
+const TOOL_ICON: Record<string, LucideIcon> = {
+  search_knowledge_base: Search,
+  list_knowledge_base: List,
+  read_document_content: BookOpen,
+  get_current_draft: FileText,
+  remember: Bookmark,
+  forget: BookmarkMinus,
+  sub_agent: Workflow,
 };
-
-interface StepTool {
-  name: string;
-  args: string;
-}
 
 // ── 工具函数 ──────────────────────────────────────────────
 
-function extractInfo(args: unknown, result: string | undefined): string {
-  const a =
-    args != null && typeof args === 'object'
-      ? (args as Record<string, unknown>)
-      : {};
 
-  if (result) {
-    try {
-      const p = JSON.parse(result) as Record<string, unknown>;
-      if (typeof p.title === 'string') return truncate(p.title, 20);
-    } catch { /* not JSON */ }
-  }
-
-  for (const key of ['query', 'title', 'content', 'task', 'target']) {
-    if (typeof a[key] === 'string') return truncate(a[key] as string, 20);
-  }
-
-  return '';
+/** 解析统一契约 ToolResult(见 server tool-result.ts);旧格式回退到首行。 */
+interface ParsedResult {
+  summary: string;
+  status?: string;
+  hasMore?: boolean;
+  /** 下面那点"结果反馈"(命中篇目/库内条目等),NestedList 渲染 */
+  list?: string[];
 }
-
-function extractSummary(result: string): string {
+function parseToolResult(result: string): ParsedResult {
   try {
     const p = JSON.parse(result) as Record<string, unknown>;
-    if (typeof p.conclusion === 'string')
-      return truncate(p.conclusion.split('\n')[0], 50);
-    const parts: string[] = [];
-    if (typeof p.wordCount === 'number')
-      parts.push(`${(p.wordCount as number).toLocaleString()}字`);
-    if (typeof p.paragraphs === 'number') parts.push(`${p.paragraphs}段`);
-    if (Array.isArray(p.outline) && p.outline.length > 0)
-      parts.push(`${p.outline.length} 章节`);
-    if (parts.length > 0) return parts.join(' · ');
-  } catch { /* not JSON */ }
-
-  const countMatch = result.match(/共 (\d+) 条结果/);
-  if (countMatch) {
-    const titles = result
-      .split('\n')
-      .filter((l) => l.startsWith('['))
-      .map((l) => l.replace(/^\[\w+\]\s*/, '').replace(/\s*\(.*$/, ''))
-      .slice(0, 3);
-    const suffix = parseInt(countMatch[1]) > 3 ? '...' : '';
-    return `${countMatch[1]} 条结果: ${titles.join(', ')}${suffix}`;
+    // 新契约:{ summary, detail, meta }
+    if (typeof p.summary === 'string') {
+      const meta = (p.meta ?? {}) as {
+        status?: string;
+        hasMore?: boolean;
+        list?: string[];
+      };
+      return {
+        summary: p.summary,
+        status: meta.status,
+        hasMore: meta.hasMore,
+        list: Array.isArray(meta.list) ? meta.list : undefined,
+      };
+    }
+    // 旧 read 画像 { title, wordCount, outline }
+    if (typeof p.title === 'string') {
+      const bits = [p.title as string];
+      if (typeof p.wordCount === 'number')
+        bits.push(`${(p.wordCount as number).toLocaleString()} 字`);
+      if (Array.isArray(p.outline) && p.outline.length > 0)
+        bits.push(`${p.outline.length} 章节`);
+      return { summary: bits.join(' · ') };
+    }
+    // 旧 sub_agent { conclusion, steps, stats } —— 不 dump 结论,从 stats 重建状态
+    if (typeof p.conclusion === 'string') {
+      const stats = p.stats as { stepsUsed?: number } | undefined;
+      return { summary: stats?.stepsUsed ? `完成 · ${stats.stepsUsed} 步` : '完成' };
+    }
+  } catch {
+    /* 非 JSON,按纯文本处理 */
   }
 
-  if (/^(已记住|已忘记|已创建|已更新)/.test(result))
-    return truncate(result, 40);
-  if (result.includes('失败') || result.includes('错误') || result.includes('Error'))
-    return truncate(result, 40);
-
-  return truncate(result.split('\n')[0], 40);
+  // 旧纯文本:首行,去掉泄漏的方括号
+  return {
+    summary: result
+      .split('\n')[0]
+      .replace(/\s*\[[^\]]+\]/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim(),
+  };
 }
 
-function truncate(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max) + '…' : s;
+// ── sub_agent 步骤 ────────────────────────────────────────
+
+/** 子 agent 的一步:工具名 + 该步的反馈统计(= 该工具结果的 summary) */
+interface StepTool {
+  name: string;
+  summary: string;
 }
 
-/** 从完成后的 JSON 结果中解析步骤 */
+/** 从结果里解析子 agent 步骤(契约在 meta.steps,每个 step 含多次 tool 调用)。 */
 function parseSubAgentSteps(result: string): StepTool[] | null {
   try {
     const p = JSON.parse(result) as {
-      steps?: Array<{ tools: StepTool[] }>;
+      meta?: { steps?: Array<{ tools: StepTool[] }> };
     };
-    if (!p.steps?.length) return null;
-    return p.steps.flatMap((s) => s.tools);
+    const steps = p.meta?.steps;
+    if (!steps?.length) return null;
+    return steps.flatMap((s) => s.tools);
   } catch {
     return null;
   }
 }
 
-// ── 嵌套步骤列表 ──────────────────────────────────────────
+// ── 结果反馈列表 ──────────────────────────────────────────
 
-function StepList({ steps }: { steps: StepTool[] }) {
-  if (steps.length === 0) return null;
-  // 去重：typed 和 static 可能重复同一个调用
-  const seen = new Set<string>();
-  const unique = steps.filter((s) => {
-    const key = `${s.name}:${s.args}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-  const visible = unique.slice(0, 8);
-  const remaining = unique.length - visible.length;
-
+/**
+ * NestedList — "下面那点结果反馈"的统一渲染:首行 ⎿ 连接符 + 固定宽前缀,所有行文字对齐;
+ * 最多 5 行,超出显示"还有 N 个"。search 命中 / list 构成 / sub_agent 步骤共用。
+ */
+function NestedList({ items }: { items: string[] }) {
+  if (items.length === 0) return null;
+  const visible = items.slice(0, 5);
+  const remaining = items.length - visible.length;
   return (
-    <div className="mt-0.5 pl-4" style={{ color: 'var(--ink-ghost)' }}>
-      {visible.map((s, i) => (
-        <div key={i} className="truncate">
-          <span className="mr-1">{i === 0 ? '⎿' : ' '}</span>
-          <span style={{ color: 'var(--ink-faded)' }}>
-            {STEP_DISPLAY[s.name] ?? s.name}
+    <div className="mt-0.5 pl-5">
+      {visible.map((it, i) => (
+        <div key={i} className="flex items-baseline">
+          <span className="w-4 shrink-0" style={{ color: 'var(--ink-ghost)' }}>
+            {i === 0 ? '⎿' : ''}
           </span>
-          {s.args && (
-            <span style={{ color: 'var(--ink-ghost)' }}>({s.args})</span>
-          )}
+          <span className="truncate" style={{ color: 'var(--ink-faded)' }}>
+            {it}
+          </span>
         </div>
       ))}
       {remaining > 0 && (
-        <div className="pl-3">+{remaining} more</div>
+        <div className="flex items-baseline" style={{ color: 'var(--ink-ghost)' }}>
+          <span className="w-4 shrink-0" />
+          <span>还有 {remaining} 个</span>
+        </div>
       )}
     </div>
   );
+}
+
+/** 子 agent 步骤列表:每步 = 工具 + 该步反馈统计,一行;交给 NestedList(⎿ 对齐、截断)。 */
+function StepList({ steps }: { steps: StepTool[] }) {
+  if (steps.length === 0) return null;
+  const seen = new Set<string>();
+  const items = steps
+    .map(
+      (s) =>
+        `${DISPLAY_NAMES[s.name] ?? s.name}${s.summary ? ` · ${s.summary}` : ''}`,
+    )
+    .filter((it) => (seen.has(it) ? false : (seen.add(it), true)));
+  return <NestedList items={items} />;
 }
 
 // ── 主组件 ────────────────────────────────────────────────
@@ -154,19 +178,26 @@ function StepList({ steps }: { steps: StepTool[] }) {
 export function ToolCallCard({
   toolName,
   state,
-  args,
   result,
+  args,
   sessionKey,
 }: ToolCallCardProps) {
   const name = DISPLAY_NAMES[toolName] ?? toolName;
-  const info = extractInfo(args, result);
+  // sub_agent 的"参数"= 委派任务的短标题(模型给的 title;没有就截断 task),执行中也显示,不光秃
+  const subLabel =
+    toolName === 'sub_agent'
+      ? (() => {
+          const a = args as { title?: string; task?: string } | undefined;
+          const t = a?.title || a?.task || '';
+          return t.length > 22 ? `${t.slice(0, 22)}…` : t;
+        })()
+      : '';
 
-  // ── sub_agent 实时进度：SSE 连接 ──
+  // ── sub_agent 执行中:SSE 实时接收每一步(断了/刷新则回退到结果里的 meta.steps) ──
   const [liveSteps, setLiveSteps] = useState<StepTool[]>([]);
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    // 仅 sub_agent 执行中 + 有 sessionKey 时连接 SSE
     if (toolName !== 'sub_agent' || state !== 'call' || !sessionKey) return;
 
     const es = new EventSource(
@@ -177,7 +208,7 @@ export function ToolCallCard({
     es.onmessage = (event) => {
       try {
         let raw = JSON.parse(event.data);
-        // NestJS @Sse() + Fastify 可能双层包装：{ data: "{...}" }
+        // NestJS @Sse() + Fastify 可能双层包装:{ data: "{...}" }
         if (typeof raw === 'object' && typeof raw.data === 'string') {
           raw = JSON.parse(raw.data);
         }
@@ -187,12 +218,11 @@ export function ToolCallCard({
         } else if (data.type === 'done') {
           es.close();
         }
-      } catch { /* ignore parse errors */ }
+      } catch {
+        /* 忽略解析错误 */
+      }
     };
-
-    es.onerror = () => {
-      es.close();
-    };
+    es.onerror = () => es.close();
 
     return () => {
       es.close();
@@ -200,33 +230,49 @@ export function ToolCallCard({
     };
   }, [toolName, state, sessionKey]);
 
-  // 完成后从 result 解析步骤（SSE 断了也能回退到这个）
+  // 完成后从 result 的 meta.steps 取完整步骤;执行中用 SSE 实时步骤
   const finalSteps =
     state === 'result' && result ? parseSubAgentSteps(result) : null;
-
-  // 优先用完成后的完整步骤，执行中用实时步骤
   const displaySteps = finalSteps ?? (liveSteps.length > 0 ? liveSteps : null);
 
-  // 颜色：灰=只读常规，绿=写入/变更成功，红=失败
-  const isWriteOp = ['remember', 'forget', 'create_task', 'update_task'].includes(toolName);
+  // 状态点配色(宪法 token,不用 iOS 系统色):
+  // 进行中=accent 脉动(§3 进行中=accent 脉动点)· 失败=danger · 写操作成功=success · 只读完成=幽墨
+  const isWriteOp = ['remember', 'forget'].includes(toolName);
 
-  let dotColor: string;
+  let iconColor: string;
   if (state === 'error') {
-    dotColor = 'var(--mark-red, #ff3b30)';
-  } else if (state === 'result' && isWriteOp) {
-    dotColor = 'var(--mark-green, #30d158)';
+    iconColor = 'var(--danger)';
+  } else if (state === 'call') {
+    iconColor = 'var(--accent)';
+  } else if (isWriteOp) {
+    iconColor = 'var(--success)';
   } else {
-    dotColor = 'var(--ink-ghost)';
+    iconColor = 'var(--ink-ghost)';
   }
+  const Icon = TOOL_ICON[toolName] ?? Wrench;
+  // 只渲染契约里的 summary(后端算好);detail(正文/结论)不上页面
+  const parsed = state !== 'call' && result ? parseToolResult(result) : null;
 
   return (
-    <div className="my-0.5 text-sm" style={{ lineHeight: 1.6 }}>
-      {/* 第一行：状态点 + 工具名 + 关键信息 */}
-      <div className="flex items-baseline gap-1.5">
-        <span
-          className="mt-px inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+    // 批注式左边线 + 紧凑一行:图标 + 工具名(参数) · 结果摘要,省竖向篇幅(见 §7.1)
+    <div
+      className="my-0.5 border-l-2 pl-3 text-sm"
+      style={{
+        borderColor: 'var(--separator)',
+        lineHeight: 1.5,
+        // 工具卡与答案同处一个阅读面,统一用阅读体(霞鹜文楷),不混系统 sans
+        fontFamily: 'var(--font-reading)',
+        // 云雾凝聚:工具卡作为离散单元浮现时,模糊→清晰(只一次,见 index.css)
+        animation: 'tool-coalesce 0.4s ease-out',
+      }}
+    >
+      <div className="flex items-start gap-1.5">
+        <Icon
+          size={13}
+          strokeWidth={2}
+          className="mt-0.5 shrink-0"
           style={{
-            background: dotColor,
+            color: iconColor,
             ...(state === 'call'
               ? { animation: 'pulse 1.5s ease-in-out infinite' }
               : {}),
@@ -234,22 +280,30 @@ export function ToolCallCard({
         />
         <span style={{ color: 'var(--ink-faded)' }}>
           {name}
-          {info && (
-            <span style={{ color: 'var(--ink-ghost)' }}>({info})</span>
+          {/* sub_agent 的参数(委派任务标题)紧跟工具名,执行中也显示;其余工具参数在 summary 里 */}
+          {subLabel && <span>{' '}{subLabel}</span>}
+          {/* summary = 结果统计;工具名/参数后接,带内部 "·" 分隔,按 status 上色 */}
+          {parsed && (
+            <span
+              style={{
+                color: parsed.status === 'error' ? 'var(--danger)' : 'var(--ink-ghost)',
+              }}
+            >
+              {subLabel ? ' · ' : ' '}
+              {parsed.summary}
+            </span>
           )}
         </span>
       </div>
 
-      {/* sub_agent 嵌套步骤（实时 + 完成后） */}
+      {/* sub_agent 内部步骤:每步 = 工具 + 该步反馈统计(执行中实时,完成后从 meta.steps) */}
       {toolName === 'sub_agent' && displaySteps && (
         <StepList steps={displaySteps} />
       )}
 
-      {/* 结果摘要 */}
-      {state !== 'call' && result && (
-        <div className="pl-4" style={{ color: 'var(--ink-ghost)' }}>
-          {extractSummary(result)}
-        </div>
+      {/* "结果反馈"(search 命中篇目 / list 类型构成),由 meta.list 给 */}
+      {parsed?.list && parsed.list.length > 0 && (
+        <NestedList items={parsed.list} />
       )}
     </div>
   );

@@ -8,7 +8,7 @@
  */
 
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, MoreHorizontal } from 'lucide-react';
+import { Plus, Trash2, MoreHorizontal } from 'lucide-react';
 import { ActionButton } from '@/components/ui/action-button';
 import {
   DropdownMenu,
@@ -27,13 +27,11 @@ function EntryListRow({
   index,
   entry,
   onClick,
-  onEdit,
   onDelete,
 }: {
   index: number;
   entry: AnthologyAdminEntryMeta;
   onClick: () => void;
-  onEdit: () => void;
   onDelete: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -97,16 +95,6 @@ function EntryListRow({
       >
         <button
           className="flex h-6 w-6 items-center justify-center rounded-md transition-colors duration-150"
-          style={{ color: 'var(--ink-faded)' }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--paper)'; e.currentTarget.style.color = 'var(--ink)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-faded)'; }}
-          onClick={onEdit}
-          title="编辑"
-        >
-          <Pencil size={12} strokeWidth={1.5} />
-        </button>
-        <button
-          className="flex h-6 w-6 items-center justify-center rounded-md transition-colors duration-150"
           style={{ color: 'var(--ink-ghost)' }}
           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--paper)'; e.currentTarget.style.color = 'var(--mark-red)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-ghost)'; }}
@@ -126,7 +114,6 @@ interface EntryListPanelProps {
   detail: AnthologyAdminDetail;
   onEntryClick: (entryKey: string) => void;
   onAddEntry: (title: string) => Promise<void>;
-  onEditEntry: (entryKey: string) => void;
   onDeleteEntry: (entryKey: string, entryTitle: string) => Promise<void>;
   /** 标题行：刷新文集详情 */
   onReload: () => void;
@@ -144,7 +131,6 @@ export function EntryListPanel({
   detail,
   onEntryClick,
   onAddEntry,
-  onEditEntry,
   onDeleteEntry,
   onReload,
   onPublish,
@@ -253,7 +239,6 @@ export function EntryListPanel({
                   index={i + 1}
                   entry={entry}
                   onClick={() => onEntryClick(entry.key)}
-                  onEdit={() => onEditEntry(entry.key)}
                   onDelete={() => void onDeleteEntry(entry.key, entry.title)}
                 />
               ))}

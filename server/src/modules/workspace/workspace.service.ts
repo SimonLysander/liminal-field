@@ -172,7 +172,7 @@ export class WorkspaceService {
     return {
       id: contentItemId,
       title: version.title,
-      summary: version.summary,
+      summary: version.summary ?? '',
       // 修正：与 WorkspaceItemDto 声明的 'committed' | 'published' 保持一致
       status: content.publishedVersion ? 'published' : 'committed',
       bodyMarkdown,
@@ -372,7 +372,7 @@ export class WorkspaceService {
     return {
       id: contentItemId,
       title: version.title,
-      summary: version.summary,
+      summary: version.summary ?? '',
       // 修正：与 WorkspaceItemDto 声明的 'committed' | 'published' 保持一致
       status: content.publishedVersion ? 'published' : 'committed',
       createdAt: content.createdAt.toISOString(),

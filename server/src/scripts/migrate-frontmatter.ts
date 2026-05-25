@@ -226,9 +226,13 @@ async function main(): Promise<void> {
   // ─── 统计输出 ───
   console.log('\n=== 迁移完成 ===');
   console.log(`Notes snapshots 迁移: ${notesMigratedCount} 个`);
-  console.log(`Notes snapshots 跳过（已有 frontmatter）: ${notesSkippedCount} 个`);
+  console.log(
+    `Notes snapshots 跳过（已有 frontmatter）: ${notesSkippedCount} 个`,
+  );
   console.log(`Gallery snapshots 迁移: ${galleryMigratedCount} 个`);
-  console.log(`Gallery snapshots 跳过（已有 title）: ${gallerySkippedCount} 个`);
+  console.log(
+    `Gallery snapshots 跳过（已有 title）: ${gallerySkippedCount} 个`,
+  );
 
   await mongoose.disconnect();
   console.log('\nMongoDB 连接已关闭');

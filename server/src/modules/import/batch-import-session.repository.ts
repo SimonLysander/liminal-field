@@ -1,6 +1,6 @@
-import { Injectable } from '@nestjs/common';
-import { InjectModel } from 'nestjs-typegoose';
-import { ReturnModelType } from '@typegoose/typegoose';
+import { Inject, Injectable } from '@nestjs/common';
+import { getModelToken } from 'nestjs-typegoose';
+import type { ReturnModelType } from '@typegoose/typegoose';
 import {
   BatchImportSession,
   type BatchImportItem,
@@ -9,7 +9,7 @@ import {
 @Injectable()
 export class BatchImportSessionRepository {
   constructor(
-    @InjectModel(BatchImportSession)
+    @Inject(getModelToken(BatchImportSession.name))
     private readonly model: ReturnModelType<typeof BatchImportSession>,
   ) {}
 

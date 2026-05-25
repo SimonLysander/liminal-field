@@ -5,12 +5,16 @@ import { ContentRepository } from '../content.repository';
 import { ContentService } from '../content.service';
 import { ContentVisibility } from '../dto/content-query.dto';
 import { ContentSaveAction } from '../dto/save-content.dto';
+import type { ContentSnapshotRepository } from '../content-snapshot.repository';
+import type { OssService } from '../../oss/oss.service';
 
 describe('ContentService', () => {
   let service: ContentService;
   let contentRepository: jest.Mocked<ContentRepository>;
   let contentRepoService: jest.Mocked<ContentRepoService>;
   let contentGitService: jest.Mocked<ContentGitService>;
+  let snapshotRepository: jest.Mocked<ContentSnapshotRepository>;
+  let ossService: jest.Mocked<OssService>;
 
   beforeEach(() => {
     contentRepository = {
@@ -34,10 +38,29 @@ describe('ContentService', () => {
       listContentHistory: jest.fn(),
     } as unknown as jest.Mocked<ContentGitService>;
 
+    snapshotRepository = {
+      findByVersionId: jest.fn(),
+      create: jest.fn(),
+      listByContentItemId: jest.fn().mockResolvedValue([]),
+      findPendingArchive: jest.fn().mockResolvedValue([]),
+      backfillCommitHash: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<ContentSnapshotRepository>;
+
+    ossService = {
+      isDraftStorageReady: jest.fn().mockReturnValue(false),
+      getPublicUrl: jest
+        .fn()
+        .mockImplementation((key: string) => `/mock-oss/${key}`),
+    } as unknown as jest.Mocked<OssService>;
+
     service = new ContentService(
       contentRepository,
       contentRepoService,
       contentGitService,
+      snapshotRepository,
+      ossService,
+      // navigationModel：本测试套件不测 navigation 相关，传空 mock
+      {} as never,
     );
   });
 
@@ -102,9 +125,7 @@ describe('ContentService', () => {
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
     });
-    expect(result.assetRefs).toEqual([
-      { path: './assets/cover.png', type: 'image' },
-    ]);
+    // assetRefs 已从 ContentDetailDto 移除（V2 snapshot 体系不再暴露此字段）
     expect(result.changeLogs).toEqual([
       {
         commitHash: 'latest123',
@@ -175,8 +196,6 @@ describe('ContentService', () => {
     await service.createContent({
       title: 'React Hooks Intro',
       summary: 'Hooks summary',
-      status: 'committed' as never,
-      bodyMarkdown: '# Title',
     });
 
     /* createContent 只建 MongoDB，不碰 Git */

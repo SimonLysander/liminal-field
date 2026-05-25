@@ -325,7 +325,9 @@ describe('Version System (e2e)', () => {
 
       // 管理员带 cookie + visibility=all 搜索
       const res = await supertest(ctx.app.getHttpServer())
-        .get(`/api/v1/search?q=${encodeURIComponent(uniqueSuffix)}&visibility=all`)
+        .get(
+          `/api/v1/search?q=${encodeURIComponent(uniqueSuffix)}&visibility=all`,
+        )
         .set('Cookie', cookie)
         .expect(200);
 

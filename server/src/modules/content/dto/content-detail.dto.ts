@@ -6,6 +6,8 @@ import { HeadingDto } from '../../../common/extract-headings';
 export type ContentAssetType = 'image' | 'audio' | 'video' | 'file';
 
 export class ContentVersionDto {
+  /** 版本快照标识：V2 发布比较以 versionId 为准（先于 Git commitHash 可用） */
+  versionId?: string;
   commitHash!: string;
   title!: string;
   summary!: string;

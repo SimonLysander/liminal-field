@@ -61,6 +61,13 @@ const ReadOnlyPlugins = [
  * 把 <date value="YYYY-MM-DD" /> 替换为一个特殊占位符 `%%DATE:YYYY-MM-DD%%`，
  * deserializeMd 后再递归扫描文本节点，把占位符还原为 Plate date 元素节点。
  */
+/** 宽松的 Slate 节点结构（够本文件遍历日期占位符用，避免引入 Plate 完整联合类型） */
+type SlateNodeLike = {
+  text?: string;
+  children?: SlateNodeLike[];
+  [key: string]: unknown;
+};
+
 const DATE_TAG_RE = /<date\s+value="([^"]+)"\s*\/>/g;
 const DATE_PLACEHOLDER_RE = /%%DATE:([^%]+)%%/g;
 
@@ -70,10 +77,10 @@ function replaceDateTags(md: string): string {
 }
 
 /** 第二步：Plate 节点树里把占位符还原为 date 元素节点 */
-function restoreDateNodes(nodes: any[]): any[] {
+function restoreDateNodes(nodes: SlateNodeLike[]): SlateNodeLike[] {
   return nodes.map((node) => {
     if (node.children) {
-      const newChildren: any[] = [];
+      const newChildren: SlateNodeLike[] = [];
       for (const child of node.children) {
         if (child.text != null && DATE_PLACEHOLDER_RE.test(child.text)) {
           DATE_PLACEHOLDER_RE.lastIndex = 0;
@@ -201,7 +208,11 @@ function PlateReadOnlyInner({ markdown }: { markdown: string }) {
            * 反序列化后再把占位符还原为 Plate date 节点 */
           const preprocessed = replaceDateTags(markdown);
           const nodes = deserializeMd(editor, preprocessed);
-          return fixCodeBlockLines(restoreDateNodes(nodes));
+          return fixCodeBlockLines(
+            restoreDateNodes(nodes) as unknown as Parameters<
+              typeof fixCodeBlockLines
+            >[0],
+          );
         } catch (err) {
           console.error('[PlateReadOnly] deserializeMd failed:', err);
           return [{ type: 'p', children: [{ text: markdown }] }];

@@ -85,6 +85,8 @@ function createMocks() {
     mockGitService,
     mockSnapshotRepository as never,
     mockOssService as never,
+    // navigationModel：本测试套件不测 navigation 相关，传空 mock
+    {} as never,
   );
 
   return { service, mockRepository, mockSnapshotRepository };

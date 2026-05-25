@@ -46,7 +46,7 @@ export class SessionHandler {
   /** 获取会话中的 tasks */
   async getTasks(sessionKey: string): Promise<Array<Record<string, unknown>>> {
     const result = await this.sessionRepo.getTasks(sessionKey);
-    return (result as unknown as Record<string, unknown>[]) ?? [];
+    return result ?? [];
   }
 
   /** 删除会话（清空对话历史） */

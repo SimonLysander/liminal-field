@@ -1,13 +1,13 @@
 /**
  * EditorOutline — 编辑器右侧大纲面板(笔记/文集编辑器共用)。
  *
- * 与展示端笔记目录同一套:黄金比例 61.8vh 高度上限、离顶 8vh、上下渐隐、当前项靠左截断。
+ * 黄金比例 61.8vh 高度上限、顶部持平编辑器首行(marginTop 0 + pt-4)、上下渐隐、当前项靠左截断。
  * 原先两个编辑器各自重复一份,抽到此处去重。
  */
 
 import type { HeadingEntry } from '../lib/markdown-toc';
 
-const TOC_MASK = 'linear-gradient(to bottom, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%)';
+const TOC_MASK = 'linear-gradient(to bottom, transparent 0, #000 4px, #000 calc(100% - 28px), transparent 100%)';
 
 export function EditorOutline({
   headings,
@@ -19,10 +19,10 @@ export function EditorOutline({
 }) {
   return (
     <div
-      className="flex min-h-0 shrink-0 flex-col self-start overflow-y-auto px-4 py-10"
+      className="flex min-h-0 shrink-0 flex-col self-start overflow-y-auto px-4 pb-10 pt-4"
       style={{
         width: 'var(--layout-sidebar)',
-        marginTop: '8vh',
+        marginTop: '0',
         maxHeight: '61.8vh',
         maskImage: TOC_MASK,
         WebkitMaskImage: TOC_MASK,

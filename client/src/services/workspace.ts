@@ -575,10 +575,8 @@ export interface AnthologyEntryDetail {
   next: { key: string; title: string } | null;
 }
 
-/** 条目草稿保存请求体（复用 SaveDraftDto，summary 可选） */
-export interface AnthologyEntryDraftDto extends EditorDraft {
-  /** anthology 条目草稿无 summary，兼容 EditorDraft 类型 */
-}
+/** 条目草稿保存请求体：anthology 条目草稿无 summary，结构与 EditorDraft 完全一致 */
+export type AnthologyEntryDraftDto = EditorDraft;
 
 export const anthologyApi = {
   // ── 展示端 ──

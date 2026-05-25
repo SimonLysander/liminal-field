@@ -1,11 +1,9 @@
 import { request } from './request';
 
+/** 会话写作计划的一条任务。write_tasks 整体替换,只有 title + status(无 id/依赖) */
 export interface SessionTask {
-  id: string;
   title: string;
-  description: string;
   status: 'pending' | 'in_progress' | 'done';
-  blockedBy: string[];
 }
 
 export interface SessionData {

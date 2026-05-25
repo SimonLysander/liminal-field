@@ -25,6 +25,11 @@ export interface UpdateContentItemInput {
   changeLogs: ContentChangeLog[];
   updatedAt: Date;
   updatedBy?: string;
+  /**
+   * 发布时间。仅 publish/unpublish 显式传入时才写库（Date=发布、null=撤销）；
+   * undefined（不传）= 保持库中现值，避免频繁的 saveContent 把它覆盖掉。
+   */
+  publishedAt?: Date | null;
 }
 
 @Injectable()
@@ -55,6 +60,9 @@ export class ContentRepository {
     id: string,
     input: UpdateContentItemInput,
   ): Promise<ContentItem | null> {
+    // publishedAt 仅在 publish/unpublish 显式传入时才纳入 $set，其余 update 不动它
+    const publishedAtPatch =
+      input.publishedAt !== undefined ? { publishedAt: input.publishedAt } : {};
     return this.contentItemModel.findByIdAndUpdate(
       id,
       {
@@ -64,6 +72,7 @@ export class ContentRepository {
           changeLogs: input.changeLogs,
           updatedAt: input.updatedAt,
           updatedBy: input.updatedBy,
+          ...publishedAtPatch,
         },
       },
       { returnDocument: 'after' },
@@ -130,8 +139,7 @@ export class ContentRepository {
     fields: { title?: string; summary?: string },
   ): Promise<ContentItem | null> {
     const $set: Record<string, unknown> = { updatedAt: new Date() };
-    if (fields.title !== undefined)
-      $set['latestVersion.title'] = fields.title;
+    if (fields.title !== undefined) $set['latestVersion.title'] = fields.title;
     if (fields.summary !== undefined)
       $set['latestVersion.summary'] = fields.summary;
     return this.contentItemModel.findByIdAndUpdate(

@@ -45,7 +45,10 @@ export class EditorDraftRepository {
    * 构建带 fileName 的草稿 _id（anthology 条目专用）。
    * fileName 中的斜杠保留："draft:{contentItemId}:entries/eXXX.md"。
    */
-  private buildDraftIdWithFileName(contentItemId: string, fileName: string): string {
+  private buildDraftIdWithFileName(
+    contentItemId: string,
+    fileName: string,
+  ): string {
     return `draft:${contentItemId}:${fileName}`;
   }
 
@@ -105,7 +108,9 @@ export class EditorDraftRepository {
   }
 
   /** 保存条目草稿（upsert）。 */
-  async saveWithFileName(input: SaveEditorDraftWithFileNameInput): Promise<EditorDraft> {
+  async saveWithFileName(
+    input: SaveEditorDraftWithFileNameInput,
+  ): Promise<EditorDraft> {
     const draft = await this.editorDraftModel.findByIdAndUpdate(
       this.buildDraftIdWithFileName(input.contentItemId, input.fileName),
       {
@@ -128,7 +133,9 @@ export class EditorDraftRepository {
     );
 
     if (!draft) {
-      throw new InternalServerErrorException('Failed to persist entry editor draft');
+      throw new InternalServerErrorException(
+        'Failed to persist entry editor draft',
+      );
     }
 
     return draft;

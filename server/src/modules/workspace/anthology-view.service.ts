@@ -18,13 +18,23 @@
  * 不包含 CRUD 的创建/删除逻辑（由 WorkspaceService 处理），
  * 也不处理 Navigation 索引（由 WorkspaceService 负责注册）。
  */
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { nanoid } from 'nanoid';
 import * as yaml from 'js-yaml';
 import { ContentRepository } from '../content/content.repository';
 import { ContentSnapshotRepository } from '../content/content-snapshot.repository';
+import type { ContentSnapshot } from '../content/content-snapshot.entity';
 import { ContentService } from '../content/content.service';
-import { ContentStatus, ContentItem, EntryPublishState } from '../content/content-item.entity';
+import {
+  ContentStatus,
+  ContentItem,
+  EntryPublishState,
+} from '../content/content-item.entity';
 import { ContentSaveAction } from '../content/dto/save-content.dto';
 import {
   AnthologyPublicListItemDto,
@@ -83,7 +93,11 @@ interface ParsedEntryContent {
  * - publishedVersionId 缺失 → 默认 null（向后兼容旧索引文件）
  */
 export function parseAnthologyIndex(raw: string): ParsedAnthologyIndex {
-  const defaults: ParsedAnthologyIndex = { title: '', description: '', entries: [] };
+  const defaults: ParsedAnthologyIndex = {
+    title: '',
+    description: '',
+    entries: [],
+  };
 
   if (!raw.startsWith('---')) return defaults;
 
@@ -100,11 +114,14 @@ export function parseAnthologyIndex(raw: string): ParsedAnthologyIndex {
   }
 
   const title = typeof parsed.title === 'string' ? parsed.title : '';
-  const description = typeof parsed.description === 'string' ? parsed.description : '';
+  const description =
+    typeof parsed.description === 'string' ? parsed.description : '';
 
   const rawEntries = Array.isArray(parsed.entries) ? parsed.entries : [];
   const entries: FrontmatterEntryRef[] = rawEntries
-    .filter((e): e is Record<string, unknown> => e !== null && typeof e === 'object')
+    .filter(
+      (e): e is Record<string, unknown> => e !== null && typeof e === 'object',
+    )
     .map((e) => ({
       key: typeof e.key === 'string' ? e.key : '',
       title: typeof e.title === 'string' ? e.title : '',
@@ -163,7 +180,11 @@ export function serializeAnthologyIndex(data: ParsedAnthologyIndex): string {
  * frontmatter 含 title + date，正文是 Markdown。
  */
 export function parseEntryContent(raw: string): ParsedEntryContent {
-  const defaults: ParsedEntryContent = { title: '', date: null, bodyMarkdown: raw };
+  const defaults: ParsedEntryContent = {
+    title: '',
+    date: null,
+    bodyMarkdown: raw,
+  };
 
   if (!raw.startsWith('---')) return defaults;
 
@@ -200,7 +221,12 @@ export function serializeEntryContent(data: {
   /* 日期强制用引号字符串，防止 js-yaml 把 "2026-05-19" 解析为 Date 对象再序列化成怪格式 */
   if (data.date) frontmatterObj.date = data.date;
 
-  const yamlStr = yaml.dump(frontmatterObj, { indent: 2, lineWidth: -1, forceQuotes: true, quotingType: '"' });
+  const yamlStr = yaml.dump(frontmatterObj, {
+    indent: 2,
+    lineWidth: -1,
+    forceQuotes: true,
+    quotingType: '"',
+  });
   return `---\n${yamlStr}---\n\n${data.bodyMarkdown}`;
 }
 
@@ -231,9 +257,12 @@ export class AnthologyViewService {
    * 加载并解析最新的索引 snapshot（main.md）。
    * 刚创建尚无快照时返回空默认值（不抛异常）。
    */
-  private async loadIndex(contentItemId: string): Promise<ParsedAnthologyIndex> {
+  private async loadIndex(
+    contentItemId: string,
+  ): Promise<ParsedAnthologyIndex> {
     const item = await this.contentRepository.findById(contentItemId);
-    if (!item) throw new NotFoundException(`Anthology ${contentItemId} not found`);
+    if (!item)
+      throw new NotFoundException(`Anthology ${contentItemId} not found`);
 
     const versionId = item.latestVersion?.versionId;
     if (!versionId) return { title: '', description: '', entries: [] };
@@ -308,7 +337,9 @@ export class AnthologyViewService {
    * 若文集已发布（publishedVersion 非 null），同步更新 publishedVersion 指向最新索引 snapshot。
    * 条目级发布/取消发布后调用，确保读者看到最新的条目列表。
    */
-  private async syncPublishedVersionIfNeeded(contentItemId: string): Promise<void> {
+  private async syncPublishedVersionIfNeeded(
+    contentItemId: string,
+  ): Promise<void> {
     const item = await this.contentRepository.findById(contentItemId);
     if (item?.publishedVersion) {
       await this.contentService.publishVersion(contentItemId);
@@ -318,13 +349,19 @@ export class AnthologyViewService {
   /** 从 ContentItem.entryPublishStates 构建 entryKey → 已发布 versionId 的映射(发布状态的唯一来源)。 */
   private buildEntryPublishMap(item: ContentItem | null): Map<string, string> {
     return new Map(
-      (item?.entryPublishStates ?? []).map((s) => [s.entryKey, s.publishedVersionId]),
+      (item?.entryPublishStates ?? []).map((s) => [
+        s.entryKey,
+        s.publishedVersionId,
+      ]),
     );
   }
 
   /** 发布映射 → 持久化数组(buildEntryPublishMap 的逆)。 */
   private mapToStates(map: Map<string, string>): EntryPublishState[] {
-    return [...map].map(([entryKey, publishedVersionId]) => ({ entryKey, publishedVersionId }));
+    return [...map].map(([entryKey, publishedVersionId]) => ({
+      entryKey,
+      publishedVersionId,
+    }));
   }
 
   /**
@@ -333,13 +370,18 @@ export class AnthologyViewService {
   private buildPrevNext(
     entries: { key: string; title: string }[],
     entryIdx: number,
-  ): { prev: { key: string; title: string } | null; next: { key: string; title: string } | null } {
-    const prev = entryIdx > 0
-      ? { key: entries[entryIdx - 1].key, title: entries[entryIdx - 1].title }
-      : null;
-    const next = entryIdx < entries.length - 1
-      ? { key: entries[entryIdx + 1].key, title: entries[entryIdx + 1].title }
-      : null;
+  ): {
+    prev: { key: string; title: string } | null;
+    next: { key: string; title: string } | null;
+  } {
+    const prev =
+      entryIdx > 0
+        ? { key: entries[entryIdx - 1].key, title: entries[entryIdx - 1].title }
+        : null;
+    const next =
+      entryIdx < entries.length - 1
+        ? { key: entries[entryIdx + 1].key, title: entries[entryIdx + 1].title }
+        : null;
     return { prev, next };
   }
 
@@ -381,7 +423,11 @@ export class AnthologyViewService {
       ...indexData,
       entries: [...indexData.entries, newEntry],
     };
-    await this.commitIndex(contentItemId, updatedIndex, `添加条目 ${newKey}: ${dto.title}`);
+    await this.commitIndex(
+      contentItemId,
+      updatedIndex,
+      `添加条目 ${newKey}: ${dto.title}`,
+    );
 
     return this.toAdminDetail(contentItemId);
   }
@@ -400,7 +446,9 @@ export class AnthologyViewService {
     const indexData = await this.loadIndex(contentItemId);
     const entryRef = indexData.entries.find((e) => e.key === entryKey);
     if (!entryRef) {
-      throw new NotFoundException(`Entry ${entryKey} not found in anthology ${contentItemId}`);
+      throw new NotFoundException(
+        `Entry ${entryKey} not found in anthology ${contentItemId}`,
+      );
     }
 
     // 提交条目内容新版本
@@ -413,8 +461,8 @@ export class AnthologyViewService {
     if (titleChanged || dateChanged) {
       const updatedEntries = indexData.entries.map((e) =>
         e.key === entryKey
-          // 只更新 title/date 元数据(发布状态在 Mongo,与索引无关)
-          ? { ...e, title: dto.title, date: dto.date ?? null }
+          ? // 只更新 title/date 元数据(发布状态在 Mongo,与索引无关)
+            { ...e, title: dto.title, date: dto.date ?? null }
           : e,
       );
       await this.commitIndex(
@@ -428,7 +476,9 @@ export class AnthologyViewService {
     const fileName = `entries/${entryKey}.md`;
     await this.editorDraftRepository
       .deleteByContentItemAndFileName(contentItemId, fileName)
-      .catch((err) => this.logger.warn(`清理条目草稿失败（非致命）: ${String(err)}`));
+      .catch((err) =>
+        this.logger.warn(`清理条目草稿失败（非致命）: ${String(err)}`),
+      );
 
     return this.toAdminDetail(contentItemId);
   }
@@ -443,7 +493,9 @@ export class AnthologyViewService {
     const indexData = await this.loadIndex(contentItemId);
     const entryRef = indexData.entries.find((e) => e.key === entryKey);
     if (!entryRef) {
-      throw new NotFoundException(`Entry ${entryKey} not found in anthology ${contentItemId}`);
+      throw new NotFoundException(
+        `Entry ${entryKey} not found in anthology ${contentItemId}`,
+      );
     }
 
     // 已发布的条目不能直接删除，必须先取消发布(发布状态读 Mongo)
@@ -467,10 +519,16 @@ export class AnthologyViewService {
     // 并行清理该条目的所有 snapshot 和草稿（非致命，失败不影响主流程）
     const fileName = `entries/${entryKey}.md`;
     await Promise.all([
-      this.snapshotRepository.deleteByFileName(contentItemId, fileName)
-        .catch((err) => this.logger.warn(`清理条目 snapshot 失败（非致命）: ${String(err)}`)),
-      this.editorDraftRepository.deleteByContentItemAndFileName(contentItemId, fileName)
-        .catch((err) => this.logger.warn(`清理条目草稿失败（非致命）: ${String(err)}`)),
+      this.snapshotRepository
+        .deleteByFileName(contentItemId, fileName)
+        .catch((err) =>
+          this.logger.warn(`清理条目 snapshot 失败（非致命）: ${String(err)}`),
+        ),
+      this.editorDraftRepository
+        .deleteByContentItemAndFileName(contentItemId, fileName)
+        .catch((err) =>
+          this.logger.warn(`清理条目草稿失败（非致命）: ${String(err)}`),
+        ),
     ]);
 
     return this.toAdminDetail(contentItemId);
@@ -523,13 +581,16 @@ export class AnthologyViewService {
     usePublished = false,
   ): Promise<AnthologyEntryDetailDto> {
     const item = await this.contentRepository.findById(contentItemId);
-    if (!item) throw new NotFoundException(`Anthology ${contentItemId} not found`);
+    if (!item)
+      throw new NotFoundException(`Anthology ${contentItemId} not found`);
 
     // 取索引：展示端用已发布版本，管理端用最新版本
     let indexData: ParsedAnthologyIndex;
     if (usePublished) {
       if (!item.publishedVersion) {
-        throw new NotFoundException(`Anthology ${contentItemId} is not published`);
+        throw new NotFoundException(
+          `Anthology ${contentItemId} is not published`,
+        );
       }
       const publishedSnapshot = await this.snapshotRepository.findByVersionId(
         item.publishedVersion.versionId!,
@@ -549,17 +610,20 @@ export class AnthologyViewService {
 
     const entryIdx = visibleEntries.findIndex((e) => e.key === entryKey);
     if (entryIdx === -1) {
-      throw new NotFoundException(`Entry ${entryKey} not found in anthology ${contentItemId}`);
+      throw new NotFoundException(
+        `Entry ${entryKey} not found in anthology ${contentItemId}`,
+      );
     }
 
     const entryRef = visibleEntries[entryIdx];
     const fileName = `entries/${entryKey}.md`;
 
-    let entrySnapshot;
+    let entrySnapshot: ContentSnapshot | null;
     const publishedVid = publishMap.get(entryKey);
     if (usePublished && publishedVid) {
       // 展示端：从 Mongo 记录的已发布 versionId 取冻结 snapshot（严格版本隔离）
-      entrySnapshot = await this.snapshotRepository.findByVersionId(publishedVid);
+      entrySnapshot =
+        await this.snapshotRepository.findByVersionId(publishedVid);
     } else {
       // 管理端：从最新 snapshot 读取内容
       entrySnapshot = await this.snapshotRepository.findLatestByFileName(
@@ -572,7 +636,9 @@ export class AnthologyViewService {
       // 展示端:已发布条目却查不到正文快照(发布版本被删/悬空)→ 维持严格 404,
       // 不向读者露出空的"已发布"内容。
       if (usePublished) {
-        throw new NotFoundException(`Entry ${entryKey} has no content snapshot`);
+        throw new NotFoundException(
+          `Entry ${entryKey} has no content snapshot`,
+        );
       }
       // 管理端:条目在索引里登记、但正文快照缺失(历史恢复丢正文 / 归档未回填子文件)。
       // 这是可恢复态——返回空正文让编辑器正常打开,用户重写保存即重建正文快照(自愈),
@@ -624,7 +690,9 @@ export class AnthologyViewService {
       await this.contentRepository.findById(contentItemId),
     );
     if (publishMap.size === 0) {
-      throw new BadRequestException('无法发布：文集中没有已发布的条目，请先发布至少一篇条目');
+      throw new BadRequestException(
+        '无法发布：文集中没有已发布的条目，请先发布至少一篇条目',
+      );
     }
     await this.contentService.publishVersion(contentItemId);
   }
@@ -651,7 +719,9 @@ export class AnthologyViewService {
   ): Promise<AnthologyAdminDetailDto> {
     const indexData = await this.loadIndex(contentItemId);
     if (!indexData.entries.some((e) => e.key === entryKey)) {
-      throw new NotFoundException(`Entry ${entryKey} not found in anthology ${contentItemId}`);
+      throw new NotFoundException(
+        `Entry ${entryKey} not found in anthology ${contentItemId}`,
+      );
     }
 
     const latestSnapshot = await this.snapshotRepository.findLatestByFileName(
@@ -684,7 +754,9 @@ export class AnthologyViewService {
   ): Promise<AnthologyAdminDetailDto> {
     const indexData = await this.loadIndex(contentItemId);
     if (!indexData.entries.some((e) => e.key === entryKey)) {
-      throw new NotFoundException(`Entry ${entryKey} not found in anthology ${contentItemId}`);
+      throw new NotFoundException(
+        `Entry ${entryKey} not found in anthology ${contentItemId}`,
+      );
     }
 
     const publishMap = this.buildEntryPublishMap(
@@ -703,17 +775,20 @@ export class AnthologyViewService {
   /**
    * 批量发布所有条目(只动 Mongo):把每个有内容的条目设为发布其最新 snapshot。
    */
-  async publishAllEntries(contentItemId: string): Promise<AnthologyAdminDetailDto> {
+  async publishAllEntries(
+    contentItemId: string,
+  ): Promise<AnthologyAdminDetailDto> {
     const indexData = await this.loadIndex(contentItemId);
 
     // 并行取每个有内容条目的最新 snapshot versionId
     const states = (
       await Promise.all(
         indexData.entries.map(async (e): Promise<EntryPublishState | null> => {
-          const latestSnapshot = await this.snapshotRepository.findLatestByFileName(
-            contentItemId,
-            `entries/${e.key}.md`,
-          );
+          const latestSnapshot =
+            await this.snapshotRepository.findLatestByFileName(
+              contentItemId,
+              `entries/${e.key}.md`,
+            );
           return latestSnapshot
             ? { entryKey: e.key, publishedVersionId: latestSnapshot.versionId }
             : null; // 无内容条目跳过
@@ -743,7 +818,7 @@ export class AnthologyViewService {
       id: draft._id,
       contentItemId: draft.contentItemId,
       title: draft.title,
-      summary: draft.summary,
+      summary: draft.summary ?? '',
       bodyMarkdown: draft.bodyMarkdown,
       changeNote: draft.changeNote,
       savedAt: draft.savedAt.toISOString(),
@@ -863,7 +938,10 @@ export class AnthologyViewService {
   ): Promise<ContentHistoryEntryDto[]> {
     await this.contentService.assertContentItemExists(contentItemId);
     const fileName = `entries/${entryKey}.md`;
-    const snapshots = await this.contentService.listVersionsByFileName(contentItemId, fileName);
+    const snapshots = await this.contentService.listVersionsByFileName(
+      contentItemId,
+      fileName,
+    );
     return snapshots.map((snap) => ({
       versionId: snap.versionId,
       commitHash: snap.commitHash ?? '',
@@ -886,9 +964,12 @@ export class AnthologyViewService {
     indexData: ParsedAnthologyIndex;
   }> {
     const item = await this.contentRepository.findById(contentItemId);
-    if (!item) throw new NotFoundException(`Anthology ${contentItemId} not found`);
+    if (!item)
+      throw new NotFoundException(`Anthology ${contentItemId} not found`);
     if (!item.publishedVersion) {
-      throw new NotFoundException(`Anthology ${contentItemId} is not published`);
+      throw new NotFoundException(
+        `Anthology ${contentItemId} is not published`,
+      );
     }
 
     const publishedSnapshot = await this.snapshotRepository.findByVersionId(
@@ -904,10 +985,14 @@ export class AnthologyViewService {
   /**
    * 展示端列表 DTO：从已发布版本的索引读取，entryCount 只计算已发布条目数。
    */
-  async toPublicListItem(contentItemId: string): Promise<AnthologyPublicListItemDto> {
+  async toPublicListItem(
+    contentItemId: string,
+  ): Promise<AnthologyPublicListItemDto> {
     const { item, indexData } = await this.loadPublishedIndex(contentItemId);
     const publishMap = this.buildEntryPublishMap(item);
-    const publishedEntries = indexData.entries.filter((e) => publishMap.has(e.key));
+    const publishedEntries = indexData.entries.filter((e) =>
+      publishMap.has(e.key),
+    );
 
     return {
       id: contentItemId,
@@ -922,10 +1007,14 @@ export class AnthologyViewService {
    * 展示端详情 DTO：从已发布版本的索引读取，只包含已发布条目。
    * 条目元数据（title/date）从索引冗余字段直接取，不读 snapshot 正文。
    */
-  async toPublicDetail(contentItemId: string): Promise<AnthologyPublicDetailDto> {
+  async toPublicDetail(
+    contentItemId: string,
+  ): Promise<AnthologyPublicDetailDto> {
     const { item, indexData } = await this.loadPublishedIndex(contentItemId);
     const publishMap = this.buildEntryPublishMap(item);
-    const publishedEntries = indexData.entries.filter((e) => publishMap.has(e.key));
+    const publishedEntries = indexData.entries.filter((e) =>
+      publishMap.has(e.key),
+    );
 
     return {
       id: contentItemId,
@@ -949,9 +1038,12 @@ export class AnthologyViewService {
   /**
    * 管理端列表 DTO：从最新版本读取，含状态信息。
    */
-  async toAdminListItem(contentItemId: string): Promise<AnthologyAdminListItemDto> {
+  async toAdminListItem(
+    contentItemId: string,
+  ): Promise<AnthologyAdminListItemDto> {
     const item = await this.contentRepository.findById(contentItemId);
-    if (!item) throw new NotFoundException(`Anthology ${contentItemId} not found`);
+    if (!item)
+      throw new NotFoundException(`Anthology ${contentItemId} not found`);
 
     const indexData = await this.loadIndex(contentItemId);
 
@@ -977,7 +1069,8 @@ export class AnthologyViewService {
    */
   async toAdminDetail(contentItemId: string): Promise<AnthologyAdminDetailDto> {
     const item = await this.contentRepository.findById(contentItemId);
-    if (!item) throw new NotFoundException(`Anthology ${contentItemId} not found`);
+    if (!item)
+      throw new NotFoundException(`Anthology ${contentItemId} not found`);
 
     const indexData = await this.loadIndex(contentItemId);
     // 发布状态读 Mongo;DTO 仍照常暴露 publishedVersionId,前端无感
@@ -991,7 +1084,8 @@ export class AnthologyViewService {
           contentItemId,
           fileName,
         );
-        const hasContent = snapshot !== null && snapshot.bodyMarkdown.length > 0;
+        const hasContent =
+          snapshot !== null && snapshot.bodyMarkdown.length > 0;
         const publishedVersionId = publishMap.get(e.key) ?? null;
 
         // 已发布且最新 snapshot 与已发布版本不同 → 有未发布的新改动
@@ -1004,7 +1098,9 @@ export class AnthologyViewService {
           key: e.key,
           title: e.title,
           // date 兜底：索引里没有时从 snapshot 的 createdAt 取
-          date: e.date ?? (snapshot ? snapshot.createdAt.toISOString().split('T')[0] : null),
+          date:
+            e.date ??
+            (snapshot ? snapshot.createdAt.toISOString().split('T')[0] : null),
           hasContent,
           publishedVersionId,
           hasUnpublishedChanges,

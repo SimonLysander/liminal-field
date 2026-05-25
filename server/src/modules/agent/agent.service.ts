@@ -12,7 +12,14 @@
  */
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { convertToModelMessages, stepCountIs, streamText } from 'ai';
+import {
+  convertToModelMessages,
+  stepCountIs,
+  streamText,
+  type StreamTextResult,
+  type ToolSet,
+} from 'ai';
+import { makeRepairToolCall } from './agent.utils';
 import { SystemConfigService } from '../settings/system-config.service';
 import { AgentLifecycle } from './lifecycle/agent-lifecycle.service';
 import type { AgentChatDto } from './dto/agent-chat.dto';
@@ -26,7 +33,11 @@ export class AgentService {
     private readonly lifecycle: AgentLifecycle,
   ) {}
 
-  async chat(dto: AgentChatDto, abortSignal?: AbortSignal) {
+  // 返回类型须显式标注：StreamTextResult 包含 ai 内部 Output 类型，不标注会触发 TS4053
+  async chat(
+    dto: AgentChatDto,
+    abortSignal?: AbortSignal,
+  ): Promise<StreamTextResult<ToolSet, never>> {
     // 1. 读取 agent 入口配置（AgentEntryConfig），获取 tier / systemPrompt / tools 白名单
     const agentConfig = dto.agentKey
       ? await this.systemConfigService.getAgentConfig(dto.agentKey)
@@ -64,7 +75,10 @@ export class AgentService {
     });
 
     // 5. 将前端 UIMessage 格式转为 streamText 需要的 ModelMessage 格式
-    const modelMessages = await convertToModelMessages(dto.messages);
+    //    dto.messages 为宽松 any[](兼容 useChat 发来的额外字段)，转换前断言为 SDK 期望的 UIMessage[]
+    const modelMessages = await convertToModelMessages(
+      dto.messages as Parameters<typeof convertToModelMessages>[0],
+    );
 
     // 6. 调用 streamText：AI SDK 内置 ReAct 循环，stopWhen 限制最多 10 步防止无限循环
     const result = streamText({
@@ -73,6 +87,8 @@ export class AgentService {
       messages: modelMessages,
       tools,
       stopWhen: stepCountIs(10),
+      // 工具调用烂 JSON 时自动 re-ask 修复,不让整轮崩(provider 偶发,见 agent.utils)
+      experimental_repairToolCall: makeRepairToolCall(model),
       abortSignal,
       experimental_telemetry: { isEnabled: true },
       onStepFinish: ({ stepNumber, toolCalls, usage }) => {

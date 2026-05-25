@@ -97,9 +97,7 @@ const rules: PostProcessRule[] = [
         return md;
       }
 
-      return lines
-        .map((line) => line.replace(/^(\s*)>\s?/, '$1'))
-        .join('\n');
+      return lines.map((line) => line.replace(/^(\s*)>\s?/, '$1')).join('\n');
     },
   },
 
