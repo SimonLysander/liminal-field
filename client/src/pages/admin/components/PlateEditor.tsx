@@ -10,6 +10,8 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
+import { useProposedEditController } from '@/pages/admin/lib/use-proposed-edit-controller';
+import type { ProposedEdit } from '@/pages/admin/lib/apply-proposed-edits';
 import {
   Plate,
   usePlateEditor,
@@ -23,6 +25,28 @@ import { FloatingToolbar } from '@/components/ui/floating-toolbar';
 import { FloatingToolbarButtons } from '@/components/ui/floating-toolbar-buttons';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useDraftAssetContext } from '@/contexts/DraftAssetContext';
+
+/**
+ * ProposedEditBridge — 在 <Plate> context 内部把外部传来的 edits 落成 suggestion 痕迹。
+ *
+ * 为什么需要单独一个子组件:useProposedEditController 内部调用 useEditorRef(),
+ * 而 useEditorRef 必须在 <Plate> 的 context 内才能取到 editor 实例。
+ * PlateMarkdownEditor 的父级(ProseDraftEditor)在 <Plate> 外面,因此不能在父级调用 controller。
+ * 把 bridge 渲染在 <Plate> 内部(与 EditorContainer 同级)即可满足该约束。
+ *
+ * outcomes/acceptAll/rejectAll 预留给 Task 7/8 的 UI(聊天卡片 + 接受/拒绝按钮),
+ * 本 task 只打通数据链,暂不向上暴露。
+ */
+function ProposedEditBridge({
+  pendingEdits,
+  editsKey,
+}: {
+  pendingEdits?: ProposedEdit[];
+  editsKey?: string;
+}) {
+  useProposedEditController(pendingEdits, editsKey ?? '');
+  return null;
+}
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -50,6 +74,8 @@ function toStoredAssetPaths(markdown: string, contentItemId: string): string {
 export function PlateMarkdownEditor({
   initialMarkdown,
   onChange,
+  pendingEdits,
+  editsKey,
 }: {
   initialMarkdown: string;
   /**
@@ -61,6 +87,10 @@ export function PlateMarkdownEditor({
   onChange: (markdown: string, isUserEdit: boolean) => void;
   /** @deprecated 固定工具栏已移除，保留参数兼容文集编辑器 */
   toolbarContainer?: HTMLElement | null;
+  /** Aurora 改稿建议:来自 AiAdvisorPanel → ProseDraftEditor 透传,在 <Plate> 内部应用为 suggestion 痕迹 */
+  pendingEdits?: ProposedEdit[];
+  /** 与 pendingEdits 配套的去重 key(toolCallId),保证同一批 edits 只落一次 suggestion */
+  editsKey?: string;
 }) {
   const { contentItemId } = useDraftAssetContext();
   const [editorId] = useState(() => `plate-${Math.random().toString(36).slice(2)}`);
@@ -112,6 +142,8 @@ export function PlateMarkdownEditor({
   return (
     <TooltipProvider>
       <Plate key={editorId} editor={editor} onValueChange={handleChange}>
+        {/* ProposedEditBridge 必须在 <Plate> 内部,使用 useEditorRef 需要 Plate context */}
+        <ProposedEditBridge pendingEdits={pendingEdits} editsKey={editsKey} />
         <EditorContainer>
           <Editor variant="default" placeholder="开始写作..." />
         </EditorContainer>

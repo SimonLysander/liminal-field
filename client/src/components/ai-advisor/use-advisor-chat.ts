@@ -131,6 +131,30 @@ export function useAdvisorChat({
     return { tasks: t, planTitle: title };
   }, [messages]);
 
+  // Aurora 改稿建议:从消息流里取最近一次 propose_edit 工具调用的 edits 数组,实时反映。
+  // 跳过 input-streaming 防止数据未传完就落 suggestion;editsKey 用于上游去重,避免重复应用。
+  // toolCallId 是 AI SDK 给每次工具调用的唯一 id,是最可靠的去重 key;fallback 用 m.id+长度。
+  const { proposedEdits, editsKey } = useMemo(() => {
+    let edits: Array<{ find: string; replace: string; reason: string }> = [];
+    let key = '';
+    for (const m of messages) {
+      for (const p of m.parts ?? []) {
+        if (p.type !== 'tool-propose_edit') continue;
+        const part = p as {
+          state?: string;
+          toolCallId?: string;
+          input?: { edits?: typeof edits };
+        };
+        if (part.state === 'input-streaming') continue;
+        if (Array.isArray(part.input?.edits)) {
+          edits = part.input.edits;
+          key = part.toolCallId ?? `${m.id}:${edits.length}`;
+        }
+      }
+    }
+    return { proposedEdits: edits, editsKey: key };
+  }, [messages]);
+
   /**
    * SessionLoad（初始加载）：取最近一页消息，初始化懒加载游标。
    *
@@ -240,6 +264,8 @@ export function useAdvisorChat({
     loadMore,
     tasks,
     planTitle,
+    proposedEdits,
+    editsKey,
     tier,
     cycleTier,
     send,

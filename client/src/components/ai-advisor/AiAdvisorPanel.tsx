@@ -5,7 +5,7 @@
  * 本组件只负责侧栏布局 + 选中文字 add-to-chat + 输入框。
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ArrowUp, Square, X, Paperclip } from 'lucide-react';
 import { MessageList } from './MessageList';
 import { TaskChecklist } from './TaskChecklist';
@@ -32,6 +32,13 @@ export interface AiAdvisorPanelProps {
   bodyMarkdown?: string;
   /** 编辑器中当前选中的文字（Cursor 式 add-to-chat） */
   selectedText?: string;
+  /**
+   * AI 吐出 propose_edit 工具调用后,将解析到的 edits 上抛给父级。
+   * 父级(ProseDraftEditor)在 <Plate> 之外拿不到 useEditorRef,通过此回调
+   * 把 edits 透传给 PlateMarkdownEditor,再在 <Plate> 内部应用为 suggestion 痕迹。
+   * 父级应用 useCallback 保证引用稳定,避免 useEffect 循环触发。
+   */
+  onProposedEdits?: (edits: Array<{ find: string; replace: string; reason: string }>, key: string) => void;
 }
 
 export function AiAdvisorPanel({
@@ -40,6 +47,7 @@ export function AiAdvisorPanel({
   title,
   bodyMarkdown,
   selectedText,
+  onProposedEdits,
 }: AiAdvisorPanelProps) {
   const [inputValue, setInputValue] = useState('');
   const [greeting] = useState(pickGreeting);
@@ -62,12 +70,22 @@ export function AiAdvisorPanel({
     error,
     tasks,
     planTitle,
+    proposedEdits,
+    editsKey,
   } = useAdvisorChat({
     sessionKey,
     agentKey: 'writing-advisor',
     source: 'notes-editor',
     documentContext: { contentItemId, title, bodyMarkdown },
   });
+
+  // propose_edit 上抛:edits 落稳(非 streaming)后通知父级透传到编辑器。
+  // onProposedEdits 由父级 useCallback 包裹,引用稳定,不会引起循环。
+  useEffect(() => {
+    if (proposedEdits.length > 0) {
+      onProposedEdits?.(proposedEdits, editsKey);
+    }
+  }, [proposedEdits, editsKey, onProposedEdits]);
 
   // 发送:add-to-chat(选中文字拼接到消息前面)
   const handleSend = useCallback(() => {

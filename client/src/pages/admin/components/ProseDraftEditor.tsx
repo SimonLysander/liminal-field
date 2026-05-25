@@ -8,6 +8,7 @@
  * agent 上下文是场景相关的,由调用方通过 advisor 注入(笔记=本篇 / 文集=本条目+脉络)。
  */
 
+import { useCallback, useState } from 'react';
 import { useSelectedText } from '@/hooks/use-selected-text';
 import { ChevronLeft, Sun, Moon, Trash2, MoreHorizontal } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
@@ -24,6 +25,7 @@ import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
 import { DraftAssetProvider } from '@/contexts/DraftAssetContext';
 import { AiAdvisorPanel } from '@/components/ai-advisor/AiAdvisorPanel';
 import { PlateMarkdownEditor } from './PlateEditor';
+import type { ProposedEdit } from '@/pages/admin/lib/apply-proposed-edits';
 import { EditorOutline } from './EditorOutline';
 import { CommitForm } from './CommitForm';
 import type { BaseDraftState, DraftEditorController } from '../lib/use-draft-editor';
@@ -57,6 +59,15 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
   const { theme, setTheme } = useTheme();
   // 编辑器内当前选中文本(Cursor 式 add-to-chat):监听 Plate 编辑器 DOM 选区
   const selectedText = useSelectedText('[data-slate-editor]');
+
+  // Aurora 改稿建议透传:AiAdvisorPanel 在 <Plate> context 外,拿不到 useEditorRef。
+  // 通过回调把 propose_edit 的 edits 上抛到这里,再经 props 传给 PlateMarkdownEditor,
+  // 后者在 <Plate> 内部通过 ProposedEditBridge 调用 useProposedEditController 落成 suggestion。
+  const [pending, setPending] = useState<{ edits: ProposedEdit[]; key: string }>({ edits: [], key: '' });
+  const handleProposedEdits = useCallback(
+    (edits: ProposedEdit[], key: string) => setPending({ edits, key }),
+    [],
+  );
 
   if (editor.loading) {
     return <LoadingState variant="full" />;
@@ -194,6 +205,7 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
           title={editor.state.title}
           bodyMarkdown={editor.state.bodyMarkdown}
           selectedText={selectedText}
+          onProposedEdits={handleProposedEdits}
         />
       ) : (
         <div />
@@ -208,7 +220,13 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
         )}
         <div className="mx-auto w-full max-w-[var(--layout-editor-max)] pb-40">
           <DraftAssetProvider contentItemId={draftScopeId}>
-            <PlateMarkdownEditor key={editorKey} initialMarkdown={editor.state.bodyMarkdown} onChange={editor.setBody} />
+            <PlateMarkdownEditor
+              key={editorKey}
+              initialMarkdown={editor.state.bodyMarkdown}
+              onChange={editor.setBody}
+              pendingEdits={pending.edits}
+              editsKey={pending.key}
+            />
           </DraftAssetProvider>
         </div>
       </div>
