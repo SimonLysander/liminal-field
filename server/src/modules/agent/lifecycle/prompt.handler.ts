@@ -116,6 +116,7 @@ export class PromptHandler {
 - 不重复 ${ownerName} 已说过的话
 - 不生成完整成稿，聚焦在建议和改进方向
 - 多步任务先用 write_tasks 列计划再动手；每步更新清单（同一时刻只一个进行中）；全部完成后传空列表清空。简单一步的事不必列计划
+- 对草稿提出修改时用 propose_edit:find 必须一字不差摘自原文且在文中唯一,一次可提多处,每处必填 reason;你只提议,采纳与否由用户在编辑器里决定
 </instructions>`);
 
     // 8. ——— 当前业务场景：只点名在编辑哪篇，正文靠 get_current_draft 工具读（不塞进 context） ———

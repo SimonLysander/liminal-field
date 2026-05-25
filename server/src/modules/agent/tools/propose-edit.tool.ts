@@ -1,0 +1,57 @@
+import { tool, jsonSchema } from 'ai';
+import { toolResult } from './tool-result';
+
+/**
+ * propose_edit —— 向当前草稿提出【多处】修改(查找-替换块)。
+ *
+ * 纯管道工具:本工具【不碰正文、不验证 find 是否命中】。正文真相在前端编辑器
+ * (草稿 local-first),后端只有上次同步的旧 bodyMarkdown,无权定位。AI 的 edits
+ * 入参经 AI SDK 透传到前端 message 的 tool-propose_edit part,由前端块级定位并落成
+ * suggestion 痕迹。execute 只做结构校验 + 回报处数给模型。
+ */
+const MAX_FIND = 4000; // 单个 find 片段上限,挡住模型整篇塞进来
+
+export function createProposeEditTool() {
+  return tool({
+    description:
+      '向当前草稿提出修改。每处给出 find(从当前正文一字不差摘录、且在文中唯一的原文片段)、replace(改成的新文本)、reason(为什么改)。一次调用可提多处。修改会以行内增删痕迹出现在编辑器里,由用户逐处接受或拒绝——你只负责提议,不要假设已被采纳。find 拿不准就少改、宁可分多轮。',
+    inputSchema: jsonSchema<{
+      edits: Array<{ find: string; replace: string; reason: string }>;
+    }>({
+      type: 'object',
+      properties: {
+        edits: {
+          type: 'array',
+          description: '一处或多处修改',
+          items: {
+            type: 'object',
+            properties: {
+              find: { type: 'string', description: '从当前正文一字不差摘录、且唯一的原文片段' },
+              replace: { type: 'string', description: '改成的新文本' },
+              reason: { type: 'string', description: '这处为什么改(显示给用户)' },
+            },
+            required: ['find', 'replace', 'reason'],
+          },
+        },
+      },
+      required: ['edits'],
+    }),
+    execute: ({ edits }: { edits: Array<{ find: string; replace: string; reason: string }> }) => {
+      const valid = (edits ?? []).filter(
+        (e) =>
+          typeof e?.find === 'string' &&
+          e.find.trim().length > 0 &&
+          e.find.length <= MAX_FIND &&
+          typeof e?.replace === 'string' &&
+          e.replace.length > 0,
+      );
+      if (valid.length === 0) {
+        return toolResult('没有有效的修改项', undefined, { status: 'invalid', count: 0 });
+      }
+      return toolResult(`已向草稿提议 ${valid.length} 处修改,待用户在编辑器中确认`, undefined, {
+        status: 'ok',
+        count: valid.length,
+      });
+    },
+  });
+}

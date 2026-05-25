@@ -15,7 +15,8 @@ export type ToolStatus =
   | 'not_found'
   | 'ambiguous'
   | 'error'
-  | 'timeout';
+  | 'timeout'
+  | 'invalid'; // 输入结构校验失败(如空 edits)
 
 export interface ToolResultMeta {
   status?: ToolStatus;
