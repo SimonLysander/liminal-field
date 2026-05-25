@@ -8,9 +8,21 @@
  * 它们用 send(text) 把最终文本发出去。
  *
  * 生命周期(对应后端 hooks):
- * 1. mount → loadSession(sessionKey,title) → 恢复对话(session 记忆脉络由后端注入,前端不再回传)
- * 2. send → transport body 携带 relatedMemories + entryContext(可选文档)
- * 3. 回复完成 → saveSession(sessionKey, messages)
+ * 1. mount → loadSession(sessionKey) → 恢复对话（首屏加载最近一页）
+ *    session 记忆脉络由后端注入 system prompt，前端不管
+ * 2. 滚到顶懒加载 → loadSession(sessionKey, { before: firstIndex }) → 前拼更早消息
+ * 3. send → transport body 携带 entryContext(可选文档)
+ * 4. 回复完成 → saveSession(sessionKey, newMessages) — 只发本轮新增（方案A append）
+ *
+ * 分段聚合分页设计（U7 新增）：
+ * - 后端 onAfterChat 是纯 append 语义，前端必须只发新增消息，否则全量重发导致重复追加
+ * - savedCountRef 记录已保存的 messages.length，每次回复后截取 messages.slice(savedCount) 发送
+ * - hasMoreRef / firstIndexRef 记录懒加载游标，onLoadMore 时传 before=firstIndex
+ * - 懒加载拼接：把旧页消息 prepend 到当前 messages 头部，用户无感分段
+ *
+ * U6 变更（relatedMemories）：
+ * - project 自动召回已删，relatedMemories 恒为空数组，前端不再维护该字段
+ * - session 记忆脉络由后端注入 system prompt，前端 transport body 无需回传
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DefaultChatTransport } from 'ai';
@@ -50,12 +62,17 @@ export function useAdvisorChat({
   const [tier, setTier] = useState<Tier>('standard');
   const [sessionReady, setSessionReady] = useState(false);
 
-  // Ref 层:持有最新值供 transport body 回调读取(transport 只创建一次)
+  // 懒加载状态：hasMore 控制是否显示"加载更多"触发区，isLoadingMore 防重复请求
+  const [hasMore, setHasMore] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  // Ref 层：持有最新值供 transport body 回调 / 懒加载逻辑读取（避免 stale closure）
   const docRef = useRef(documentContext);
   const tierRef = useRef(tier);
-  const relatedMemoriesRef = useRef<
-    Array<{ key: string; type: string; title: string; content: string }>
-  >([]);
+  // 懒加载游标：当前页第一条消息的绝对 index，下次加载传 before=firstIndex
+  const firstIndexRef = useRef<number>(0);
+  // append 语义游标：记录已保存到后端的消息数量，saveSession 只发 slice(savedCount)
+  const savedCountRef = useRef<number>(0);
 
   useEffect(() => {
     docRef.current = documentContext;
@@ -73,10 +90,7 @@ export function useAdvisorChat({
         body: () => ({
           tier: tierRef.current,
           agentKey,
-          relatedMemories:
-            relatedMemoriesRef.current.length > 0
-              ? relatedMemoriesRef.current
-              : undefined,
+          // relatedMemories 字段已在 U6 废弃（恒空），不再传给后端
           entryContext: {
             source,
             sessionKey,
@@ -117,16 +131,28 @@ export function useAdvisorChat({
     return { tasks: t, planTitle: title };
   }, [messages]);
 
-  // SessionLoad:加载历史消息 + 自动 recall 记忆
+  /**
+   * SessionLoad（初始加载）：取最近一页消息，初始化懒加载游标。
+   *
+   * savedCountRef 初始化为加载到的消息数（这批消息已在后端，不需再 append），
+   * 这样首次回复后 savedCount=messages.length 时，slice(savedCount) 只截取新增的两条。
+   *
+   * setSessionReady(false) 放在异步回调外、通过 useState 初始值保证初始不 ready，
+   * 不在 effect 同步调用 setState（lint: react-hooks/set-state-in-effect）。
+   */
   useEffect(() => {
     let cancelled = false;
-    loadSession(sessionKey, documentContext?.title)
+    loadSession(sessionKey)
       .then((data) => {
         if (cancelled) return;
-        relatedMemoriesRef.current = data.relatedMemories || [];
         if (data.messages.length > 0) {
           setMessages(data.messages as unknown as UIMessage[]);
         }
+        // 初始化懒加载游标（绝对 index，用于下次 before 参数）
+        firstIndexRef.current = data.firstIndex;
+        setHasMore(data.hasMore);
+        // 初始化 append 游标：已加载的消息已在后端，不需再发送
+        savedCountRef.current = data.messages.length;
         setSessionReady(true);
       })
       .catch(() => {
@@ -135,11 +161,45 @@ export function useAdvisorChat({
     return () => {
       cancelled = true;
     };
-    // documentContext?.title 只用于首次 recall 提示,变化不需重载会话
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // sessionKey 变化才重新加载，documentContext 变化不触发（只用于首次 body）
   }, [sessionKey, setMessages]);
 
-  // AfterChat:回复完成自动保存消息(tasks 显示由消息流里的 write_tasks 调用驱动,无需单独同步)
+  /**
+   * 懒加载更早历史（滚到顶触发）。
+   *
+   * 用 firstIndexRef 作游标（before=firstIndex），返回更早一页。
+   * 旧页消息 prepend 到当前 messages 头部，用户无感分段。
+   * savedCountRef 同步增加（prepend 的消息数量），保持 append 游标正确。
+   */
+  const loadMore = useCallback(async () => {
+    if (!hasMore || isLoadingMore || firstIndexRef.current === 0) return;
+    setIsLoadingMore(true);
+    try {
+      const data = await loadSession(sessionKey, { before: firstIndexRef.current });
+      // prepend 老消息：新页在前，当前页接后（正序：旧→新）
+      setMessages((prev) => [
+        ...(data.messages as unknown as UIMessage[]),
+        ...prev,
+      ]);
+      // 更新懒加载游标：指向更早一页的起点
+      firstIndexRef.current = data.firstIndex;
+      setHasMore(data.hasMore);
+      // append 游标同步增加（prepend 的旧消息数），保证 saveSession 截取的是真正新增部分
+      savedCountRef.current += data.messages.length;
+    } catch {
+      // 加载失败不崩溃，用户可重试（hasMore 保持，允许再次触发）
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [hasMore, isLoadingMore, sessionKey, setMessages]);
+
+  /**
+   * AfterChat：回复完成后只追加本轮新增消息（方案A：前端 slice，后端纯 append）。
+   *
+   * savedCountRef 始终指向"已成功 append 到后端的消息数量"。
+   * 每次 AI 回复结束，messages[savedCount..] 就是本轮新增的 user+assistant 消息。
+   * 发送成功后才更新 savedCountRef，防止网络失败导致漏发。
+   */
   const prevStatusRef = useRef(status);
   useEffect(() => {
     const wasActive =
@@ -147,8 +207,13 @@ export function useAdvisorChat({
     const nowReady = status === 'ready';
     prevStatusRef.current = status;
 
-    if (wasActive && nowReady && messages.length > 0) {
-      void saveSession(sessionKey, messages as unknown as Record<string, unknown>[]);
+    if (wasActive && nowReady && messages.length > savedCountRef.current) {
+      const newMessages = messages.slice(savedCountRef.current) as unknown as Record<string, unknown>[];
+      const countToSave = savedCountRef.current + newMessages.length;
+      void saveSession(sessionKey, newMessages).then(() => {
+        // 只有后端成功 append 后才推进游标，保证重试安全
+        savedCountRef.current = countToSave;
+      });
     }
   }, [status, messages, sessionKey]);
 
@@ -170,6 +235,9 @@ export function useAdvisorChat({
     status,
     isStreaming,
     sessionReady,
+    hasMore,
+    isLoadingMore,
+    loadMore,
     tasks,
     planTitle,
     tier,

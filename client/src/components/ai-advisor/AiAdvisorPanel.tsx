@@ -49,13 +49,25 @@ export function AiAdvisorPanel({
   const activeSelection =
     selectedText && selectedText !== dismissedText ? selectedText : undefined;
 
-  const { messages, status, isStreaming, sessionReady, send, stop, error, tasks, planTitle } =
-    useAdvisorChat({
-      sessionKey,
-      agentKey: 'writing-advisor',
-      source: 'notes-editor',
-      documentContext: { contentItemId, title, bodyMarkdown },
-    });
+  const {
+    messages,
+    status,
+    isStreaming,
+    sessionReady,
+    hasMore,
+    isLoadingMore,
+    loadMore,
+    send,
+    stop,
+    error,
+    tasks,
+    planTitle,
+  } = useAdvisorChat({
+    sessionKey,
+    agentKey: 'writing-advisor',
+    source: 'notes-editor',
+    documentContext: { contentItemId, title, bodyMarkdown },
+  });
 
   // 发送:add-to-chat(选中文字拼接到消息前面)
   const handleSend = useCallback(() => {
@@ -91,7 +103,15 @@ export function AiAdvisorPanel({
           </div>
         )}
         {sessionReady && messages.length > 0 && (
-          <MessageList messages={messages} status={status} sessionKey={sessionKey} error={error} />
+          <MessageList
+            messages={messages}
+            status={status}
+            sessionKey={sessionKey}
+            error={error}
+            hasMore={hasMore}
+            isLoadingMore={isLoadingMore}
+            onLoadMore={loadMore}
+          />
         )}
       </div>
 
