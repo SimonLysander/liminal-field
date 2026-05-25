@@ -22,7 +22,12 @@ import {
 import { makeRepairToolCall } from './agent.utils';
 import { SystemConfigService } from '../settings/system-config.service';
 import { AgentLifecycle } from './lifecycle/agent-lifecycle.service';
+import { splitForCompaction } from './context/compaction-split';
 import type { AgentChatDto } from './dto/agent-chat.dto';
+
+/** 喂模型最近原文的 token 占比(与 compaction 同标准:超 60% 才裁,保留到 30% 额度) */
+const TRIGGER_RATIO = 0.6;
+const KEEP_RATIO = 0.3;
 
 @Injectable()
 export class AgentService {
@@ -74,10 +79,22 @@ export class AgentService {
       tier,
     });
 
-    // 5. 将前端 UIMessage 格式转为 streamText 需要的 ModelMessage 格式
-    //    dto.messages 为宽松 any[](兼容 useChat 发来的额外字段)，转换前断言为 SDK 期望的 UIMessage[]
+    // 5. 组装喂模型的"最近原文":按 token 占比裁剪,只喂最近 keepRatio 额度,
+    //    更早的对话精华已在 session 记忆里(随 system prompt 注入),不重复喂。
+    //    为什么用 toKeep:它和 compaction 同一套 token 切分逻辑,保证"喂的最近原文"与
+    //    "compaction 保留的最近原文"口径一致——不会喂了又被算作该压缩。
+    //    dto.messages 是本轮前端发来的完整对话(含最新一条 user 消息),
+    //    以它为基准做 token 倒取(尾部保留),既拿到最新消息又控制住上下文体积。
+    const recent = (dto.messages ?? []) as Record<string, unknown>[];
+    const { toKeep } = splitForCompaction(recent, {
+      window: aiConfig.contextWindow,
+      // 固定开销已并入 system/记忆,此处只关心"最近原文"额度,fixed 给 0 让 keepRatio 满额生效
+      fixedTokens: 0,
+      triggerRatio: TRIGGER_RATIO,
+      keepRatio: KEEP_RATIO,
+    });
     const modelMessages = await convertToModelMessages(
-      dto.messages as Parameters<typeof convertToModelMessages>[0],
+      toKeep as Parameters<typeof convertToModelMessages>[0],
     );
 
     // 6. 调用 streamText：AI SDK 内置 ReAct 循环，stopWhen 限制最多 10 步防止无限循环

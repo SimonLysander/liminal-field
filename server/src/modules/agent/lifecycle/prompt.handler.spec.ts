@@ -165,7 +165,7 @@ describe('PromptHandler.buildSystemPrompt', () => {
       expect(out).not.toContain('项目A的详细正文');
     });
 
-    it('relatedMemories / sessionSummary 有才注入', () => {
+    it('relatedMemories / sessionMemory 有才注入', () => {
       const without = handler.buildSystemPrompt(baseParams());
       expect(without).not.toContain('<related_memories>');
       expect(without).not.toContain('<conversation_summary>');
@@ -173,13 +173,14 @@ describe('PromptHandler.buildSystemPrompt', () => {
       const out = handler.buildSystemPrompt(
         baseParams({
           relatedMemories: [{ title: '召回', content: '相关内容' }],
-          sessionSummary: '之前聊过的摘要',
+          // session 记忆 content(脉络),替代旧 sessionSummary
+          sessionMemory: '之前会话的脉络',
         }),
       );
       expect(out).toContain('<related_memories>');
       expect(out).toContain('相关内容');
       expect(out).toContain('<conversation_summary>');
-      expect(out).toContain('之前聊过的摘要');
+      expect(out).toContain('之前会话的脉络');
     });
   });
 

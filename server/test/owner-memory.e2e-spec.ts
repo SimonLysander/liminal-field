@@ -14,7 +14,6 @@
 import supertest from 'supertest';
 import { TestContext, login } from './helpers';
 import { AgentMemoryRepository } from '../src/modules/agent/memory/agent-memory.repository';
-import { AgentSessionRepository } from '../src/modules/agent/session/agent-session.repository';
 
 describe('Owner Profile & Memory Management (E2E)', () => {
   const ctx = new TestContext();
@@ -178,24 +177,19 @@ describe('Owner Profile & Memory Management (E2E)', () => {
     });
 
     it('PUT session 后应在 response 中返回最新 tasks', async () => {
-      // 先通过 repository 插入一个 task
-      const sessionRepo = ctx.app.get(AgentSessionRepository);
-      await sessionRepo.upsert(
-        testSessionKey,
-        [{ role: 'user', content: 'hello' }],
-        1,
-      );
-      await sessionRepo.addTask(testSessionKey, {
-        id: 'task_001',
-        title: '写第一章',
-        description: '',
-        status: 'pending',
-        blocks: [],
-        blockedBy: [],
-        metadata: {},
-        createdAt: new Date().toISOString(),
-        completedAt: null,
-      });
+      // 新架构:tasks 落在 session 记忆记录(by agentKey=testSessionKey),不再在 AgentSession 上。
+      // 通过 memoryRepo.setTasks 注入,模拟 write_tasks 工具的写入路径。
+      const memoryRepo = ctx.app.get(AgentMemoryRepository);
+      await memoryRepo.setTasks(testSessionKey, [
+        {
+          id: 'task_001',
+          title: '写第一章',
+          description: '',
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          completedAt: null,
+        },
+      ]);
 
       // PUT 保存消息，response 应包含 tasks
       const res = await supertest(ctx.app.getHttpServer())

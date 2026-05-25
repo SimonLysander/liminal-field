@@ -33,6 +33,7 @@ import { AgentLifecycle } from './lifecycle/agent-lifecycle.service';
 import { AgentMemoryRepository } from './memory/agent-memory.repository';
 import type { AgentMemoryType } from './memory/agent-memory.entity';
 import { AgentChatDto } from './dto/agent-chat.dto';
+import { SystemConfigService } from '../settings/system-config.service';
 
 @Controller()
 export class AgentController {
@@ -41,6 +42,7 @@ export class AgentController {
     private readonly lifecycle: AgentLifecycle,
     private readonly memoryRepo: AgentMemoryRepository,
     private readonly eventEmitter: EventEmitter2,
+    private readonly systemConfigService: SystemConfigService,
   ) {}
 
   @RawResponse()
@@ -117,15 +119,19 @@ export class AgentController {
 
   /**
    * 保存会话消息。前端在每次 AI 回复完成后调用。
-   * 保存后通过事件异步触发 compaction（不阻塞响应）。
-   * 返回当前 tasks，前端用于更新 TaskBar。
+   * :key 即 agentKey(草稿级标识)。保存后通过事件异步触发 compaction(不阻塞响应)。
+   * 返回当前 tasks,前端用于更新 TaskBar。
+   *
+   * window 取自当前 AI 配置的 contextWindow——compaction 按 token 占比判断是否触发,
+   * 需要窗口大小作分母,在此一并解析后随 onAfterChat 带入事件。
    */
   @Put('agent/sessions/:key')
   async saveSession(
     @Param('key') key: string,
     @Body('messages') messages: Record<string, unknown>[] = [],
   ) {
-    await this.lifecycle.onAfterChat(key, messages);
+    const aiConfig = await this.systemConfigService.getAiConfig();
+    await this.lifecycle.onAfterChat(key, messages, aiConfig.contextWindow);
     const tasks = await this.lifecycle.getSessionTasks(key);
     return { ok: true, tasks };
   }

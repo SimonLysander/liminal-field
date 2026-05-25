@@ -1,6 +1,6 @@
 import { tool, jsonSchema } from 'ai';
 import { nanoid } from 'nanoid';
-import type { AgentSessionRepository } from '../session/agent-session.repository';
+import type { AgentMemoryRepository } from '../memory/agent-memory.repository';
 import { toolResult } from './tool-result';
 
 /**
@@ -9,12 +9,15 @@ import { toolResult } from './tool-result';
  * 模型每次给出**完整**任务列表,系统用它覆盖原清单 → 模型有最大自由度
  * (增/删/重排/改写/标记进度),且不碰内部 ID、不需要依赖图(顺序即先后)。
  * 当前清单会随 system prompt 注入,模型每轮看得到。
+ *
+ * 存储:tasks 属于草稿级 agent 工作状态,落在 session 记忆记录(by agentKey),
+ * 与对话原文(messages)解耦——onBeforeChat 也从同一处读回注入,保证读写同源。
  */
 const VALID_STATUS = ['pending', 'in_progress', 'done'];
 
 export function createWriteTasksTool(
-  sessionRepo: AgentSessionRepository,
-  sessionKey: string,
+  memoryRepo: AgentMemoryRepository,
+  agentKey: string,
 ) {
   return tool({
     description:
@@ -80,7 +83,7 @@ export function createWriteTasksTool(
         })
         .filter((t) => t.title.length > 0);
 
-      await sessionRepo.setTasks(sessionKey, norm);
+      await memoryRepo.setTasks(agentKey, norm);
 
       const done = norm.filter((t) => t.status === 'done').length;
       const summary =

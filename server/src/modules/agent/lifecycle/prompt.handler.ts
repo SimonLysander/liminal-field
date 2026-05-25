@@ -37,8 +37,11 @@ export interface BuildSystemPromptParams {
   indexMemories: AgentMemory[];
   /** SessionLoad 阶段自动召回的相关 project 记忆（全文注入） */
   relatedMemories?: Array<{ title: string; content: string }>;
-  /** compaction 产生的旧消息摘要（可选） */
-  sessionSummary?: string;
+  /**
+   * 本草稿 session 记忆的 content（compaction 把超窗口旧对话提炼出的会话脉络）。
+   * 替代旧 sessionSummary——脉络的归宿是 session 记忆,不再有独立 summary 概念。
+   */
+  sessionMemory?: string;
   /** 用户当前正在编辑的文档（可选） */
   document?: {
     contentItemId: string;
@@ -111,9 +114,9 @@ export class PromptHandler {
         `<related_memories>\n与当前文档相关的记忆（已自动召回）：\n${lines}\n</related_memories>`,
       );
     }
-    if (params.sessionSummary) {
+    if (params.sessionMemory) {
       sections.push(
-        `<conversation_summary>\n以下是之前对话的摘要（更早的消息已被压缩）：\n${params.sessionSummary}\n</conversation_summary>`,
+        `<conversation_summary>\n以下是本次会话的脉络记忆（更早的对话已被提炼进记忆，原文仍可用 read_conversation_history 精确回溯）：\n${params.sessionMemory}\n</conversation_summary>`,
       );
     }
 

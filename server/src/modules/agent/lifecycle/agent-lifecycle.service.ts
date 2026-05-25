@@ -22,6 +22,7 @@ import { MemoryHandler } from './memory.handler';
 import { PromptHandler } from './prompt.handler';
 import { ToolAssembler } from './tool.assembler';
 import { SystemConfigService } from '../../settings/system-config.service';
+import { AgentMemoryRepository } from '../memory/agent-memory.repository';
 import type { AgentMemory } from '../memory/agent-memory.entity';
 import type { AgentChatDto } from '../dto/agent-chat.dto';
 
@@ -34,6 +35,9 @@ export class AgentLifecycle {
     private readonly tools: ToolAssembler,
     private readonly eventEmitter: EventEmitter2,
     private readonly systemConfigService: SystemConfigService,
+    // 直接注入记忆 repository:session 记忆(content + tasks)是草稿级,
+    // 由 agentKey(=entryContext.sessionKey)定位,不经 MemoryHandler 的全局召回路径
+    private readonly memoryRepo: AgentMemoryRepository,
   ) {}
 
   /**
@@ -42,7 +46,7 @@ export class AgentLifecycle {
    * autoRecall 失败降级为空数组，不影响会话加载。
    */
   async onSessionLoad(
-    sessionKey: string,
+    agentKey: string,
     documentTitle?: string,
   ): Promise<{
     sessionKey: string;
@@ -53,7 +57,12 @@ export class AgentLifecycle {
     lastActiveAt: Date | null;
     relatedMemories: AgentMemory[];
   }> {
-    const sessionData = await this.session.load(sessionKey);
+    // 新架构:消息跨段聚合(此处取最近一段额度;完整聚合分页留到 U5),
+    // 会话脉络与 tasks 来自草稿 session 记忆记录(agentKey 定位)。
+    const [sessionData, sessionMem] = await Promise.all([
+      this.session.load(agentKey),
+      this.memoryRepo.findSession(agentKey),
+    ]);
 
     let relatedMemories: AgentMemory[] = [];
     try {
@@ -62,7 +71,16 @@ export class AgentLifecycle {
       // 自动召回失败不影响会话加载，降级为空数组
     }
 
-    return { sessionKey, ...sessionData, relatedMemories };
+    return {
+      sessionKey: agentKey,
+      messages: sessionData.messages,
+      // summary 字段沿用返回结构,值改为 session 记忆 content(脉络);totalRounds 过渡保留为消息条数
+      summary: sessionMem?.content ?? '',
+      totalRounds: sessionData.totalRounds,
+      tasks: (sessionMem?.tasks as Array<Record<string, unknown>>) ?? [],
+      lastActiveAt: sessionData.lastActiveAt,
+      relatedMemories,
+    };
   }
 
   /**
@@ -86,22 +104,29 @@ export class AgentLifecycle {
     systemPrompt: string;
     tools: Record<string, any>;
   }> {
-    // 并行加载记忆 + 所有者身份 + 当前会话任务(注入 prompt,让模型看得到自己的计划)
-    const sessionKey = dto.entryContext.sessionKey;
-    const [coreMemories, indexMemories, ownerProfile, tasks] =
+    // agentKey = 草稿级标识(现阶段即 entryContext.sessionKey 的值;前端字段改名留到 U7)
+    const agentKey = dto.entryContext.sessionKey;
+    // 并行加载:user 记忆全文 + project 索引 + 所有者身份 + 本草稿 session 记忆(content + tasks)
+    const [coreMemories, indexMemories, ownerProfile, sessionMem] =
       await Promise.all([
         this.memory.loadCore(),
         this.memory.loadIndex(),
         this.systemConfigService.getOwnerProfile(),
-        sessionKey ? this.session.getTasks(sessionKey) : Promise.resolve([]),
+        agentKey
+          ? this.memoryRepo.findSession(agentKey)
+          : Promise.resolve(null),
       ]);
+
+    // tasks 从 session 记忆记录取(替代旧 AgentSession.tasks);content 替代旧 sessionSummary 注入
+    const tasks = (sessionMem?.tasks as Array<Record<string, unknown>>) ?? [];
 
     const systemPrompt = this.prompt.buildSystemPrompt({
       ownerProfile: ownerProfile.name ? ownerProfile : undefined,
       coreMemories,
       indexMemories,
       relatedMemories: dto.relatedMemories,
-      sessionSummary: dto.sessionSummary ?? undefined,
+      // session 记忆 content = 旧对话提炼出的会话脉络,替代旧 sessionSummary
+      sessionMemory: sessionMem?.content || undefined,
       document: dto.entryContext.document,
       customSystemPrompt: aiConfig.aiSystemPrompt,
       entrySystemPrompt: aiConfig.entrySystemPrompt,
@@ -119,23 +144,25 @@ export class AgentLifecycle {
   }
 
   /**
-   * 对话完成钩子：持久化消息 + 发送异步事件。
-   * compaction 等后处理通过事件异步执行，不阻塞响应。
+   * 对话完成钩子:append 新增消息 + 发送异步 compaction 事件。
+   *
+   * 原文 append-only:只追加本轮新增消息(分段由 repository 自动管理),永不覆盖删除。
+   * window 随事件带出,供 compaction 按 token 占比判断是否触发(后台,不阻塞响应)。
    */
   async onAfterChat(
-    sessionKey: string,
-    messages: Record<string, unknown>[],
+    agentKey: string,
+    newMessages: Record<string, unknown>[],
+    window: number,
   ): Promise<void> {
-    await this.session.save(sessionKey, messages);
-    this.eventEmitter.emit('agent.afterChat', { sessionKey, messages });
+    await this.session.save(agentKey, newMessages);
+    this.eventEmitter.emit('agent.afterChat', { agentKey, window });
   }
 
-  /** 获取会话中的 tasks（保存后返回给前端刷新 TaskBar） */
+  /** 获取草稿 session 记忆中的 tasks(保存后返回给前端刷新 TaskBar) */
   async getSessionTasks(
-    sessionKey: string,
+    agentKey: string,
   ): Promise<Array<Record<string, unknown>>> {
-    const tasks = await this.session.getTasks(sessionKey);
-    return tasks;
+    return this.memoryRepo.getTasks(agentKey);
   }
 
   /**

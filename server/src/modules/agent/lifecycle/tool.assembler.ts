@@ -30,6 +30,7 @@ import { createForgetTool } from '../tools/forget.tool';
 import { createSubAgentTool } from '../tools/sub-agent.tool';
 import { createWriteTasksTool } from '../tools/write-tasks.tool';
 import { AgentSessionRepository } from '../session/agent-session.repository';
+import { AgentMemoryRepository } from '../memory/agent-memory.repository';
 import type { DocumentContext } from '../tools/get-current-document.tool';
 
 export interface EntryContext {
@@ -46,6 +47,8 @@ export class ToolAssembler {
     private readonly memoryAgent: MemoryAgentService,
     private readonly subAgentService: SubAgentService,
     private readonly sessionRepo: AgentSessionRepository,
+    // tasks 落在 session 记忆(by agentKey),write_tasks 工具写这里,与 onBeforeChat 读回同源
+    private readonly memoryRepo: AgentMemoryRepository,
   ) {}
 
   /**
@@ -86,7 +89,8 @@ export class ToolAssembler {
       ...(entryContext.sessionKey
         ? {
             write_tasks: createWriteTasksTool(
-              this.sessionRepo,
+              this.memoryRepo,
+              // entryContext.sessionKey 的值即 agentKey(草稿级标识)
               entryContext.sessionKey,
             ),
           }
