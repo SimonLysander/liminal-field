@@ -83,6 +83,7 @@ export class SystemConfigService implements OnModuleInit {
     'forget',
     'sub_agent',
     'write_tasks',
+    'read_conversation_history',
   ];
 
   constructor(

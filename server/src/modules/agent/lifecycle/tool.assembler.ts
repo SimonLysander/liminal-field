@@ -29,6 +29,7 @@ import { createRememberTool } from '../tools/remember.tool';
 import { createForgetTool } from '../tools/forget.tool';
 import { createSubAgentTool } from '../tools/sub-agent.tool';
 import { createWriteTasksTool } from '../tools/write-tasks.tool';
+import { createReadConversationHistoryTool } from '../tools/read-conversation-history.tool';
 import { AgentSessionRepository } from '../session/agent-session.repository';
 import { AgentMemoryRepository } from '../memory/agent-memory.repository';
 import type { DocumentContext } from '../tools/get-current-document.tool';
@@ -91,6 +92,15 @@ export class ToolAssembler {
             write_tasks: createWriteTasksTool(
               this.memoryRepo,
               // entryContext.sessionKey 的值即 agentKey(草稿级标识)
+              entryContext.sessionKey,
+            ),
+          }
+        : {}),
+      // 对话原文回溯：session 记忆有损精炼，精确查"用户原话"时用此工具
+      ...(entryContext.sessionKey
+        ? {
+            read_conversation_history: createReadConversationHistoryTool(
+              this.sessionRepo,
               entryContext.sessionKey,
             ),
           }

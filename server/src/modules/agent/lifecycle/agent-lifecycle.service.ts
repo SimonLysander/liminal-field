@@ -23,8 +23,13 @@ import { PromptHandler } from './prompt.handler';
 import { ToolAssembler } from './tool.assembler';
 import { SystemConfigService } from '../../settings/system-config.service';
 import { AgentMemoryRepository } from '../memory/agent-memory.repository';
+import { AgentSessionRepository } from '../session/agent-session.repository';
+import { sliceSessionPage } from './session-pagination';
 import type { AgentMemory } from '../memory/agent-memory.entity';
 import type { AgentChatDto } from '../dto/agent-chat.dto';
+
+/** 跨段聚合分页默认每页条数 */
+const SESSION_PAGE_LIMIT = 50;
 
 @Injectable()
 export class AgentLifecycle {
@@ -38,31 +43,50 @@ export class AgentLifecycle {
     // 直接注入记忆 repository:session 记忆(content + tasks)是草稿级,
     // 由 agentKey(=entryContext.sessionKey)定位,不经 MemoryHandler 的全局召回路径
     private readonly memoryRepo: AgentMemoryRepository,
+    // 跨段聚合分页：getAllMessages 跨段全量后内存 slice（对话量可控，YAGNI）
+    private readonly sessionRepo: AgentSessionRepository,
   ) {}
 
   /**
-   * 会话加载钩子：前端打开对话时调用。
+   * 会话加载钩子：前端打开对话时调用，支持跨段聚合分页。
+   *
+   * 分页设计（游标：绝对 index）：
+   * - 无 before：返回最近 limit 条（初始加载，最新一页）
+   * - 有 before：返回 before index 之前的 limit 条（懒加载更早历史）
+   * 实现：getAllMessages 全量加载后内存 slice，agent 对话量可控（YAGNI，真很大再优化）。
+   *
    * 同时触发自动召回——如果有文档标题，尝试找到相关 project 记忆。
    * autoRecall 失败降级为空数组，不影响会话加载。
    */
   async onSessionLoad(
     agentKey: string,
     documentTitle?: string,
+    /** 分页游标：返回此绝对 index 之前的消息；无则取最近 limit 条 */
+    before?: number,
+    /** 每页条数，默认 SESSION_PAGE_LIMIT */
+    limit: number = SESSION_PAGE_LIMIT,
   ): Promise<{
     sessionKey: string;
     messages: Record<string, unknown>[];
+    /** 是否还有更早的消息（前端据此决定是否显示"加载更多"） */
+    hasMore: boolean;
+    /** 当前返回的第一条消息的绝对 index（前端下次懒加载传 before=firstIndex） */
+    firstIndex: number;
     summary: string;
     totalRounds: number;
     tasks: Array<Record<string, unknown>>;
     lastActiveAt: Date | null;
     relatedMemories: AgentMemory[];
   }> {
-    // 新架构:消息跨段聚合(此处取最近一段额度;完整聚合分页留到 U5),
-    // 会话脉络与 tasks 来自草稿 session 记忆记录(agentKey 定位)。
-    const [sessionData, sessionMem] = await Promise.all([
-      this.session.load(agentKey),
+    // 并行加载：全量消息（分页用）+ session 记忆（脉络/tasks）+ 最新段（lastActiveAt）
+    const [allMessages, sessionMem, latestSeg] = await Promise.all([
+      this.sessionRepo.getAllMessages(agentKey),
       this.memoryRepo.findSession(agentKey),
+      this.sessionRepo.findLatestSeg(agentKey),
     ]);
+
+    // 内存分页：before 是绝对 index（全量数组下标），纯函数 sliceSessionPage 算切片
+    const page = sliceSessionPage(allMessages, before, limit);
 
     let relatedMemories: AgentMemory[] = [];
     try {
@@ -73,12 +97,15 @@ export class AgentLifecycle {
 
     return {
       sessionKey: agentKey,
-      messages: sessionData.messages,
-      // summary 字段沿用返回结构,值改为 session 记忆 content(脉络);totalRounds 过渡保留为消息条数
+      messages: page.messages,
+      hasMore: page.hasMore,
+      firstIndex: page.firstIndex,
+      // summary 字段沿用返回结构,值改为 session 记忆 content(脉络)
       summary: sessionMem?.content ?? '',
-      totalRounds: sessionData.totalRounds,
+      // totalRounds 过渡保留为 assistant 消息条数近似（旧字段 U6 清理）
+      totalRounds: allMessages.filter((m) => m['role'] === 'assistant').length,
       tasks: (sessionMem?.tasks as Array<Record<string, unknown>>) ?? [],
-      lastActiveAt: sessionData.lastActiveAt,
+      lastActiveAt: latestSeg?.lastActiveAt ?? null,
       relatedMemories,
     };
   }
