@@ -213,8 +213,12 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
         </div>
       </div>
 
-      {/* [2,3] 大纲 — 与展示端目录同步 */}
-      <EditorOutline headings={editor.headings} onJump={editor.scrollToHeading} />
+      {/* [2,3] 大纲 — 与展示端大纲同步(scroll-spy 高亮当前标题) */}
+      <EditorOutline
+        headings={editor.headings}
+        onJump={editor.scrollToHeading}
+        activeIndex={editor.activeHeadingIndex}
+      />
     </div>
   );
 }

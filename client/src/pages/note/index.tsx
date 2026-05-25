@@ -29,6 +29,7 @@ import MarkdownBody from '@/components/shared/MarkdownBody';
 import { LoadingState } from '@/components/LoadingState';
 import { X, Sparkles } from 'lucide-react';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { useScrollFade } from '@/hooks/use-scroll-fade';
 
 /* ================================================================
  * /note      → NoteListView  已发布文章列表
@@ -102,6 +103,9 @@ function NoteReader({ id }: { id: string }) {
       id: `heading-${i}`,
     }));
   }, [content]);
+
+  // 大纲列表仅可滚动时才上下渐隐(短列表不被误淡)
+  const tocMask = useScrollFade(tocPanelRef, [toc.length]);
 
   /*
    * Scroll spy — 监听滚动确定当前 TOC 高亮位置。
@@ -277,44 +281,52 @@ function NoteReader({ id }: { id: string }) {
 
       {/* Right — TOC panel（始终预留宽度，避免内容加载后布局抖动） */}
       <div
-        ref={tocPanelRef}
-        className="hidden min-h-0 shrink-0 flex-col gap-7 self-start overflow-y-auto px-4 py-10 md:flex"
+        className="hidden shrink-0 flex-col self-start px-4 md:flex"
         style={{
           width: 'var(--layout-sidebar)',
-          // 离屏幕顶留距离(下移到主题按钮下方):目录是悬在中上部的容器,
-          // 渐隐发生在容器边缘而非屏幕边缘,滚动不再贴边硬切/划出屏幕
+          // 离屏幕顶留距离(下移到主题按钮下方)
           marginTop: '8vh',
-          maxHeight: '61.8vh',
-          // 滚动时上下边缘渐隐,内容柔和淡出而非硬切
-          maskImage: 'linear-gradient(to bottom, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%)',
-          WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%)',
         }}
       >
         {toc.length > 0 && (
-          <div>
+          <>
+            {/* 标题固定不滚 */}
             <div
-              className="mb-3 text-2xs font-semibold uppercase tracking-label"
+              className="mb-3 shrink-0 text-2xs font-semibold uppercase tracking-label"
               style={{ color: 'var(--ink-ghost)' }}
             >
-              目录
+              大纲
             </div>
-            {toc.map((item) => (
-              <div
-                key={item.id}
-                data-toc-id={item.id}
-                className="cursor-pointer truncate rounded-lg py-[5px] pr-2 text-sm transition-colors duration-200 hover:bg-[var(--shelf)]"
-                style={{
-                  // 当前阅读章节 = 长春花紫(进行中,符合 accent 纲领),其余墨灰
-                  color: activeToc === item.id ? 'var(--accent)' : 'var(--ink-faded)',
-                  fontWeight: activeToc === item.id ? 600 : 400,
-                  paddingLeft: `${(item.level - 1) * 10 + 8}px`,
-                }}
-                onClick={() => scrollToHeading(item.id)}
-              >
-                {item.text}
-              </div>
-            ))}
-          </div>
+            {/* 列表高度跟随内容、超上限才滚;左侧细线从标题下方开始、长度随内容(与编辑器大纲一致) */}
+            <div
+              ref={tocPanelRef}
+              className="overflow-y-auto"
+              style={{
+                maxHeight: '61.8vh',
+                borderLeft: '1px solid var(--separator)',
+                // 仅可滚动时上下边缘渐隐(useScrollFade),短列表不被误淡
+                maskImage: tocMask,
+                WebkitMaskImage: tocMask,
+              }}
+            >
+              {toc.map((item) => (
+                <div
+                  key={item.id}
+                  data-toc-id={item.id}
+                  className="cursor-pointer truncate rounded-lg py-[5px] pr-2 text-sm transition-colors duration-200 hover:bg-[var(--shelf)]"
+                  style={{
+                    // 当前阅读章节 = 长春花紫(进行中,符合 accent 纲领),其余墨灰
+                    color: activeToc === item.id ? 'var(--accent)' : 'var(--ink-faded)',
+                    fontWeight: activeToc === item.id ? 600 : 400,
+                    paddingLeft: `${(item.level - 1) * 10 + 8}px`,
+                  }}
+                  onClick={() => scrollToHeading(item.id)}
+                >
+                  {item.text}
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 

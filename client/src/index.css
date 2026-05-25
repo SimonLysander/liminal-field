@@ -601,10 +601,11 @@ pre code {
   font-style: italic;
 }
 
-/* Outline heading hover */
+/* Outline heading hover —— 只改背景,不动文字色:
+ * 否则 color !important 会盖掉当前标题的 accent 高亮(点击=悬停时高亮消失)。
+ * 与展示端阅读大纲一致(hover 仅背景)。 */
 .outline-heading-btn:hover {
   background: var(--shelf);
-  color: var(--ink) !important;
 }
 
 @layer base {

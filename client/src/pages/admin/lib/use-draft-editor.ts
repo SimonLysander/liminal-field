@@ -112,7 +112,48 @@ export function useDraftEditor<TState extends BaseDraftState>(adapter: DraftEdit
         el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 64;
       container.scrollTo({ top, behavior: 'smooth' });
     }
+    // 跳转后目标标题闪一下(toc-flash 动画),提示落点——与展示端阅读大纲一致
+    el.classList.remove('toc-highlight');
+    void el.offsetWidth; // 强制 reflow,确保重复点击同一项也能重放动画
+    el.classList.add('toc-highlight');
+    el.addEventListener(
+      'animationend',
+      () => el.classList.remove('toc-highlight'),
+      { once: true },
+    );
   }, []);
+
+  /*
+   * 大纲高亮 scroll-spy:监听编辑器滚动容器,找"顶部已划过阈值的最后一个标题"作为当前项。
+   * 阈值取容器顶 +72(略大于 scrollToHeading 的 -64 偏移,保证点击跳转后该标题即被高亮)。
+   * 与展示端阅读大纲同思路(见 note/index.tsx handleScroll)。
+   */
+  const [activeHeadingIndex, setActiveHeadingIndex] = useState(0);
+  useEffect(() => {
+    const container = document.querySelector(
+      '[data-scroll-container]',
+    ) as HTMLElement | null;
+    if (!container) return;
+    const onScroll = () => {
+      const els = document.querySelectorAll(
+        '[data-slate-editor] h1, [data-slate-editor] h2, [data-slate-editor] h3',
+      );
+      if (els.length === 0) return;
+      const threshold = container.getBoundingClientRect().top + 72;
+      let active = 0;
+      for (let i = els.length - 1; i >= 0; i--) {
+        if ((els[i] as HTMLElement).getBoundingClientRect().top <= threshold) {
+          active = i;
+          break;
+        }
+      }
+      setActiveHeadingIndex((prev) => (prev === active ? prev : active));
+    };
+    onScroll();
+    container.addEventListener('scroll', onScroll, { passive: true });
+    return () => container.removeEventListener('scroll', onScroll);
+    // headings.length 变化(内容加载/增删标题)时重新校准
+  }, [headings.length]);
 
   /** 单字段更新:标脏 + 清自动保存错误 */
   const setField = useCallback(<K extends keyof TState>(key: K, value: TState[K]) => {
@@ -293,6 +334,7 @@ export function useDraftEditor<TState extends BaseDraftState>(adapter: DraftEdit
     discardDraft,
     headings,
     scrollToHeading,
+    activeHeadingIndex,
     goBack,
   };
 }
