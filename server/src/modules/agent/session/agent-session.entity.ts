@@ -21,9 +21,13 @@ export class AgentSession {
   @prop()
   _id!: Types.ObjectId;
 
-  /** 会话标识，唯一索引。调用方决定其含义。 */
-  @prop({ required: true, unique: true, trim: true })
-  sessionKey!: string;
+  /**
+   * 会话标识，唯一索引。旧架构字段，渐进期保留。
+   * 新段文档（agentKey 路径）不写此字段，故 required 改为 false。
+   * 清理单元（U6）再删此字段及 unique 索引。
+   */
+  @prop({ required: false, unique: true, sparse: true, trim: true })
+  sessionKey?: string;
 
   /**
    * 最近 N 轮的 UIMessage[]，mixed 类型直接存 JSON。
@@ -56,6 +60,23 @@ export class AgentSession {
     createdAt: string;
     completedAt: string | null;
   }>;
+
+  /**
+   * agent 实例标识（= 草稿，如 `draft-${id}`）。
+   * 一个 agentKey 对应多段文档，是跨段聚合的核心键。
+   * 渐进期与旧 sessionKey 并存，不设 unique 复合索引——
+   * 旧数据 agentKey=null 会导致唯一冲突，等清理单元（U6）移除旧字段后再加。
+   */
+  @prop({ default: null })
+  agentKey!: string | null;
+
+  /**
+   * 段序号：同 agentKey 内从 0 递增。
+   * 接近 16MB 硬上限时（软上限 14MB）自动开下一段，用户无感。
+   * messages append-only：永不删，只追加或开新段。
+   */
+  @prop({ default: 0 })
+  segIndex!: number;
 
   /** 最后一次活跃时间，用于后续清理过期会话 */
   @prop({ required: true, type: () => Date })
