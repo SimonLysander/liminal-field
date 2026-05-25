@@ -25,12 +25,21 @@ vi.mock('@platejs/suggestion', () => ({
 // ── 被测模块（在 mock 生效后再 import）────────────────────────────────────────
 import { applyProposedEdits } from './apply-proposed-edits';
 import type { ProposedEdit } from './apply-proposed-edits';
+import type { PlateEditor } from 'platejs/react';
 
 // ── 工具函数：构造最小化 mock editor ──────────────────────────────────────────
 
+type TransformSpy = ReturnType<typeof vi.fn>;
+type MockPlateEditor = PlateEditor & {
+  tf: {
+    removeNodes: TransformSpy;
+    insertNodes: TransformSpy;
+  };
+};
+
 /** 构造失败路径用的 editor（无需 tf，findBlockByText 失败时不会调用 tf） */
 function makeLightEditor(children: Descendant[]) {
-  return { children } as any;
+  return { children } as unknown as PlateEditor;
 }
 
 /** 构造成功路径用的 editor（带 tf.removeNodes + tf.insertNodes） */
@@ -42,7 +51,7 @@ function makeFullEditor(children: Descendant[]) {
       insertNodes: vi.fn(),
     },
     // deserializeMd 第一参数是 editor，mock 不关心其内容，传空对象兜底
-  } as any;
+  } as unknown as MockPlateEditor;
 }
 
 // ── 公共文档节点 ───────────────────────────────────────────────────────────────

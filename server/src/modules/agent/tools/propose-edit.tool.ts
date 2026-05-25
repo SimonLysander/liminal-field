@@ -30,9 +30,15 @@ export function createProposeEditTool() {
           items: {
             type: 'object',
             properties: {
-              find: { type: 'string', description: '从当前正文一字不差摘录、且唯一的原文片段' },
+              find: {
+                type: 'string',
+                description: '从当前正文一字不差摘录、且唯一的原文片段',
+              },
               replace: { type: 'string', description: '改成的新文本' },
-              reason: { type: 'string', description: '这处为什么改(显示给用户)' },
+              reason: {
+                type: 'string',
+                description: '这处为什么改(显示给用户)',
+              },
             },
             required: ['find', 'replace', 'reason'],
           },
@@ -40,7 +46,11 @@ export function createProposeEditTool() {
       },
       required: ['edits'],
     }),
-    execute: ({ edits }: { edits: Array<{ find: string; replace: string; reason: string }> }) => {
+    execute: ({
+      edits,
+    }: {
+      edits: Array<{ find: string; replace: string; reason: string }>;
+    }) => {
       // 入参摘要日志：只记长度，不记 find/replace 正文（CLAUDE.md 日志准则：禁止记正文全文）
       logger.debug(
         `propose_edit 收到 ${edits?.length ?? 0} 处, find长度=[${(edits ?? []).map((e) => e?.find?.length ?? 0).join(',')}]`,
@@ -48,7 +58,10 @@ export function createProposeEditTool() {
 
       // 防御:模型可能传出非数组结构(单对象/null),先挡住再过滤,避免 filter 抛错
       if (!Array.isArray(edits)) {
-        return toolResult('没有有效的修改项', undefined, { status: 'invalid', count: 0 });
+        return toolResult('没有有效的修改项', undefined, {
+          status: 'invalid',
+          count: 0,
+        });
       }
       const valid = edits.filter(
         (e) =>
@@ -63,12 +76,19 @@ export function createProposeEditTool() {
       logger.debug(`有效 ${valid.length} 处`);
 
       if (valid.length === 0) {
-        return toolResult('没有有效的修改项', undefined, { status: 'invalid', count: 0 });
+        return toolResult('没有有效的修改项', undefined, {
+          status: 'invalid',
+          count: 0,
+        });
       }
-      return toolResult(`已向草稿提议 ${valid.length} 处修改,待用户在编辑器中确认`, undefined, {
-        status: 'ok',
-        count: valid.length,
-      });
+      return toolResult(
+        `已向草稿提议 ${valid.length} 处修改,待用户在编辑器中确认`,
+        undefined,
+        {
+          status: 'ok',
+          count: valid.length,
+        },
+      );
     },
   });
 }

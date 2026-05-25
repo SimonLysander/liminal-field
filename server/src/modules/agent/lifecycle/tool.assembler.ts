@@ -107,7 +107,9 @@ export class ToolAssembler {
           }
         : {}),
       // 草稿改稿提议：有绑定草稿时才提供 propose_edit(全页总助手无文档,不挂)
-      ...(entryContext.document ? { propose_edit: createProposeEditTool() } : {}),
+      ...(entryContext.document
+        ? { propose_edit: createProposeEditTool() }
+        : {}),
     };
 
     // 按白名单过滤工具：allowedTools 不为空时只保留白名单内的工具
