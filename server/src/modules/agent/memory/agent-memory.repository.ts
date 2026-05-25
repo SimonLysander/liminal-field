@@ -93,4 +93,78 @@ export class AgentMemoryRepository {
   async count(): Promise<number> {
     return this.memoryModel.countDocuments();
   }
+
+  // ─── session 类型专用方法 ──────────────────────────────────────────────────
+  //
+  // 设计要点：
+  // 1. 一草稿一条 session 记忆——由 agentKey partial unique index 在数据库层保证，
+  //    而非应用层 if-else，防止并发写入产生重复记录。
+  // 2. title 用 `session:${agentKey}` 占位——满足 title unique 全局约束（不与 user/project 冲突），
+  //    但 session 的唯一性语义以 agentKey 为准，不靠 title。
+  // 3. tasks 与 content 分开更新（setTasks vs upsertSession），方便 Agent 独立更新写作计划，
+  //    不必每次把 content 也一起传。
+
+  /**
+   * session 记忆 upsert（一草稿一条，by agentKey）。
+   * content 传入更新后的会话摘要；title 用固定占位，唯一性靠 partial index 保证。
+   */
+  async upsertSession(agentKey: string, content: string): Promise<void> {
+    const now = new Date();
+    await this.memoryModel.updateOne(
+      { type: 'session', agentKey },
+      {
+        $set: { content, updatedAt: now },
+        $setOnInsert: {
+          _id: new Types.ObjectId(),
+          type: 'session',
+          agentKey,
+          // title 固定占位：满足全局 unique 约束，session 唯一性语义在 agentKey
+          title: `session:${agentKey}`,
+          tasks: [],
+          createdAt: now,
+        },
+      },
+      { upsert: true },
+    );
+  }
+
+  /** 按 agentKey 查找 session 记忆，不存在时返回 null */
+  async findSession(agentKey: string): Promise<AgentMemory | null> {
+    return this.memoryModel.findOne({ type: 'session', agentKey });
+  }
+
+  /**
+   * 更新某草稿 session 记忆的写作计划（tasks）。
+   * 若 session 不存在则 upsert 创建（content 留空），保证操作幂等。
+   */
+  async setTasks(
+    agentKey: string,
+    tasks: Array<Record<string, unknown>>,
+  ): Promise<void> {
+    const now = new Date();
+    await this.memoryModel.updateOne(
+      { type: 'session', agentKey },
+      {
+        $set: { tasks, updatedAt: now },
+        $setOnInsert: {
+          _id: new Types.ObjectId(),
+          type: 'session',
+          agentKey,
+          title: `session:${agentKey}`,
+          content: '',
+          createdAt: now,
+        },
+      },
+      { upsert: true },
+    );
+  }
+
+  /** 读取某草稿的写作计划；session 不存在时返回空数组 */
+  async getTasks(agentKey: string): Promise<Array<Record<string, unknown>>> {
+    const doc = await this.memoryModel.findOne(
+      { type: 'session', agentKey },
+      { tasks: 1 },
+    );
+    return (doc?.tasks as Array<Record<string, unknown>>) ?? [];
+  }
 }
