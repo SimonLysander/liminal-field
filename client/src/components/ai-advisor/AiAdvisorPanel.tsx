@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ArrowUp, Square, X, Paperclip } from 'lucide-react';
 import type { EditOutcome } from '@/pages/admin/lib/apply-proposed-edits';
 import type { AnchorPayload } from '@/pages/admin/lib/serialize-anchor';
+import type { PendingAiEdit } from '@/pages/admin/lib/use-ai-edit-controller';
 import { MessageList } from './MessageList';
 import { TaskChecklist } from './TaskChecklist';
 import TextareaAutosize from 'react-textarea-autosize';
@@ -53,6 +54,13 @@ export interface AiAdvisorPanelProps {
    * 随聊天 transport 传给后端，prompt.handler 据此注入 <selection> / <cursor> 节。
    */
   anchor?: AnchorPayload;
+  /**
+   * v2 改稿落稳后上抛单个 pending(tool + newMarkdown + callId)。
+   * 父级(ProseDraftEditor)再经 props 透传给 PlateMarkdownEditor 内的 AiEditBridge,
+   * 由 useAiEditController 在 <Plate> context 内调 applyAiEdit 落 suggestion。
+   * 与 onProposedEdits 并存,Task 9 删 onProposedEdits。
+   */
+  onPending?: (p: PendingAiEdit | undefined) => void;
 }
 
 export function AiAdvisorPanel({
@@ -65,6 +73,7 @@ export function AiAdvisorPanel({
   outcomes,
   outcomesKey,
   anchor,
+  onPending,
 }: AiAdvisorPanelProps) {
   const [inputValue, setInputValue] = useState('');
   const [greeting] = useState(pickGreeting);
@@ -89,6 +98,7 @@ export function AiAdvisorPanel({
     planTitle,
     proposedEdits,
     editsKey,
+    pending,
   } = useAdvisorChat({
     sessionKey,
     agentKey: 'writing-advisor',
@@ -104,6 +114,12 @@ export function AiAdvisorPanel({
       onProposedEdits?.(proposedEdits, editsKey);
     }
   }, [proposedEdits, editsKey, onProposedEdits]);
+
+  // v2 改稿:pending 变化时上报给父级,经 PlateMarkdownEditor 透传到 AiEditBridge。
+  // 仿 onProposedEdits 模式,父级需 useCallback 保证引用稳定。
+  useEffect(() => {
+    onPending?.(pending);
+  }, [pending, onPending]);
 
   // 发送:add-to-chat(选中文字拼接到消息前面)
   const handleSend = useCallback(() => {

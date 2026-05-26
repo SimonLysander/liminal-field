@@ -30,6 +30,8 @@ import type { UIMessage } from 'ai';
 import { useChat } from '@ai-sdk/react';
 import { loadSession, saveSession, type SessionTask } from '@/services/agent';
 import type { AnchorPayload } from '@/pages/admin/lib/serialize-anchor';
+import type { PendingAiEdit } from '@/pages/admin/lib/use-ai-edit-controller';
+import type { AiEditTool } from '@/pages/admin/lib/apply-ai-edit';
 
 export type Tier = 'flash' | 'standard' | 'think';
 
@@ -171,6 +173,45 @@ export function useAdvisorChat({
   }, [messages]);
 
   /**
+   * v2 改稿三工具监听 —— 取最近一次落稳(非 input-streaming)的 rewrite_selection /
+   * insert_at_cursor / rewrite_document 工具调用,产出单个 PendingAiEdit。
+   *
+   * 仿现有 propose_edit 监听模式:遍历全部消息 → 工具 part → 跳过 streaming → 取最新一次。
+   * 单个(不是数组):v2 三工具每次只产生一次改稿任务,callId 作为去重 key 和 outcomes 索引键。
+   *
+   * Task 9 删除 v1 propose_edit 后,本块保留;本 task 范围内 v1/v2 并存。
+   */
+  const pending = useMemo<PendingAiEdit | undefined>(() => {
+    let latest: PendingAiEdit | undefined;
+    for (const m of messages) {
+      for (const p of m.parts ?? []) {
+        const t = p.type;
+        if (
+          t !== 'tool-rewrite_selection' &&
+          t !== 'tool-insert_at_cursor' &&
+          t !== 'tool-rewrite_document'
+        ) {
+          continue;
+        }
+        const part = p as {
+          state?: string;
+          toolCallId?: string;
+          input?: { newMarkdown?: string; reason?: string };
+        };
+        if (part.state === 'input-streaming') continue;
+        const md = part.input?.newMarkdown;
+        if (typeof md !== 'string' || md.length === 0) continue;
+        latest = {
+          tool: t.slice('tool-'.length) as AiEditTool,
+          newMarkdown: md,
+          callId: part.toolCallId ?? `${m.id}:${t}`,
+        };
+      }
+    }
+    return latest;
+  }, [messages]);
+
+  /**
    * SessionLoad（初始加载）：取最近一页消息，初始化懒加载游标。
    *
    * savedCountRef 初始化为加载到的消息数（这批消息已在后端，不需再 append），
@@ -281,6 +322,8 @@ export function useAdvisorChat({
     planTitle,
     proposedEdits,
     editsKey,
+    // v2 改稿:单个 pending,callId 去重;Task 9 删 proposedEdits/editsKey 后由它独占
+    pending,
     tier,
     cycleTier,
     send,

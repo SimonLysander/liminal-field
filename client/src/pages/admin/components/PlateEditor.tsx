@@ -12,6 +12,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useProposedEditController } from '@/pages/admin/lib/use-proposed-edit-controller';
 import type { EditOutcome, ProposedEdit } from '@/pages/admin/lib/apply-proposed-edits';
+import { useAiEditController, type PendingAiEdit } from '@/pages/admin/lib/use-ai-edit-controller';
+import type { AiEditOutcome } from '@/pages/admin/lib/apply-ai-edit';
 import { serializeAnchor, type AnchorPayload } from '@/pages/admin/lib/serialize-anchor';
 import { SuggestionPlugin } from '@platejs/suggestion/react';
 import {
@@ -31,6 +33,9 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { useDraftAssetContext } from '@/contexts/DraftAssetContext';
 
 /**
+ * [v1 propose_edit Bridge —— Task 9 删除]
+ * 本 task 起此组件不再被挂载(<Plate> 内已切换到 <AiEditBridge>),保留函数定义到 Task 9 一并清理。
+ *
  * ProposedEditBridge — 在 <Plate> context 内部把外部传来的 edits 落成 suggestion 痕迹,
  * 并提供"审阅锁定 + 全部接受/拒绝"操作条。
  *
@@ -143,6 +148,94 @@ function AnchorBridge({
   return null;
 }
 
+/**
+ * AiEditBridge — v2 改稿在 <Plate> context 内的总控 + 顶部审阅操作条渲染。
+ *
+ * 为什么独立子组件:useAiEditController 内部用 useEditorRef + useEditorSelector,
+ * 必须在 <Plate> context 内调用。PlateMarkdownEditor 的父级在 <Plate> 外,故所有
+ * editor 交互在此聚合。
+ *
+ * 与 AnchorBridge 关系:平行,互不依赖。AnchorBridge 只负责把 anchor 上抛给父层(供
+ * 聊天 transport);AiEditBridge 内重新订阅一次 selection 算 anchor(applyAiEdit 需要)。
+ * useEditorSelector 是细粒度订阅,代价小,不合并两个 Bridge 是因为职责清晰、解耦更好——
+ * AnchorBridge 服务"transport 发送",AiEditBridge 服务"editor 应用",生命周期可能未来分叉。
+ *
+ * 状态流转:pending(新 callId)→ applyAiEdit 落 suggestion → hasPending=true 上报锁定;
+ * 全部接受/拒绝 → controller serializeMd 干净正文回流 onResolved → 父层 setBody 触发保存。
+ */
+function AiEditBridge({
+  pending,
+  onResolved,
+  onHasPendingChange,
+  onOutcomesByCallIdChange,
+}: {
+  pending?: PendingAiEdit;
+  onResolved?: (md: string) => void;
+  onHasPendingChange?: (h: boolean) => void;
+  onOutcomesByCallIdChange?: (m: Record<string, AiEditOutcome>) => void;
+}) {
+  // Bridge 内重新订阅 selection 算 anchor —— 和 AnchorBridge 平行,职责解耦
+  const anchor = useEditorSelector(
+    (e) =>
+      serializeAnchor(
+        e.children as Parameters<typeof serializeAnchor>[0],
+        e.selection as Parameters<typeof serializeAnchor>[1],
+      ),
+    [],
+  );
+
+  const { outcomesByCallId, hasPending, acceptAll, rejectAll } = useAiEditController(
+    pending,
+    anchor,
+    onResolved,
+  );
+
+  // hasPending 变化上报 → 父层驱动 <Plate readOnly>(同 v1 模式)
+  useEffect(() => {
+    onHasPendingChange?.(hasPending);
+  }, [hasPending, onHasPendingChange]);
+
+  // outcomes 变化上报 → 父层中转,Task 7 由 AiAdvisorPanel 卡片按 callId 查询
+  useEffect(() => {
+    onOutcomesByCallIdChange?.(outcomesByCallId);
+  }, [outcomesByCallId, onOutcomesByCallIdChange]);
+
+  // 无未决 suggestion → 不渲染操作条
+  if (!hasPending) return null;
+
+  // 顶部审阅操作条:沿用 v1 视觉规格(accent 软底 + 长春花紫主按钮 + ghost 拒绝)。
+  // sticky 贴顶,防滚动后失去裁决入口。
+  return (
+    <div
+      className="sticky top-0 z-10 mb-2 flex items-center justify-between gap-3 rounded-lg px-3 py-2"
+      style={{
+        background: 'color-mix(in srgb, var(--accent) 8%, var(--paper))',
+        border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
+      }}
+    >
+      <span className="text-sm" style={{ color: 'var(--ink)' }}>
+        Aurora 提议了修改，请逐处或全部裁决后继续编辑
+      </span>
+      <div className="flex shrink-0 items-center gap-2">
+        <button
+          onClick={rejectAll}
+          className="rounded-md px-2.5 py-1 text-sm transition-colors hover:bg-[var(--shelf)]"
+          style={{ color: 'var(--ink-faded)' }}
+        >
+          全部拒绝
+        </button>
+        <button
+          onClick={acceptAll}
+          className="rounded-md px-2.5 py-1 text-sm transition-opacity hover:opacity-90"
+          style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}
+        >
+          全部接受
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -174,6 +267,8 @@ export function PlateMarkdownEditor({
   onResolved,
   onOutcomes,
   onAnchorChange,
+  pending,
+  onOutcomesByCallIdChange,
 }: {
   initialMarkdown: string;
   /**
@@ -198,6 +293,17 @@ export function PlateMarkdownEditor({
    * AnchorBridge 在 <Plate> 内订阅 selection，序列化后经此回调上报给父层（ProseDraftEditor）。
    */
   onAnchorChange?: (anchor: AnchorPayload) => void;
+  /**
+   * v2 改稿:最近一次落稳的工具调用(单个),由 useAdvisorChat 监听三工具产出,
+   * 经 AiAdvisorPanel → ProseDraftEditor → 此处透传给 AiEditBridge,
+   * 在 <Plate> 内调 applyAiEdit 落 suggestion。callId 作前端去重 key + outcomes 索引键。
+   */
+  pending?: PendingAiEdit;
+  /**
+   * v2 改稿 outcomes(按 callId 索引)上报回调。AiEditBridge 落地后产出 outcome,
+   * 经此上抛到 ProseDraftEditor;Task 7 卡片渲染时按 toolCallId 查对应 outcome 标红失败项。
+   */
+  onOutcomesByCallIdChange?: (m: Record<string, AiEditOutcome>) => void;
 }) {
   const { contentItemId } = useDraftAssetContext();
   const [editorId] = useState(() => `plate-${Math.random().toString(36).slice(2)}`);
@@ -251,6 +357,15 @@ export function PlateMarkdownEditor({
     }
   }, [contentItemId, editor, onChange]);
 
+  // [v1 propose_edit 静默 —— Task 9 一并删除 props 时清理]
+  // 本 task 起 v1 Bridge 不再挂载,props 仍存在但不消费;void 消费防 noUnusedParameters 报错。
+  void pendingEdits;
+  void editsKey;
+  void onOutcomes;
+  // ProposedEditBridge 函数定义保留(Task 9 删),useProposedEditController 引用通过此 void 防 dead-code
+  void useProposedEditController;
+  void ProposedEditBridge;
+
   if (!editor) return null;
 
   return (
@@ -258,15 +373,18 @@ export function PlateMarkdownEditor({
       {/* readOnly 设在 <Plate>(store-level 只读):有未决 suggestion 时锁定整个编辑器,
           用户只能通过操作条全部接受/拒绝,裁决完毕自动解锁。比单独给 PlateContent 设更彻底。 */}
       <Plate key={editorId} editor={editor} onValueChange={handleChange} readOnly={hasPending}>
-        {/* ProposedEditBridge 必须在 <Plate> 内部,使用 useEditorRef 需要 Plate context */}
-        <ProposedEditBridge
-          pendingEdits={pendingEdits}
-          editsKey={editsKey}
+        {/* [v1 ProposedEditBridge —— Task 9 删除]
+            本 task 已切换到 v2 AiEditBridge,v1 Bridge 不挂载;props pendingEdits/editsKey/onOutcomes
+            仍透传到本组件但不消费 —— v1 路径处于"监听仍在,但 Bridge 不挂、不应用"的静默状态。 */}
+        {/* AiEditBridge —— v2 改稿总控:applyAiEdit 落 suggestion + 顶部审阅操作条。
+            和 AnchorBridge 平行,各自订阅 selection(职责解耦,见 AiEditBridge 注释)。 */}
+        <AiEditBridge
+          pending={pending}
           onResolved={onResolved}
           onHasPendingChange={setHasPending}
-          onOutcomes={onOutcomes}
+          onOutcomesByCallIdChange={onOutcomesByCallIdChange}
         />
-        {/* AnchorBridge 订阅 selection 并上报 AnchorPayload，供 v2 改稿锚点注入 */}
+        {/* AnchorBridge 订阅 selection 并上报 AnchorPayload，供 v2 改稿锚点注入(transport 用) */}
         {onAnchorChange && (
           <AnchorBridge onAnchorChange={onAnchorChange} />
         )}

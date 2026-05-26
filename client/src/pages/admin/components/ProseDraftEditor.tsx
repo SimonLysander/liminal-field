@@ -27,6 +27,8 @@ import { DraftAssetProvider } from '@/contexts/DraftAssetContext';
 import { AiAdvisorPanel } from '@/components/ai-advisor/AiAdvisorPanel';
 import { PlateMarkdownEditor } from './PlateEditor';
 import type { EditOutcome, ProposedEdit } from '@/pages/admin/lib/apply-proposed-edits';
+import type { AiEditOutcome } from '@/pages/admin/lib/apply-ai-edit';
+import type { PendingAiEdit } from '@/pages/admin/lib/use-ai-edit-controller';
 import { EditorOutline } from './EditorOutline';
 import { CommitForm } from './CommitForm';
 import type { BaseDraftState, DraftEditorController } from '../lib/use-draft-editor';
@@ -61,12 +63,13 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
   // 编辑器内当前选中文本(Cursor 式 add-to-chat):监听 Plate 编辑器 DOM 选区
   const selectedText = useSelectedText('[data-slate-editor]');
 
+  // [v1 propose_edit 透传 —— Task 9 删除]
   // Aurora 改稿建议透传:AiAdvisorPanel 在 <Plate> context 外,拿不到 useEditorRef。
-  // 通过回调把 propose_edit 的 edits 上抛到这里,再经 props 传给 PlateMarkdownEditor,
-  // 后者在 <Plate> 内部通过 ProposedEditBridge 调用 useProposedEditController 落成 suggestion。
-  const [pending, setPending] = useState<{ edits: ProposedEdit[]; key: string }>({ edits: [], key: '' });
+  // 通过回调把 propose_edit 的 edits 上抛到这里,再经 props 传给 PlateMarkdownEditor。
+  // 本 task 中 PlateEditor 已不挂 ProposedEditBridge → 这条链路静默(state 仍写入但下游不消费)。
+  const [pendingV1, setPendingV1] = useState<{ edits: ProposedEdit[]; key: string }>({ edits: [], key: '' });
   const handleProposedEdits = useCallback(
-    (edits: ProposedEdit[], key: string) => setPending({ edits, key }),
+    (edits: ProposedEdit[], key: string) => setPendingV1({ edits, key }),
     [],
   );
 
@@ -92,6 +95,22 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
   // AnchorBridge 在 <Plate> 内订阅 selection，通过 onAnchorChange 回调上报到此层中转。
   const [anchor, setAnchor] = useState<AnchorPayload>({ type: 'none' });
   const handleAnchorChange = useCallback((a: AnchorPayload) => setAnchor(a), []);
+
+  // v2 改稿 pending 中转:AiAdvisorPanel 监到 rewrite_selection / insert_at_cursor /
+  // rewrite_document 工具调用落稳后上抛,经 PlateMarkdownEditor 透传到 AiEditBridge,
+  // 由 useAiEditController 在 <Plate> context 内调 applyAiEdit 落 suggestion。
+  const [pending, setPending] = useState<PendingAiEdit | undefined>(undefined);
+  const handlePending = useCallback((p: PendingAiEdit | undefined) => setPending(p), []);
+
+  // v2 改稿 outcomes 中转:按 callId 索引,Task 7 卡片渲染时按 toolCallId 查对应 outcome。
+  // 现在还没有消费方(Task 7 才接卡片),先把链路接通,值由 AiEditBridge 上报到此 state。
+  const [outcomesByCallId, setOutcomesByCallId] = useState<Record<string, AiEditOutcome>>({});
+  const handleOutcomesByCallIdChange = useCallback(
+    (m: Record<string, AiEditOutcome>) => setOutcomesByCallId(m),
+    [],
+  );
+  // 暂时消费一下避免 unused 警告;Task 7 接卡片时改为透传到 AiAdvisorPanel
+  void outcomesByCallId;
 
   if (editor.loading) {
     return <LoadingState variant="full" />;
@@ -233,6 +252,7 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
           outcomes={editOutcomes.outcomes}
           outcomesKey={editOutcomes.key}
           anchor={anchor}
+          onPending={handlePending}
         />
       ) : (
         <div />
@@ -251,11 +271,13 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
               key={editorKey}
               initialMarkdown={editor.state.bodyMarkdown}
               onChange={editor.setBody}
-              pendingEdits={pending.edits}
-              editsKey={pending.key}
+              pendingEdits={pendingV1.edits}
+              editsKey={pendingV1.key}
               onResolved={handleResolved}
               onOutcomes={handleOutcomes}
               onAnchorChange={handleAnchorChange}
+              pending={pending}
+              onOutcomesByCallIdChange={handleOutcomesByCallIdChange}
             />
           </DraftAssetProvider>
         </div>
