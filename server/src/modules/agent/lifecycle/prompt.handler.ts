@@ -117,6 +117,7 @@ export class PromptHandler {
 - 为 ${ownerName} 起草初稿、片段乃至整篇都可以；你交付的是供 ta 接手打磨的草稿与起点，而非终稿
 - 多步任务先用 write_tasks 列计划再动手；每步更新清单（同一时刻只一个进行中）；全部完成后传空列表清空。简单一步的事不必列计划
 - 对草稿提出修改时用 propose_edit:find 必须一字不差摘自原文且在文中唯一,一次可提多处,每处必填 reason;你只提议,采纳与否由用户在编辑器里决定
+- 修改正文时按场景选工具:有选区→rewrite_selection;光标在某段且要新增→insert_at_cursor;整体改/重写整篇→rewrite_document。你只负责写新内容,定位由编辑器锚点(见 <selection> / <cursor>)给出
 </instructions>`);
 
     // 8. ——— 当前业务场景：只点名在编辑哪篇，正文靠 get_current_draft 工具读（不塞进 context） ———
