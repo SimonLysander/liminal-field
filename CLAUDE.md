@@ -90,3 +90,11 @@
 2. subagent prompt 必须包含显式的禁止列表（不改值、不改逻辑、不新建文件、不超出指定文件范围）
 3. subagent 完成后必须 `git diff` 逐文件验收，确认只有预期的变更类型
 4. 涉及设计系统（token 值、间距、字号、动画）的文件不交给 subagent，手动处理
+
+## Plate diffToSuggestions 退化成块级 diff（NodeId 的 id 没忽略）
+
+**现象：** AI 改稿用 `diffToSuggestions` 把"旧块 vs 新块"做 diff，期望段内**行内**增删痕迹（红删除线/绿新增），实际渲染成"整段旧文 + 整段新文两段并排、纯黑字无样式"。
+
+**根因：** `usePlateEditor` 默认装 NodeIdPlugin，编辑器里每个块都带稳定 `id`。`diffToSuggestions`→`computeDiff` 的 `childrenOnlyStrategy` 判"是否只改了 children（→递归走行内 diff）"要求两块**除 children 外所有属性 isEqual**；而 `deserializeMd` 产出的新块没有 `id` → id 不等 → 退化成"整块删除 + 整块插入"（块级 suggestion，数据挂 element 上），leaf 渲染器（`SuggestionLeaf`）读不到 → 无视觉。
+
+**规则：** 对带 id 的块做 `diffToSuggestions`，必须传 `{ ignoreProps: ['id'] }`（或项目实际 idKey），忽略 id 差异、判为同块更新、产出行内 leaf 痕迹。见 `client/src/pages/admin/lib/apply-proposed-edits.ts`。

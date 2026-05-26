@@ -5,7 +5,7 @@
  * 设计要点:
  * - 用 lastKeyRef 去重:同一 editsKey 只应用一次,防止 re-render 重复落 suggestion
  * - resolveAll 遍历全文所有 suggestion 节点,每个唯一 suggestionId 只处理一次
- * - 用官方工具函数 getSuggestionKeyId / keyId2SuggestionId 解析节点 id,不手动解析 key
+ * - inline suggestion 用 getSuggestionKeyId，block suggestion 用 suggestion.nodeId
  * - suggestionData() 取 TInlineSuggestionData 填充 TResolvedSuggestion(createdAt 为 number → Date)
  * - @platejs/suggestion 无批量 accept/reject API,逐个调用是唯一方式
  */
@@ -15,13 +15,35 @@ import { useEditorRef } from 'platejs/react';
 import { SuggestionPlugin } from '@platejs/suggestion/react';
 import {
   acceptSuggestion,
+  getSuggestionKey,
   getSuggestionKeyId,
-  keyId2SuggestionId,
   rejectSuggestion,
 } from '@platejs/suggestion';
 import { serializeMd } from '@platejs/markdown';
 
 import { applyProposedEdits, type EditOutcome, type ProposedEdit } from './apply-proposed-edits';
+
+type SuggestionApi = ReturnType<
+  ReturnType<typeof useEditorRef>['getApi']
+>['suggestion'];
+
+export function getSuggestionResolveDescriptor(
+  api: SuggestionApi,
+  node: unknown,
+) {
+  const suggestionId = api.nodeId(node as never);
+  if (!suggestionId) return null;
+
+  const data = api.suggestionData(node as never);
+
+  return {
+    suggestionId,
+    keyId: getSuggestionKeyId(node as never) ?? getSuggestionKey(suggestionId),
+    type: (data?.type ?? 'update') as 'insert' | 'remove' | 'replace' | 'update',
+    userId: data?.userId ?? 'aurora',
+    createdAt: data?.createdAt ? new Date(data.createdAt) : new Date(),
+  };
+}
 
 export function useProposedEditController(
   pendingEdits: ProposedEdit[] | undefined,
@@ -56,7 +78,8 @@ export function useProposedEditController(
   /**
    * 遍历全文所有 suggestion 节点,对每个唯一 suggestionId 调用 accept/reject。
    * @platejs/suggestion 无批量 API,逐个是官方推荐做法。
-   * 用 getSuggestionKeyId + keyId2SuggestionId 取 id,比手动解析 key 更健壮。
+   * inline suggestion 的 id 在 suggestion_xxx key 上；block suggestion 的 id 在 node.suggestion.id。
+   * 两种都要覆盖，否则块级 diff 落下来的 suggestion 会让“全部接受/拒绝”失效。
    * suggestionData() 返回 TInlineSuggestionData | TSuggestionElement['suggestion'] | undefined;
    * 两者均含 createdAt(number)、userId、type 字段,统一转换后填入 TResolvedSuggestion。
    */
@@ -65,26 +88,10 @@ export function useProposedEditController(
     const seen = new Set<string>();
 
     for (const [node] of api.nodes({ at: [] })) {
-      const keyId = getSuggestionKeyId(node);
-      if (!keyId) continue;
-
-      const id = keyId2SuggestionId(keyId);
-      if (seen.has(id)) continue;
-      seen.add(id);
-
-      // suggestionData 取到的可能是 TInlineSuggestionData(inline text)
-      // 或 TSuggestionElement['suggestion'](block suggestion),两者字段相同
-      const data = api.suggestionData(node);
-      const desc = {
-        suggestionId: id,
-        keyId,
-        // TInlineSuggestionData.type 为 'insert'|'remove'|'update',
-        // TResolvedSuggestion.type 还支持 'replace',兜底用 'update'
-        type: (data?.type ?? 'update') as 'insert' | 'remove' | 'replace' | 'update',
-        userId: data?.userId ?? 'aurora',
-        // TInlineSuggestionData.createdAt 是 number(timestamp),TResolvedSuggestion 需要 Date
-        createdAt: data?.createdAt ? new Date(data.createdAt) : new Date(),
-      };
+      const desc = getSuggestionResolveDescriptor(api, node);
+      if (!desc) continue;
+      if (seen.has(desc.suggestionId)) continue;
+      seen.add(desc.suggestionId);
 
       (accept ? acceptSuggestion : rejectSuggestion)(editor, desc);
     }

@@ -23,6 +23,7 @@ import { makeRepairToolCall } from './agent.utils';
 import { SystemConfigService } from '../settings/system-config.service';
 import { AgentLifecycle } from './lifecycle/agent-lifecycle.service';
 import { splitForCompaction } from './context/compaction-split';
+import { sanitizeAbortedToolCalls } from './context/sanitize-aborted-tool-calls';
 import type { AgentChatDto } from './dto/agent-chat.dto';
 
 /** 喂模型最近原文的 token 占比(与 compaction 同标准:超 60% 才裁,保留到 30% 额度) */
@@ -85,7 +86,14 @@ export class AgentService {
     //    "compaction 保留的最近原文"口径一致——不会喂了又被算作该压缩。
     //    dto.messages 是本轮前端发来的完整对话(含最新一条 user 消息),
     //    以它为基准做 token 倒取(尾部保留),既拿到最新消息又控制住上下文体积。
-    const recent = (dto.messages ?? []) as Record<string, unknown>[];
+    //
+    //    sanitizeAbortedToolCalls:用户上轮按「停止」时半截的 tool_call 会留在 DB / 本轮
+    //    dto.messages 里,如不处理 convertToModelMessages 下面那一步会抛
+    //    AI_MissingToolResultsError(每个 tool_call 必须配对 tool_result)。先消毒成
+    //    output-error 占位,让协议合法 + 给模型留「上次中止了」的上下文,见同名文件注释。
+    const recent = sanitizeAbortedToolCalls(
+      (dto.messages ?? []) as Record<string, unknown>[],
+    );
     const { toKeep } = splitForCompaction(recent, {
       window: aiConfig.contextWindow,
       // 固定开销已并入 system/记忆,此处只关心"最近原文"额度,fixed 给 0 让 keepRatio 满额生效

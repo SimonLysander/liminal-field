@@ -49,18 +49,32 @@ export function applyProposedEdits(editor: PlateEditor, edits: ProposedEdit[]): 
       continue;
     }
 
-    const { blockIndex, blockText } = found;
+    const { blockIndex, blockText, matchedNeedle } = found;
     const oldBlock = editor.children[blockIndex];
 
-    // Step 2: 块内文本替换 find→replace
-    const newText = blockText.replace(edit.find, edit.replace);
+    // Step 2: 块内文本替换 matchedNeedle→replace。
+    // matchedNeedle ≠ edit.find 的情况：findBlockByText 已剥掉行首 markdown 标记（如 "# "、"- "）
+    // 才命中的；如果在 blockText 里用原 edit.find 做 replace，纯文本里没那个前缀，replace 会无效返回原文。
+    const newText = blockText.replace(matchedNeedle, edit.replace);
 
     // Step 3: 将新文本反序列化为 Slate 节点树
     const newBlocks = deserializeMd(editor, newText);
 
     // Step 4: diffToSuggestions 生成带 suggestion mark 的节点数组
     // 传 [oldBlock] vs newBlocks(对单块做 diff,不做全文 diff)
-    const suggested = diffToSuggestions(editor, [oldBlock], newBlocks);
+    //
+    // ignoreProps: ['id'] —— 关键修复(踩坑见下):
+    //   diffToSuggestions → computeDiff 用 childrenOnlyStrategy 判断两个块是否"只改了
+    //   children"——条件是两块除 children 外所有属性 isEqual。usePlateEditor 默认装了
+    //   NodeIdPlugin,编辑器里每个块都带稳定 id;而 deserializeMd 产出的新块【没有 id】。
+    //   id 不等 → childrenOnlyStrategy 判否 → 退化成【整块删除 + 整块插入】:suggestion
+    //   数据挂到 paragraph element 上(块级),而非 text leaf 上(行内),于是渲染成
+    //   "整段旧文+整段新文两段并排、无红绿删除线"(SuggestionLeaf 是 leaf 渲染器,块级
+    //   数据它读不到)。把 id 列入 ignoreProps,让 diff 忽略 id 差异 → 判为同块更新 →
+    //   递归 diff children → 产出【行内 leaf 级】增删痕迹,SuggestionLeaf 才能上色。
+    const suggested = diffToSuggestions(editor, [oldBlock], newBlocks, {
+      ignoreProps: ['id'],
+    });
 
     // Step 5: 先移除旧块,再在同位置插入带痕迹的新节点
     // EditorTransforms v53 不提供 replaceNodes,用 remove+insert 组合替代

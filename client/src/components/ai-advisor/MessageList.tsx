@@ -47,6 +47,8 @@ export function MessageList({
   outcomes,
   outcomesKey,
 }: MessageListProps) {
+  const edgeFadeMask =
+    'linear-gradient(to bottom, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%)';
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   // 顶部哨兵：IntersectionObserver 检测用户是否滚到顶，触发懒加载
@@ -95,10 +97,8 @@ export function MessageList({
       className={`flex flex-1 flex-col overflow-y-auto py-6 ${comfortable ? 'gap-6 px-1' : 'gap-5 px-4'}`}
       style={{
         // 上下边缘渐隐:内容滚到顶/底时柔和淡出,不硬切
-        maskImage:
-          'linear-gradient(to bottom, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%)',
-        WebkitMaskImage:
-          'linear-gradient(to bottom, transparent 0, #000 calc(100% - 24px), transparent 100%)',
+        maskImage: edgeFadeMask,
+        WebkitMaskImage: edgeFadeMask,
       }}
     >
       {/* 顶部哨兵 + 加载指示器：有更早历史时渲染，IntersectionObserver 触发懒加载 */}

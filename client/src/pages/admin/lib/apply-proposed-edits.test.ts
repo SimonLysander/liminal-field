@@ -193,4 +193,24 @@ describe('applyProposedEdits — 成功路径（依赖 vi.mock）', () => {
     expect(removeNodes).toHaveBeenCalledTimes(2);
     expect(insertNodes).toHaveBeenCalledTimes(2);
   });
+
+  it('find 带 markdown 前缀(模型误抄)：findBlockByText 容错后仍能命中,outcome.ok=true', () => {
+    // h1 块的纯文本只有 "论独处的能力"（无 `#`），但模型给的 find 带了 `# ` 前缀
+    const docWithHeading = [
+      { type: 'h1', children: [{ text: '论独处的能力' }] },
+    ] as unknown as Descendant[];
+    const editor = makeFullEditor(docWithHeading);
+    removeNodes = editor.tf.removeNodes;
+    insertNodes = editor.tf.insertNodes;
+
+    const edits: ProposedEdit[] = [
+      { find: '# 论独处的能力', replace: '论独处之必要', reason: '更精炼' },
+    ];
+    const outcomes = applyProposedEdits(editor, edits);
+
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].ok).toBe(true);
+    expect(removeNodes).toHaveBeenCalledOnce();
+    expect(insertNodes).toHaveBeenCalledOnce();
+  });
 });
