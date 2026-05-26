@@ -11,6 +11,7 @@ import type { EditOutcome } from '@/pages/admin/lib/apply-proposed-edits';
 import type { AiEditOutcome } from '@/pages/admin/lib/apply-ai-edit';
 import type { AnchorPayload } from '@/pages/admin/lib/serialize-anchor';
 import type { PendingAiEdit } from '@/pages/admin/lib/use-ai-edit-controller';
+import { AnchorHint } from './AnchorHint';
 import { MessageList } from './MessageList';
 import { TaskChecklist } from './TaskChecklist';
 import TextareaAutosize from 'react-textarea-autosize';
@@ -192,6 +193,9 @@ export function AiAdvisorPanel({
 
       {/* 输入区 */}
       <div className="shrink-0 px-3 pb-4 pt-2">
+        {/* 作用对象提示:让用户说话前就知道 Aurora 改动落点(range/cursor 时显示,none 时隐藏) */}
+        <AnchorHint anchor={anchor ?? { type: 'none' }} />
+
         {/* 选中文字 add-to-chat pill */}
         {activeSelection && (
           <div className="mb-2 flex items-center gap-1.5">
