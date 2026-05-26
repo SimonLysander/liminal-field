@@ -12,10 +12,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useProposedEditController } from '@/pages/admin/lib/use-proposed-edit-controller';
 import type { EditOutcome, ProposedEdit } from '@/pages/admin/lib/apply-proposed-edits';
+import { serializeAnchor, type AnchorPayload } from '@/pages/admin/lib/serialize-anchor';
 import { SuggestionPlugin } from '@platejs/suggestion/react';
 import {
   Plate,
   usePlateEditor,
+  useEditorRef,
+  useEditorSelector,
 } from 'platejs/react';
 import { serializeMd, deserializeMd } from '@platejs/markdown';
 
@@ -108,6 +111,38 @@ function ProposedEditBridge({
   );
 }
 
+/**
+ * AnchorBridge — 在 <Plate> context 内细粒度订阅 selection，序列化为 AnchorPayload 后上抛。
+ *
+ * 为什么需要单独子组件：useEditorRef / useEditorSelector 必须在 <Plate> context 内调用。
+ * 通过 useEditorSelector 订阅 selection，仅在 selection 真正变化时触发回调，避免全量重渲染。
+ */
+function AnchorBridge({
+  onAnchorChange,
+}: {
+  onAnchorChange: (a: AnchorPayload) => void;
+}) {
+  const editor = useEditorRef();
+  // useEditorSelector 监听 selection 变化，返回值不变则不触发重渲染
+  const anchor = useEditorSelector(
+    (e) =>
+      serializeAnchor(
+        e.children as Parameters<typeof serializeAnchor>[0],
+        e.selection as Parameters<typeof serializeAnchor>[1],
+      ),
+    [],
+  );
+
+  useEffect(() => {
+    onAnchorChange(anchor);
+  }, [anchor, onAnchorChange]);
+
+  // 消费 editor 变量防止 unused-variable lint 警告（useEditorRef 在 AnchorBridge 里不直接用，但未来扩展时可能需要）
+  void editor;
+
+  return null;
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -138,6 +173,7 @@ export function PlateMarkdownEditor({
   editsKey,
   onResolved,
   onOutcomes,
+  onAnchorChange,
 }: {
   initialMarkdown: string;
   /**
@@ -157,6 +193,11 @@ export function PlateMarkdownEditor({
   onResolved?: (cleanMarkdown: string) => void;
   /** 应用结果上报(供聊天卡片标红失败项),key 关联到 propose_edit part */
   onOutcomes?: (outcomes: EditOutcome[], key: string) => void;
+  /**
+   * 当前编辑器 selection 变化回调（v2 改稿锚点）。
+   * AnchorBridge 在 <Plate> 内订阅 selection，序列化后经此回调上报给父层（ProseDraftEditor）。
+   */
+  onAnchorChange?: (anchor: AnchorPayload) => void;
 }) {
   const { contentItemId } = useDraftAssetContext();
   const [editorId] = useState(() => `plate-${Math.random().toString(36).slice(2)}`);
@@ -225,6 +266,10 @@ export function PlateMarkdownEditor({
           onHasPendingChange={setHasPending}
           onOutcomes={onOutcomes}
         />
+        {/* AnchorBridge 订阅 selection 并上报 AnchorPayload，供 v2 改稿锚点注入 */}
+        {onAnchorChange && (
+          <AnchorBridge onAnchorChange={onAnchorChange} />
+        )}
         <EditorContainer>
           <Editor variant="default" placeholder="开始写作..." />
         </EditorContainer>

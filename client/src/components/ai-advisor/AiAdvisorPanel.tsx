@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowUp, Square, X, Paperclip } from 'lucide-react';
 import type { EditOutcome } from '@/pages/admin/lib/apply-proposed-edits';
+import type { AnchorPayload } from '@/pages/admin/lib/serialize-anchor';
 import { MessageList } from './MessageList';
 import { TaskChecklist } from './TaskChecklist';
 import TextareaAutosize from 'react-textarea-autosize';
@@ -47,6 +48,11 @@ export interface AiAdvisorPanelProps {
   outcomes?: EditOutcome[];
   /** 与 outcomes 配套的 key(propose_edit 的 toolCallId),用于匹配对应卡片 */
   outcomesKey?: string;
+  /**
+   * 当前编辑器锚点(selection/cursor)，由 ProseDraftEditor 从 AnchorBridge 中转而来。
+   * 随聊天 transport 传给后端，prompt.handler 据此注入 <selection> / <cursor> 节。
+   */
+  anchor?: AnchorPayload;
 }
 
 export function AiAdvisorPanel({
@@ -58,6 +64,7 @@ export function AiAdvisorPanel({
   onProposedEdits,
   outcomes,
   outcomesKey,
+  anchor,
 }: AiAdvisorPanelProps) {
   const [inputValue, setInputValue] = useState('');
   const [greeting] = useState(pickGreeting);
@@ -87,6 +94,7 @@ export function AiAdvisorPanel({
     agentKey: 'writing-advisor',
     source: 'notes-editor',
     documentContext: { contentItemId, title, bodyMarkdown },
+    anchor,
   });
 
   // propose_edit 上抛:edits 落稳(非 streaming)后通知父级透传到编辑器。

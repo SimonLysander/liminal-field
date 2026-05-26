@@ -51,6 +51,19 @@ export interface BuildSystemPromptParams {
   entrySystemPrompt?: string;
   /** 当前会话的写作计划(注入让模型看得到自己的清单,可用 write_tasks 整体改写) */
   tasks?: Array<Record<string, unknown>>;
+  /**
+   * 当前编辑器锚点(selection/cursor 位置)，由前端 AnchorBridge 序列化后经 transport 传入。
+   * type='range' → 注入 <selection>，Aurora 用 rewrite_selection；
+   * type='cursor' → 注入 <cursor>，Aurora 用 insert_at_cursor；
+   * type='none' 或缺省 → 不注入（Aurora 按整体改/重写走 rewrite_document）。
+   */
+  anchor?: {
+    type: 'none' | 'cursor' | 'range';
+    blockIndex?: number;
+    startPath?: number[];
+    endPath?: number[];
+    textPreview?: string;
+  };
 }
 
 @Injectable()
@@ -128,6 +141,22 @@ export class PromptHandler {
 ${ownerName} 当前正在编辑文档《${title || '未命名'}》（约 ${wordCount} 字）。
 需要了解它的内容、结构或大纲时，调用 get_current_draft 获取——不要假设内容。
 </current_context>`);
+    }
+
+    // 8b. ——— 编辑器锚点：有 selection/cursor 才注入（type='none' 跳过）。
+    // range = 用户选中了一段文字，Aurora 用 rewrite_selection 改这一段。
+    // cursor = 用户光标停在某段，Aurora 用 insert_at_cursor 在那里新增内容。
+    if (params.anchor && params.anchor.type !== 'none') {
+      if (params.anchor.type === 'range') {
+        const preview = params.anchor.textPreview ?? '';
+        sections.push(
+          `<selection>\n${ownerName} 当前选中第 ${(params.anchor.blockIndex ?? 0) + 1} 段的一段文字「${preview}${preview.length === 40 ? '…' : ''}」。\n要修改这段时用 rewrite_selection。\n</selection>`,
+        );
+      } else if (params.anchor.type === 'cursor') {
+        sections.push(
+          `<cursor>\n${ownerName} 光标在第 ${(params.anchor.blockIndex ?? 0) + 1} 段。\n要在这里新增内容时用 insert_at_cursor。\n</cursor>`,
+        );
+      }
     }
 
     // ——— 当前写作计划：有「未完成」任务才注入。

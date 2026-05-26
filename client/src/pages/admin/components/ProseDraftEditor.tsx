@@ -9,6 +9,7 @@
  */
 
 import { useCallback, useState } from 'react';
+import type { AnchorPayload } from '@/pages/admin/lib/serialize-anchor';
 import { useSelectedText } from '@/hooks/use-selected-text';
 import { ChevronLeft, Sun, Moon, Trash2, MoreHorizontal } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
@@ -86,6 +87,11 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
     (markdown: string) => editor.setBody(markdown, true),
     [editor],
   );
+
+  // v2 改稿锚点:持有最新的 editor selection 序列化结果,经 AiAdvisorPanel → transport 传后端。
+  // AnchorBridge 在 <Plate> 内订阅 selection，通过 onAnchorChange 回调上报到此层中转。
+  const [anchor, setAnchor] = useState<AnchorPayload>({ type: 'none' });
+  const handleAnchorChange = useCallback((a: AnchorPayload) => setAnchor(a), []);
 
   if (editor.loading) {
     return <LoadingState variant="full" />;
@@ -226,6 +232,7 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
           onProposedEdits={handleProposedEdits}
           outcomes={editOutcomes.outcomes}
           outcomesKey={editOutcomes.key}
+          anchor={anchor}
         />
       ) : (
         <div />
@@ -248,6 +255,7 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
               editsKey={pending.key}
               onResolved={handleResolved}
               onOutcomes={handleOutcomes}
+              onAnchorChange={handleAnchorChange}
             />
           </DraftAssetProvider>
         </div>

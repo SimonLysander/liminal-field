@@ -29,6 +29,7 @@ import { DefaultChatTransport } from 'ai';
 import type { UIMessage } from 'ai';
 import { useChat } from '@ai-sdk/react';
 import { loadSession, saveSession, type SessionTask } from '@/services/agent';
+import type { AnchorPayload } from '@/pages/admin/lib/serialize-anchor';
 
 export type Tier = 'flash' | 'standard' | 'think';
 
@@ -51,6 +52,11 @@ export interface UseAdvisorChatOptions {
     title?: string;
     bodyMarkdown?: string;
   };
+  /**
+   * 当前编辑器锚点(selection/cursor)，随聊天 transport 传给后端。
+   * 后端 prompt.handler 据此注入 <selection>/<cursor> 节，Aurora 据此选改稿工具。
+   */
+  anchor?: AnchorPayload;
 }
 
 export function useAdvisorChat({
@@ -58,6 +64,7 @@ export function useAdvisorChat({
   agentKey,
   source,
   documentContext,
+  anchor,
 }: UseAdvisorChatOptions) {
   const [tier, setTier] = useState<Tier>('standard');
   const [sessionReady, setSessionReady] = useState(false);
@@ -69,6 +76,8 @@ export function useAdvisorChat({
   // Ref 层：持有最新值供 transport body 回调 / 懒加载逻辑读取（避免 stale closure）
   const docRef = useRef(documentContext);
   const tierRef = useRef(tier);
+  // anchorRef:与 docRef 同模式,避免 transport body 回调产生 stale closure
+  const anchorRef = useRef<AnchorPayload>(anchor ?? { type: 'none' });
   // 懒加载游标：当前页第一条消息的绝对 index，下次加载传 before=firstIndex
   const firstIndexRef = useRef<number>(0);
   // append 语义游标：记录已保存到后端的消息数量，saveSession 只发 slice(savedCount)
@@ -81,6 +90,10 @@ export function useAdvisorChat({
   useEffect(() => {
     tierRef.current = tier;
   }, [tier]);
+
+  useEffect(() => {
+    anchorRef.current = anchor ?? { type: 'none' };
+  }, [anchor]);
 
   /* eslint-disable react-hooks/refs */
   const [transport] = useState(
@@ -101,6 +114,8 @@ export function useAdvisorChat({
                   bodyMarkdown: docRef.current.bodyMarkdown,
                 }
               : undefined,
+            // v2 改稿锚点:每次发送时取 anchorRef 最新值，避免 stale closure
+            anchor: anchorRef.current,
           },
         }),
       }),

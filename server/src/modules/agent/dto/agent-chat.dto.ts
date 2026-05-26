@@ -10,7 +10,10 @@
 import { Type } from 'class-transformer';
 import {
   Allow,
+  IsArray,
   IsIn,
+  IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   ValidateNested,
@@ -25,6 +28,34 @@ class DocumentContextDto {
 
   @IsString()
   bodyMarkdown!: string;
+}
+
+/**
+ * AnchorDto — 前端编辑器锚点的后端验证对象。
+ * 对应前端 AnchorPayload，序列化了 selection/cursor 位置供 prompt.handler 注入定位节。
+ */
+class AnchorDto {
+  @IsString()
+  @IsIn(['none', 'cursor', 'range'])
+  type!: 'none' | 'cursor' | 'range';
+
+  @IsOptional()
+  @IsNumber()
+  blockIndex?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
+  startPath?: number[];
+
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
+  endPath?: number[];
+
+  @IsOptional()
+  @IsString()
+  textPreview?: string;
 }
 
 class EntryContextDto {
@@ -45,6 +76,16 @@ class EntryContextDto {
   @IsString()
   @IsOptional()
   sessionKey?: string;
+
+  /**
+   * v2 改稿锚点：编辑器当前 selection/cursor 序列化结果。
+   * 后端 prompt.handler 据此注入 <selection>/<cursor> 节，Aurora 据此选改稿工具。
+   */
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => AnchorDto)
+  anchor?: AnchorDto;
 }
 
 export class AgentChatDto {
