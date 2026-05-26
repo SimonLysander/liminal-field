@@ -43,8 +43,8 @@ function mapToolState(state: string): 'call' | 'result' | 'error' {
   }
 }
 
-// v2 改稿三工具(落稳后路由到 AiEditCard;流式中走通用 ToolCallCard)
-const AI_EDIT_TOOLS = ['rewrite_selection', 'insert_at_cursor', 'rewrite_document'] as const;
+// v2 改稿两工具(落稳后路由到 AiEditCard;流式中走通用 ToolCallCard)
+const AI_EDIT_TOOLS = ['rewrite_selection', 'rewrite_document'] as const;
 
 export function ChatMessage({ role, content, parts, sessionKey, comfortable, outcomesByCallId }: ChatMessageProps) {
   if (role === 'user') {

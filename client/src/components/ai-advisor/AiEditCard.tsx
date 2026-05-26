@@ -1,5 +1,5 @@
 /**
- * AiEditCard — 聊天里展示 v2 改稿工具(rewrite_selection / insert_at_cursor / rewrite_document)的结果卡片。
+ * AiEditCard — 聊天里展示 v2 改稿工具(rewrite_selection / rewrite_document)的结果卡片。
  *
  * 视觉严格对齐 ProposedEditCard:
  *   - 左边线 var(--accent)、fontFamily var(--font-reading)
@@ -16,7 +16,6 @@ import type { AiEditTool, AiEditOutcome } from '@/pages/admin/lib/apply-ai-edit'
 
 const TOOL_LABEL: Record<AiEditTool, string> = {
   rewrite_selection: '改写选中段',
-  insert_at_cursor: '在光标处插入',
   rewrite_document: '整篇改写',
 };
 

@@ -1,5 +1,4 @@
 import { createRewriteSelectionTool } from '../rewrite-selection.tool';
-import { createInsertAtCursorTool } from '../insert-at-cursor.tool';
 import { createRewriteDocumentTool } from '../rewrite-document.tool';
 
 const RUN = {} as never;
@@ -12,7 +11,6 @@ const MAX = 60_000;
 
 describe.each([
   ['rewrite_selection', createRewriteSelectionTool],
-  ['insert_at_cursor', createInsertAtCursorTool],
   ['rewrite_document', createRewriteDocumentTool],
 ])('%s', (name, factory) => {
   it('正常调用:status=ok + meta 包含 reason', async () => {

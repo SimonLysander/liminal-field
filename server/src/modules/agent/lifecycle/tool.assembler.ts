@@ -31,7 +31,6 @@ import { createSubAgentTool } from '../tools/sub-agent.tool';
 import { createWriteTasksTool } from '../tools/write-tasks.tool';
 import { createReadConversationHistoryTool } from '../tools/read-conversation-history.tool';
 import { createRewriteSelectionTool } from '../tools/rewrite-selection.tool';
-import { createInsertAtCursorTool } from '../tools/insert-at-cursor.tool';
 import { createRewriteDocumentTool } from '../tools/rewrite-document.tool';
 import { AgentSessionRepository } from '../session/agent-session.repository';
 import { AgentMemoryRepository } from '../memory/agent-memory.repository';
@@ -108,11 +107,11 @@ export class ToolAssembler {
             ),
           }
         : {}),
-      // v2:三个锚点驱动的改稿工具(替代 v1 propose_edit,见 2026-05-26 spec)
+      // v2:两个锚点驱动的改稿工具(替代 v1 propose_edit,见 2026-05-26 spec)
+      // insert_at_cursor 已删除:cursor 态无对应工具,不再支持光标无选区续写
       ...(entryContext.document
         ? {
             rewrite_selection: createRewriteSelectionTool(),
-            insert_at_cursor: createInsertAtCursorTool(),
             rewrite_document: createRewriteDocumentTool(),
           }
         : {}),

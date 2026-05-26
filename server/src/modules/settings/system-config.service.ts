@@ -80,8 +80,8 @@ export class SystemConfigService implements OnModuleInit {
     'read_document_content',
     'get_current_draft',
     // v2 锚点驱动改稿工具(替代 v1 propose_edit,已于 Task 9 退役)
+    // insert_at_cursor 已删除:只保留 rewrite_selection + rewrite_document 两个工具
     'rewrite_selection',
-    'insert_at_cursor',
     'rewrite_document',
     'remember',
     'forget',

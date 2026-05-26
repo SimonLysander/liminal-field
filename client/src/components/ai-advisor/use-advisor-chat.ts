@@ -162,7 +162,6 @@ export function useAdvisorChat({
         const t = p.type;
         if (
           t !== 'tool-rewrite_selection' &&
-          t !== 'tool-insert_at_cursor' &&
           t !== 'tool-rewrite_document'
         ) {
           continue;

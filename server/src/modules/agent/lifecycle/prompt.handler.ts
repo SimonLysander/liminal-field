@@ -52,10 +52,10 @@ export interface BuildSystemPromptParams {
   /** 当前会话的写作计划(注入让模型看得到自己的清单,可用 write_tasks 整体改写) */
   tasks?: Array<Record<string, unknown>>;
   /**
-   * 当前编辑器锚点(selection/cursor 位置)，由前端 AnchorBridge 序列化后经 transport 传入。
+   * 当前编辑器锚点(selection 位置)，由前端 AnchorBridge 序列化后经 transport 传入。
    * type='range' → 注入 <selection>，Aurora 用 rewrite_selection；
-   * type='cursor' → 注入 <cursor>，Aurora 用 insert_at_cursor；
-   * type='none' 或缺省 → 不注入（Aurora 按整体改/重写走 rewrite_document）。
+   * type='cursor' / type='none' 或缺省 → 不注入（Aurora 按整体改/重写走 rewrite_document）。
+   * insert_at_cursor 已删除，cursor 态不再有对应工具。
    */
   anchor?: {
     type: 'none' | 'cursor' | 'range';
@@ -129,7 +129,7 @@ export class PromptHandler {
 - 不重复 ${ownerName} 已说过的话
 - 为 ${ownerName} 起草初稿、片段乃至整篇都可以；你交付的是供 ta 接手打磨的草稿与起点，而非终稿
 - 多步任务先用 write_tasks 列计划再动手；每步更新清单（同一时刻只一个进行中）；全部完成后传空列表清空。简单一步的事不必列计划
-- 修改正文时按场景选工具:有选区→rewrite_selection;光标在某段且要新增→insert_at_cursor;整体改/重写整篇→rewrite_document。你只负责写新内容,定位由编辑器锚点(见 <selection> / <cursor>)给出
+- 修改正文时按场景选工具:有选区→rewrite_selection;整体改/重写整篇→rewrite_document。你只负责写新内容,定位由编辑器选区锚点(见 <selection>)给出
 </instructions>`);
 
     // 8. ——— 当前业务场景：只点名在编辑哪篇，正文靠 get_current_draft 工具读（不塞进 context） ———
@@ -142,20 +142,13 @@ ${ownerName} 当前正在编辑文档《${title || '未命名'}》（约 ${wordC
 </current_context>`);
     }
 
-    // 8b. ——— 编辑器锚点：有 selection/cursor 才注入（type='none' 跳过）。
-    // range = 用户选中了一段文字，Aurora 用 rewrite_selection 改这一段。
-    // cursor = 用户光标停在某段，Aurora 用 insert_at_cursor 在那里新增内容。
-    if (params.anchor && params.anchor.type !== 'none') {
-      if (params.anchor.type === 'range') {
-        const preview = params.anchor.textPreview ?? '';
-        sections.push(
-          `<selection>\n${ownerName} 当前选中第 ${(params.anchor.blockIndex ?? 0) + 1} 段的一段文字「${preview}${preview.length === 40 ? '…' : ''}」。\n要修改这段时用 rewrite_selection。\n</selection>`,
-        );
-      } else if (params.anchor.type === 'cursor') {
-        sections.push(
-          `<cursor>\n${ownerName} 光标在第 ${(params.anchor.blockIndex ?? 0) + 1} 段。\n要在这里新增内容时用 insert_at_cursor。\n</cursor>`,
-        );
-      }
+    // 8b. ——— 编辑器锚点：只有 range（有选区）才注入 <selection>。
+    // cursor / none 态不注入任何节——insert_at_cursor 已删除，无对应工具，不引导模型。
+    if (params.anchor && params.anchor.type === 'range') {
+      const preview = params.anchor.textPreview ?? '';
+      sections.push(
+        `<selection>\n${ownerName} 当前选中第 ${(params.anchor.blockIndex ?? 0) + 1} 段的一段文字「${preview}${preview.length === 40 ? '…' : ''}」。\n要修改这段时用 rewrite_selection。\n</selection>`,
+      );
     }
 
     // ——— 当前写作计划：有「未完成」任务才注入。

@@ -39,9 +39,8 @@ const DISPLAY_NAMES: Record<string, string> = {
   forget: 'Delete Memory',
   sub_agent: 'Delegate',
   propose_edit: '提议修改',
-  // v2 改稿三工具(流式 input-streaming 阶段用通用 ToolCallCard 展示进行中态)
+  // v2 改稿两工具(流式 input-streaming 阶段用通用 ToolCallCard 展示进行中态)
   rewrite_selection: '改写选中段',
-  insert_at_cursor: '在光标处插入',
   rewrite_document: '整篇改写',
 };
 
@@ -55,9 +54,8 @@ const TOOL_ICON: Record<string, LucideIcon> = {
   forget: BookmarkMinus,
   sub_agent: Workflow,
   propose_edit: PencilLine,
-  // v2 改稿三工具:统一用 PencilLine(size=13, strokeWidth=2,与 propose_edit 图标规格一致)
+  // v2 改稿两工具:统一用 PencilLine(size=13, strokeWidth=2,与 propose_edit 图标规格一致)
   rewrite_selection: PencilLine,
-  insert_at_cursor: PencilLine,
   rewrite_document: PencilLine,
 };
 
