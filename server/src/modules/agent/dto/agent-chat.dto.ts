@@ -13,7 +13,6 @@ import {
   IsArray,
   IsIn,
   IsNumber,
-  IsObject,
   IsOptional,
   IsString,
   ValidateNested,
@@ -82,7 +81,6 @@ class EntryContextDto {
    * 后端 prompt.handler 据此注入 <selection>/<cursor> 节，Aurora 据此选改稿工具。
    */
   @IsOptional()
-  @IsObject()
   @ValidateNested()
   @Type(() => AnchorDto)
   anchor?: AnchorDto;

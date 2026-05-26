@@ -72,8 +72,12 @@ export function useAiEditController(
     // 重跑——但 lastKeyRef 会 short-circuit,实质等价。不进依赖更直观。
     const outcome = applyAiEdit(editor, pending.tool, pending.newMarkdown, anchor);
     setOutcomesByCallId((prev) => ({ ...prev, [pending.callId]: outcome }));
-    // 成功 → 锁定;失败(no-anchor / parse-error)→ 没产生 suggestion 不锁定
-    setHasPending(outcome.ok);
+    // 不依赖 outcome.ok:即便 applyAISuggestions 内部边缘 setOption 抛错被我们 try/catch 抓住
+    // (返回 ok:false),也要看 editor 里【是不是真有 suggestion 节点】——只要 diff 落进去了,
+    // 用户就需要操作条裁决。否则 diff 在编辑器里但操作条没渲染、editor 也不锁定,用户没入口。
+    const hasSuggestion =
+      editor.getApi(SuggestionPlugin).suggestion.nodes({ at: [] }).length > 0;
+    setHasPending(hasSuggestion);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, pending]);
 
@@ -85,49 +89,55 @@ export function useAiEditController(
   const resolveAll = (accept: boolean) => {
     const api = editor.getApi(SuggestionPlugin).suggestion;
     const seen = new Set<string>();
+    let resolved = 0;
 
-    for (const [node] of api.nodes({ at: [] })) {
-      const keyId = getSuggestionKeyId(node as never);
-      if (!keyId) continue;
-      const id = keyId2SuggestionId(keyId);
-      if (!id || seen.has(id)) continue;
-      seen.add(id);
-      // 从 leaf 节点上取 suggestion data(type / userId / createdAt),填 TResolvedSuggestion
-      const data = (node as Record<string, unknown>)[keyId] as
-        | {
-            id: string;
-            type: 'insert' | 'remove' | 'replace' | 'update';
-            createdAt: number;
-            userId: string;
-          }
-        | undefined;
-      const desc = {
-        suggestionId: id,
-        keyId,
-        type: (data?.type ?? 'update') as 'insert' | 'remove' | 'replace' | 'update',
-        userId: data?.userId ?? 'aurora',
-        createdAt: data?.createdAt ? new Date(data.createdAt) : new Date(),
-      };
-      (accept ? acceptSuggestion : rejectSuggestion)(editor, desc);
-    }
-
-    // 裁决后重查;空即全部已裁决 → 解锁 + 干净正文回流
-    const remaining = api.nodes({ at: [] }).length;
-    if (remaining === 0) {
+    try {
+      for (const [node] of api.nodes({ at: [] })) {
+        const keyId = getSuggestionKeyId(node as never);
+        if (!keyId) continue;
+        const id = keyId2SuggestionId(keyId);
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        const data = (node as Record<string, unknown>)[keyId] as
+          | {
+              id: string;
+              type: 'insert' | 'remove' | 'replace' | 'update';
+              createdAt: number;
+              userId: string;
+            }
+          | undefined;
+        const desc = {
+          suggestionId: id,
+          keyId,
+          type: (data?.type ?? 'update') as 'insert' | 'remove' | 'replace' | 'update',
+          userId: data?.userId ?? 'aurora',
+          createdAt: data?.createdAt ? new Date(data.createdAt) : new Date(),
+        };
+        // 单个 accept/reject 抛错不该让整个 resolveAll 卡住 → 包 try,允许部分失败
+        try {
+          (accept ? acceptSuggestion : rejectSuggestion)(editor, desc);
+          resolved++;
+        } catch (err) {
+          if (import.meta.env.DEV)
+            console.warn('[ai-edit] 单个 accept/reject 失败', id, err);
+        }
+      }
+    } finally {
+      // 不管循环抛没抛,强制解锁 + 序列化回流,让用户能继续编辑。
+      // 万一节点树里还有残留 suggestion,后续用户操作会再触发 handleChange 守卫处理。
       setHasPending(false);
       try {
         const md = serializeMd(editor);
         onResolvedRef.current?.(md);
       } catch (err) {
-        // 序列化失败不吞:记错误,后续用户编辑会再触发 onChange 兜底
         if (import.meta.env.DEV) console.error('[ai-edit] resolveAll 序列化失败', err);
       }
-    }
-
-    if (import.meta.env.DEV) {
-      console.debug(
-        `[ai-edit] resolveAll accept=${accept} resolved=${seen.size} remaining=${remaining}`,
-      );
+      if (import.meta.env.DEV) {
+        const remaining = api.nodes({ at: [] }).length;
+        console.debug(
+          `[ai-edit] resolveAll accept=${accept} resolved=${resolved} remaining=${remaining}`,
+        );
+      }
     }
   };
 

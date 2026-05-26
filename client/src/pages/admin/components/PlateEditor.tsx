@@ -98,13 +98,21 @@ function AiEditBridge({
     [],
   );
 
-  const { outcomesByCallId, hasPending, acceptAll, rejectAll } = useAiEditController(
+  const { outcomesByCallId, acceptAll, rejectAll } = useAiEditController(
     pending,
     anchor,
     onResolved,
   );
 
-  // hasPending 变化上报 → 父层驱动 <Plate readOnly>(同 v1 模式)
+  // hasPending **实时跟编辑器真实 suggestion 节点数**,不依赖 controller state。
+  // 为什么不用 controller.hasPending:resolveAll 里 setHasPending(false) 一旦因
+  // 某个边缘 catch / 异步时序没穿透 → 编辑器永远卡在 readOnly,用户选不动也打不动。
+  // 用 useEditorSelector 实时跟,有 suggestion 必锁定,没有就立刻解锁——状态机不可能卡死。
+  const hasPending = useEditorSelector(
+    (e) => e.getApi(SuggestionPlugin).suggestion.nodes({ at: [] }).length > 0,
+    [],
+  );
+
   useEffect(() => {
     onHasPendingChange?.(hasPending);
   }, [hasPending, onHasPendingChange]);

@@ -1,43 +1,36 @@
 /**
- * applyAiEdit —— v2 改稿落地:按工具名 + 当前锚点路由到 @platejs/ai 的对应 transform。
+ * applyAiEdit —— v2 改稿落地:自用 @platejs/suggestion 的 diffToSuggestions 拼 diff 流程。
+ *
+ * ⚠️ 为什么彻底弃用 @platejs/ai(applyAISuggestions / AIChatPlugin / AIPlugin)?
+ *
+ * applyAISuggestions 内部调 editor.setOption(AIChatPlugin, 'chatNodes', ...) 的实现路径
+ * 在本项目环境下持续抛 `Cannot read properties of undefined (reading 'set')`。
+ * 根因是多重深层问题叠加(plugin 注册时序 / Vite HMR 双加载 / 对象引用不一致),
+ * 没有单一表面补丁能根治。尝试改用 getEditorPlugin({ key: 'aiChat' }) 字符串查找绕过、
+ * 保证 EditorKit 里只注册一次 AIPlugin/AIChatPlugin 等,均治标不治本。
+ *
+ * 根治方案 = 完全不碰 @platejs/ai:
+ *   - 自己调 diffToSuggestions(editor, oldNodes, newNodes, { ignoreProps:['id'] })
+ *   - diffToSuggestions 是 @platejs/suggestion 的公开 API,v1 改稿(apply-proposed-edits)
+ *     里已用过、行为稳定、ignoreProps 踩坑也已记录(CLAUDE.md)。
  *
  * 两场景:
- * - rewrite_selection:把锚点指向的块设进 AIChatPlugin 的 chatNodes store,mode='chat',
- *   再调 applyAISuggestions(editor, newMarkdown)。applyAISuggestions 内部读 chatNodes
- *   做 diffToSuggestions,逐块产 suggestion 痕迹。
- * - rewrite_document:chatNodes = editor.children(整篇),mode='chat',applyAISuggestions
- *   按块逐个 diff。
+ * - rewrite_selection:取锚点指向的块作为 oldNodes,deserializeMd 解析 newMarkdown 为
+ *   newNodes,diffToSuggestions 产 suggestion 痕迹,然后用 removeNodes+insertNodes 替换该块。
+ * - rewrite_document:整篇 diff。editor.tf.setValue(suggested) 一次性替换全文档。
  *
  * 失败兜底:
- * - rewrite_selection 但无 range 锚点 → no-anchor 不动编辑器;
- * - markdown 解析 / transform 抛错 → parse-error;
- * 失败的 outcome 由上层卡片标红展示(spec §9)。
- *
- * API 来源(以实际 d.ts 为准):
- * - applyAISuggestions  @platejs/ai/react  (SlateEditor, content: string) => void
- * - AIChatPlugin        @platejs/ai/react
+ * - rewrite_selection 但无 range 锚点 → no-anchor 不动编辑器
+ * - markdown 解析 / transform 抛错 → parse-error
+ * 失败 outcome 由上层卡片标红展示。
  */
 
-import type { TIdElement } from 'platejs';
+import type { Descendant, Value } from 'platejs';
 import type { PlateEditor } from 'platejs/react';
-import { getEditorPlugin } from 'platejs/react';
-import { applyAISuggestions } from '@platejs/ai/react';
+import { diffToSuggestions } from '@platejs/suggestion';
+import { deserializeMd } from '@platejs/markdown';
 
 import type { AnchorPayload } from './serialize-anchor';
-
-/**
- * 用 plugin key 字符串拿 setOption,而非 editor.setOption(AIChatPlugin, ...) 三参形式。
- * 为什么:Vite 优化 deps 可能把 @platejs/ai/react 加载成两份,editor-kit 注册的
- * AIChatPlugin 和这里 import 的 AIChatPlugin 不是同一对象引用 → editor 内部 store
- * 按对象引用找不到对应 zustand store → setOption 抛 undefined.set。
- * 用 { key: 'aiChat' } 字符串查找绕过这个对象引用问题,与 @platejs/ai 内部 submitAIChat /
- * resetAIChat 等使用 getEditorPlugin 的模式一致。
- */
-function setAiChatOptions(editor: PlateEditor, chatNodes: TIdElement[]) {
-  const { setOption } = getEditorPlugin(editor, { key: 'aiChat' });
-  setOption('chatNodes', chatNodes);
-  setOption('mode', 'chat');
-}
 
 export type AiEditTool = 'rewrite_selection' | 'rewrite_document';
 
@@ -62,15 +55,25 @@ export function applyAiEdit(
       }
 
       const blockIndex = anchor.blockIndex ?? 0;
-      const selectedBlock = editor.children[blockIndex];
-      if (!selectedBlock) {
+      const oldBlock = editor.children[blockIndex];
+      if (!oldBlock) {
         return { ok: false, tool, reason: 'no-anchor' };
       }
 
-      // 把选中块放进 AIChatPlugin store —— applyAISuggestions 内部读 chatNodes
-      // 做 diffToSuggestions(旧块 vs newMarkdown 反序列化块),产 suggestion 痕迹
-      setAiChatOptions(editor, [selectedBlock] as TIdElement[]);
-      applyAISuggestions(editor, newMarkdown);
+      // deserializeMd 把 newMarkdown 解析为 Plate 节点数组(无 id,NodeIdPlugin 还未注入)
+      const newBlocks = deserializeMd(editor, newMarkdown) as Descendant[];
+
+      // diffToSuggestions:旧块 vs 新块,产带 suggestion mark 的节点数组。
+      // ignoreProps:['id'] —— NodeIdPlugin 给每个块加稳定 id,新块没有 id,
+      // 不忽略会让 diff 退化成"整块删 + 整块插"(块级 suggestion),
+      // SuggestionLeaf 读不到 → 无视觉行内增删痕迹(CLAUDE.md 踩坑记录)。
+      const suggested = diffToSuggestions(editor, [oldBlock] as Descendant[], newBlocks, {
+        ignoreProps: ['id'],
+      }) as Descendant[];
+
+      // 替换该块:先删锚点位置的旧块,再插入带 suggestion mark 的新节点
+      editor.tf.removeNodes({ at: [blockIndex] });
+      editor.tf.insertNodes(suggested, { at: [blockIndex] });
 
       if (import.meta.env.DEV) {
         console.debug(
@@ -80,9 +83,19 @@ export function applyAiEdit(
       return { ok: true, tool };
     }
 
-    // rewrite_document:整篇做 diff → chatNodes = editor.children
-    setAiChatOptions(editor, editor.children as TIdElement[]);
-    applyAISuggestions(editor, newMarkdown);
+    // rewrite_document:整篇 diff
+    const oldDoc = editor.children as Descendant[];
+    const newDoc = deserializeMd(editor, newMarkdown) as Descendant[];
+
+    // 整篇 diffToSuggestions,产带 suggestion mark 的完整文档
+    const suggested = diffToSuggestions(editor, oldDoc, newDoc, {
+      ignoreProps: ['id'],
+    }) as Descendant[];
+
+    // editor.tf.setValue 是 platejs/core 提供的整文档替换 transform,
+    // 比手动 removeNodes 循环 + insertNodes 更稳(内部处理 selection normalize 等边缘)。
+    // Value = TElement[],diffToSuggestions 实际返回 TElement[] 数组,断言安全。
+    editor.tf.setValue(suggested as Value);
 
     if (import.meta.env.DEV) {
       console.debug(`[ai-edit] rewrite_document mdLen=${newMarkdown.length}`);

@@ -1,4 +1,9 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  type OnApplicationBootstrap,
+} from '@nestjs/common';
 import type { ReturnModelType } from '@typegoose/typegoose';
 import { Types } from 'mongoose';
 import { getModelToken } from 'nestjs-typegoose';
@@ -21,13 +26,41 @@ const SEG_SOFT_LIMIT_BYTES = 14 * 1024 * 1024;
  * 自动管理分段，read 路径通过 getAllMessages / getRecentMessages 跨段组装。
  */
 @Injectable()
-export class AgentSessionRepository {
+export class AgentSessionRepository implements OnApplicationBootstrap {
   private readonly logger = new Logger(AgentSessionRepository.name);
 
   constructor(
     @Inject(getModelToken(AgentSession.name))
     private readonly sessionModel: ReturnModelType<typeof AgentSession>,
   ) {}
+
+  /**
+   * 启动时自动清理 V6 重构遗留的 `sessionKey_1` 唯一索引。
+   *
+   * 历史:V6 重构(2026-05)把 entity 的 sessionKey 字段移除,改用 agentKey+segIndex,
+   * 但 MongoDB collection 上的 `sessionKey_1` (unique) 索引没跟着 drop。新文档没有
+   * sessionKey 字段 → MongoDB 存为 null → 第二个文档撞 unique null → E11000 写入失败,
+   * 整个对话历史 append 链路爆 500,用户刷新丢上下文。
+   *
+   * 已存在则 drop;已删过则忽略 IndexNotFound(下次启动不会再尝试)。
+   * 一次性自愈,不写迁移脚本(那需要单独跑)。
+   */
+  async onApplicationBootstrap(): Promise<void> {
+    try {
+      const indexes: Array<{ name?: string }> = (await this.sessionModel.collection
+        .indexes()
+        .catch(() => [])) as Array<{ name?: string }>;
+      const hasLegacy = indexes.some((idx) => idx.name === 'sessionKey_1');
+      if (!hasLegacy) return;
+      await this.sessionModel.collection.dropIndex('sessionKey_1');
+      this.logger.log('已清理 V6 遗留索引 sessionKey_1');
+    } catch (err) {
+      // IndexNotFound 等不致命,只 warn 不阻断启动
+      this.logger.warn(
+        `清理 sessionKey_1 索引失败(可能已不存在):${(err as Error)?.message ?? err}`,
+      );
+    }
+  }
 
   // ─── 分段读写（agentKey + segIndex，唯一存储路径） ──────────────────────────
 
