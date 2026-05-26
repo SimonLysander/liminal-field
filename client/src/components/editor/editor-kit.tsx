@@ -8,6 +8,7 @@
 'use client';
 
 import { ExitBreakPlugin, TrailingBlockPlugin } from 'platejs';
+import { AIPlugin, AIChatPlugin } from '@platejs/ai/react';
 import { SuggestionPlugin } from '@platejs/suggestion/react';
 
 import { SuggestionLeaf } from '@/components/ui/suggestion-node';
@@ -57,4 +58,13 @@ export const EditorKit = [
     node: { component: SuggestionLeaf },
     options: { currentUserId: 'aurora' },
   }),
+
+  /* Aurora 改稿 v2:
+     - AIPlugin 提供 withAIBatch / insertAINodes / applyAISuggestions 等底层 transform,
+       是 v2 改稿落地的核心基础设施。
+     - AIChatPlugin 仅装 store(applyAISuggestions 内部读 chatNodes / mode 等状态),
+       【不开】它的 combobox UI——我们用自己的聊天面板 useAdvisorChat,不绑 useChat。
+       不传 render / chat 字段,只 configure options:{} 注册 store。 */
+  AIPlugin,
+  AIChatPlugin.configure({ options: {} }),
 ];
