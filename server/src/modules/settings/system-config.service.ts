@@ -79,8 +79,7 @@ export class SystemConfigService implements OnModuleInit {
     'list_knowledge_base',
     'read_document_content',
     'get_current_draft',
-    'propose_edit', // Aurora 改稿 v1：查找-替换块落成 suggestion 痕迹，Task 9 才删
-    // v2 锚点驱动改稿工具(替代 propose_edit,见 2026-05-26 spec)
+    // v2 锚点驱动改稿工具(替代 v1 propose_edit,已于 Task 9 退役)
     'rewrite_selection',
     'insert_at_cursor',
     'rewrite_document',

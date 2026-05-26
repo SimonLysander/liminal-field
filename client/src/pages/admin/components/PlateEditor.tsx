@@ -10,8 +10,6 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useProposedEditController } from '@/pages/admin/lib/use-proposed-edit-controller';
-import type { EditOutcome, ProposedEdit } from '@/pages/admin/lib/apply-proposed-edits';
 import { useAiEditController, type PendingAiEdit } from '@/pages/admin/lib/use-ai-edit-controller';
 import type { AiEditOutcome } from '@/pages/admin/lib/apply-ai-edit';
 import { serializeAnchor, type AnchorPayload } from '@/pages/admin/lib/serialize-anchor';
@@ -31,90 +29,6 @@ import { FloatingToolbar } from '@/components/ui/floating-toolbar';
 import { FloatingToolbarButtons } from '@/components/ui/floating-toolbar-buttons';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useDraftAssetContext } from '@/contexts/DraftAssetContext';
-
-/**
- * [v1 propose_edit Bridge —— Task 9 删除]
- * 本 task 起此组件不再被挂载(<Plate> 内已切换到 <AiEditBridge>),保留函数定义到 Task 9 一并清理。
- *
- * ProposedEditBridge — 在 <Plate> context 内部把外部传来的 edits 落成 suggestion 痕迹,
- * 并提供"审阅锁定 + 全部接受/拒绝"操作条。
- *
- * 为什么需要单独一个子组件:useProposedEditController 内部调用 useEditorRef(),
- * 而 useEditorRef 必须在 <Plate> 的 context 内才能取到 editor 实例。
- * PlateMarkdownEditor 的父级(ProseDraftEditor)在 <Plate> 外面,因此不能在父级调用 controller。
- * 把 bridge 渲染在 <Plate> 内部(与 EditorContainer 同级)即可满足该约束。
- *
- * controller 产出的 hasPending / outcomes 通过回调上报给 PlateMarkdownEditor 层:
- * - hasPending → 驱动 <Plate readOnly>(只读机制设在 Plate store,统一阻止所有编辑)
- * - outcomes(+editsKey)→ 透传到聊天卡片,失败项标红回流
- */
-function ProposedEditBridge({
-  pendingEdits,
-  editsKey,
-  onResolved,
-  onHasPendingChange,
-  onOutcomes,
-}: {
-  pendingEdits?: ProposedEdit[];
-  editsKey?: string;
-  /** 裁决完毕(节点树干净)→ 干净正文回流,供上游触发保存 */
-  onResolved?: (cleanMarkdown: string) => void;
-  /** 审阅锁定态变化上报,PlateMarkdownEditor 据此给 <Plate> 设 readOnly */
-  onHasPendingChange?: (hasPending: boolean) => void;
-  /** 应用结果上报(供聊天卡片标红失败项) */
-  onOutcomes?: (outcomes: EditOutcome[], key: string) => void;
-}) {
-  const { outcomes, hasPending, acceptAll, rejectAll } = useProposedEditController(
-    pendingEdits,
-    editsKey ?? '',
-    onResolved,
-  );
-
-  // hasPending 变化上报给 PlateMarkdownEditor → 驱动 <Plate readOnly>
-  useEffect(() => {
-    onHasPendingChange?.(hasPending);
-  }, [hasPending, onHasPendingChange]);
-
-  // outcomes 落定后上报(供聊天卡片标红);editsKey 关联到对应的 propose_edit part
-  useEffect(() => {
-    if (outcomes.length > 0) onOutcomes?.(outcomes, editsKey ?? '');
-  }, [outcomes, editsKey, onOutcomes]);
-
-  // 无未决 suggestion → 不渲染操作条
-  if (!hasPending) return null;
-
-  // 顶部审阅操作条:贴在编辑器顶部,提示有待裁决的修改 + 全部接受/拒绝按钮。
-  // 视觉沿用项目变量(accent 主色 / ink 文字 / paper 底),与设计系统一致。
-  return (
-    <div
-      className="sticky top-0 z-10 mb-2 flex items-center justify-between gap-3 rounded-lg px-3 py-2"
-      style={{
-        background: 'color-mix(in srgb, var(--accent) 8%, var(--paper))',
-        border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
-      }}
-    >
-      <span className="text-sm" style={{ color: 'var(--ink)' }}>
-        Aurora 提议了修改，请逐处或全部裁决后继续编辑
-      </span>
-      <div className="flex shrink-0 items-center gap-2">
-        <button
-          onClick={rejectAll}
-          className="rounded-md px-2.5 py-1 text-sm transition-colors hover:bg-[var(--shelf)]"
-          style={{ color: 'var(--ink-faded)' }}
-        >
-          全部拒绝
-        </button>
-        <button
-          onClick={acceptAll}
-          className="rounded-md px-2.5 py-1 text-sm transition-opacity hover:opacity-90"
-          style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}
-        >
-          全部接受
-        </button>
-      </div>
-    </div>
-  );
-}
 
 /**
  * AnchorBridge — 在 <Plate> context 内细粒度订阅 selection，序列化为 AnchorPayload 后上抛。
@@ -262,10 +176,7 @@ function toStoredAssetPaths(markdown: string, contentItemId: string): string {
 export function PlateMarkdownEditor({
   initialMarkdown,
   onChange,
-  pendingEdits,
-  editsKey,
   onResolved,
-  onOutcomes,
   onAnchorChange,
   pending,
   onOutcomesByCallIdChange,
@@ -280,14 +191,8 @@ export function PlateMarkdownEditor({
   onChange: (markdown: string, isUserEdit: boolean) => void;
   /** @deprecated 固定工具栏已移除，保留参数兼容文集编辑器 */
   toolbarContainer?: HTMLElement | null;
-  /** Aurora 改稿建议:来自 AiAdvisorPanel → ProseDraftEditor 透传,在 <Plate> 内部应用为 suggestion 痕迹 */
-  pendingEdits?: ProposedEdit[];
-  /** 与 pendingEdits 配套的去重 key(toolCallId),保证同一批 edits 只落一次 suggestion */
-  editsKey?: string;
   /** 裁决完毕→干净正文回流(供上游 setBody(md,true) 强制标脏触发保存) */
   onResolved?: (cleanMarkdown: string) => void;
-  /** 应用结果上报(供聊天卡片标红失败项),key 关联到 propose_edit part */
-  onOutcomes?: (outcomes: EditOutcome[], key: string) => void;
   /**
    * 当前编辑器 selection 变化回调（v2 改稿锚点）。
    * AnchorBridge 在 <Plate> 内订阅 selection，序列化后经此回调上报给父层（ProseDraftEditor）。
@@ -357,15 +262,6 @@ export function PlateMarkdownEditor({
     }
   }, [contentItemId, editor, onChange]);
 
-  // [v1 propose_edit 静默 —— Task 9 一并删除 props 时清理]
-  // 本 task 起 v1 Bridge 不再挂载,props 仍存在但不消费;void 消费防 noUnusedParameters 报错。
-  void pendingEdits;
-  void editsKey;
-  void onOutcomes;
-  // ProposedEditBridge 函数定义保留(Task 9 删),useProposedEditController 引用通过此 void 防 dead-code
-  void useProposedEditController;
-  void ProposedEditBridge;
-
   if (!editor) return null;
 
   return (
@@ -373,9 +269,6 @@ export function PlateMarkdownEditor({
       {/* readOnly 设在 <Plate>(store-level 只读):有未决 suggestion 时锁定整个编辑器,
           用户只能通过操作条全部接受/拒绝,裁决完毕自动解锁。比单独给 PlateContent 设更彻底。 */}
       <Plate key={editorId} editor={editor} onValueChange={handleChange} readOnly={hasPending}>
-        {/* [v1 ProposedEditBridge —— Task 9 删除]
-            本 task 已切换到 v2 AiEditBridge,v1 Bridge 不挂载;props pendingEdits/editsKey/onOutcomes
-            仍透传到本组件但不消费 —— v1 路径处于"监听仍在,但 Bridge 不挂、不应用"的静默状态。 */}
         {/* AiEditBridge —— v2 改稿总控:applyAiEdit 落 suggestion + 顶部审阅操作条。
             和 AnchorBridge 平行,各自订阅 selection(职责解耦,见 AiEditBridge 注释)。 */}
         <AiEditBridge

@@ -15,10 +15,8 @@ import rehypeHighlight from 'rehype-highlight';
 import 'katex/dist/katex.min.css';
 import { Copy, Check } from 'lucide-react';
 import type { UIMessagePart, UIDataTypes, UITools } from 'ai';
-import type { EditOutcome } from '@/pages/admin/lib/apply-proposed-edits';
 import type { AiEditOutcome, AiEditTool } from '@/pages/admin/lib/apply-ai-edit';
 import { ToolCallCard } from './ToolCallCard';
-import { ProposedEditCard } from './ProposedEditCard';
 import { AiEditCard } from './AiEditCard';
 
 interface ChatMessageProps {
@@ -29,10 +27,6 @@ interface ChatMessageProps {
   sessionKey?: string;
   /** 舒适密度(全页 agent 用大字距;侧栏默认紧凑) */
   comfortable?: boolean;
-  /** 改稿应用结果(失败项标红);仅对 toolCallId === outcomesKey 的 propose_edit 卡片生效 */
-  outcomes?: EditOutcome[];
-  /** 与 outcomes 配套的 key(propose_edit 的 toolCallId) */
-  outcomesKey?: string;
   /**
    * v2 改稿 outcomes 索引:key = toolCallId,value = AiEditOutcome。
    * 卡片按 part.toolCallId 精确查对应 outcome,失败时标红 —— 定位失败绝不静默。
@@ -52,7 +46,7 @@ function mapToolState(state: string): 'call' | 'result' | 'error' {
 // v2 改稿三工具(落稳后路由到 AiEditCard;流式中走通用 ToolCallCard)
 const AI_EDIT_TOOLS = ['rewrite_selection', 'insert_at_cursor', 'rewrite_document'] as const;
 
-export function ChatMessage({ role, content, parts, sessionKey, comfortable, outcomes, outcomesKey, outcomesByCallId }: ChatMessageProps) {
+export function ChatMessage({ role, content, parts, sessionKey, comfortable, outcomesByCallId }: ChatMessageProps) {
   if (role === 'user') {
     return (
       /* 用户消息：右对齐，轻量 shelf 背景，不喧宾夺主 */
@@ -92,29 +86,6 @@ export function ChatMessage({ role, content, parts, sessionKey, comfortable, out
 
             const p = part as Record<string, unknown>;
             const state = typeof p.state === 'string' ? mapToolState(p.state) : 'call';
-
-            // propose_edit:用专属卡片渲染逐条 reason,不走通用 ToolCallCard。
-            // input-streaming 阶段 edits 还没传完,回退到 ToolCallCard 进行中态。
-            if (toolName === 'propose_edit') {
-              const input = 'input' in p ? (p.input as { edits?: Array<{ find: string; replace: string; reason: string }> }) : undefined;
-              const edits = input?.edits;
-              if (state === 'call' || !edits || edits.length === 0) {
-                // 流式进行中 或 edits 为空:用通用卡片显示进行中态
-                return (
-                  <ToolCallCard
-                    key={i}
-                    toolName={toolName}
-                    state={state}
-                    sessionKey={sessionKey}
-                  />
-                );
-              }
-              // edits 到位后渲染专属卡片。若该 part 的 toolCallId 命中 outcomesKey,
-              // 把对应 outcomes 传入,卡片会标红定位失败的条目 —— 失败绝不静默。
-              const toolCallId = typeof p.toolCallId === 'string' ? p.toolCallId : undefined;
-              const matched = outcomesKey && toolCallId === outcomesKey ? outcomes : undefined;
-              return <ProposedEditCard key={i} edits={edits} outcomes={matched} />;
-            }
 
             // v2 改稿三工具:流式中走通用 ToolCallCard;落稳后渲染 AiEditCard 并精确匹配 outcome 标红。
             if ((AI_EDIT_TOOLS as readonly string[]).includes(toolName)) {

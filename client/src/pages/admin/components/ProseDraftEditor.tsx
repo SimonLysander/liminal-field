@@ -26,7 +26,6 @@ import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
 import { DraftAssetProvider } from '@/contexts/DraftAssetContext';
 import { AiAdvisorPanel } from '@/components/ai-advisor/AiAdvisorPanel';
 import { PlateMarkdownEditor } from './PlateEditor';
-import type { EditOutcome, ProposedEdit } from '@/pages/admin/lib/apply-proposed-edits';
 import type { AiEditOutcome } from '@/pages/admin/lib/apply-ai-edit';
 import type { PendingAiEdit } from '@/pages/admin/lib/use-ai-edit-controller';
 import { EditorOutline } from './EditorOutline';
@@ -62,27 +61,6 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
   const { theme, setTheme } = useTheme();
   // 编辑器内当前选中文本(Cursor 式 add-to-chat):监听 Plate 编辑器 DOM 选区
   const selectedText = useSelectedText('[data-slate-editor]');
-
-  // [v1 propose_edit 透传 —— Task 9 删除]
-  // Aurora 改稿建议透传:AiAdvisorPanel 在 <Plate> context 外,拿不到 useEditorRef。
-  // 通过回调把 propose_edit 的 edits 上抛到这里,再经 props 传给 PlateMarkdownEditor。
-  // 本 task 中 PlateEditor 已不挂 ProposedEditBridge → 这条链路静默(state 仍写入但下游不消费)。
-  const [pendingV1, setPendingV1] = useState<{ edits: ProposedEdit[]; key: string }>({ edits: [], key: '' });
-  const handleProposedEdits = useCallback(
-    (edits: ProposedEdit[], key: string) => setPendingV1({ edits, key }),
-    [],
-  );
-
-  // 改稿应用结果中转:PlateEditor 落痕迹后上报 outcomes(含失败项),透传给 AiAdvisorPanel,
-  // 由聊天卡片按 toolCallId 匹配后标红失败项 —— 定位失败绝不静默。
-  const [editOutcomes, setEditOutcomes] = useState<{ outcomes: EditOutcome[]; key: string }>({
-    outcomes: [],
-    key: '',
-  });
-  const handleOutcomes = useCallback(
-    (outcomes: EditOutcome[], key: string) => setEditOutcomes({ outcomes, key }),
-    [],
-  );
 
   // 裁决完毕→干净正文回流:强制标脏(isUserEdit=true)触发自动保存,并随 hasPending 解除而解锁。
   // 裁决时焦点不在编辑器,onChange 会判"非用户编辑"漏存,故走 controller 主动回流这条路。
@@ -246,9 +224,6 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
           title={editor.state.title}
           bodyMarkdown={editor.state.bodyMarkdown}
           selectedText={selectedText}
-          onProposedEdits={handleProposedEdits}
-          outcomes={editOutcomes.outcomes}
-          outcomesKey={editOutcomes.key}
           anchor={anchor}
           onPending={handlePending}
           outcomesByCallId={outcomesByCallId}
@@ -270,10 +245,7 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
               key={editorKey}
               initialMarkdown={editor.state.bodyMarkdown}
               onChange={editor.setBody}
-              pendingEdits={pendingV1.edits}
-              editsKey={pendingV1.key}
               onResolved={handleResolved}
-              onOutcomes={handleOutcomes}
               onAnchorChange={handleAnchorChange}
               pending={pending}
               onOutcomesByCallIdChange={handleOutcomesByCallIdChange}

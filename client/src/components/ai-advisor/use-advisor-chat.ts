@@ -148,38 +148,12 @@ export function useAdvisorChat({
     return { tasks: t, planTitle: title };
   }, [messages]);
 
-  // Aurora 改稿建议:从消息流里取最近一次 propose_edit 工具调用的 edits 数组,实时反映。
-  // 跳过 input-streaming 防止数据未传完就落 suggestion;editsKey 用于上游去重,避免重复应用。
-  // toolCallId 是 AI SDK 给每次工具调用的唯一 id,是最可靠的去重 key;fallback 用 m.id+长度。
-  const { proposedEdits, editsKey } = useMemo(() => {
-    let edits: Array<{ find: string; replace: string; reason: string }> = [];
-    let key = '';
-    for (const m of messages) {
-      for (const p of m.parts ?? []) {
-        if (p.type !== 'tool-propose_edit') continue;
-        const part = p as {
-          state?: string;
-          toolCallId?: string;
-          input?: { edits?: typeof edits };
-        };
-        if (part.state === 'input-streaming') continue;
-        if (Array.isArray(part.input?.edits)) {
-          edits = part.input.edits;
-          key = part.toolCallId ?? `${m.id}:${edits.length}`;
-        }
-      }
-    }
-    return { proposedEdits: edits, editsKey: key };
-  }, [messages]);
-
   /**
    * v2 改稿三工具监听 —— 取最近一次落稳(非 input-streaming)的 rewrite_selection /
    * insert_at_cursor / rewrite_document 工具调用,产出单个 PendingAiEdit。
    *
-   * 仿现有 propose_edit 监听模式:遍历全部消息 → 工具 part → 跳过 streaming → 取最新一次。
+   * 遍历全部消息 → 工具 part → 跳过 streaming → 取最新一次。
    * 单个(不是数组):v2 三工具每次只产生一次改稿任务,callId 作为去重 key 和 outcomes 索引键。
-   *
-   * Task 9 删除 v1 propose_edit 后,本块保留;本 task 范围内 v1/v2 并存。
    */
   const pending = useMemo<PendingAiEdit | undefined>(() => {
     let latest: PendingAiEdit | undefined;
@@ -320,9 +294,7 @@ export function useAdvisorChat({
     loadMore,
     tasks,
     planTitle,
-    proposedEdits,
-    editsKey,
-    // v2 改稿:单个 pending,callId 去重;Task 9 删 proposedEdits/editsKey 后由它独占
+    // v2 改稿:单个 pending,callId 去重
     pending,
     tier,
     cycleTier,

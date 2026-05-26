@@ -7,7 +7,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowUp, Square, X, Paperclip } from 'lucide-react';
-import type { EditOutcome } from '@/pages/admin/lib/apply-proposed-edits';
 import type { AiEditOutcome } from '@/pages/admin/lib/apply-ai-edit';
 import type { AnchorPayload } from '@/pages/admin/lib/serialize-anchor';
 import type { PendingAiEdit } from '@/pages/admin/lib/use-ai-edit-controller';
@@ -38,20 +37,6 @@ export interface AiAdvisorPanelProps {
   /** 编辑器中当前选中的文字（Cursor 式 add-to-chat） */
   selectedText?: string;
   /**
-   * AI 吐出 propose_edit 工具调用后,将解析到的 edits 上抛给父级。
-   * 父级(ProseDraftEditor)在 <Plate> 之外拿不到 useEditorRef,通过此回调
-   * 把 edits 透传给 PlateMarkdownEditor,再在 <Plate> 内部应用为 suggestion 痕迹。
-   * 父级应用 useCallback 保证引用稳定,避免 useEffect 循环触发。
-   */
-  onProposedEdits?: (edits: Array<{ find: string; replace: string; reason: string }>, key: string) => void;
-  /**
-   * 改稿应用结果(失败项标红回流):由编辑器侧落痕迹后上报,经此透传到消息渲染。
-   * 与 outcomesKey(对应 propose_edit 的 toolCallId)配套,定位到具体那张卡片。
-   */
-  outcomes?: EditOutcome[];
-  /** 与 outcomes 配套的 key(propose_edit 的 toolCallId),用于匹配对应卡片 */
-  outcomesKey?: string;
-  /**
    * 当前编辑器锚点(selection/cursor)，由 ProseDraftEditor 从 AnchorBridge 中转而来。
    * 随聊天 transport 传给后端，prompt.handler 据此注入 <selection> / <cursor> 节。
    */
@@ -77,9 +62,6 @@ export function AiAdvisorPanel({
   title,
   bodyMarkdown,
   selectedText,
-  onProposedEdits,
-  outcomes,
-  outcomesKey,
   anchor,
   onPending,
   outcomesByCallId,
@@ -105,8 +87,6 @@ export function AiAdvisorPanel({
     error,
     tasks,
     planTitle,
-    proposedEdits,
-    editsKey,
     pending,
   } = useAdvisorChat({
     sessionKey,
@@ -116,16 +96,8 @@ export function AiAdvisorPanel({
     anchor,
   });
 
-  // propose_edit 上抛:edits 落稳(非 streaming)后通知父级透传到编辑器。
-  // onProposedEdits 由父级 useCallback 包裹,引用稳定,不会引起循环。
-  useEffect(() => {
-    if (proposedEdits.length > 0) {
-      onProposedEdits?.(proposedEdits, editsKey);
-    }
-  }, [proposedEdits, editsKey, onProposedEdits]);
-
   // v2 改稿:pending 变化时上报给父级,经 PlateMarkdownEditor 透传到 AiEditBridge。
-  // 仿 onProposedEdits 模式,父级需 useCallback 保证引用稳定。
+  // 父级需 useCallback 保证引用稳定。
   useEffect(() => {
     onPending?.(pending);
   }, [pending, onPending]);
@@ -172,8 +144,6 @@ export function AiAdvisorPanel({
             hasMore={hasMore}
             isLoadingMore={isLoadingMore}
             onLoadMore={loadMore}
-            outcomes={outcomes}
-            outcomesKey={outcomesKey}
             outcomesByCallId={outcomesByCallId}
           />
         )}

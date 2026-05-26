@@ -30,7 +30,6 @@ import { createForgetTool } from '../tools/forget.tool';
 import { createSubAgentTool } from '../tools/sub-agent.tool';
 import { createWriteTasksTool } from '../tools/write-tasks.tool';
 import { createReadConversationHistoryTool } from '../tools/read-conversation-history.tool';
-import { createProposeEditTool } from '../tools/propose-edit.tool';
 import { createRewriteSelectionTool } from '../tools/rewrite-selection.tool';
 import { createInsertAtCursorTool } from '../tools/insert-at-cursor.tool';
 import { createRewriteDocumentTool } from '../tools/rewrite-document.tool';
@@ -109,11 +108,7 @@ export class ToolAssembler {
             ),
           }
         : {}),
-      // 草稿改稿提议：有绑定草稿时才提供 propose_edit(全页总助手无文档,不挂)
-      ...(entryContext.document
-        ? { propose_edit: createProposeEditTool() }
-        : {}),
-      // v2:三个锚点驱动的改稿工具(替代 propose_edit,见 2026-05-26 spec)
+      // v2:三个锚点驱动的改稿工具(替代 v1 propose_edit,见 2026-05-26 spec)
       ...(entryContext.document
         ? {
             rewrite_selection: createRewriteSelectionTool(),
