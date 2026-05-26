@@ -16,8 +16,10 @@ import 'katex/dist/katex.min.css';
 import { Copy, Check } from 'lucide-react';
 import type { UIMessagePart, UIDataTypes, UITools } from 'ai';
 import type { EditOutcome } from '@/pages/admin/lib/apply-proposed-edits';
+import type { AiEditOutcome, AiEditTool } from '@/pages/admin/lib/apply-ai-edit';
 import { ToolCallCard } from './ToolCallCard';
 import { ProposedEditCard } from './ProposedEditCard';
+import { AiEditCard } from './AiEditCard';
 
 interface ChatMessageProps {
   role: 'user' | 'assistant';
@@ -31,6 +33,11 @@ interface ChatMessageProps {
   outcomes?: EditOutcome[];
   /** 与 outcomes 配套的 key(propose_edit 的 toolCallId) */
   outcomesKey?: string;
+  /**
+   * v2 改稿 outcomes 索引:key = toolCallId,value = AiEditOutcome。
+   * 卡片按 part.toolCallId 精确查对应 outcome,失败时标红 —— 定位失败绝不静默。
+   */
+  outcomesByCallId?: Record<string, AiEditOutcome>;
 }
 
 /** 将 DynamicToolUIPart 的 state 映射到 ToolCallCard 的 state 类型 */
@@ -42,7 +49,10 @@ function mapToolState(state: string): 'call' | 'result' | 'error' {
   }
 }
 
-export function ChatMessage({ role, content, parts, sessionKey, comfortable, outcomes, outcomesKey }: ChatMessageProps) {
+// v2 改稿三工具(落稳后路由到 AiEditCard;流式中走通用 ToolCallCard)
+const AI_EDIT_TOOLS = ['rewrite_selection', 'insert_at_cursor', 'rewrite_document'] as const;
+
+export function ChatMessage({ role, content, parts, sessionKey, comfortable, outcomes, outcomesKey, outcomesByCallId }: ChatMessageProps) {
   if (role === 'user') {
     return (
       /* 用户消息：右对齐，轻量 shelf 背景，不喧宾夺主 */
@@ -104,6 +114,33 @@ export function ChatMessage({ role, content, parts, sessionKey, comfortable, out
               const toolCallId = typeof p.toolCallId === 'string' ? p.toolCallId : undefined;
               const matched = outcomesKey && toolCallId === outcomesKey ? outcomes : undefined;
               return <ProposedEditCard key={i} edits={edits} outcomes={matched} />;
+            }
+
+            // v2 改稿三工具:流式中走通用 ToolCallCard;落稳后渲染 AiEditCard 并精确匹配 outcome 标红。
+            if ((AI_EDIT_TOOLS as readonly string[]).includes(toolName)) {
+              if (state !== 'result' && state !== 'error') {
+                // input-streaming / 进行中:走通用 ToolCallCard 的 in-progress 态(有图标+名称)
+                return (
+                  <ToolCallCard
+                    key={i}
+                    toolName={toolName}
+                    state={state}
+                    sessionKey={sessionKey}
+                  />
+                );
+              }
+              // 工具落稳:按 toolCallId 精确查 outcomesByCallId,匹配到则传入卡片做标红
+              const input = 'input' in p ? (p.input as { newMarkdown?: string; reason?: string } | undefined) : undefined;
+              const callId = typeof p.toolCallId === 'string' ? p.toolCallId : undefined;
+              const matchedOutcome = callId && outcomesByCallId ? outcomesByCallId[callId] : undefined;
+              return (
+                <AiEditCard
+                  key={i}
+                  tool={toolName as AiEditTool}
+                  reason={input?.reason ?? ''}
+                  outcome={matchedOutcome}
+                />
+              );
             }
 
             const resultStr =

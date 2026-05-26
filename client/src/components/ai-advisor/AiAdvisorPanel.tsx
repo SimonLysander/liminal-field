@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowUp, Square, X, Paperclip } from 'lucide-react';
 import type { EditOutcome } from '@/pages/admin/lib/apply-proposed-edits';
+import type { AiEditOutcome } from '@/pages/admin/lib/apply-ai-edit';
 import type { AnchorPayload } from '@/pages/admin/lib/serialize-anchor';
 import type { PendingAiEdit } from '@/pages/admin/lib/use-ai-edit-controller';
 import { MessageList } from './MessageList';
@@ -61,6 +62,12 @@ export interface AiAdvisorPanelProps {
    * 与 onProposedEdits 并存,Task 9 删 onProposedEdits。
    */
   onPending?: (p: PendingAiEdit | undefined) => void;
+  /**
+   * v2 改稿 outcomes 索引:key = toolCallId,value = AiEditOutcome。
+   * 由 ProseDraftEditor 从 AiEditBridge 上报到此处,再经 MessageList → ChatMessage
+   * 按 toolCallId 精确匹配 AiEditCard,失败时标红 —— 定位失败绝不静默。
+   */
+  outcomesByCallId?: Record<string, AiEditOutcome>;
 }
 
 export function AiAdvisorPanel({
@@ -74,6 +81,7 @@ export function AiAdvisorPanel({
   outcomesKey,
   anchor,
   onPending,
+  outcomesByCallId,
 }: AiAdvisorPanelProps) {
   const [inputValue, setInputValue] = useState('');
   const [greeting] = useState(pickGreeting);
@@ -165,6 +173,7 @@ export function AiAdvisorPanel({
             onLoadMore={loadMore}
             outcomes={outcomes}
             outcomesKey={outcomesKey}
+            outcomesByCallId={outcomesByCallId}
           />
         )}
       </div>

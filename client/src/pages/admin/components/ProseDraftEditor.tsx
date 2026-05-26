@@ -102,15 +102,13 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
   const [pending, setPending] = useState<PendingAiEdit | undefined>(undefined);
   const handlePending = useCallback((p: PendingAiEdit | undefined) => setPending(p), []);
 
-  // v2 改稿 outcomes 中转:按 callId 索引,Task 7 卡片渲染时按 toolCallId 查对应 outcome。
-  // 现在还没有消费方(Task 7 才接卡片),先把链路接通,值由 AiEditBridge 上报到此 state。
+  // v2 改稿 outcomes 中转:按 callId 索引,AiEditBridge 每次落完 applyAiEdit 上报此 map。
+  // 透传到 AiAdvisorPanel → MessageList → ChatMessage,卡片按 toolCallId 精确查 outcome 标红。
   const [outcomesByCallId, setOutcomesByCallId] = useState<Record<string, AiEditOutcome>>({});
   const handleOutcomesByCallIdChange = useCallback(
     (m: Record<string, AiEditOutcome>) => setOutcomesByCallId(m),
     [],
   );
-  // 暂时消费一下避免 unused 警告;Task 7 接卡片时改为透传到 AiAdvisorPanel
-  void outcomesByCallId;
 
   if (editor.loading) {
     return <LoadingState variant="full" />;
@@ -253,6 +251,7 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
           outcomesKey={editOutcomes.key}
           anchor={anchor}
           onPending={handlePending}
+          outcomesByCallId={outcomesByCallId}
         />
       ) : (
         <div />

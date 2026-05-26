@@ -12,6 +12,7 @@
 import { useEffect, useRef } from 'react';
 import type { UIMessage } from 'ai';
 import type { EditOutcome } from '@/pages/admin/lib/apply-proposed-edits';
+import type { AiEditOutcome } from '@/pages/admin/lib/apply-ai-edit';
 import { ChatMessage } from './ChatMessage';
 
 interface MessageListProps {
@@ -33,6 +34,11 @@ interface MessageListProps {
   outcomes?: EditOutcome[];
   /** 与 outcomes 配套的 key(propose_edit 的 toolCallId) */
   outcomesKey?: string;
+  /**
+   * v2 改稿 outcomes 索引:key = toolCallId,value = AiEditOutcome。
+   * 透传给 ChatMessage,卡片按 part.toolCallId 精确匹配,失败时标红。
+   */
+  outcomesByCallId?: Record<string, AiEditOutcome>;
 }
 
 export function MessageList({
@@ -46,6 +52,7 @@ export function MessageList({
   onLoadMore,
   outcomes,
   outcomesKey,
+  outcomesByCallId,
 }: MessageListProps) {
   const edgeFadeMask =
     'linear-gradient(to bottom, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%)';
@@ -135,6 +142,7 @@ export function MessageList({
               comfortable={comfortable}
               outcomes={outcomes}
               outcomesKey={outcomesKey}
+              outcomesByCallId={outcomesByCallId}
             />
           </div>
         );
