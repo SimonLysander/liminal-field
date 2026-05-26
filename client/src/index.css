@@ -479,8 +479,11 @@ html { font-size: 16px; }
 @media (max-width: 768px)  { html { font-size: 15px; } }
 @media (max-width: 480px)  { html { font-size: 14px; } }
 
+/* 选区高亮:用 var(--accent) 35% 不透明度。
+   原先用 var(--accent-soft)(daylight 仅 10% 不透明度)→ 视觉几乎完全透明,
+   selection 在 DOM 层面工作但用户看不到自己选了什么。 */
 ::selection {
-  background: var(--accent-soft);
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
   color: var(--ink);
 }
 
