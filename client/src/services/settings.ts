@@ -35,6 +35,7 @@ export interface SettingsConfigView {
   };
   integration: {
     hasMineruToken: boolean;
+    hasTavilyApiKey: boolean;
   };
   ai: {
     /** 已配置的 AI 提供商列表（API Key 脱敏，不含原文） */
@@ -114,7 +115,10 @@ export const settingsApi = {
       body: JSON.stringify(data),
     }),
 
-  saveIntegrationConfig: (data: { mineruToken?: string }) =>
+  saveIntegrationConfig: (data: {
+    mineruToken?: string;
+    tavilyApiKey?: string;
+  }) =>
     request<{ success: boolean }>('/settings/integration-config', {
       method: 'PUT',
       body: JSON.stringify(data),

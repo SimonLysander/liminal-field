@@ -511,6 +511,11 @@ export function IntegrationTab() {
   const [mineruToken, setMineruToken] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Tavily(Aurora 联网搜索)配置状态
+  const [editingTavily, setEditingTavily] = useState(false);
+  const [tavilyApiKey, setTavilyApiKey] = useState('');
+  const [savingTavily, setSavingTavily] = useState(false);
+
   // AI 提供商列表操作状态
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
@@ -527,6 +532,11 @@ export function IntegrationTab() {
     setEditing(false);
   }, []);
 
+  const resetTavilyForm = useCallback(() => {
+    setTavilyApiKey('');
+    setEditingTavily(false);
+  }, []);
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -541,6 +551,23 @@ export function IntegrationTab() {
       banner.error('保存失败');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveTavily = async () => {
+    setSavingTavily(true);
+    try {
+      await settingsApi.saveIntegrationConfig({
+        tavilyApiKey: tavilyApiKey.trim() || undefined,
+      });
+      banner.success('Tavily API key 已保存');
+      setTavilyApiKey('');
+      setEditingTavily(false);
+      await loadData(true);
+    } catch {
+      banner.error('保存失败');
+    } finally {
+      setSavingTavily(false);
     }
   };
 
@@ -635,6 +662,44 @@ export function IntegrationTab() {
               value={mineruToken}
               onChange={setMineruToken}
               placeholder="eyJ0eXBlIjoi..."
+              type="password"
+            />
+          </div>
+        }
+      />
+
+      {/* ── Tavily(Aurora 联网搜索)── */}
+      <EditableSection
+        title="Tavily 联网搜索"
+        description="Aurora web_search 工具的 API Key，免费层 1000 次/月"
+        editing={editingTavily}
+        onEdit={() => {
+          setTavilyApiKey('');
+          setEditingTavily(true);
+        }}
+        onSave={() => void handleSaveTavily()}
+        onReset={resetTavilyForm}
+        saving={savingTavily}
+        viewContent={
+          <StatusRow
+            label="API Key"
+            value={config?.hasTavilyApiKey ? '••••••••' : '未配置（web_search 工具不挂载）'}
+          />
+        }
+        editContent={
+          <div>
+            <FieldLabel>
+              API Key
+              {config?.hasTavilyApiKey && !tavilyApiKey && (
+                <span className="ml-2 font-normal" style={{ color: 'var(--ink-ghost)' }}>
+                  已配置，留空则不修改
+                </span>
+              )}
+            </FieldLabel>
+            <TextInput
+              value={tavilyApiKey}
+              onChange={setTavilyApiKey}
+              placeholder="tvly-..."
               type="password"
             />
           </div>
