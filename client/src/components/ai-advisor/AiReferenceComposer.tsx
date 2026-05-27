@@ -17,8 +17,8 @@ import {
 } from 'platejs/react';
 import type {
   ChatSelectionAttachment,
+  AnchorPayload,
 } from '@/pages/admin/lib/live-chat-selection';
-import type { AnchorPayload } from '@/pages/admin/lib/serialize-anchor';
 import { Editor } from '@/components/ui/editor';
 
 const REFERENCE_TYPE = 'chat_reference';
@@ -107,6 +107,7 @@ export const AiReferenceComposer = forwardRef<
   const editor = usePlateEditor(
     {
       plugins: [ReferenceTokenPlugin],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Plate Value 类型与 Descendant[] 不兼容，需要强制转换
       value: () => cloneEmptyValue() as any,
     },
     [],
@@ -150,17 +151,17 @@ export const AiReferenceComposer = forwardRef<
       }
     }
 
-    selections.forEach((selection, index) => {
+    selections.forEach((selection) => {
       attachmentByIdRef.current.set(selection.id, selection);
       if (existingIds.has(selection.id)) {
         updateReferenceLabel(
           editor,
           selection.id,
-          formatSelectionLabel(selection, index, selections.length),
+          formatSelectionLabel(selection),
         );
         return;
       }
-      insertReferenceNode(editor, selection, index, selections.length);
+      insertReferenceNode(editor, selection);
       insertedIdsRef.current.add(selection.id);
     });
 
@@ -230,14 +231,12 @@ function ReferenceTokenElement(props: PlateElementProps<ReferenceElement>) {
 function insertReferenceNode(
   editor: ComposerEditor,
   selection: ChatSelectionAttachment,
-  index: number,
-  total: number,
 ) {
   focusComposerEnd(editor);
   editor.tf.insertNodes({
     type: REFERENCE_TYPE,
     refId: selection.id,
-    label: formatSelectionLabel(selection, index, total),
+    label: formatSelectionLabel(selection),
     children: [{ text: '' }],
   } as TElement, { select: false });
   editor.tf.insertText(' ');
@@ -247,7 +246,7 @@ function insertReferenceNode(
 function removeReferenceNode(editor: ComposerEditor, id: string) {
   editor.tf.removeNodes({
     at: [],
-    match: (node: any) =>
+    match: (node: unknown) =>
       NodeApi.isNode(node) &&
       !NodeApi.isEditor(node) &&
       'type' in node &&
@@ -266,7 +265,7 @@ function updateReferenceLabel(
     { label },
     {
       at: [],
-      match: (node: any) =>
+      match: (node: unknown) =>
         NodeApi.isNode(node) &&
         !NodeApi.isEditor(node) &&
         'type' in node &&
@@ -340,11 +339,7 @@ function isComposerEmpty(nodes: Descendant[]): boolean {
   return nodes.map((node) => NodeApi.string(node)).join('').trim().length === 0;
 }
 
-function formatSelectionLabel(
-  selection: ChatSelectionAttachment,
-  _index: number,
-  _total: number,
-): string {
+function formatSelectionLabel(selection: ChatSelectionAttachment): string {
   return formatParagraphRange(selection.getAnchor());
 }
 
@@ -383,6 +378,7 @@ function ensureTrailingText(editor: ComposerEditor) {
 
   editor.tf.insertNodes(
     { text: '' },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Plate insertNodes at 类型不接受 [block, child] 元组
     { at: [lastBlockIndex, children.length], select: false } as any,
   );
 }

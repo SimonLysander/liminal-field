@@ -31,20 +31,10 @@ import { useChat } from '@ai-sdk/react';
 import type { Descendant } from 'platejs';
 import { deserializeMd } from '@platejs/markdown';
 import { loadSession, saveSession, type SessionTask } from '@/services/agent';
-import type { AnchorPayload } from '@/pages/admin/lib/serialize-anchor';
-import type { ChatReferenceSnapshot } from '@/pages/admin/lib/live-chat-selection';
-import type { PendingAiEdit } from '@/pages/admin/lib/use-ai-edit-controller';
-import type { AiEditProposal } from '@/pages/admin/lib/ai-edit-proposal';
 import { computeDocDiff } from '@/pages/admin/lib/compute-doc-diff';
 import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
-import {
-  ReferenceRegistry,
-  createEditSession,
-  isEditConfirmation,
-  isReferenceEditRequest,
-  type EditSession,
-} from './edit-session';
-import type { ChatReferencesMetadata } from '@/pages/admin/lib/live-chat-selection';
+// edit-session 现仅保留 ReferenceRegistry（渲染层读取历史 references 用于 chip 展示）
+// createEditSession / isEditConfirmation / isReferenceEditRequest 已随 v2 send 逻辑一并删除
 
 export type Tier = 'flash' | 'standard' | 'think';
 
@@ -69,16 +59,6 @@ export interface UseAdvisorChatOptions {
     title?: string;
     bodyMarkdown?: string;
   };
-  /**
-   * 当前编辑器锚点(selection/cursor)，随聊天 transport 传给后端。
-   * 后端 prompt.handler 据此注入引用上下文；引用不默认等于编辑目标。
-   */
-  anchor?: AnchorPayload;
-  /**
-   * 发送时读取最新锚点。用于避免 selectionchange 高频 setState;
-   * 若提供,transport body 优先读它,否则退回 anchorRef.current。
-   */
-  getAnchor?: () => AnchorPayload;
   /** 后端成功保存本轮新增消息后触发。用于刷新业务会话列表等持久化后动作。 */
   onAfterSave?: () => void;
   /**
@@ -99,8 +79,6 @@ export function useAdvisorChat({
   agentKey,
   source,
   documentContext,
-  anchor,
-  getAnchor,
   onAfterSave,
   getEditorChildren,
   getEditor,
@@ -115,16 +93,9 @@ export function useAdvisorChat({
   // Ref 层：持有最新值供 transport body 回调 / 懒加载逻辑读取（避免 stale closure）
   const docRef = useRef(documentContext);
   const tierRef = useRef(tier);
-  // anchorRef:与 docRef 同模式,避免 transport body 回调产生 stale closure
-  const anchorRef = useRef<AnchorPayload>(anchor ?? { type: 'none' });
   const sessionKeyRef = useRef(sessionKey);
   const agentInstanceKeyRef = useRef(agentInstanceKey);
-  const getAnchorRef = useRef(getAnchor);
   const onAfterSaveRef = useRef(onAfterSave);
-  const lastSentEditAnchorRef = useRef<AnchorPayload | undefined>(undefined);
-  const referenceRegistryRef = useRef(new ReferenceRegistry());
-  const activeEditSessionRef = useRef<EditSession | undefined>(undefined);
-  const sessionAppliedToolCallIdsRef = useRef<Set<string>>(new Set());
   // 懒加载游标：当前页第一条消息的绝对 index，下次加载传 before=firstIndex
   const firstIndexRef = useRef<number>(0);
   // append 语义游标：记录已保存到后端的消息数量，saveSession 只发 slice(savedCount)
@@ -147,14 +118,6 @@ export function useAdvisorChat({
   }, [tier]);
 
   useEffect(() => {
-    anchorRef.current = anchor ?? { type: 'none' };
-  }, [anchor]);
-
-  useEffect(() => {
-    getAnchorRef.current = getAnchor;
-  }, [getAnchor]);
-
-  useEffect(() => {
     onAfterSaveRef.current = onAfterSave;
   }, [onAfterSave]);
 
@@ -173,19 +136,8 @@ export function useAdvisorChat({
           documentContext: docRef.current,
         }),
         prepareSendMessagesRequest: ({ id, messages, body, trigger, messageId }) => {
-          const lastUserMessage = [...messages]
-            .reverse()
-            .find((message) => message.role === 'user');
-          const references = getReferencesFromMetadata(lastUserMessage?.metadata);
+          // v3 协议：chips 已拼进 user message text，不再通过 entryContext 传 references/anchors
           const fallbackBody = body ?? {};
-          const entryContext = {
-            ...(fallbackBody.entryContext ?? {}),
-            references: references.length > 0 ? references : fallbackBody.entryContext?.references,
-            anchors: references.length > 0
-              ? references.map((reference) => reference.anchor)
-              : fallbackBody.entryContext?.anchors,
-            anchor: references[0]?.anchor ?? fallbackBody.entryContext?.anchor,
-          };
           return {
             body: {
               ...fallbackBody,
@@ -193,7 +145,6 @@ export function useAdvisorChat({
               messages,
               trigger,
               messageId,
-              entryContext,
             },
           };
         },
@@ -223,59 +174,6 @@ export function useAdvisorChat({
       }
     }
     return { tasks: t, planTitle: title };
-  }, [messages]);
-
-  const proposalsByCallId = useMemo<Record<string, AiEditProposal>>(() => {
-    const proposals: Record<string, AiEditProposal> = {};
-    const liveMessages = messages.slice(savedCountRef.current);
-    for (const m of liveMessages) {
-      for (const p of m.parts ?? []) {
-        if (p.type !== 'tool-rewrite_reference' && p.type !== 'tool-rewrite_document') {
-          continue;
-        }
-        const part = p as {
-          state?: string;
-          toolCallId?: string;
-          input?: { targetRefId?: string; newMarkdown?: string; reason?: string };
-        };
-        if (part.state === 'input-streaming') continue;
-        const newText = part.input?.newMarkdown;
-        if (typeof newText !== 'string' || newText.trim().length === 0) continue;
-        const callId = part.toolCallId ?? `${m.id}:${p.type}`;
-        if (p.type === 'tool-rewrite_document') {
-          const oldText = docRef.current?.bodyMarkdown;
-          if (!oldText) continue;
-          proposals[callId] = {
-            id: callId,
-            title: '建议整篇改写',
-            targetKind: 'document',
-            oldText,
-            newText,
-            reason: part.input?.reason ?? '',
-          };
-        } else {
-          const targetRefId = part.input?.targetRefId;
-          const targetReference =
-            referenceRegistryRef.current.get(targetRefId) ??
-            activeEditSessionRef.current?.targets[0];
-          const oldText = targetReference?.text;
-          if (!oldText) continue;
-          proposals[callId] = {
-            id: callId,
-            title: targetReference
-              ? `建议修改${formatReferenceLocation(targetReference)}`
-              : '建议修改引用',
-            targetKind: 'reference',
-            oldText,
-            newText,
-            reason: part.input?.reason ?? '',
-            targetRefId,
-            targetReference,
-          };
-        }
-      }
-    }
-    return proposals;
   }, [messages]);
 
   /**
@@ -339,26 +237,23 @@ export function useAdvisorChat({
    * savedCountRef 初始化为加载到的消息数（这批消息已在后端，不需再 append），
    * 这样首次回复后 savedCount=messages.length 时，slice(savedCount) 只截取新增的两条。
    *
-   * setSessionReady(false) 放在异步回调外、通过 useState 初始值保证初始不 ready，
-   * 不在 effect 同步调用 setState（lint: react-hooks/set-state-in-effect）。
+   * setSessionReady(false) 和 setMessages([]) 通过 queueMicrotask 推迟到异步微任务，
+   * 避免在 effect 同步体内直接 setState（react-hooks/set-state-in-effect）。
    */
   useEffect(() => {
     let cancelled = false;
-    setSessionReady(false);
-    referenceRegistryRef.current = new ReferenceRegistry();
-    activeEditSessionRef.current = undefined;
-    sessionAppliedToolCallIdsRef.current.clear();
-    lastSentEditAnchorRef.current = undefined;
     savedCountRef.current = 0;
     firstIndexRef.current = 0;
-    setMessages([]);
+    // 推迟 setState 到微任务，避免在 effect 同步体内调用（react-hooks/set-state-in-effect）
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setSessionReady(false);
+      setMessages([]);
+    });
     loadSession(sessionKey, { agentInstanceKey })
       .then((data) => {
         if (cancelled) return;
         setMessages(data.messages as unknown as UIMessage[]);
-        referenceRegistryRef.current.hydrateFromMessages(
-          data.messages as Array<{ metadata?: unknown }>,
-        );
         // 初始化懒加载游标（绝对 index，用于下次 before 参数）
         firstIndexRef.current = data.firstIndex;
         setHasMore(data.hasMore);
@@ -437,46 +332,11 @@ export function useAdvisorChat({
   }, [agentInstanceKey, status, messages, sessionKey]);
 
   const send = useCallback(
-    (
-      text: string,
-      options: {
-        anchor?: AnchorPayload;
-        anchors?: AnchorPayload[];
-        references?: ChatReferenceSnapshot[];
-      } = {},
-    ) => {
+    (text: string) => {
       const t = text.trim();
       if (!t) return;
-      // v2 edit session 逻辑保留（Task 10 才删）
-      const explicitReferences = options.references ?? [];
-      const sessionReferences =
-        explicitReferences.length === 0 && isEditConfirmation(t)
-          ? activeEditSessionRef.current?.targets ?? []
-          : [];
-      const referencesForThisSend =
-        explicitReferences.length > 0 ? explicitReferences : sessionReferences;
-      referenceRegistryRef.current.registerMany(referencesForThisSend);
-      if (explicitReferences.length > 0 && isReferenceEditRequest(t)) {
-        activeEditSessionRef.current = createEditSession(explicitReferences, 'references');
-      } else if (!isEditConfirmation(t)) {
-        activeEditSessionRef.current = undefined;
-      }
-      const anchorForThisSend =
-        referencesForThisSend[0]?.anchor ??
-        options.anchor ??
-        getAnchorRef.current?.() ??
-        anchorRef.current;
-      lastSentEditAnchorRef.current = anchorForThisSend;
-      void sendMessage({
-        text: t,
-        // v3 协议：chips 已拼进 text，不再通过 metadata.references 发送
-        // v2 metadata.references 保留（Task 10 删）：
-        metadata: explicitReferences.length
-          ? { references: explicitReferences }
-          : undefined,
-      }, {
-        // v3 transport body：只传 tier/agentKey/source/sessionKey/agentInstanceKey/entryContext.document
-        // anchor/anchors/references 已从 body 移除（v3 协议，chips 拼进 text）
+      // v3 协议：chips 已拼进 text，不传 metadata.references；transport body 不传 anchor/anchors
+      void sendMessage({ text: t }, {
         body: buildAgentRequestBody({
           tier: tierRef.current,
           agentKey,
@@ -504,11 +364,8 @@ export function useAdvisorChat({
     loadMore,
     tasks,
     planTitle,
-    pending: undefined as PendingAiEdit | undefined,
-    // v2 改稿（Task 10 删）
-    proposalsByCallId,
     // v3 改稿
-    v3ProposalsByCallId,
+    proposalsByCallId: v3ProposalsByCallId,
     pendingProposal,
     tier,
     cycleTier,
@@ -516,34 +373,6 @@ export function useAdvisorChat({
     stop,
     error,
   };
-}
-
-function getReferencesFromMetadata(metadata: unknown): ChatReferenceSnapshot[] {
-  const refs = (metadata as ChatReferencesMetadata | undefined)?.references;
-  if (!Array.isArray(refs)) return [];
-  return refs.filter((ref): ref is ChatReferenceSnapshot => {
-    return (
-      typeof ref === 'object' &&
-      ref !== null &&
-      typeof ref.id === 'string' &&
-      typeof ref.order === 'number' &&
-      typeof ref.text === 'string' &&
-      typeof ref.preview === 'string' &&
-      typeof ref.anchor === 'object' &&
-      ref.anchor !== null &&
-      'type' in ref.anchor
-    );
-  });
-}
-
-function formatReferenceLocation(reference: ChatReferenceSnapshot): string {
-  const anchor = reference.anchor;
-  if (anchor.type !== 'range') return '引用';
-  const start = anchor.startPath?.[0] ?? anchor.blockIndex;
-  const end = anchor.endPath?.[0] ?? start;
-  const from = Math.min(start, end) + 1;
-  const to = Math.max(start, end) + 1;
-  return from === to ? `第 ${from} 段` : `第 ${from}-${to} 段`;
 }
 
 function buildAgentRequestBody({

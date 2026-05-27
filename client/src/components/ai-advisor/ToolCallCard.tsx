@@ -39,9 +39,8 @@ const DISPLAY_NAMES: Record<string, string> = {
   forget: 'Delete Memory',
   sub_agent: 'Delegate',
   propose_edit: '提议修改',
-  // v2 改稿两工具(流式 input-streaming 阶段用通用 ToolCallCard 展示进行中态)
-  rewrite_selection: '改写选中段',
-  rewrite_document: '整篇改写',
+  // v3 改稿工具:生成完整改稿方案,等待编辑器审批
+  propose_document_rewrite: '生成改稿',
 };
 
 /** 每个工具的 lucide 图标(纸墨批注的辨识符) */
@@ -54,9 +53,8 @@ const TOOL_ICON: Record<string, LucideIcon> = {
   forget: BookmarkMinus,
   sub_agent: Workflow,
   propose_edit: PencilLine,
-  // v2 改稿两工具:统一用 PencilLine(size=13, strokeWidth=2,与 propose_edit 图标规格一致)
-  rewrite_selection: PencilLine,
-  rewrite_document: PencilLine,
+  // v3 改稿工具:与 propose_edit 同图标规格(PencilLine size=13, strokeWidth=2)
+  propose_document_rewrite: PencilLine,
 };
 
 // ── 工具函数 ──────────────────────────────────────────────

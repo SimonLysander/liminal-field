@@ -11,7 +11,7 @@
 
 import { useEffect, useRef } from 'react';
 import type { UIMessage } from 'ai';
-import type { AiEditOutcome } from '@/pages/admin/lib/apply-ai-edit';
+import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
 import { ChatMessage } from './ChatMessage';
 
 interface MessageListProps {
@@ -30,10 +30,12 @@ interface MessageListProps {
   /** 触发加载更早历史（滚到顶时调用） */
   onLoadMore?: () => void;
   /**
-   * v2 改稿 outcomes 索引:key = toolCallId,value = AiEditOutcome。
-   * 透传给 ChatMessage,卡片按 part.toolCallId 精确匹配,失败时标红。
+   * v3 改稿 proposals 索引：key = toolCallId，value = Proposal。
+   * 透传给 ChatMessage，tool-propose_document_rewrite 落稳后按 callId 查渲染卡片。
    */
-  outcomesByCallId?: Record<string, AiEditOutcome>;
+  proposalsByCallId?: Record<string, Proposal>;
+  /** v3 改稿：点击 AiEditProposalCard 跳转编辑器审批 */
+  onJumpToEditor?: () => void;
 }
 
 export function MessageList({
@@ -45,7 +47,8 @@ export function MessageList({
   hasMore,
   isLoadingMore,
   onLoadMore,
-  outcomesByCallId,
+  proposalsByCallId,
+  onJumpToEditor,
 }: MessageListProps) {
   const edgeFadeMask =
     'linear-gradient(to bottom, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%)';
@@ -54,6 +57,8 @@ export function MessageList({
   // 顶部哨兵：IntersectionObserver 检测用户是否滚到顶，触发懒加载
   const topSentinelRef = useRef<HTMLDivElement>(null);
   const prevLenRef = useRef(0);
+  const autoStickRef = useRef(true);
+  const lastScrollTopRef = useRef(0);
 
   // 智能贴底:新消息(含初次加载)直接到底;流式增量仅当用户已在底部附近时才平滑跟随,
   // 用户主动上滚回看时不强行拉回。
@@ -64,10 +69,27 @@ export function MessageList({
     const isNewMessage = messages.length > prevLenRef.current;
     prevLenRef.current = messages.length;
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-    if (isNewMessage || nearBottom) {
+    if (isNewMessage) autoStickRef.current = true;
+    if (isNewMessage || (nearBottom && autoStickRef.current)) {
       bottomRef.current?.scrollIntoView({ behavior: isNewMessage ? 'auto' : 'smooth' });
     }
   }, [messages, status]);
+
+  const handleScroll = () => {
+    const el = containerRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    const scrollingUp = el.scrollTop < lastScrollTopRef.current;
+    lastScrollTopRef.current = el.scrollTop;
+
+    if (scrollingUp && !nearBottom) {
+      autoStickRef.current = false;
+      return;
+    }
+    if (nearBottom) {
+      autoStickRef.current = true;
+    }
+  };
 
   // 顶部哨兵：用户滚到顶时触发懒加载，IntersectionObserver 避免轮询
   useEffect(() => {
@@ -94,6 +116,7 @@ export function MessageList({
   return (
     <div
       ref={containerRef}
+      onScroll={handleScroll}
       className={`flex flex-1 flex-col overflow-y-auto py-6 ${comfortable ? 'gap-6 px-1' : 'gap-5 px-4'}`}
       style={{
         // 上下边缘渐隐:内容滚到顶/底时柔和淡出,不硬切
@@ -130,10 +153,12 @@ export function MessageList({
             <ChatMessage
               role={msg.role as 'user' | 'assistant'}
               content={textContent}
+              metadata={msg.metadata}
               parts={msg.role === 'assistant' ? msg.parts : undefined}
               sessionKey={sessionKey}
               comfortable={comfortable}
-              outcomesByCallId={outcomesByCallId}
+              proposalsByCallId={proposalsByCallId}
+              onJumpToEditor={onJumpToEditor}
             />
           </div>
         );

@@ -5,17 +5,10 @@
  * 本组件只负责侧栏布局 + 选中文字 add-to-chat + 输入框。
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Descendant } from 'platejs';
 import { ArrowUp, Pencil, Plus, Square, Trash2 } from 'lucide-react';
-import type { AiEditOutcome } from '@/pages/admin/lib/apply-ai-edit';
-import type {
-  AiEditProposal,
-  AiEditProposalOutcome,
-} from '@/pages/admin/lib/ai-edit-proposal';
-import type { ChatSelectionAttachment } from '@/pages/admin/lib/live-chat-selection';
-import type { AnchorPayload } from '@/pages/admin/lib/serialize-anchor';
-import type { PendingAiEdit } from '@/pages/admin/lib/use-ai-edit-controller';
+import type { ChatSelectionAttachment, AnchorPayload } from '@/pages/admin/lib/live-chat-selection';
 import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
 import {
   deleteSession,
@@ -27,7 +20,6 @@ import {
   AiReferenceComposer,
   type AiReferenceComposerHandle,
 } from './AiReferenceComposer';
-import type { AiEditProposalDecision } from './AiEditProposalCard';
 import { MessageList } from './MessageList';
 import { TaskChecklist } from './TaskChecklist';
 import { useAdvisorChat } from './use-advisor-chat';
@@ -59,7 +51,7 @@ export interface AiAdvisorPanelProps {
   onClearSelectedText?: () => void;
   /**
    * 当前编辑器锚点(selection/cursor)，由 ProseDraftEditor 从 AnchorBridge 中转而来。
-   * 保留给 transport/context 使用；不在 UI 中自动展示，避免拖选即暗示“将改写选中”。
+   * 保留给 transport/context 使用；不在 UI 中自动展示，避免拖选即暗示”将改写选中”。
    */
   anchor?: AnchorPayload;
   /**
@@ -67,25 +59,6 @@ export interface AiAdvisorPanelProps {
    * transport body 通过这个 getter 读取，避免为了拿最新锚点而每次 selectionchange 都 setState。
    */
   getAnchor?: () => AnchorPayload;
-  /**
-   * v2 改稿落稳后上抛单个 pending(tool + newMarkdown + callId)。
-   * 父级(ProseDraftEditor)再经 props 透传给 PlateMarkdownEditor 内的 AiEditBridge,
-   * 由 useAiEditController 在 <Plate> context 内调 applyAiEdit 落 suggestion。
-   * 与 onProposedEdits 并存,Task 9 删 onProposedEdits。
-   */
-  onPending?: (p: PendingAiEdit | undefined) => void;
-  /**
-   * v2 改稿 outcomes 索引:key = toolCallId,value = AiEditOutcome。
-   * 由 ProseDraftEditor 从 AiEditBridge 上报到此处,再经 MessageList → ChatMessage
-   * 按 toolCallId 精确匹配 AiEditCard,失败时标红 —— 定位失败绝不静默。
-   */
-  outcomesByCallId?: Record<string, AiEditOutcome>;
-  proposalDecisionsById?: Record<string, AiEditProposalDecision>;
-  activeProposalId?: string;
-  onProposalsChange?: (proposals: Record<string, AiEditProposal>) => void;
-  onPreviewProposal?: (proposal: AiEditProposal) => void;
-  onAcceptProposal?: (proposal: AiEditProposal) => AiEditProposalOutcome;
-  onRejectProposal?: (proposal: AiEditProposal) => void;
   /**
    * v3 改稿：最近 pendingProposal 变化时回调上层。
    * 上层（ProseDraftEditor）拿到后透传给 ProposalOverlay / useProposalController。
@@ -112,16 +85,6 @@ export function AiAdvisorPanel({
   selectionAttachments,
   onRemoveSelectionAttachment,
   onClearSelectedText,
-  anchor,
-  getAnchor,
-  onPending,
-  outcomesByCallId,
-  proposalDecisionsById,
-  activeProposalId,
-  onProposalsChange,
-  onPreviewProposal,
-  onAcceptProposal,
-  onRejectProposal,
   onProposalChange,
   getEditorChildren,
   getEditor,
@@ -137,7 +100,8 @@ export function AiAdvisorPanel({
   const [composerEmpty, setComposerEmpty] = useState(true);
   const [greeting] = useState(pickGreeting);
 
-  const activeSelections = selectionAttachments ?? [];
+  // 用 useMemo 稳定引用，避免 ?? [] 每次渲染产生新数组引用，触发 useCallback 重建
+  const activeSelections = useMemo(() => selectionAttachments ?? [], [selectionAttachments]);
 
   const refreshSessions = useCallback(() => {
     void listBusinessSessions(agentInstanceKey)
@@ -168,7 +132,8 @@ export function AiAdvisorPanel({
   useEffect(() => {
     userControlledSessionRef.current = false;
     hasPickedInitialSessionRef.current = false;
-    setCurrentSessionKey(sessionKey);
+    // 推迟 setState 到微任务，避免在 effect 同步体内调用（react-hooks/set-state-in-effect）
+    queueMicrotask(() => { setCurrentSessionKey(sessionKey); });
   }, [sessionKey]);
 
   useEffect(() => {
@@ -194,7 +159,6 @@ export function AiAdvisorPanel({
     error,
     tasks,
     planTitle,
-    pending,
     proposalsByCallId,
     pendingProposal,
   } = useAdvisorChat({
@@ -203,38 +167,20 @@ export function AiAdvisorPanel({
     agentKey: 'writing-advisor',
     source: 'notes-editor',
     documentContext: { contentItemId, title, bodyMarkdown },
-    anchor,
-    getAnchor,
     onAfterSave: refreshSessions,
     getEditorChildren,
     getEditor,
   });
-
-  useEffect(() => {
-    onProposalsChange?.(proposalsByCallId);
-  }, [onProposalsChange, proposalsByCallId]);
 
   // v3 改稿：pendingProposal 变化时通过 ref 回调上层，避免 onProposalChange 引用不稳导致循环
   useEffect(() => {
     onProposalChangeRef.current?.(pendingProposal);
   }, [pendingProposal]);
 
-  // v2 改稿:pending 变化时上报给父级,经 PlateMarkdownEditor 透传到 AiEditBridge。
-  // 父级需 useCallback 保证引用稳定。
-  const reportedPendingKeyRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    const key = pending?.callId;
-    if (reportedPendingKeyRef.current === key) return;
-    reportedPendingKeyRef.current = key;
-    onPending?.(pending);
-  }, [pending, onPending]);
-
-  useEffect(() => {
-    reportedPendingKeyRef.current = undefined;
-    onPending?.(undefined);
-    // v3 改稿：切换会话时也要清 pendingProposal
+    // 切换会话时清 pendingProposal
     onProposalChangeRef.current?.(undefined);
-  }, [currentSessionKey, onPending]);
+  }, [currentSessionKey]);
 
   // v3 发送：chips 已在 readAndClear 内拼成 markdown > 引用块，只传 text。
   const handleSend = useCallback(() => {
@@ -388,13 +334,7 @@ export function AiAdvisorPanel({
             hasMore={hasMore}
             isLoadingMore={isLoadingMore}
             onLoadMore={loadMore}
-            outcomesByCallId={outcomesByCallId}
             proposalsByCallId={proposalsByCallId}
-            proposalDecisionsById={proposalDecisionsById}
-            activeProposalId={activeProposalId}
-            onPreviewProposal={onPreviewProposal}
-            onAcceptProposal={onAcceptProposal}
-            onRejectProposal={onRejectProposal}
           />
         )}
       </div>

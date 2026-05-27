@@ -13,25 +13,33 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import rehypeHighlight from 'rehype-highlight';
 import 'katex/dist/katex.min.css';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, Paperclip } from 'lucide-react';
 import type { UIMessagePart, UIDataTypes, UITools } from 'ai';
-import type { AiEditOutcome, AiEditTool } from '@/pages/admin/lib/apply-ai-edit';
+import type {
+  ChatReferenceSnapshot,
+  ChatReferencesMetadata,
+  AnchorPayload,
+} from '@/pages/admin/lib/live-chat-selection';
+import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
 import { ToolCallCard } from './ToolCallCard';
-import { AiEditCard } from './AiEditCard';
+import { AiEditProposalCard } from './AiEditProposalCard';
 
 interface ChatMessageProps {
   role: 'user' | 'assistant';
   content: string;
+  metadata?: unknown;
   parts?: UIMessagePart<UIDataTypes, UITools>[];
   /** sub_agent 执行中实时步骤需要 sessionKey */
   sessionKey?: string;
   /** 舒适密度(全页 agent 用大字距;侧栏默认紧凑) */
   comfortable?: boolean;
   /**
-   * v2 改稿 outcomes 索引:key = toolCallId,value = AiEditOutcome。
-   * 卡片按 part.toolCallId 精确查对应 outcome,失败时标红 —— 定位失败绝不静默。
+   * v3 改稿 proposals 索引:key = toolCallId,value = Proposal。
+   * tool-propose_document_rewrite 落稳后按 callId 查 Proposal 渲染 AiEditProposalCard。
    */
-  outcomesByCallId?: Record<string, AiEditOutcome>;
+  proposalsByCallId?: Record<string, Proposal>;
+  /** v3 改稿：点击 AiEditProposalCard 跳转到编辑器审批 */
+  onJumpToEditor?: () => void;
 }
 
 /** 将 DynamicToolUIPart 的 state 映射到 ToolCallCard 的 state 类型 */
@@ -43,11 +51,18 @@ function mapToolState(state: string): 'call' | 'result' | 'error' {
   }
 }
 
-// v2 改稿两工具(落稳后路由到 AiEditCard;流式中走通用 ToolCallCard)
-const AI_EDIT_TOOLS = ['rewrite_selection', 'rewrite_document'] as const;
-
-export function ChatMessage({ role, content, parts, sessionKey, comfortable, outcomesByCallId }: ChatMessageProps) {
+export function ChatMessage({
+  role,
+  content,
+  metadata,
+  parts,
+  sessionKey,
+  comfortable,
+  proposalsByCallId,
+  onJumpToEditor,
+}: ChatMessageProps) {
   if (role === 'user') {
+    const references = getMessageReferences(metadata);
     return (
       /* 用户消息：右对齐，轻量 shelf 背景，不喧宾夺主 */
       <div className="flex justify-end">
@@ -60,7 +75,24 @@ export function ChatMessage({ role, content, parts, sessionKey, comfortable, out
             fontFamily: 'var(--font-reading)',
           }}
         >
-          {content}
+          <UserContentWithReferenceChips content={content} references={references} />
+          {references.length > 0 && (
+            <div className="mt-2 flex flex-col gap-1 border-t pt-1.5" style={{ borderColor: 'var(--separator)' }}>
+              {references.map((reference, index) => (
+                <div
+                  key={reference.id || index}
+                  className="flex items-start gap-1.5 text-xs leading-snug"
+                  style={{ color: 'var(--ink-faded)' }}
+                >
+                  <Paperclip size={12} strokeWidth={1.5} className="mt-0.5 shrink-0" />
+                  <span className="min-w-0">
+                    {formatParagraphRange(reference.anchor)}
+                    ：“{shortenReferencePreview(reference.preview || reference.text)}”
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -87,29 +119,28 @@ export function ChatMessage({ role, content, parts, sessionKey, comfortable, out
             const p = part as Record<string, unknown>;
             const state = typeof p.state === 'string' ? mapToolState(p.state) : 'call';
 
-            // v2 改稿三工具:流式中走通用 ToolCallCard;落稳后渲染 AiEditCard 并精确匹配 outcome 标红。
-            if ((AI_EDIT_TOOLS as readonly string[]).includes(toolName)) {
+            // v3 改稿工具：流式中走通用进行态；落稳后按 callId 查 Proposal 渲染卡片。
+            if (toolName === 'propose_document_rewrite') {
               if (state !== 'result' && state !== 'error') {
-                // input-streaming / 进行中:走通用 ToolCallCard 的 in-progress 态(有图标+名称)
                 return (
                   <ToolCallCard
                     key={i}
                     toolName={toolName}
-                    state={state}
+                    state="call"
                     sessionKey={sessionKey}
                   />
                 );
               }
-              // 工具落稳:按 toolCallId 精确查 outcomesByCallId,匹配到则传入卡片做标红
-              const input = 'input' in p ? (p.input as { newMarkdown?: string; reason?: string } | undefined) : undefined;
               const callId = typeof p.toolCallId === 'string' ? p.toolCallId : undefined;
-              const matchedOutcome = callId && outcomesByCallId ? outcomesByCallId[callId] : undefined;
+              const proposal = callId ? proposalsByCallId?.[callId] : undefined;
+              if (!proposal) {
+                return <ToolCallCard key={i} toolName={toolName} state="result" />;
+              }
               return (
-                <AiEditCard
+                <AiEditProposalCard
                   key={i}
-                  tool={toolName as AiEditTool}
-                  reason={input?.reason ?? ''}
-                  outcome={matchedOutcome}
+                  proposal={proposal}
+                  onJumpToEditor={onJumpToEditor}
                 />
               );
             }
@@ -148,6 +179,74 @@ export function ChatMessage({ role, content, parts, sessionKey, comfortable, out
       <MessageActions text={content} />
     </div>
   );
+}
+
+function UserContentWithReferenceChips({
+  content,
+  references,
+}: {
+  content: string;
+  references: ChatReferenceSnapshot[];
+}) {
+  if (references.length === 0) return <>{content}</>;
+
+  const parts = content.split(/(\[(?:已选内容|片段)\s+\d+\])/g).filter(Boolean);
+  return (
+    <>
+      {parts.map((part, index) => {
+        const match = part.match(/^\[(?:已选内容|片段)\s+(\d+)\]$/);
+        if (!match) return <span key={index}>{part}</span>;
+        const order = Number(match[1]);
+        const reference = references.find((ref) => ref.order === order);
+        const label = reference ? formatParagraphRange(reference.anchor) : '片段';
+        return (
+          <span
+            key={index}
+            className="mx-0.5 inline-flex max-w-[12rem] items-center rounded-md px-1.5 py-0.5 align-baseline text-xs"
+            style={{
+              background: 'color-mix(in srgb, var(--accent) 13%, var(--shelf))',
+              color: 'var(--accent)',
+            }}
+            title={reference?.preview || reference?.text || label}
+          >
+            {label}
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
+function getMessageReferences(metadata: unknown): ChatReferenceSnapshot[] {
+  const refs = (metadata as ChatReferencesMetadata | undefined)?.references;
+  if (!Array.isArray(refs)) return [];
+  return refs.filter((ref): ref is ChatReferenceSnapshot => {
+    return (
+      typeof ref === 'object' &&
+      ref !== null &&
+      typeof ref.id === 'string' &&
+      typeof ref.order === 'number' &&
+      typeof ref.text === 'string' &&
+      typeof ref.preview === 'string' &&
+      typeof ref.anchor === 'object' &&
+      ref.anchor !== null &&
+      'type' in ref.anchor
+    );
+  });
+}
+
+function shortenReferencePreview(text: string): string {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  return normalized.length > 42 ? `${normalized.slice(0, 42)}...` : normalized;
+}
+
+function formatParagraphRange(anchor: AnchorPayload): string {
+  if (anchor.type !== 'range') return '片段';
+  const start = anchor.startPath?.[0] ?? anchor.blockIndex;
+  const end = anchor.endPath?.[0] ?? start;
+  const from = Math.min(start, end) + 1;
+  const to = Math.max(start, end) + 1;
+  return from === to ? `第 ${from} 段` : `第 ${from}-${to} 段`;
 }
 
 /** 助手消息 hover 操作条:目前只有复制(纯墨幽，hover 才现)。 */

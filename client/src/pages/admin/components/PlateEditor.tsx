@@ -9,24 +9,15 @@
  *   - 编辑时 serializeMd 将节点树序列化回 Markdown
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
-import { useAiEditController, type PendingAiEdit } from '@/pages/admin/lib/use-ai-edit-controller';
-import type { AiEditOutcome } from '@/pages/admin/lib/apply-ai-edit';
-import { AlertTriangle, Check, PencilLine, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import {
-  normalizeProposalText,
-  type AiEditProposal,
-  type AiEditProposalOutcome,
-} from '@/pages/admin/lib/ai-edit-proposal';
-import { failureText } from '@/components/ai-advisor/ProposalDiff';
-import { serializeAnchor, type AnchorPayload, type AnchorRange } from '@/pages/admin/lib/serialize-anchor';
-import {
+  serializeAnchor,
   createLiveChatSelectionAttachment,
+  type AnchorPayload,
   type ChatSelectionAttachment,
   type LiveSelectionEditor,
 } from '@/pages/admin/lib/live-chat-selection';
 import { SuggestionPlugin } from '@platejs/suggestion/react';
-import { NodeApi } from 'platejs';
 import type { Descendant } from 'platejs';
 import {
   Plate,
@@ -112,102 +103,6 @@ function AnchorBridge({
   void editor;
 
   return null;
-}
-
-/**
- * AiEditBridge — v2 改稿在 <Plate> context 内的总控 + 顶部审阅操作条渲染。
- *
- * 为什么独立子组件:useAiEditController 内部用 useEditorRef + useEditorSelector,
- * 必须在 <Plate> context 内调用。PlateMarkdownEditor 的父级在 <Plate> 外,故所有
- * editor 交互在此聚合。
- *
- * 与 AnchorBridge 关系:平行,互不依赖。AnchorBridge 只负责把 anchor 上抛给父层(供
- * 聊天 transport);AiEditBridge 内重新订阅一次 selection 算 anchor(applyAiEdit 需要)。
- * useEditorSelector 是细粒度订阅,代价小,不合并两个 Bridge 是因为职责清晰、解耦更好——
- * AnchorBridge 服务"transport 发送",AiEditBridge 服务"editor 应用",生命周期可能未来分叉。
- *
- * 状态流转:pending(新 callId)→ applyAiEdit 落 suggestion → hasPending=true 上报锁定;
- * 全部接受/拒绝 → controller serializeMd 干净正文回流 onResolved → 父层 setBody 触发保存。
- */
-function AiEditBridge({
-  pending,
-  onResolved,
-  onHasPendingChange,
-  onOutcomesByCallIdChange,
-}: {
-  pending?: PendingAiEdit;
-  onResolved?: (md: string) => void;
-  onHasPendingChange?: (h: boolean) => void;
-  onOutcomesByCallIdChange?: (m: Record<string, AiEditOutcome>) => void;
-}) {
-  // Bridge 内重新订阅 selection 算 anchor —— 和 AnchorBridge 平行,职责解耦
-  const anchor = useEditorSelector(
-    (e) =>
-      serializeAnchor(
-        e.children as Parameters<typeof serializeAnchor>[0],
-        e.selection as Parameters<typeof serializeAnchor>[1],
-      ),
-    [],
-  );
-
-  const { outcomesByCallId, acceptAll, rejectAll } = useAiEditController(
-    pending,
-    anchor,
-    onResolved,
-  );
-
-  // hasPending **实时跟编辑器真实 suggestion 节点数**,不依赖 controller state。
-  // 为什么不用 controller.hasPending:resolveAll 里 setHasPending(false) 一旦因
-  // 某个边缘 catch / 异步时序没穿透 → 编辑器永远卡在 readOnly,用户选不动也打不动。
-  // 用 useEditorSelector 实时跟,有 suggestion 必锁定,没有就立刻解锁——状态机不可能卡死。
-  const hasPending = useEditorSelector(
-    (e) => e.getApi(SuggestionPlugin).suggestion.nodes({ at: [] }).length > 0,
-    [],
-  );
-
-  useEffect(() => {
-    onHasPendingChange?.(hasPending);
-  }, [hasPending, onHasPendingChange]);
-
-  // outcomes 变化上报 → 父层中转,Task 7 由 AiAdvisorPanel 卡片按 callId 查询
-  useEffect(() => {
-    onOutcomesByCallIdChange?.(outcomesByCallId);
-  }, [outcomesByCallId, onOutcomesByCallIdChange]);
-
-  // 无未决 suggestion → 不渲染操作条
-  if (!hasPending) return null;
-
-  // 顶部审阅操作条:沿用 v1 视觉规格(accent 软底 + 长春花紫主按钮 + ghost 拒绝)。
-  // sticky 贴顶,防滚动后失去裁决入口。
-  return (
-    <div
-      className="sticky top-0 z-10 mb-2 flex items-center justify-between gap-3 rounded-lg px-3 py-2"
-      style={{
-        background: 'color-mix(in srgb, var(--accent) 8%, var(--paper))',
-        border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
-      }}
-    >
-      <span className="text-sm" style={{ color: 'var(--ink)' }}>
-        Aurora 提议了修改，请逐处或全部裁决后继续编辑
-      </span>
-      <div className="flex shrink-0 items-center gap-2">
-        <button
-          onClick={rejectAll}
-          className="rounded-md px-2.5 py-1 text-sm transition-colors hover:bg-[var(--shelf)]"
-          style={{ color: 'var(--ink-faded)' }}
-        >
-          全部拒绝
-        </button>
-        <button
-          onClick={acceptAll}
-          className="rounded-md px-2.5 py-1 text-sm transition-opacity hover:opacity-90"
-          style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}
-        >
-          全部接受
-        </button>
-      </div>
-    </div>
-  );
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -310,289 +205,6 @@ function ProposalBridge({ pending, onResolved, onHasPendingChange }: ProposalBri
   );
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// v2 ProposalReviewBridge(保留不动,Task 10 统一清理)
-// ────────────────────────────────────────────────────────────────────────────
-
-function ProposalReviewBridge({
-  proposal,
-  onAccept,
-  onReject,
-}: {
-  proposal?: AiEditProposal;
-  onAccept?: (proposal: AiEditProposal) => AiEditProposalOutcome;
-  onReject?: (proposal: AiEditProposal) => void;
-}) {
-  const editor = useEditorRef();
-  const [outcome, setOutcome] = useState<AiEditProposalOutcome | undefined>();
-  const [position, setPosition] = useState<{
-    top: number;
-    left: number;
-    width: number;
-  } | undefined>();
-  const [toolsOpen, setToolsOpen] = useState(false);
-
-  useEffect(() => {
-    setOutcome(undefined);
-    setToolsOpen(false);
-  }, [proposal?.id]);
-
-  const getTargetRange = useCallback(() => {
-    if (!proposal || proposal.targetKind !== 'reference') return undefined;
-
-    const anchor = proposal.targetReference?.anchor;
-    if (!anchor || anchor.type !== 'range') return undefined;
-    const span = getAnchorBlockSpan(anchor, editor.children.length);
-    if (!span) return undefined;
-    const [startBlock, endBlock] = span;
-    const api = editor.api as {
-      start: (at: number[]) => AnchorRange['anchor'] | undefined;
-      end: (at: number[]) => AnchorRange['focus'] | undefined;
-      toDOMRange: (range: AnchorRange) => Range | undefined;
-    };
-    const start = api.start([startBlock]);
-    const end = api.end([endBlock]);
-    if (!start || !end) return undefined;
-    return api.toDOMRange({ anchor: start, focus: end });
-  }, [editor, proposal]);
-
-  const updatePosition = useCallback(() => {
-    if (!proposal) {
-      setPosition(undefined);
-      return;
-    }
-
-    const editorEl = document.querySelector<HTMLElement>(
-      '.prose-draft-editor-surface [data-slate-editor]',
-    );
-    const editorRect = editorEl?.getBoundingClientRect();
-    const domRange = getTargetRange();
-    const rect = domRange?.getBoundingClientRect();
-
-    const fallbackLeft = editorRect ? editorRect.left + 24 : 360;
-    const fallbackWidth = editorRect ? Math.min(720, editorRect.width - 48) : 680;
-    if (!rect || rect.width === 0 || rect.height === 0 || !editorRect) {
-      setPosition({
-        top: Math.max(72, editorRect ? editorRect.top + 24 : 96),
-        left: fallbackLeft,
-        width: Math.max(360, fallbackWidth),
-      });
-      return;
-    }
-
-    const width = Math.min(
-      Math.max(rect.width + 32, 440),
-      Math.max(360, editorRect.width - 48),
-      760,
-    );
-    const minLeft = editorRect.left + 24;
-    const maxLeft = editorRect.right - width - 24;
-    const preferredLeft = rect.left - 16;
-    setPosition({
-      top: Math.max(60, rect.top - 10),
-      left: Math.max(minLeft, Math.min(preferredLeft, maxLeft)),
-      width,
-    });
-  }, [getTargetRange, proposal]);
-
-  useLayoutEffect(() => {
-    updatePosition();
-  }, [updatePosition]);
-
-  useEffect(() => {
-    if (!proposal) return undefined;
-    const domRange = getTargetRange();
-    domRange?.startContainer.parentElement?.scrollIntoView({
-      block: 'center',
-      behavior: 'smooth',
-    });
-
-    const frame = window.requestAnimationFrame(updatePosition);
-    return () => window.cancelAnimationFrame(frame);
-  }, [getTargetRange, proposal, updatePosition]);
-
-  useEffect(() => {
-    if (!proposal || !('highlights' in CSS)) return undefined;
-    CSS.highlights.delete('ai-edit-proposal-target');
-    const domRange = getTargetRange();
-    if (domRange) {
-      CSS.highlights.set('ai-edit-proposal-target', new Highlight(domRange));
-    }
-
-    return () => {
-      CSS.highlights.delete('ai-edit-proposal-target');
-    };
-  }, [getTargetRange, proposal]);
-
-  useEffect(() => {
-    if (!proposal) return undefined;
-    const handleUpdate = () => updatePosition();
-    window.addEventListener('resize', handleUpdate);
-    document.addEventListener('scroll', handleUpdate, true);
-    return () => {
-      window.removeEventListener('resize', handleUpdate);
-      document.removeEventListener('scroll', handleUpdate, true);
-    };
-  }, [proposal, updatePosition]);
-
-  if (!proposal) return null;
-
-  const failed = outcome && !outcome.ok;
-
-  return (
-    <div
-      className="pointer-events-none fixed z-30"
-      style={{
-        top: position?.top ?? 96,
-        left: position?.left ?? 360,
-        width: position?.width ?? 680,
-      }}
-    >
-      <div
-        className="group/proposal relative pointer-events-auto rounded-md shadow-sm"
-        style={{
-          background: 'var(--paper)',
-          border: `1px solid ${failed ? 'var(--mark-red)' : 'color-mix(in srgb, var(--accent) 38%, var(--separator))'}`,
-          color: 'var(--ink)',
-          fontFamily: 'var(--font-reading)',
-        }}
-        onMouseEnter={() => setToolsOpen(true)}
-        onMouseLeave={() => setToolsOpen(false)}
-      >
-        <div className="flex items-center gap-1.5 px-3 py-2 text-xs" style={{ color: failed ? 'var(--mark-red)' : 'var(--ink-faded)' }}>
-          {failed ? (
-            <AlertTriangle size={13} strokeWidth={2} />
-          ) : (
-            <PencilLine size={13} strokeWidth={1.8} style={{ color: 'var(--accent)' }} />
-          )}
-          <span>{failed ? failureText(outcome.reason) : formatProposalTarget(proposal)}</span>
-        </div>
-
-        <InlineProposalPatch oldText={proposal.oldText} newText={proposal.newText} />
-
-        <button
-          type="button"
-          className="absolute -right-12 top-2 flex h-9 w-9 items-center justify-center rounded-full shadow-sm transition-opacity"
-          style={{
-            background: 'var(--accent)',
-            color: 'var(--accent-contrast)',
-            opacity: toolsOpen ? 1 : 0.72,
-          }}
-          aria-label="审查建议"
-          title="审查建议"
-          onClick={() => setToolsOpen((open) => !open)}
-        >
-          <PencilLine size={16} strokeWidth={1.8} />
-        </button>
-
-        <div
-          className="absolute left-[calc(100%+14px)] top-0 w-64 rounded-lg px-3 py-2 text-xs shadow-sm transition-opacity"
-          style={{
-            background: 'color-mix(in srgb, var(--paper) 96%, var(--shelf))',
-            border: '1px solid var(--separator)',
-            color: 'var(--ink-faded)',
-            opacity: toolsOpen || failed ? 1 : 0,
-            pointerEvents: toolsOpen || failed ? 'auto' : 'none',
-          }}
-        >
-          <div className="font-medium" style={{ color: 'var(--ink)' }}>
-            {proposal.title || '建议修改'}
-          </div>
-          {proposal.reason && (
-            <div className="mt-1 line-clamp-4 leading-relaxed">
-              {proposal.reason}
-            </div>
-          )}
-          <div className="mt-2 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setOutcome(undefined);
-                onReject?.(proposal);
-              }}
-              className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 transition-colors hover:bg-[var(--shelf)]"
-              style={{ color: 'var(--ink-faded)' }}
-            >
-              <X size={13} strokeWidth={2} />
-              拒绝
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const result = onAccept?.(proposal) ?? { ok: false, reason: 'not-found' as const };
-                if (!result.ok) setOutcome(result);
-              }}
-              className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 transition-opacity hover:opacity-90"
-              style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}
-            >
-              <Check size={13} strokeWidth={2} />
-              接受
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function InlineProposalPatch({
-  oldText,
-  newText,
-}: {
-  oldText: string;
-  newText: string;
-}) {
-  return (
-    <div className="max-h-[38vh] overflow-y-auto text-base leading-relaxed">
-      <div
-        className="grid grid-cols-[2rem_1fr] border-t"
-        style={{ borderColor: 'var(--separator)' }}
-      >
-        <div
-          className="select-none px-2 py-2 text-right font-mono text-sm"
-          style={{
-            color: 'var(--mark-red)',
-            background: 'color-mix(in srgb, var(--mark-red) 7%, transparent)',
-          }}
-        >
-          -
-        </div>
-        <div
-          className="whitespace-pre-wrap px-3 py-2"
-          style={{
-            color: 'color-mix(in srgb, var(--ink) 72%, var(--mark-red))',
-            background: 'color-mix(in srgb, var(--mark-red) 6%, var(--paper))',
-          }}
-        >
-          <span className="line-through decoration-[var(--mark-red)] decoration-1">
-            {oldText}
-          </span>
-        </div>
-      </div>
-      <div className="grid grid-cols-[2rem_1fr]">
-        <div
-          className="select-none px-2 py-2 text-right font-mono text-sm"
-          style={{
-            color: 'var(--accent)',
-            background: 'color-mix(in srgb, var(--accent) 9%, transparent)',
-          }}
-        >
-          +
-        </div>
-        <div
-          className="whitespace-pre-wrap px-3 py-2"
-          style={{
-            color: 'var(--ink)',
-            background: 'color-mix(in srgb, var(--accent) 8%, var(--paper))',
-          }}
-        >
-          {newText}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -616,60 +228,11 @@ function toStoredAssetPaths(markdown: string, contentItemId: string): string {
   });
 }
 
-function getAnchorBlockSpan(
-  anchor: Extract<AnchorPayload, { type: 'range' }>,
-  blockCount: number,
-) {
-  const start = anchor.startPath[0] ?? anchor.blockIndex ?? 0;
-  const end = anchor.endPath[0] ?? anchor.blockIndex ?? start;
-  if (
-    !Number.isInteger(start) ||
-    !Number.isInteger(end) ||
-    start < 0 ||
-    end < 0 ||
-    blockCount <= 0
-  ) {
-    return undefined;
-  }
-  const from = Math.min(start, end);
-  const to = Math.min(Math.max(start, end), blockCount - 1);
-  if (from >= blockCount || to < from) return undefined;
-  return [from, to] as const;
-}
-
-function isSameProposalText(currentText: string, oldText: string): boolean {
-  const current = normalizeForProposalMatch(currentText);
-  const old = normalizeForProposalMatch(oldText);
-  return Boolean(current && old && current === old);
-}
-
-function normalizeForProposalMatch(text: string): string {
-  return normalizeProposalText(text).replace(/\s+/g, '');
-}
-
-function formatProposalTarget(proposal: AiEditProposal): string {
-  if (proposal.targetKind === 'document') return '审查范围：整篇文稿';
-  const anchor = proposal.targetReference?.anchor;
-  if (!anchor || anchor.type !== 'range') return '审查范围：引用片段';
-  const start = anchor.startPath?.[0] ?? anchor.blockIndex;
-  const end = anchor.endPath?.[0] ?? start;
-  const from = Math.min(start, end) + 1;
-  const to = Math.max(start, end) + 1;
-  return from === to ? `审查范围：第 ${from} 段` : `审查范围：第 ${from}-${to} 段`;
-}
-
 export function PlateMarkdownEditor({
   initialMarkdown,
   onChange,
-  onResolved,
   onAnchorChange,
   onAddSelectionToChat,
-  pending,
-  onOutcomesByCallIdChange,
-  onApplyProposalReady,
-  activeProposal,
-  onAcceptProposal,
-  onRejectProposal,
   v3Proposal,
   onV3Resolved,
   onHasV3PendingChange,
@@ -685,34 +248,13 @@ export function PlateMarkdownEditor({
   onChange: (markdown: string, isUserEdit: boolean) => void;
   /** @deprecated 固定工具栏已移除，保留参数兼容文集编辑器 */
   toolbarContainer?: HTMLElement | null;
-  /** v2 改稿:裁决完毕→干净正文回流(供上游 setBody(md,true) 强制标脏触发保存) */
-  onResolved?: (cleanMarkdown: string) => void;
   /**
-   * 当前编辑器 selection 变化回调（v2 改稿锚点）。
+   * 当前编辑器 selection 变化回调。
    * AnchorBridge 在 <Plate> 内订阅 selection，序列化后经此回调上报给父层（ProseDraftEditor）。
    */
   onAnchorChange?: (anchor: AnchorPayload) => void;
   /** 浮动工具栏「添加到聊天」:显式把当前 live range 作为聊天附件传给左侧 Aurora */
   onAddSelectionToChat?: (attachment: ChatSelectionAttachment) => void;
-  /**
-   * v2 改稿:最近一次落稳的工具调用(单个),由 useAdvisorChat 监听三工具产出,
-   * 经 AiAdvisorPanel → ProseDraftEditor → 此处透传给 AiEditBridge,
-   * 在 <Plate> 内调 applyAiEdit 落 suggestion。callId 作前端去重 key + outcomes 索引键。
-   */
-  pending?: PendingAiEdit;
-  /**
-   * v2 改稿 outcomes(按 callId 索引)上报回调。AiEditBridge 落地后产出 outcome,
-   * 经此上抛到 ProseDraftEditor;Task 7 卡片渲染时按 toolCallId 查对应 outcome 标红失败项。
-   */
-  onOutcomesByCallIdChange?: (m: Record<string, AiEditOutcome>) => void;
-  /** 注册 proposal 接受处理器：接受时在 Plate 内按冻结 range 替换节点。 */
-  onApplyProposalReady?: (
-    handler: (proposal: AiEditProposal) => AiEditProposalOutcome,
-  ) => void;
-  /** 当前在中间编辑区审查的模型修改提案；仅作 overlay，不写入正文。 */
-  activeProposal?: AiEditProposal;
-  onAcceptProposal?: (proposal: AiEditProposal) => AiEditProposalOutcome;
-  onRejectProposal?: (proposal: AiEditProposal) => void;
   /** v3 改稿:聊天侧上抛的待审批 proposal(含 newMarkdown + reason + hunks) */
   v3Proposal?: Proposal;
   /** v3 改稿:所有 hunks 裁决完后干净 markdown 的回调 */
@@ -727,8 +269,6 @@ export function PlateMarkdownEditor({
 }) {
   const { contentItemId } = useDraftAssetContext();
   const [editorId] = useState(() => `plate-${Math.random().toString(36).slice(2)}`);
-  // 审阅锁定态(v2):由 AiEditBridge 上报。有未决 suggestion → readOnly。
-  const [hasPending, setHasPending] = useState(false);
   // 审阅锁定态(v3):由 ProposalBridge 上报。有未裁决 hunk → readOnly。
   const [hasV3Pending, setHasV3Pending] = useState(false);
   const [toolbarSuppressed, setToolbarSuppressed] = useState(false);
@@ -831,103 +371,22 @@ export function PlateMarkdownEditor({
     };
   }, []);
 
-  const applyProposal = useCallback(
-    (proposal: AiEditProposal): AiEditProposalOutcome => {
-      if (proposal.targetKind === 'document') {
-        const currentMarkdown = toStoredAssetPaths(serializeMd(editor), contentItemId);
-        if (!isSameProposalText(currentMarkdown, proposal.oldText)) {
-          return { ok: false, reason: 'not-found' };
-        }
-        try {
-          const newDoc = deserializeMd(editor, proposal.newText);
-          if (!Array.isArray(newDoc) || newDoc.length === 0) {
-            return { ok: false, reason: 'empty' };
-          }
-          editor.tf.setValue(newDoc);
-          const md = toStoredAssetPaths(serializeMd(editor), contentItemId);
-          onResolved?.(md);
-          return { ok: true };
-        } catch {
-          return { ok: false, reason: 'parse-error' };
-        }
-      }
-
-      const anchor = proposal.targetReference?.anchor;
-      if (!anchor || anchor.type !== 'range') return { ok: false, reason: 'no-anchor' };
-      const span = getAnchorBlockSpan(anchor, editor.children.length);
-      if (!span) return { ok: false, reason: 'no-anchor' };
-
-      const [startBlock, endBlock] = span;
-      const oldBlocks = editor.children.slice(startBlock, endBlock + 1);
-      const currentText = oldBlocks.map((block) => NodeApi.string(block)).join('\n\n');
-      if (!isSameProposalText(currentText, proposal.oldText)) {
-        return { ok: false, reason: 'not-found' };
-      }
-
-      let newBlocks;
-      try {
-        newBlocks = deserializeMd(editor, proposal.newText);
-      } catch {
-        return { ok: false, reason: 'parse-error' };
-      }
-      if (!Array.isArray(newBlocks) || newBlocks.length === 0) {
-        return { ok: false, reason: 'empty' };
-      }
-
-      try {
-        editor.tf.withoutNormalizing(() => {
-          for (let index = endBlock; index >= startBlock; index -= 1) {
-            editor.tf.removeNodes({ at: [index] });
-          }
-          editor.tf.insertNodes(newBlocks, { at: [startBlock] });
-        });
-        const md = toStoredAssetPaths(serializeMd(editor), contentItemId);
-        onResolved?.(md);
-        return { ok: true };
-      } catch {
-        return { ok: false, reason: 'parse-error' };
-      }
-    },
-    [contentItemId, editor, onResolved],
-  );
-
-  useEffect(() => {
-    onApplyProposalReady?.(applyProposal);
-  }, [applyProposal, onApplyProposalReady]);
-
   if (!editor) return null;
 
   return (
     <TooltipProvider>
-      {/* readOnly 设在 <Plate>(store-level 只读):
-          - v2:有未决 suggestion(hasPending)或 proposal overlay(activeProposal)时锁定
-          - v3:有未裁决 hunk(hasV3Pending)时锁定
-          防止审查期间正文继续变化导致接受时定位漂移。 */}
+      {/* readOnly：v3 有未裁决 hunk 时锁定，防止审查期间正文变化导致位置漂移 */}
       <Plate
         key={editorId}
         editor={editor}
         onValueChange={handleChange}
-        readOnly={hasPending || Boolean(activeProposal) || hasV3Pending}
+        readOnly={hasV3Pending}
       >
-        {/* AiEditBridge —— v2 改稿总控:applyAiEdit 落 suggestion + 顶部审阅操作条。
-            和 AnchorBridge 平行,各自订阅 selection(职责解耦,见 AiEditBridge 注释)。 */}
-        <AiEditBridge
-          pending={pending}
-          onResolved={onResolved}
-          onHasPendingChange={setHasPending}
-          onOutcomesByCallIdChange={onOutcomesByCallIdChange}
-        />
-        {/* AnchorBridge 订阅 selection 并上报 AnchorPayload，供 v2 改稿锚点注入(transport 用) */}
+        {/* AnchorBridge 订阅 selection 并上报 AnchorPayload */}
         {onAnchorChange && (
           <AnchorBridge onAnchorChange={handleAnchorChange} />
         )}
-        {/* v2 ProposalReviewBridge —— 保留不动,Task 10 才删 */}
-        <ProposalReviewBridge
-          proposal={activeProposal}
-          onAccept={onAcceptProposal}
-          onReject={onRejectProposal}
-        />
-        {/* v3 ProposalBridge —— 仅当 v3Proposal 存在时渲染,与 v2 路径并存互不干扰 */}
+        {/* v3 ProposalBridge */}
         <ProposalBridge
           pending={v3Proposal}
           onResolved={onV3Resolved}
