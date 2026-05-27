@@ -8,9 +8,8 @@
  * agent 上下文是场景相关的,由调用方通过 advisor 注入(笔记=本篇 / 文集=本条目+脉络)。
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AnchorPayload } from '@/pages/admin/lib/serialize-anchor';
-import { useSelectedText } from '@/hooks/use-selected-text';
 import { ChevronLeft, Sun, Moon, Trash2, MoreHorizontal } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
@@ -25,8 +24,15 @@ import { LoadingState } from '@/components/LoadingState';
 import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
 import { DraftAssetProvider } from '@/contexts/DraftAssetContext';
 import { AiAdvisorPanel } from '@/components/ai-advisor/AiAdvisorPanel';
-import { PlateMarkdownEditor } from './PlateEditor';
+import { PlateMarkdownEditor, type EditorBridgeHandle } from './PlateEditor';
 import type { AiEditOutcome } from '@/pages/admin/lib/apply-ai-edit';
+import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
+import {
+  type AiEditProposal,
+  type AiEditProposalOutcome,
+} from '@/pages/admin/lib/ai-edit-proposal';
+import type { AiEditProposalDecision } from '@/components/ai-advisor/AiEditProposalCard';
+import type { ChatSelectionAttachment } from '@/pages/admin/lib/live-chat-selection';
 import type { PendingAiEdit } from '@/pages/admin/lib/use-ai-edit-controller';
 import { EditorOutline } from './EditorOutline';
 import { CommitForm } from './CommitForm';
@@ -59,8 +65,18 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
   advisor,
 }: ProseDraftEditorProps<TState>) {
   const { theme, setTheme } = useTheme();
-  // 编辑器内当前选中文本(Cursor 式 add-to-chat):监听 Plate 编辑器 DOM 选区
-  const selectedText = useSelectedText('[data-slate-editor]');
+  // Cursor 式 add-to-chat:拖选只产生选区;点击浮动工具栏「添加到聊天」后才写入这里。
+  // 保存 live range attachment:chip 展示初始 preview;发送/高亮时读取当前 range。
+  const [chatSelections, setChatSelections] = useState<ChatSelectionAttachment[]>([]);
+  const chatSelectionsRef = useRef<ChatSelectionAttachment[]>([]);
+  const applyProposalRef = useRef<
+    ((proposal: AiEditProposal) => AiEditProposalOutcome) | undefined
+  >(undefined);
+  const seenProposalIdsRef = useRef<Set<string>>(new Set());
+  const [activeProposal, setActiveProposal] = useState<AiEditProposal | undefined>();
+  const [proposalDecisionsById, setProposalDecisionsById] = useState<
+    Record<string, AiEditProposalDecision>
+  >({});
 
   // 裁决完毕→干净正文回流:强制标脏(isUserEdit=true)触发自动保存,并随 hasPending 解除而解锁。
   // 裁决时焦点不在编辑器,onChange 会判"非用户编辑"漏存,故走 controller 主动回流这条路。
@@ -69,16 +85,95 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
     [editor],
   );
 
-  // v2 改稿锚点:持有最新的 editor selection 序列化结果,经 AiAdvisorPanel → transport 传后端。
-  // AnchorBridge 在 <Plate> 内订阅 selection，通过 onAnchorChange 回调上报到此层中转。
-  const [anchor, setAnchor] = useState<AnchorPayload>({ type: 'none' });
-  const handleAnchorChange = useCallback((a: AnchorPayload) => setAnchor(a), []);
+  // ── v3 改稿透传链 ────────────────────────────────────────────────────────────
+  // editor 桥 ref：由 PlateMarkdownEditor 内部的 EditorChildrenBridge 填充；
+  // getEditorChildren/getEditor 供 use-advisor-chat computeDocDiff / deserializeMd 使用。
+  const editorBridgeRef = useRef<EditorBridgeHandle | null>(null);
 
-  // v2 改稿 pending 中转:AiAdvisorPanel 监到 rewrite_selection / insert_at_cursor /
+  // 来自聊天侧上抛的 pending proposal(含 newMarkdown + reason + hunks)
+  const [v3PendingProposal, setV3PendingProposal] = useState<Proposal | undefined>(undefined);
+
+  // 给 AiAdvisorPanel 的 getter:从桥 ref 读取，ref 空时降级返回空数组/undefined
+  const getEditorChildren = useCallback(
+    () => editorBridgeRef.current?.getChildren() ?? [],
+    [],
+  );
+  const getEditor = useCallback(
+    () => editorBridgeRef.current?.getEditor(),
+    [],
+  );
+
+  // AiAdvisorPanel 上抛 pendingProposal 时落到 state
+  const handleProposalChange = useCallback((p: Proposal | undefined) => {
+    setV3PendingProposal(p);
+  }, []);
+
+  // v3 所有 hunks 裁决完后：和 v2 路径一样，走 controller.setBody 强制标脏触发保存
+  const handleV3Resolved = useCallback(
+    (markdown: string) => editor.setBody(markdown, true),
+    [editor],
+  );
+  // ──────────────────────────────────────────────────────────────────────────────
+
+  // v2 改稿锚点:transport 发送时必须拿到最新 selection,但拖拽选择过程中不能每一跳都
+  // setState 重渲染整页(左侧聊天历史很长时会把拖选打断成 1-2 个字)。
+  // 因此:ref 即时更新供发送读取;UI snapshot 延迟提交,只给 AnchorHint 做展示。
+  const anchorRef = useRef<AnchorPayload>({ type: 'none' });
+  const anchorUiTimerRef = useRef<number | null>(null);
+  const [anchorSnapshot, setAnchorSnapshot] = useState<AnchorPayload>({
+    type: 'none',
+  });
+  const handleAnchorChange = useCallback((a: AnchorPayload) => {
+    anchorRef.current = a;
+    if (anchorUiTimerRef.current !== null) {
+      window.clearTimeout(anchorUiTimerRef.current);
+    }
+    anchorUiTimerRef.current = window.setTimeout(() => {
+      anchorUiTimerRef.current = null;
+      setAnchorSnapshot(anchorRef.current);
+    }, 120);
+  }, []);
+  const getCurrentAnchor = useCallback(
+    () => chatSelections.at(-1)?.getAnchor() ?? anchorRef.current,
+    [chatSelections],
+  );
+
+  const clearChatSelections = useCallback(() => {
+    setChatSelections((prev) => {
+      prev.forEach((selection) => selection.dispose());
+      chatSelectionsRef.current = [];
+      return [];
+    });
+  }, []);
+
+  const removeChatSelection = useCallback((id: string) => {
+    setChatSelections((prev) => {
+      const removed = prev.find((selection) => selection.id === id);
+      removed?.dispose();
+      const next = prev.filter((selection) => selection.id !== id);
+      chatSelectionsRef.current = next;
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (anchorUiTimerRef.current !== null) {
+        window.clearTimeout(anchorUiTimerRef.current);
+        anchorUiTimerRef.current = null;
+      }
+      chatSelectionsRef.current.forEach((selection) => selection.dispose());
+      chatSelectionsRef.current = [];
+    };
+  }, []);
+
+  // v2 改稿 pending 中转:AiAdvisorPanel 监到 rewrite_reference /
   // rewrite_document 工具调用落稳后上抛,经 PlateMarkdownEditor 透传到 AiEditBridge,
   // 由 useAiEditController 在 <Plate> context 内调 applyAiEdit 落 suggestion。
   const [pending, setPending] = useState<PendingAiEdit | undefined>(undefined);
-  const handlePending = useCallback((p: PendingAiEdit | undefined) => setPending(p), []);
+  const handlePending = useCallback((p: PendingAiEdit | undefined) => {
+    setPending((current) => (current?.callId === p?.callId ? current : p));
+  }, []);
 
   // v2 改稿 outcomes 中转:按 callId 索引,AiEditBridge 每次落完 applyAiEdit 上报此 map。
   // 透传到 AiAdvisorPanel → MessageList → ChatMessage,卡片按 toolCallId 精确查 outcome 标红。
@@ -87,6 +182,67 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
     (m: Record<string, AiEditOutcome>) => setOutcomesByCallId(m),
     [],
   );
+
+  const handleAcceptProposal = useCallback(
+    (proposal: AiEditProposal): AiEditProposalOutcome => {
+      const outcome = applyProposalRef.current?.(proposal) ?? { ok: false, reason: 'no-anchor' };
+      setProposalDecisionsById((current) => ({
+        ...current,
+        [proposal.id]: { outcome },
+      }));
+      if (outcome.ok) {
+        setActiveProposal((current) => (current?.id === proposal.id ? undefined : current));
+      }
+      return outcome;
+    },
+    [],
+  );
+
+  const handleRejectProposal = useCallback((proposal: AiEditProposal) => {
+    setProposalDecisionsById((current) => ({
+      ...current,
+      [proposal.id]: { rejected: true },
+    }));
+    setActiveProposal((current) => (current?.id === proposal.id ? undefined : current));
+  }, []);
+
+  const handleProposalsChange = useCallback((proposals: Record<string, AiEditProposal>) => {
+    const values = Object.values(proposals);
+    if (values.length === 0) {
+      setActiveProposal(undefined);
+      return;
+    }
+    let newestUnseen: AiEditProposal | undefined;
+    for (const proposal of values) {
+      if (!seenProposalIdsRef.current.has(proposal.id)) {
+        newestUnseen = proposal;
+      }
+    }
+    for (const proposal of values) {
+      seenProposalIdsRef.current.add(proposal.id);
+    }
+    if (newestUnseen) {
+      setActiveProposal(newestUnseen);
+      return;
+    }
+    setActiveProposal((current) => {
+      if (!current) return current;
+      return values.find((proposal) => proposal.id === current.id);
+    });
+  }, []);
+
+  const handleApplyProposalReady = useCallback(
+    (handler: (proposal: AiEditProposal) => AiEditProposalOutcome) => {
+      applyProposalRef.current = handler;
+    },
+    [],
+  );
+
+  useEffect(() => {
+    setActiveProposal(undefined);
+    setProposalDecisionsById({});
+    seenProposalIdsRef.current.clear();
+  }, [editorKey]);
 
   if (editor.loading) {
     return <LoadingState variant="full" />;
@@ -223,10 +379,22 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
           contentItemId={advisor.contentItemId}
           title={editor.state.title}
           bodyMarkdown={editor.state.bodyMarkdown}
-          selectedText={selectedText}
-          anchor={anchor}
+          selectionAttachments={chatSelections}
+          onRemoveSelectionAttachment={removeChatSelection}
+          onClearSelectedText={clearChatSelections}
+          anchor={anchorSnapshot}
+          getAnchor={getCurrentAnchor}
           onPending={handlePending}
           outcomesByCallId={outcomesByCallId}
+          proposalDecisionsById={proposalDecisionsById}
+          activeProposalId={activeProposal?.id}
+          onProposalsChange={handleProposalsChange}
+          onPreviewProposal={setActiveProposal}
+          onAcceptProposal={handleAcceptProposal}
+          onRejectProposal={handleRejectProposal}
+          onProposalChange={handleProposalChange}
+          getEditorChildren={getEditorChildren}
+          getEditor={getEditor}
         />
       ) : (
         <div />
@@ -247,8 +415,22 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
               onChange={editor.setBody}
               onResolved={handleResolved}
               onAnchorChange={handleAnchorChange}
+              onAddSelectionToChat={(attachment) =>
+                setChatSelections((prev) => {
+                  const next = [...prev, attachment];
+                  chatSelectionsRef.current = next;
+                  return next;
+                })
+              }
               pending={pending}
               onOutcomesByCallIdChange={handleOutcomesByCallIdChange}
+              onApplyProposalReady={handleApplyProposalReady}
+              activeProposal={activeProposal}
+              onAcceptProposal={handleAcceptProposal}
+              onRejectProposal={handleRejectProposal}
+              v3Proposal={v3PendingProposal}
+              onV3Resolved={handleV3Resolved}
+              editorRefSync={editorBridgeRef}
             />
           </DraftAssetProvider>
         </div>

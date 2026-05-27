@@ -9,7 +9,7 @@
  *   - 编辑时 serializeMd 将节点树序列化回 Markdown
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { useAiEditController, type PendingAiEdit } from '@/pages/admin/lib/use-ai-edit-controller';
 import type { AiEditOutcome } from '@/pages/admin/lib/apply-ai-edit';
 import { AlertTriangle, Check, PencilLine, X } from 'lucide-react';
@@ -27,6 +27,7 @@ import {
 } from '@/pages/admin/lib/live-chat-selection';
 import { SuggestionPlugin } from '@platejs/suggestion/react';
 import { NodeApi } from 'platejs';
+import type { Descendant } from 'platejs';
 import {
   Plate,
   usePlateEditor,
@@ -47,6 +48,39 @@ import { FloatingToolbar } from '@/components/ui/floating-toolbar';
 import { FloatingToolbarButtons } from '@/components/ui/floating-toolbar-buttons';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useDraftAssetContext } from '@/contexts/DraftAssetContext';
+
+/**
+ * EditorChildrenBridge — 在 <Plate> context 内把 editor 实例 + children 写进父级传入的 ref。
+ *
+ * 为什么需要单独子组件：useEditorRef 必须在 <Plate> context 内调用，但调用方(AiAdvisorPanel/
+ * use-advisor-chat)在 <Plate> 外——通过此桥把 editor 暴露出去，聊天侧 computeDocDiff /
+ * deserializeMd 才能拿到真实 editor.children + editor 实例。
+ *
+ * 调用方通过 PlateMarkdownEditor.editorRefSync prop 传入 ref，组件 unmount 时自动置 null
+ * 防悬空引用。
+ */
+export interface EditorBridgeHandle {
+  getChildren: () => Descendant[];
+  getEditor: () => unknown;
+}
+
+function EditorChildrenBridge({
+  bridgeRef,
+}: {
+  bridgeRef: React.MutableRefObject<EditorBridgeHandle | null>;
+}) {
+  const editor = useEditorRef();
+  useEffect(() => {
+    bridgeRef.current = {
+      getChildren: () => editor.children as Descendant[],
+      getEditor: () => editor,
+    };
+    return () => {
+      bridgeRef.current = null;
+    };
+  }, [editor, bridgeRef]);
+  return null;
+}
 
 /**
  * AnchorBridge — 在 <Plate> context 内细粒度订阅 selection，序列化为 AnchorPayload 后上抛。
@@ -639,6 +673,7 @@ export function PlateMarkdownEditor({
   v3Proposal,
   onV3Resolved,
   onHasV3PendingChange,
+  editorRefSync,
 }: {
   initialMarkdown: string;
   /**
@@ -684,6 +719,11 @@ export function PlateMarkdownEditor({
   onV3Resolved?: (cleanMarkdown: string) => void;
   /** v3 改稿:有 pending hunks 时上报(让上层切编辑器 readOnly) */
   onHasV3PendingChange?: (hasPending: boolean) => void;
+  /**
+   * v3 改稿：外层通过此 ref 拿到 editor.children + editor 实例。
+   * EditorChildrenBridge 在 <Plate> context 内填充；聊天侧 computeDocDiff / deserializeMd 读取。
+   */
+  editorRefSync?: MutableRefObject<EditorBridgeHandle | null>;
 }) {
   const { contentItemId } = useDraftAssetContext();
   const [editorId] = useState(() => `plate-${Math.random().toString(36).slice(2)}`);
@@ -896,6 +936,9 @@ export function PlateMarkdownEditor({
             onHasV3PendingChange?.(hasPending);
           }}
         />
+        {/* v3 EditorChildrenBridge —— 传了 editorRefSync 才挂,把 editor.children/editor
+            写进 ref,外层 getEditorChildren/getEditor 给 use-advisor-chat 算 computeDocDiff 用 */}
+        {editorRefSync && <EditorChildrenBridge bridgeRef={editorRefSync} />}
         <EditorContainer
           className="prose-draft-editor-surface"
           onPointerDownCapture={() => setToolbarSuppressed(false)}
