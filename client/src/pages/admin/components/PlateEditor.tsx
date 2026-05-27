@@ -30,7 +30,6 @@ import { serializeMd, deserializeMd } from '@platejs/markdown';
 import { useProposalController, type Proposal } from '@/pages/admin/lib/use-proposal-controller';
 import { ProposalOverlay } from '@/components/ai-advisor/ProposalOverlay';
 import { ProposalToolbar } from '@/components/ai-advisor/ProposalToolbar';
-import type { Hunk } from '@/pages/admin/lib/compute-doc-diff';
 
 import { fixCodeBlockLines } from '@/components/shared/plate-transforms';
 import { EditorKit } from '@/components/editor/editor-kit';
@@ -109,41 +108,6 @@ function AnchorBridge({
 // v3 ProposalBridge:组装 useProposalController + ProposalOverlay + ProposalToolbar
 // ────────────────────────────────────────────────────────────────────────────
 
-/**
- * applyHunkToEditor —— 应用单个 accepted hunk 到 Plate editor。
- *
- * - replace:先 removeNodes 再 insertNodes(倒序应用由 controller 保证)
- * - insert:在 blockPath 处插入 newBlocks
- * - delete:删除 blockPath 处的块
- *
- * 传入的 editor 类型用 unknown + 内部断言,避免引入 Plate 内部 SlateEditor 类型导致的
- * 循环依赖或版本耦合。生产调用者已保证 editor 是合法的 Plate editor 实例。
- */
-function applyHunkToEditor(editor: unknown, hunk: Hunk) {
-  const ed = editor as never as {
-    tf: {
-      removeNodes: (opts: { at: number[] }) => void;
-      insertNodes: (nodes: unknown[], opts: { at: number[] }) => void;
-    };
-  };
-  if (!hunk.blockPath) return;
-  const at = hunk.blockPath as number[];
-  try {
-    if (hunk.kind === 'delete') {
-      ed.tf.removeNodes({ at });
-    } else if (hunk.kind === 'insert') {
-      if (hunk.newBlocks) ed.tf.insertNodes(hunk.newBlocks, { at });
-    } else if (hunk.kind === 'replace') {
-      ed.tf.removeNodes({ at });
-      if (hunk.newBlocks) ed.tf.insertNodes(hunk.newBlocks, { at });
-    }
-    if (import.meta.env.DEV) {
-      console.debug(`[proposal-apply] ${hunk.kind} at=${JSON.stringify(at)}`);
-    }
-  } catch (err) {
-    if (import.meta.env.DEV) console.error('[proposal-apply] 失败', err, hunk);
-  }
-}
 
 interface ProposalBridgeProps {
   pending?: Proposal;
@@ -164,15 +128,22 @@ interface ProposalBridgeProps {
 function ProposalBridge({ pending, onResolved, onHasPendingChange }: ProposalBridgeProps) {
   const editor = useEditorRef();
   const controller = useProposalController(editor, {
-    onApply: (h) => applyHunkToEditor(editor, h),
     onResolved,
     serializeMd: () => serializeMd(editor as never),
   });
 
-  // 上抛 hasPending 给 PlateEditor,让上层把 <Plate readOnly> 同步锁定
+  // ref 模式跟踪 onHasPendingChange,避免父级传内联箭头函数时引用变化触发 effect 死循环
+  // (上层 PlateEditor JSX 里若用 `onHasPendingChange={(b)=>{...}}` 每次 render 新建 fn → 旧实现会无限 re-run)
+  const onHasPendingChangeRef = useRef(onHasPendingChange);
   useEffect(() => {
-    onHasPendingChange?.(controller.hasPending);
-  }, [controller.hasPending, onHasPendingChange]);
+    onHasPendingChangeRef.current = onHasPendingChange;
+  });
+
+  // 上抛 hasPending 给 PlateEditor,让上层把 <Plate readOnly> 同步锁定
+  // 只依赖 boolean 值变化,与 callback 引用解耦
+  useEffect(() => {
+    onHasPendingChangeRef.current?.(controller.hasPending);
+  }, [controller.hasPending]);
 
   // 接收外部传入的 pending proposal:callId 变化时重新 setProposal
   useEffect(() => {
@@ -181,11 +152,30 @@ function ProposalBridge({ pending, onResolved, onHasPendingChange }: ProposalBri
     } else if (!pending && controller.proposal) {
       controller.setProposal(undefined);
     }
-  // controller 对象引用在每次渲染都稳定(useMemo/useCallback),但此处仅依赖 pending 变化
+  // controller 对象引用在每次渲染都新建,但此处仅依赖 pending 变化(callId 字符串比较)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending]);
 
   const pendingCount = controller.hunks.filter((h) => !controller.decisions.has(h.id)).length;
+
+  // 延迟挂载 ProposalOverlay 一帧:
+  // setHasV3Pending 是父级 state,onHasPendingChange 触发后 readOnly=true 切换 + Plate 内部
+  // 把真编辑器 contenteditable 改为 false 是 React 异步过程。如果 ProposalOverlay 与 controller
+  // 同步挂载,首次 useMemo/useEffect 跑 DOM 查询时 contenteditable 还是 "true",selector
+  // `[data-slate-editor][contenteditable="false"]` 失败 → overlays 空。
+  // 用 rAF 推到下一帧,DOM 更新一定完成。
+  const [overlayReady, setOverlayReady] = useState(false);
+  useEffect(() => {
+    if (controller.hasPending) {
+      const raf = requestAnimationFrame(() => setOverlayReady(true));
+      return () => {
+        cancelAnimationFrame(raf);
+        setOverlayReady(false);
+      };
+    }
+    setOverlayReady(false);
+    return undefined;
+  }, [controller.hasPending]);
 
   return (
     <>
@@ -195,12 +185,14 @@ function ProposalBridge({ pending, onResolved, onHasPendingChange }: ProposalBri
         onAcceptAll={controller.acceptAll}
         onRejectAll={controller.rejectAll}
       />
-      <ProposalOverlay
-        hunks={controller.hunks}
-        decisions={controller.decisions}
-        onAcceptOne={controller.acceptOne}
-        onRejectOne={controller.rejectOne}
-      />
+      {overlayReady && (
+        <ProposalOverlay
+          hunks={controller.hunks}
+          decisions={controller.decisions}
+          onAcceptOne={controller.acceptOne}
+          onRejectOne={controller.rejectOne}
+        />
+      )}
     </>
   );
 }
@@ -386,23 +378,27 @@ export function PlateMarkdownEditor({
         {onAnchorChange && (
           <AnchorBridge onAnchorChange={handleAnchorChange} />
         )}
-        {/* v3 ProposalBridge */}
-        <ProposalBridge
-          pending={v3Proposal}
-          onResolved={onV3Resolved}
-          onHasPendingChange={(hasPending) => {
-            setHasV3Pending(hasPending);
-            onHasV3PendingChange?.(hasPending);
-          }}
-        />
         {/* v3 EditorChildrenBridge —— 传了 editorRefSync 才挂,把 editor.children/editor
             写进 ref,外层 getEditorChildren/getEditor 给 use-advisor-chat 算 computeDocDiff 用 */}
         {editorRefSync && <EditorChildrenBridge bridgeRef={editorRefSync} />}
         <EditorContainer
           className="prose-draft-editor-surface"
+          style={{ position: 'relative' }}
           onPointerDownCapture={() => setToolbarSuppressed(false)}
         >
           <Editor variant="default" placeholder="开始写作..." />
+          {/* v3 ProposalBridge 必须放在 EditorContainer 内部:
+              ProposalOverlay 输出的 absolute div 需要 EditorContainer(position:relative)
+              作为定位上下文,top/left 才会相对 editor 内容区算出正确位置;
+              如果挂在 Plate 外层,absolute 会相对 viewport/body → 浮层飘到屏幕左上角。 */}
+          <ProposalBridge
+            pending={v3Proposal}
+            onResolved={onV3Resolved}
+            onHasPendingChange={(hasPending) => {
+              setHasV3Pending(hasPending);
+              onHasV3PendingChange?.(hasPending);
+            }}
+          />
         </EditorContainer>
         {!toolbarSuppressed && (
           <FloatingToolbar>
