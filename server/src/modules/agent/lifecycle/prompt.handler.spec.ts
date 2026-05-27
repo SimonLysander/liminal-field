@@ -70,9 +70,9 @@ describe('PromptHandler.buildSystemPrompt', () => {
     expect(out).toContain('在意的：哲学');
   });
 
-  describe('current_context —— 只点名,不灌正文', () => {
-    it('有 document → 点名标题与字数,但绝不包含正文内容', () => {
-      const body = '这是一段绝对不应该出现在系统提示词里的正文内容';
+  describe('current_context —— 点名编辑文档;正文整篇注入 <document> 节(v3)', () => {
+    it('有 document → 点名标题与字数,且正文整篇出现在 <document> 节', () => {
+      const body = '这是应该出现在 document 节里的正文内容';
       const out = handler.buildSystemPrompt(
         baseParams({
           document: {
@@ -86,8 +86,11 @@ describe('PromptHandler.buildSystemPrompt', () => {
       expect(out).toContain('《我的随笔》');
       expect(out).toContain(`约 ${body.length} 字`);
       expect(out).toContain('get_current_draft');
-      // 关键契约:正文不进 prompt
-      expect(out).not.toContain(body);
+      // v3 关键契约:正文整篇注入 <document> 节,模型直接可见
+      expect(out).toContain('<document>');
+      expect(out).toContain(body);
+      // document 节在 current_context 之前
+      expect(out.indexOf('<document>')).toBeLessThan(out.indexOf('<current_context>'));
     });
 
     it('无 document → 不注入 current_context', () => {

@@ -30,8 +30,6 @@ import { createForgetTool } from '../tools/forget.tool';
 import { createSubAgentTool } from '../tools/sub-agent.tool';
 import { createWriteTasksTool } from '../tools/write-tasks.tool';
 import { createReadConversationHistoryTool } from '../tools/read-conversation-history.tool';
-import { createRewriteSelectionTool } from '../tools/rewrite-selection.tool';
-import { createRewriteDocumentTool } from '../tools/rewrite-document.tool';
 import { createProposeDocumentRewriteTool } from '../tools/propose-document-rewrite.tool';
 import { AgentSessionRepository } from '../session/agent-session.repository';
 import { AgentMemoryRepository } from '../memory/agent-memory.repository';
@@ -41,6 +39,7 @@ export interface EntryContext {
   document?: DocumentContext;
   selectedText?: string;
   sessionKey?: string;
+  agentInstanceKey?: string;
 }
 
 @Injectable()
@@ -68,6 +67,7 @@ export class ToolAssembler {
     allowedTools?: string[],
     tier?: string,
   ): Record<string, any> {
+    const memoryKey = entryContext.agentInstanceKey ?? entryContext.sessionKey;
     const rawTools = {
       // 知识库搜索（grep：按内容找）：全局可用
       search_knowledge_base: createSearchKnowledgeBaseTool(this.contentService),
@@ -90,12 +90,12 @@ export class ToolAssembler {
         entryContext.sessionKey,
       ),
       // 任务管理：write_tasks 整体改写写作计划(TodoWrite 式,模型有最大自由度)
-      ...(entryContext.sessionKey
+      ...(memoryKey
         ? {
             write_tasks: createWriteTasksTool(
               this.memoryRepo,
-              // entryContext.sessionKey 的值即 agentKey(草稿级标识)
-              entryContext.sessionKey,
+              // tasks 落在草稿级 agent 实例上；业务会话切换不清空任务。
+              memoryKey,
             ),
           }
         : {}),
@@ -108,15 +108,7 @@ export class ToolAssembler {
             ),
           }
         : {}),
-      // v2:两个锚点驱动的改稿工具(替代 v1 propose_edit,见 2026-05-26 spec)
-      // insert_at_cursor 已删除:cursor 态无对应工具,不再支持光标无选区续写
-      ...(entryContext.document
-        ? {
-            rewrite_selection: createRewriteSelectionTool(),
-            rewrite_document: createRewriteDocumentTool(),
-          }
-        : {}),
-      // v3:单工具,模型只生成完整新版正文,定位与 diff 由前端做;v2 工具暂留,Task 9 集中删除
+      // v3:单工具,模型自由编辑;前端做 diff 与 hunk 审批
       ...(entryContext.document
         ? {
             propose_document_rewrite: createProposeDocumentRewriteTool(),

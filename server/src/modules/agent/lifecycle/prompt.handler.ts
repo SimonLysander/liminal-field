@@ -53,19 +53,6 @@ export interface BuildSystemPromptParams {
   entrySystemPrompt?: string;
   /** 当前会话的写作计划(注入让模型看得到自己的清单,可用 write_tasks 整体改写) */
   tasks?: Array<Record<string, unknown>>;
-  /**
-   * 当前编辑器锚点(selection 位置)，由前端 AnchorBridge 序列化后经 transport 传入。
-   * type='range' → 注入 <selection>，Aurora 用 rewrite_selection；
-   * type='cursor' / type='none' 或缺省 → 不注入（Aurora 按整体改/重写走 rewrite_document）。
-   * insert_at_cursor 已删除，cursor 态不再有对应工具。
-   */
-  anchor?: {
-    type: 'none' | 'cursor' | 'range';
-    blockIndex?: number;
-    startPath?: number[];
-    endPath?: number[];
-    textPreview?: string;
-  };
 }
 
 @Injectable()
@@ -139,7 +126,6 @@ export class PromptHandler {
 - 不重复 ${ownerName} 已说过的话
 - 为 ${ownerName} 起草初稿、片段乃至整篇都可以；你交付的是供 ta 接手打磨的草稿与起点，而非终稿
 - 多步任务先用 write_tasks 列计划再动手；每步更新清单（同一时刻只一个进行中）；全部完成后传空列表清空。简单一步的事不必列计划
-- 修改正文时按场景选工具:有选区→rewrite_selection;整体改/重写整篇→rewrite_document。你只负责写新内容,定位由编辑器选区锚点(见 <selection>)给出
 - 用户明确要求修改正文时(改紧凑/重写/调整结构等)调用 propose_document_rewrite,给完整新版正文(不要片段);引用块(\`> 第 N 段:「…」\`)是用户特别想让你看的几段,不是必须改的范围——你自由决定改哪;纯讨论/解释/给建议时不调工具,正常聊天即可
 </instructions>`);
 
@@ -151,15 +137,6 @@ export class PromptHandler {
 ${ownerName} 当前正在编辑文档《${title || '未命名'}》（约 ${wordCount} 字）。
 正文已在 <document> 节给你了——直接看，不要再调 get_current_draft（那个工具用于读旧版本或别的草稿）。
 </current_context>`);
-    }
-
-    // 8b. ——— 编辑器锚点：只有 range（有选区）才注入 <selection>。
-    // cursor / none 态不注入任何节——insert_at_cursor 已删除，无对应工具，不引导模型。
-    if (params.anchor && params.anchor.type === 'range') {
-      const preview = params.anchor.textPreview ?? '';
-      sections.push(
-        `<selection>\n${ownerName} 当前选中第 ${(params.anchor.blockIndex ?? 0) + 1} 段的一段文字「${preview}${preview.length === 40 ? '…' : ''}」。\n要修改这段时用 rewrite_selection。\n</selection>`,
-      );
     }
 
     // ——— 当前写作计划：有「未完成」任务才注入。

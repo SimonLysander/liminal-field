@@ -148,8 +148,6 @@ export class AgentLifecycle {
       customSystemPrompt: aiConfig.aiSystemPrompt,
       entrySystemPrompt: aiConfig.entrySystemPrompt,
       tasks,
-      // v2 改稿锚点:由前端 AnchorBridge 序列化，经 transport 传入
-      anchor: dto.entryContext.anchor,
     });
 
     // allowedTools 为空时使用全部工具；有白名单时按白名单过滤

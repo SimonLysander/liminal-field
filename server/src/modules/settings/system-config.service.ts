@@ -79,15 +79,12 @@ export class SystemConfigService implements OnModuleInit {
     'list_knowledge_base',
     'read_document_content',
     'get_current_draft',
-    // v2 锚点驱动改稿工具(替代 v1 propose_edit,已于 Task 9 退役)
-    // insert_at_cursor 已删除:只保留 rewrite_selection + rewrite_document 两个工具
-    'rewrite_selection',
-    'rewrite_document',
     'remember',
     'forget',
     'sub_agent',
     'write_tasks',
     'read_conversation_history',
+    // v3:单工具纯管道,前端做 diff 与 hunk 审批(替代 v2 rewrite_* 工具)
     'propose_document_rewrite',
   ];
 
@@ -130,11 +127,22 @@ export class SystemConfigService implements OnModuleInit {
       const allTools = SystemConfigService.WRITING_ADVISOR_TOOLS;
       const wa = config?.agentConfigs?.find((c) => c.key === 'writing-advisor');
       if (wa) {
+        // 退役的 v2 工具名：rewrite_selection(Task 8 前已删)、rewrite_reference/rewrite_document(Task 9 退役)
+        const v2ToolsToRemove = ['rewrite_selection', 'rewrite_reference', 'rewrite_document'];
+        const beforeTools = wa.tools;
+        wa.tools = wa.tools.filter((t) => !v2ToolsToRemove.includes(t));
+        const removedOldTools = beforeTools.filter((t) => v2ToolsToRemove.includes(t));
+        const removedOldTool = removedOldTools.length > 0;
         const missing = allTools.filter((t) => !wa.tools.includes(t));
-        if (missing.length > 0) {
+        if (missing.length > 0 || removedOldTool) {
           wa.tools.push(...missing);
           await this.repo.patch({ agentConfigs: config.agentConfigs });
-          this.logger.log(`writing-advisor 补齐工具: ${missing.join(', ')}`);
+          if (missing.length > 0) {
+            this.logger.log(`writing-advisor 补齐工具: ${missing.join(', ')}`);
+          }
+          if (removedOldTool) {
+            this.logger.log(`writing-advisor 移除旧工具: ${removedOldTools.join(', ')}`);
+          }
         }
       }
     }
