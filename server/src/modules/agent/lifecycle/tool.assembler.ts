@@ -68,7 +68,10 @@ export class ToolAssembler {
     tier?: string,
   ): Record<string, any> {
     const memoryKey = entryContext.agentInstanceKey ?? entryContext.sessionKey;
-    // lazy getter:草稿可能在 chat 期间变化,工具每次 execute 重读
+    // 工具接 getter(与 createGetCurrentDraftTool/createProposeDocumentRewriteTool 签名对齐)。
+    // 当前 entryContext 在单次 chat 请求内 immutable,所以 getter 跟传 snapshot 等价;
+    // 保留 lazy 形态为未来"chat 期间文档热更替"留接口——届时只需让 entryContext.document
+    // 变成可变引用(或在 lifecycle 中主动 reassign),工具层无需变更。
     const getDocument = () => entryContext.document;
     const rawTools = {
       // 知识库搜索（grep：按内容找）：全局可用

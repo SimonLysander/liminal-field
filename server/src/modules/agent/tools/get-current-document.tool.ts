@@ -19,8 +19,10 @@ export interface DocumentContext {
 /**
  * get_current_draft — 读取当前正在编辑的草稿(与 read_document_content 同策略)。
  *
- * 工厂收 lazy getter 而非快照值:草稿在 chat 会话期间可能被用户手动编辑,getter
- * 每次 execute 重读当前最新 markdown,避免 stale closure。
+ * 工厂收 lazy getter:与 propose_document_rewrite 工厂签名对齐(也吃同形 getter)。
+ * 当前 lifecycle 注入的 entryContext 在单次 chat 请求内 immutable,所以 getter
+ * 等价于传 snapshot;保留 getter 形态为未来"chat 期间文档热更替"留接口,
+ * 届时只需把 lifecycle 改为可变引用,工具层无需变更。
  *
  * 返回:
  *   - bodyHash:sha256(bodyMarkdown) 前 16 字符,供 propose_document_rewrite 强校验

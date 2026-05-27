@@ -12,7 +12,9 @@ import type { DocumentContext } from './get-current-document.tool';
  *   - 不匹配 → status:stale + currentMarkdown(detail),让模型 multi-step 基于最新版重生成
  *   - bodyHash 空/无文档 → status:invalid
  *
- * 工厂收 lazy getter(同 get_current_draft):草稿可能在 chat 期间变化。
+ * 工厂收 lazy getter(同 get_current_draft):与 get_current_draft 签名对齐;
+ * 当前 entryContext 单请求内 immutable,getter 等价于 snapshot;形态为未来
+ * chat 期间文档热更替留接口。
  */
 export const MAX_NEW_MARKDOWN = 60_000;
 
