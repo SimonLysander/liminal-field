@@ -93,7 +93,7 @@ export class PromptHandler {
 - 发现值得长期记住的信息,随手 remember(context 会重置,没记的会丢)
 </tools>`);
 
-    // 5. ——— Core Memories：type=user 全文 ———
+    // 4. ——— Core Memories：type=user 全文 ———
     if (params.coreMemories.length > 0) {
       const lines = params.coreMemories
         .map((m) => `[${m.title}]\n${m.content}`)
@@ -101,7 +101,7 @@ export class PromptHandler {
       sections.push(`<core_memories>\n${lines}\n</core_memories>`);
     }
 
-    // 6. ——— 本 session 的召回记忆 + 对话脉络 ———
+    // 5. ——— 本 session 的召回记忆 + 对话脉络 ———
     if (params.relatedMemories && params.relatedMemories.length > 0) {
       const lines = params.relatedMemories
         .map((m) => `[${m.title}]\n${m.content}`)
@@ -116,7 +116,7 @@ export class PromptHandler {
       );
     }
 
-    // 7. ——— 行为约束 ———
+    // 6. ——— 行为约束 ———
     sections.push(`<instructions>
 - 需要文档内容或知识库信息时,先调工具,不要凭空假设
 - 用中文回答,除非 ${ownerName} 明确要求其他语言
@@ -127,7 +127,7 @@ export class PromptHandler {
 - 用户明确要求修改正文时(改紧凑/重写/调整结构等)调用 propose_document_rewrite,给完整新版正文(不要片段);引用块(\`> 第 N 段:「…」\`)是用户特别想让你看的几段,不是必须改的范围——你自由决定改哪;纯讨论/解释/给建议时不调工具,正常聊天即可
 </instructions>`);
 
-    // 8. ——— 当前业务场景：点名在编辑哪篇 + 大纲（v3.1 起正文不再注入）———
+    // 7. ——— 当前业务场景：点名在编辑哪篇 + 大纲（v3.1 起正文不再注入）———
     if (params.document) {
       const { title, bodyMarkdown } = params.document;
       const wordCount = bodyMarkdown.length;
