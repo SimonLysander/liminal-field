@@ -67,8 +67,26 @@ function blockSignature(block: Descendant): string {
   return `${type}:${blockText(block)}`;
 }
 
-function genId(): string {
-  return `hunk_${Math.random().toString(36).slice(2, 10)}`;
+/**
+ * 基于 kind + blockPath 的稳定 hunk ID。
+ *
+ * 早期实现用 `Math.random()`,导致 computeDocDiff 每次调用都出全新 ID。
+ * 配合 useMemo(`v3ProposalsByCallId`)+ useEffect 链路会触发 Max update depth
+ * 死循环:pendingProposal 引用持续变化 → AiAdvisorPanel effect 跑 → setState →
+ * 父 re-render → useChat messages 引用可能变 → useMemo 重算 → 又出新 hunks → ...
+ *
+ * 用 kind:blockPath 作 ID,相同 oldChildren + newChildren 出相同 hunks,引用稳定。
+ */
+/**
+ * ID 同时编码 oldIdx 和 newIdx,确保 hunks 唯一:
+ * - replace:oldIdx + newIdx 都参与(同 oldIdx 可对应不同 newIdx)
+ * - delete:仅 oldIdx(newIdx 用 'x' 占位)
+ * - insert:仅 newIdx(oldIdx 用 'x' 占位)
+ *
+ * 避免 `h_insert_4` 三个 hunks 同 ID → React key 冲突只渲染 1 个的 bug。
+ */
+function makeHunkId(kind: string, oldIdx: number | null, newIdx: number | null): string {
+  return `h_${kind}_${oldIdx ?? 'x'}_${newIdx ?? 'x'}`;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -213,21 +231,44 @@ function alignBlocks(oldBlocks: Descendant[], newBlocks: Descendant[]): AlignOp[
   while (ii > 0) { raw.unshift({ op: 'delete', oldIdx: ii - 1 }); ii--; }
   while (jj > 0) { raw.unshift({ op: 'insert', newIdx: jj - 1, afterOldIdx: -1 }); jj--; }
 
-  // 合并相邻 delete + insert 对 → replace
-  // 优先走 insert 的回溯策略保证:单块替换等场景产出 [delete, insert] 经典顺序,
-  // 可以安全地逐对合并,不会出现跨位置误配对。
+  // 合并连续的 delete + insert 块为 replace 对(zip-pair):
+  // LCS 回溯产出顺序在"全替换"场景里是 [D0,D1,...,I0,I1,...]——
+  // 旧逻辑只合并相邻一对 (D, I),剩余 delete 和 insert 散落 → 7 处改动错位 hunks。
+  // 改为:收集连续的 delete[] 和紧跟的 insert[],按 index 顺序逐对 zip-pair 成 replace,
+  // 多余的留单独 delete 或 insert(段数不等时)。
   const merged: AlignOp[] = [];
   let k = 0;
   while (k < raw.length) {
-    const cur = raw[k];
-    const next = raw[k + 1];
-    if (cur.op === 'delete' && next?.op === 'insert') {
-      // delete + insert 相邻 → 同一对齐位置的替换,合并为 replace
-      merged.push({ op: 'replace', oldIdx: cur.oldIdx, newIdx: next.newIdx });
-      k += 2;
-    } else {
-      merged.push(cur);
+    if (raw[k].op === 'eq') {
+      merged.push(raw[k]);
       k++;
+      continue;
+    }
+    // 收集连续的 delete 段
+    const deletes: { oldIdx: number }[] = [];
+    while (k < raw.length && raw[k].op === 'delete') {
+      deletes.push({ oldIdx: (raw[k] as { oldIdx: number }).oldIdx });
+      k++;
+    }
+    // 紧跟着收集连续的 insert 段
+    const inserts: { newIdx: number; afterOldIdx: number }[] = [];
+    while (k < raw.length && raw[k].op === 'insert') {
+      const op = raw[k] as { newIdx: number; afterOldIdx: number };
+      inserts.push({ newIdx: op.newIdx, afterOldIdx: op.afterOldIdx });
+      k++;
+    }
+    // zip-pair:同 index 的 delete[i] + insert[i] → replace
+    const pairs = Math.min(deletes.length, inserts.length);
+    for (let p = 0; p < pairs; p++) {
+      merged.push({ op: 'replace', oldIdx: deletes[p].oldIdx, newIdx: inserts[p].newIdx });
+    }
+    // 多余 delete(段数 old > new)
+    for (let p = pairs; p < deletes.length; p++) {
+      merged.push({ op: 'delete', oldIdx: deletes[p].oldIdx });
+    }
+    // 多余 insert(段数 new > old)
+    for (let p = pairs; p < inserts.length; p++) {
+      merged.push({ op: 'insert', newIdx: inserts[p].newIdx, afterOldIdx: inserts[p].afterOldIdx });
     }
   }
 
@@ -261,10 +302,11 @@ export function computeDocDiff(
       const newBlock = newChildren[op.newIdx];
       const oldTxt = blockText(oldBlock);
       const newTxt = blockText(newBlock);
+      const path = [op.oldIdx];
       hunks.push({
-        id: genId(),
+        id: makeHunkId('replace', op.oldIdx, op.newIdx),
         kind: 'replace',
-        blockPath: [op.oldIdx],
+        blockPath: path,
         oldRange: { start: [op.oldIdx, 0], end: [op.oldIdx, 0] },
         newBlocks: [newBlock],
         oldText: oldTxt,
@@ -278,22 +320,24 @@ export function computeDocDiff(
       });
     } else if (op.op === 'delete') {
       const oldBlock = oldChildren[op.oldIdx];
+      const path = [op.oldIdx];
       hunks.push({
-        id: genId(),
+        id: makeHunkId('delete', op.oldIdx, null),
         kind: 'delete',
-        blockPath: [op.oldIdx],
+        blockPath: path,
         oldRange: { start: [op.oldIdx, 0], end: [op.oldIdx, 0] },
         oldText: blockText(oldBlock),
       });
     } else if (op.op === 'insert') {
       const newBlock = newChildren[op.newIdx];
+      const path = [op.afterOldIdx + 1];
       hunks.push({
-        id: genId(),
+        id: makeHunkId('insert', null, op.newIdx),
         kind: 'insert',
         // blockPath 此处语义为"插入点 index":新块将被插到该位置。
         // afterOldIdx=-1 表示插在开头(index=0);否则插在 afterOldIdx+1 位置。
         // 注意:与 replace/delete 的"目标块路径"语义不同。
-        blockPath: [op.afterOldIdx + 1],
+        blockPath: path,
         newBlocks: [newBlock],
         newText: blockText(newBlock),
       });

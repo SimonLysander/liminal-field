@@ -181,6 +181,44 @@ export function ChatMessage({
   );
 }
 
+/**
+ * v3 协议:chips 在发送时被拼成 markdown `>` 引用块进 user message text:
+ *   {用户原话}
+ *
+ *   > 第 N 段:「完整文本」
+ *   > 第 M 段:「完整文本」
+ *
+ * 渲染时反解析:提取尾部连续的 `> 段号:「文本」` 行作为 chips,主文本不含引用。
+ * 返回 { mainText, chips };若 content 无该模式,chips 为空,mainText = content。
+ */
+interface ParsedChip {
+  label: string;
+  text: string;
+}
+function parseInlineChips(content: string): { mainText: string; chips: ParsedChip[] } {
+  // 匹配尾部 1 行或多行的 `> 第 N 段：「...」` 或 `> 引用：「...」`
+  // 冒号兼容中文全角(formatReferencesAsMd 实际拼的)和英文半角(防御性)
+  const chipLine = /^> (第\s*\d+(?:-\d+)?\s*段|引用)\s*[:：]\s*「([\s\S]+?)」\s*$/;
+  const lines = content.split('\n');
+  const chips: ParsedChip[] = [];
+  // 从尾向前剥引用行(跳过空行)
+  let cutIdx = lines.length;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim();
+    if (line === '') {
+      // 允许空行做分隔,继续向前
+      continue;
+    }
+    const match = line.match(chipLine);
+    if (!match) break;
+    chips.unshift({ label: match[1].replace(/\s+/g, ''), text: match[2] });
+    cutIdx = i;
+  }
+  if (chips.length === 0) return { mainText: content, chips: [] };
+  const mainText = lines.slice(0, cutIdx).join('\n').trimEnd();
+  return { mainText, chips };
+}
+
 function UserContentWithReferenceChips({
   content,
   references,
@@ -188,31 +226,58 @@ function UserContentWithReferenceChips({
   content: string;
   references: ChatReferenceSnapshot[];
 }) {
-  if (references.length === 0) return <>{content}</>;
+  // 路径 1(老格式 `[已选内容 N]` token + metadata.references):保留兼容
+  if (references.length > 0) {
+    const parts = content.split(/(\[(?:已选内容|片段)\s+\d+\])/g).filter(Boolean);
+    return (
+      <>
+        {parts.map((part, index) => {
+          const match = part.match(/^\[(?:已选内容|片段)\s+(\d+)\]$/);
+          if (!match) return <span key={index}>{part}</span>;
+          const order = Number(match[1]);
+          const reference = references.find((ref) => ref.order === order);
+          const label = reference ? formatParagraphRange(reference.anchor) : '片段';
+          return (
+            <span
+              key={index}
+              className="mx-0.5 inline-flex max-w-[12rem] items-center rounded-md px-1.5 py-0.5 align-baseline text-xs"
+              style={{
+                background: 'color-mix(in srgb, var(--accent) 13%, var(--shelf))',
+                color: 'var(--accent)',
+              }}
+              title={reference?.preview || reference?.text || label}
+            >
+              {label}
+            </span>
+          );
+        })}
+      </>
+    );
+  }
 
-  const parts = content.split(/(\[(?:已选内容|片段)\s+\d+\])/g).filter(Boolean);
+  // 路径 2(v3 协议 `> 段号:「文本」` markdown 引用块):从 content 解析
+  const { mainText, chips } = parseInlineChips(content);
+  if (chips.length === 0) return <>{content}</>;
   return (
     <>
-      {parts.map((part, index) => {
-        const match = part.match(/^\[(?:已选内容|片段)\s+(\d+)\]$/);
-        if (!match) return <span key={index}>{part}</span>;
-        const order = Number(match[1]);
-        const reference = references.find((ref) => ref.order === order);
-        const label = reference ? formatParagraphRange(reference.anchor) : '片段';
-        return (
+      {mainText}
+      {mainText && '\n'}
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {chips.map((chip, i) => (
           <span
-            key={index}
-            className="mx-0.5 inline-flex max-w-[12rem] items-center rounded-md px-1.5 py-0.5 align-baseline text-xs"
+            key={i}
+            className="inline-flex max-w-[14rem] items-center gap-1 rounded-md px-1.5 py-0.5 align-baseline text-xs"
             style={{
               background: 'color-mix(in srgb, var(--accent) 13%, var(--shelf))',
               color: 'var(--accent)',
             }}
-            title={reference?.preview || reference?.text || label}
+            title={chip.text}
           >
-            {label}
+            <Paperclip size={10} strokeWidth={1.8} className="shrink-0" />
+            <span className="truncate">{chip.label}</span>
           </span>
-        );
-      })}
+        ))}
+      </div>
     </>
   );
 }

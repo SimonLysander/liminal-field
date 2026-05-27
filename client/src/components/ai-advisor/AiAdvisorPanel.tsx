@@ -172,10 +172,14 @@ export function AiAdvisorPanel({
     getEditor,
   });
 
-  // v3 改稿：pendingProposal 变化时通过 ref 回调上层，避免 onProposalChange 引用不稳导致循环
+  // v3 改稿：pendingProposal 变化时通过 ref 回调上层。
+  // 用 callId(字符串)作为依赖,避免 pendingProposal 对象引用每次新建(computeDocDiff
+  // 的 hunks 含 random id,useMemo 每次重算都出新对象)触发死循环。
+  // closure 仍能拿到最新 pendingProposal(callId 变化时才重新建 closure)。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     onProposalChangeRef.current?.(pendingProposal);
-  }, [pendingProposal]);
+  }, [pendingProposal?.callId]);
 
   useEffect(() => {
     // 切换会话时清 pendingProposal
