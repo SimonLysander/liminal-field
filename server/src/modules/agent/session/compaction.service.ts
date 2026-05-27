@@ -40,8 +40,12 @@ export class CompactionService {
    * 这与"喂模型上下文组装"的固定部分一致——保证触发判断用的分子和真实占用同口径。
    * 原文不删:只更新 session 记忆;"已提炼游标"靠"组装时按 token 倒取最近额度"隐式表达,无需显式存储。
    */
-  async compactIfNeeded(agentKey: string, window: number): Promise<void> {
-    const all = await this.sessionRepo.getAllMessages(agentKey);
+  async compactIfNeeded(
+    agentKey: string,
+    window: number,
+    sourceSessionKey: string = agentKey,
+  ): Promise<void> {
+    const all = await this.sessionRepo.getAllMessages(sourceSessionKey);
 
     // 固定开销 F:与上下文组装的固定部分同口径
     const [userMems, sessionMem] = await Promise.all([
@@ -61,7 +65,7 @@ export class CompactionService {
     });
 
     this.logger.debug(
-      `compactIfNeeded: agentKey=${agentKey} window=${window} fixed=${fixedTokens} ` +
+      `compactIfNeeded: agentKey=${agentKey} sourceSessionKey=${sourceSessionKey} window=${window} fixed=${fixedTokens} ` +
         `total=${all.length}条 toCompact=${toCompact.length} toKeep=${toKeep.length}`,
     );
 

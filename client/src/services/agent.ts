@@ -27,6 +27,13 @@ export interface SessionData {
   lastActiveAt: string | null;
 }
 
+export interface BusinessSessionSummary {
+  sessionKey: string;
+  title: string;
+  messageCount: number;
+  lastActiveAt: string | null;
+}
+
 /**
  * 加载会话历史（支持分页）。
  *
@@ -36,13 +43,32 @@ export interface SessionData {
  */
 export function loadSession(
   sessionKey: string,
-  opts?: { before?: number; limit?: number },
+  opts?: { agentInstanceKey?: string; before?: number; limit?: number },
 ): Promise<SessionData> {
   const params = new URLSearchParams();
+  if (opts?.agentInstanceKey) params.set('agentInstanceKey', opts.agentInstanceKey);
   if (opts?.before !== undefined) params.set('before', String(opts.before));
   if (opts?.limit !== undefined) params.set('limit', String(opts.limit));
   const qs = params.toString() ? `?${params.toString()}` : '';
   return request<SessionData>(`/agent/sessions/${encodeURIComponent(sessionKey)}${qs}`);
+}
+
+export function listBusinessSessions(
+  agentInstanceKey: string,
+): Promise<BusinessSessionSummary[]> {
+  return request<BusinessSessionSummary[]>(
+    `/agent/session-groups/${encodeURIComponent(agentInstanceKey)}/sessions`,
+  );
+}
+
+export function renameBusinessSession(
+  sessionKey: string,
+  title: string,
+): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(
+    `/agent/sessions/${encodeURIComponent(sessionKey)}/title`,
+    { method: 'PATCH', body: JSON.stringify({ title }) },
+  );
 }
 
 /**
@@ -55,10 +81,11 @@ export function loadSession(
 export function saveSession(
   sessionKey: string,
   newMessages: Record<string, unknown>[],
+  agentInstanceKey?: string,
 ): Promise<{ ok: boolean; tasks: SessionTask[] }> {
   return request<{ ok: boolean; tasks: SessionTask[] }>(
     `/agent/sessions/${encodeURIComponent(sessionKey)}`,
-    { method: 'PUT', body: JSON.stringify({ messages: newMessages }) },
+    { method: 'PUT', body: JSON.stringify({ messages: newMessages, agentInstanceKey }) },
   );
 }
 

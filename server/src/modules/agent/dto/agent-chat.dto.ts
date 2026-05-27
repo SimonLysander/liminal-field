@@ -76,6 +76,11 @@ class EntryContextDto {
   @IsOptional()
   sessionKey?: string;
 
+  /** 草稿级 agent 实例标识：用于共享 agent 记忆/tasks；sessionKey 只表示当前业务聊天。 */
+  @IsString()
+  @IsOptional()
+  agentInstanceKey?: string;
+
   /**
    * v2 改稿锚点：编辑器当前 selection/cursor 序列化结果。
    * 后端 prompt.handler 据此注入 <selection>/<cursor> 节，Aurora 据此选改稿工具。

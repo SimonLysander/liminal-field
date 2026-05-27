@@ -17,6 +17,7 @@ import {
   Get,
   MessageEvent,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -119,12 +120,27 @@ export class AgentController {
   @Get('agent/sessions/:key')
   async getSession(
     @Param('key') key: string,
+    @Query('agentInstanceKey') agentInstanceKey?: string,
     @Query('before') before?: string,
     @Query('limit') limit?: string,
   ) {
     const beforeIdx = before !== undefined ? parseInt(before, 10) : undefined;
     const limitNum = limit !== undefined ? parseInt(limit, 10) : undefined;
-    return this.lifecycle.onSessionLoad(key, beforeIdx, limitNum);
+    return this.lifecycle.onSessionLoad(key, beforeIdx, limitNum, agentInstanceKey);
+  }
+
+  @Get('agent/session-groups/:agentInstanceKey/sessions')
+  async listBusinessSessions(@Param('agentInstanceKey') agentInstanceKey: string) {
+    return this.lifecycle.listBusinessSessions(agentInstanceKey);
+  }
+
+  @Patch('agent/sessions/:key/title')
+  async renameBusinessSession(
+    @Param('key') key: string,
+    @Body('title') title: string,
+  ) {
+    await this.lifecycle.renameBusinessSession(key, title ?? '');
+    return { ok: true };
   }
 
   /**
@@ -139,10 +155,16 @@ export class AgentController {
   async saveSession(
     @Param('key') key: string,
     @Body('messages') messages: Record<string, unknown>[] = [],
+    @Body('agentInstanceKey') agentInstanceKey?: string,
   ) {
     const aiConfig = await this.systemConfigService.getAiConfig();
-    await this.lifecycle.onAfterChat(key, messages, aiConfig.contextWindow);
-    const tasks = await this.lifecycle.getSessionTasks(key);
+    await this.lifecycle.onAfterChat(
+      key,
+      messages,
+      aiConfig.contextWindow,
+      agentInstanceKey,
+    );
+    const tasks = await this.lifecycle.getSessionTasks(agentInstanceKey ?? key);
     return { ok: true, tasks };
   }
 

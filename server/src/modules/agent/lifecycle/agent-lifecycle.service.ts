@@ -61,11 +61,12 @@ export class AgentLifecycle {
    * 该字段为兼容前端响应结构暂留(前端契约清理留到 U7)。
    */
   async onSessionLoad(
-    agentKey: string,
+    sessionKey: string,
     /** 分页游标：返回此绝对 index 之前的消息；无则取最近 limit 条 */
     before?: number,
     /** 每页条数，默认 SESSION_PAGE_LIMIT */
     limit: number = SESSION_PAGE_LIMIT,
+    agentInstanceKey?: string,
   ): Promise<{
     sessionKey: string;
     messages: Record<string, unknown>[];
@@ -80,18 +81,19 @@ export class AgentLifecycle {
     /** 兼容前端结构暂留，恒为空（project 召回已删，清理留到 U7） */
     relatedMemories: never[];
   }> {
+    const memoryKey = agentInstanceKey ?? sessionKey;
     // 并行加载：全量消息（分页用）+ session 记忆（脉络/tasks）+ 最新段（lastActiveAt）
     const [allMessages, sessionMem, latestSeg] = await Promise.all([
-      this.sessionRepo.getAllMessages(agentKey),
-      this.memoryRepo.findSession(agentKey),
-      this.sessionRepo.findLatestSeg(agentKey),
+      this.sessionRepo.getAllMessages(sessionKey),
+      this.memoryRepo.findSession(memoryKey),
+      this.sessionRepo.findLatestSeg(sessionKey),
     ]);
 
     // 内存分页：before 是绝对 index（全量数组下标），纯函数 sliceSessionPage 算切片
     const page = sliceSessionPage(allMessages, before, limit);
 
     return {
-      sessionKey: agentKey,
+      sessionKey,
       messages: page.messages,
       hasMore: page.hasMore,
       firstIndex: page.firstIndex,
@@ -124,8 +126,8 @@ export class AgentLifecycle {
     systemPrompt: string;
     tools: Record<string, any>;
   }> {
-    // agentKey = 草稿级标识(现阶段即 entryContext.sessionKey 的值;前端字段改名留到 U7)
-    const agentKey = dto.entryContext.sessionKey;
+    // agentKey = 草稿级 agent 实例标识；sessionKey 只表示当前业务聊天。
+    const agentKey = dto.entryContext.agentInstanceKey ?? dto.entryContext.sessionKey;
     // 并行加载:user 记忆全文 + 所有者身份 + 本草稿 session 记忆(content + tasks)
     const [coreMemories, ownerProfile, sessionMem] = await Promise.all([
       this.memory.loadCore(),
@@ -167,12 +169,18 @@ export class AgentLifecycle {
    * window 随事件带出,供 compaction 按 token 占比判断是否触发(后台,不阻塞响应)。
    */
   async onAfterChat(
-    agentKey: string,
+    sessionKey: string,
     newMessages: Record<string, unknown>[],
     window: number,
+    agentInstanceKey?: string,
   ): Promise<void> {
-    await this.session.save(agentKey, newMessages);
-    this.eventEmitter.emit('agent.afterChat', { agentKey, window });
+    const memoryKey = agentInstanceKey ?? sessionKey;
+    await this.session.save(sessionKey, newMessages);
+    this.eventEmitter.emit('agent.afterChat', {
+      agentKey: memoryKey,
+      sessionKey,
+      window,
+    });
   }
 
   /** 获取草稿 session 记忆中的 tasks(保存后返回给前端刷新 TaskBar) */
@@ -180,6 +188,14 @@ export class AgentLifecycle {
     agentKey: string,
   ): Promise<Array<Record<string, unknown>>> {
     return this.memoryRepo.getTasks(agentKey);
+  }
+
+  async listBusinessSessions(agentInstanceKey: string) {
+    return this.sessionRepo.listBusinessSessions(agentInstanceKey);
+  }
+
+  async renameBusinessSession(sessionKey: string, title: string) {
+    await this.sessionRepo.renameBusinessSession(sessionKey, title);
   }
 
   /**

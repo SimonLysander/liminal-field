@@ -149,6 +149,86 @@ export class AgentSessionRepository implements OnApplicationBootstrap {
     return segs.flatMap((s) => s.messages);
   }
 
+  async listBusinessSessions(agentInstanceKey: string): Promise<
+    Array<{
+      sessionKey: string;
+      title: string;
+      messageCount: number;
+      lastActiveAt: Date | null;
+    }>
+  > {
+    const prefix = `${agentInstanceKey}:chat:`;
+    const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const segs = await this.sessionModel
+      .find({
+        $or: [
+          { agentKey: agentInstanceKey },
+          { agentKey: { $regex: `^${escapedPrefix}` } },
+        ],
+      })
+      .sort({ agentKey: 1, segIndex: 1 });
+
+    const byKey = new Map<
+      string,
+      {
+        sessionKey: string;
+        title: string;
+        messageCount: number;
+        lastActiveAt: Date | null;
+      }
+    >();
+
+    for (const seg of segs) {
+      const current =
+        byKey.get(seg.agentKey) ??
+        {
+          sessionKey: seg.agentKey,
+          title: '',
+          messageCount: 0,
+          lastActiveAt: null,
+        };
+      current.messageCount += seg.messages.length;
+      current.lastActiveAt =
+        !current.lastActiveAt || seg.lastActiveAt > current.lastActiveAt
+          ? seg.lastActiveAt
+          : current.lastActiveAt;
+      if (!current.title) {
+        current.title = seg.title?.trim() || inferSessionTitle(seg.messages);
+      }
+      byKey.set(seg.agentKey, current);
+    }
+
+    return Array.from(byKey.values())
+      .map((session) => ({
+        ...session,
+        title: session.title || '新会话',
+      }))
+      .sort(
+        (a, b) =>
+          (b.lastActiveAt?.getTime() ?? 0) - (a.lastActiveAt?.getTime() ?? 0),
+      );
+  }
+
+  async renameBusinessSession(sessionKey: string, title: string): Promise<void> {
+    const cleanTitle = title.trim().slice(0, 80);
+    const now = new Date();
+    const result = await this.sessionModel.updateMany(
+      { agentKey: sessionKey },
+      { $set: { title: cleanTitle, lastActiveAt: now } },
+    );
+    if (result.matchedCount > 0) return;
+
+    await this.sessionModel.create({
+      _id: new Types.ObjectId(),
+      agentKey: sessionKey,
+      title: cleanTitle,
+      segIndex: 0,
+      messages: [],
+      createdAt: now,
+      lastActiveAt: now,
+    });
+  }
+
   /**
    * 删除某 agentKey 的全部段。
    * 用于草稿删除或测试清理，不可恢复——messages append-only 原则不适用于整体删除。
@@ -156,4 +236,26 @@ export class AgentSessionRepository implements OnApplicationBootstrap {
   async deleteByAgentKey(agentKey: string): Promise<void> {
     await this.sessionModel.deleteMany({ agentKey });
   }
+}
+
+function inferSessionTitle(messages: Record<string, unknown>[]): string {
+  for (const message of messages) {
+    if (message.role !== 'user') continue;
+    const parts = message.parts;
+    if (!Array.isArray(parts)) continue;
+    const text = parts
+      .filter((part): part is { type: string; text?: string } => {
+        return (
+          typeof part === 'object' &&
+          part !== null &&
+          (part as { type?: unknown }).type === 'text'
+        );
+      })
+      .map((part) => part.text ?? '')
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (text) return text.length > 24 ? `${text.slice(0, 24)}...` : text;
+  }
+  return '';
 }
