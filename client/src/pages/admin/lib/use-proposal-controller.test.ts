@@ -297,6 +297,151 @@ describe('useProposalController (v3.1 节点树版)', () => {
     expect(readResolved().has('call_mixed')).toBe(true); // 全裁决后 mark
   });
 
+  // ── activeHunkId 导航:Y/N/J/K 快捷键的 state 基础 ──
+  it('新 proposal 进来后 activeHunkId 自动指向第一个 hunk', () => {
+    const editor = mockEditor([
+      { type: 'p', children: [{ text: '段一' }] },
+      { type: 'p', children: [{ text: '段二' }] },
+    ]);
+    const { result } = renderHook(() => useProposalController(editor));
+    expect(result.current.activeHunkId).toBeUndefined();
+    act(() =>
+      result.current.setProposal(
+        sampleProposal([
+          { id: 'h_delete_0', kind: 'delete', blockPath: [0] },
+          { id: 'h_delete_1', kind: 'delete', blockPath: [1] },
+        ]),
+      ),
+    );
+    expect(result.current.activeHunkId).toBe('h_delete_0');
+  });
+
+  it('acceptOne 裁决 active 后,activeHunkId 自动切到下一个 pending', () => {
+    const editor = mockEditor([
+      { type: 'p', children: [{ text: '段一' }] },
+      { type: 'p', children: [{ text: '段二' }] },
+    ]);
+    const { result } = renderHook(() =>
+      useProposalController(editor, { onResolved: vi.fn(), serializeMd: () => 'CLEAN' }),
+    );
+    act(() =>
+      result.current.setProposal(
+        sampleProposal([
+          { id: 'h_delete_0', kind: 'delete', blockPath: [0] },
+          { id: 'h_delete_1', kind: 'delete', blockPath: [1] },
+        ]),
+      ),
+    );
+    expect(result.current.activeHunkId).toBe('h_delete_0');
+    act(() => result.current.acceptOne('h_delete_0'));
+    expect(result.current.activeHunkId).toBe('h_delete_1');
+  });
+
+  it('全部裁决完 activeHunkId 变 undefined(proposal 也清空)', () => {
+    const editor = mockEditor([{ type: 'p', children: [{ text: '段' }] }]);
+    const { result } = renderHook(() =>
+      useProposalController(editor, { onResolved: vi.fn(), serializeMd: () => 'CLEAN' }),
+    );
+    act(() =>
+      result.current.setProposal(
+        sampleProposal([{ id: 'h_delete_0', kind: 'delete', blockPath: [0] }]),
+      ),
+    );
+    expect(result.current.activeHunkId).toBe('h_delete_0');
+    act(() => result.current.acceptOne('h_delete_0'));
+    expect(result.current.activeHunkId).toBeUndefined();
+  });
+
+  it('navigateNext 在 pending hunks 之间循环', () => {
+    const editor = mockEditor([
+      { type: 'p', children: [{ text: '段一' }] },
+      { type: 'p', children: [{ text: '段二' }] },
+      { type: 'p', children: [{ text: '段三' }] },
+    ]);
+    const { result } = renderHook(() => useProposalController(editor));
+    act(() =>
+      result.current.setProposal(
+        sampleProposal([
+          { id: 'h_delete_0', kind: 'delete', blockPath: [0] },
+          { id: 'h_delete_1', kind: 'delete', blockPath: [1] },
+          { id: 'h_delete_2', kind: 'delete', blockPath: [2] },
+        ]),
+      ),
+    );
+    expect(result.current.activeHunkId).toBe('h_delete_0');
+    act(() => result.current.navigateNext());
+    expect(result.current.activeHunkId).toBe('h_delete_1');
+    act(() => result.current.navigateNext());
+    expect(result.current.activeHunkId).toBe('h_delete_2');
+    act(() => result.current.navigateNext());
+    expect(result.current.activeHunkId).toBe('h_delete_0'); // 循环回 0
+  });
+
+  it('navigatePrev 反向循环', () => {
+    const editor = mockEditor([
+      { type: 'p', children: [{ text: '段一' }] },
+      { type: 'p', children: [{ text: '段二' }] },
+    ]);
+    const { result } = renderHook(() => useProposalController(editor));
+    act(() =>
+      result.current.setProposal(
+        sampleProposal([
+          { id: 'h_delete_0', kind: 'delete', blockPath: [0] },
+          { id: 'h_delete_1', kind: 'delete', blockPath: [1] },
+        ]),
+      ),
+    );
+    expect(result.current.activeHunkId).toBe('h_delete_0');
+    act(() => result.current.navigatePrev());
+    expect(result.current.activeHunkId).toBe('h_delete_1'); // 反向从 0 → last
+  });
+
+  it('setActiveHunkId 手动切焦点(点击节点场景)', () => {
+    const editor = mockEditor([
+      { type: 'p', children: [{ text: '段一' }] },
+      { type: 'p', children: [{ text: '段二' }] },
+    ]);
+    const { result } = renderHook(() => useProposalController(editor));
+    act(() =>
+      result.current.setProposal(
+        sampleProposal([
+          { id: 'h_delete_0', kind: 'delete', blockPath: [0] },
+          { id: 'h_delete_1', kind: 'delete', blockPath: [1] },
+        ]),
+      ),
+    );
+    expect(result.current.activeHunkId).toBe('h_delete_0');
+    act(() => result.current.setActiveHunkId('h_delete_1'));
+    expect(result.current.activeHunkId).toBe('h_delete_1');
+  });
+
+  it('navigateNext 跳过已裁决的 hunk(只在 pending 之间循环)', () => {
+    const editor = mockEditor([
+      { type: 'p', children: [{ text: '段一' }] },
+      { type: 'p', children: [{ text: '段二' }] },
+      { type: 'p', children: [{ text: '段三' }] },
+    ]);
+    const { result } = renderHook(() =>
+      useProposalController(editor, { onResolved: vi.fn(), serializeMd: () => 'CLEAN' }),
+    );
+    act(() =>
+      result.current.setProposal(
+        sampleProposal([
+          { id: 'h_delete_0', kind: 'delete', blockPath: [0] },
+          { id: 'h_delete_1', kind: 'delete', blockPath: [1] },
+          { id: 'h_delete_2', kind: 'delete', blockPath: [2] },
+        ]),
+      ),
+    );
+    // 跳到 h_delete_1 然后裁决它(active 应该 promote 到 h_delete_2)
+    act(() => result.current.setActiveHunkId('h_delete_1'));
+    act(() => result.current.rejectOne('h_delete_1'));
+    expect(result.current.activeHunkId).toBe('h_delete_2');
+    // navigateNext 从 _2 循环回 _0(_1 已裁决,跳过)
+    act(() => result.current.navigateNext());
+    expect(result.current.activeHunkId).toBe('h_delete_0');
+  });
+
   it('多个 callId 各自独立标记', () => {
     const editor = mockEditor([{ type: 'p', children: [{ text: '段' }] }]);
     const { result } = renderHook(() =>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Hunk } from './compute-doc-diff';
 import { applyProposalToEditor } from './apply-proposal-to-editor';
 import { markResolved } from './resolved-store';
@@ -65,8 +65,84 @@ export function useProposalController(
     optsRef.current = options;
   });
 
-  const hunks = proposal?.hunks ?? [];
+  /**
+   * hunks:稳定引用 —— proposal 变更时才新建数组,避免每次 render 触发下游
+   * useMemo/useEffect 依赖震荡(react-hooks/exhaustive-deps 也会因此抱怨)。
+   */
+  const hunks = useMemo(() => proposal?.hunks ?? [], [proposal]);
   const hasPending = hunks.length > 0 && hunks.some((h) => !decisions.has(h.id));
+
+  /**
+   * activeHunkId:当前被"聚焦"的 hunk,供:
+   *   - 视觉高亮(element renderer 读 context 判断当前 hunk 是不是它)
+   *   - 快捷键操作目标(Y/N 接受拒绝、scrollIntoView 自动滚动)
+   *
+   * 派生策略:**全部由 setter 主动推进**,不在 useEffect 里同步——避免 effect
+   * 内 setState 触发 cascading renders(react-hooks/set-state-in-effect 也禁这个)。
+   *   - setProposal(p): active = 第一个 hunk
+   *   - acceptOne/rejectOne: 若裁决目标就是 active,promote 到顺序里下一个 pending
+   *   - acceptAll/rejectAll: 走 commitDecisions → finalize → setProposal(undefined)
+   *     active 在 setProposal(undefined) 路径被清空
+   *   - setActiveHunkId(id): 用户点击切焦点
+   *
+   * 顺序前进:active 裁决后选**排在 active 之后**的第一个 pending(环绕),
+   * 不跳回首个,以免视觉乱跳。
+   */
+  const [activeHunkId, setActiveHunkIdState] = useState<string | undefined>(
+    undefined,
+  );
+
+  /** 算 active 被裁决后该 promote 到哪个 hunk(顺序前进 + 环绕) */
+  const pickNextActive = useCallback(
+    (
+      hunkList: Hunk[],
+      currentActive: string | undefined,
+      nextDecisions: Map<string, Decision>,
+    ): string | undefined => {
+      if (hunkList.length === 0) return undefined;
+      const pending = hunkList.filter((h) => !nextDecisions.has(h.id));
+      if (pending.length === 0) return undefined;
+      if (!currentActive) return pending[0].id;
+      const oldIdx = hunkList.findIndex((h) => h.id === currentActive);
+      if (oldIdx < 0) return pending[0].id;
+      // 从 oldIdx+1 开始环绕扫
+      for (let i = 1; i <= hunkList.length; i++) {
+        const candidate = hunkList[(oldIdx + i) % hunkList.length];
+        if (!nextDecisions.has(candidate.id)) return candidate.id;
+      }
+      return undefined;
+    },
+    [],
+  );
+
+  const setActiveHunkId = useCallback((id: string | undefined) => {
+    setActiveHunkIdState(id);
+  }, []);
+  /**
+   * 跳到下一个 / 上一个 pending hunk(基于 hunks 数组顺序循环)。
+   * 实时读 hunks + decisions(useCallback 闭包稳定,但 hunks/decisions 引用变化时会重新创建)。
+   */
+  const navigateNext = useCallback(() => {
+    const pending = hunks.filter((h) => !decisions.has(h.id));
+    if (pending.length === 0) return;
+    setActiveHunkIdState((current) => {
+      if (!current) return pending[0].id;
+      const idx = pending.findIndex((h) => h.id === current);
+      if (idx < 0) return pending[0].id;
+      return pending[(idx + 1) % pending.length].id;
+    });
+  }, [hunks, decisions]);
+
+  const navigatePrev = useCallback(() => {
+    const pending = hunks.filter((h) => !decisions.has(h.id));
+    if (pending.length === 0) return;
+    setActiveHunkIdState((current) => {
+      if (!current) return pending[pending.length - 1].id;
+      const idx = pending.findIndex((h) => h.id === current);
+      if (idx < 0) return pending[0].id;
+      return pending[(idx - 1 + pending.length) % pending.length].id;
+    });
+  }, [hunks, decisions]);
 
   /**
    * 全裁决后:节点树此刻已只剩正常 'p' 节点,serializeMd 安全。
@@ -101,6 +177,8 @@ export function useProposalController(
         decisionsRef.current = new Map();
         setProposalState(p);
         setDecisions(new Map());
+        // active 推进:新 proposal 进来,active = 第一个 hunk
+        setActiveHunkIdState(p.hunks[0]?.id);
         // 关键:立刻展开节点树
         applyProposalToEditor(editor, p.hunks);
       } else {
@@ -120,6 +198,7 @@ export function useProposalController(
         decisionsRef.current = new Map();
         setProposalState(undefined);
         setDecisions(new Map());
+        setActiveHunkIdState(undefined);
       }
     },
     [editor, ed],
@@ -132,9 +211,21 @@ export function useProposalController(
       const currentProposal = proposalRef.current;
       if (!currentProposal || currentProposal.hunks.length === 0) return;
       const allDecided = currentProposal.hunks.every((h) => nextDecisions.has(h.id));
-      if (allDecided) finalize(currentProposal, nextDecisions);
+      if (allDecided) {
+        finalize(currentProposal, nextDecisions);
+        // finalize 已 setProposalState(undefined),active 在 setProposal 撤回路径或下一个
+        // proposal 进入时被推进
+        setActiveHunkIdState(undefined);
+        return;
+      }
+      // 推进 active:若当前 active 已被裁决,顺序前进到下一个 pending
+      // 用 setActiveHunkIdState 的函数式更新避免依赖 stale state
+      setActiveHunkIdState((current) => {
+        if (current && !nextDecisions.has(current)) return current;
+        return pickNextActive(currentProposal.hunks, current, nextDecisions);
+      });
     },
-    [finalize],
+    [finalize, pickNextActive],
   );
 
   /**
@@ -245,5 +336,9 @@ export function useProposalController(
     rejectOne,
     acceptAll,
     rejectAll,
+    activeHunkId,
+    setActiveHunkId,
+    navigateNext,
+    navigatePrev,
   };
 }

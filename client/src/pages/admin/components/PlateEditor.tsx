@@ -28,6 +28,7 @@ import {
 import { serializeMd, deserializeMd } from '@platejs/markdown';
 // v3 改稿依赖
 import { useProposalController, type Proposal } from '@/pages/admin/lib/use-proposal-controller';
+import { useProposalKeyboardNav } from '@/pages/admin/lib/use-proposal-keyboard-nav';
 import { ProposalToolbar } from '@/components/ai-advisor/ProposalToolbar';
 import { ProposalControlsContext } from '@/components/editor/proposal-controls-context';
 
@@ -159,11 +160,25 @@ function ProposalBridge({ pending, onResolved, onHasPendingChange, children }: P
 
   const pendingCount = controller.hunks.filter((h) => !controller.decisions.has(h.id)).length;
 
+  // 全局快捷键:Y/N/J/K + ⌘⏎/⌘⌫ —— 仅审批进行中挂载
+  useProposalKeyboardNav({
+    enabled: controller.hasPending,
+    activeHunkId: controller.activeHunkId,
+    acceptOne: controller.acceptOne,
+    rejectOne: controller.rejectOne,
+    navigateNext: controller.navigateNext,
+    navigatePrev: controller.navigatePrev,
+    acceptAll: controller.acceptAll,
+    rejectAll: controller.rejectAll,
+  });
+
   return (
     <ProposalControlsContext.Provider
       value={{
         acceptOne: controller.acceptOne,
         rejectOne: controller.rejectOne,
+        activeHunkId: controller.activeHunkId,
+        setActiveHunkId: controller.setActiveHunkId,
       }}
     >
       <ProposalToolbar
