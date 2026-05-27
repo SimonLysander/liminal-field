@@ -23,6 +23,7 @@ import { MathKit } from './plugins/math-kit';
 import { MediaKit } from './plugins/media-kit';
 import { SlashKit } from './plugins/slash-kit';
 import { TableKit } from './plugins/table-kit';
+import { ProposalNewPlugin, ProposalOldPlugin } from './proposal-plugin';
 
 export const EditorKit = [
   ...BasicNodesKit,
@@ -58,4 +59,10 @@ export const EditorKit = [
     node: { component: SuggestionLeaf },
     options: { currentUserId: 'aurora' },
   }),
+
+  /* v3.1 改稿审批节点(临时,裁决期间存在):
+     proposal-old = 红底删除线旧段落;proposal-new = 绿底 AI 新段落。
+     裁决后由 controller 改回 'p' 或 removeNodes。 */
+  ProposalOldPlugin,
+  ProposalNewPlugin,
 ];
