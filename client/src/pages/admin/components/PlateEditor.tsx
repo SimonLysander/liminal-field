@@ -28,8 +28,8 @@ import {
 import { serializeMd, deserializeMd } from '@platejs/markdown';
 // v3 改稿依赖
 import { useProposalController, type Proposal } from '@/pages/admin/lib/use-proposal-controller';
-import { ProposalOverlay } from '@/components/ai-advisor/ProposalOverlay';
 import { ProposalToolbar } from '@/components/ai-advisor/ProposalToolbar';
+import { ProposalControlsContext } from '@/components/editor/proposal-controls-context';
 
 import { fixCodeBlockLines } from '@/components/shared/plate-transforms';
 import { EditorKit } from '@/components/editor/editor-kit';
@@ -105,27 +105,28 @@ function AnchorBridge({
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// v3 ProposalBridge:组装 useProposalController + ProposalOverlay + ProposalToolbar
+// v3.1 ProposalBridge:Context Provider 模式 — 节点树自带渲染,弃 ProposalOverlay + rAF
 // ────────────────────────────────────────────────────────────────────────────
-
 
 interface ProposalBridgeProps {
   pending?: Proposal;
   onResolved?: (cleanMarkdown: string) => void;
   onHasPendingChange?: (hasPending: boolean) => void;
+  children: React.ReactNode;
 }
 
 /**
- * ProposalBridge —— 在 <Plate> context 内组装 v3 三件套:
- * useProposalController(状态机) + ProposalOverlay(就地渲染) + ProposalToolbar(顶部条)。
+ * ProposalBridge —— v3.1 改稿桥:
  *
- * 与 v2 的 ProposalReviewBridge **并存**,Task 10 才删 v2 路径。父级 PlateEditor 选用哪条
- * 由 props 决定:传 v3Proposal 走 v3,传 pending/activeProposal 走 v2。
+ * - controller 收 pending,内部展开节点树 + 提供 acceptOne/rejectOne
+ * - 用 ProposalControlsContext.Provider 把回调透给 Plate element renderer 内的 ✓✗ 按钮
+ * - ProposalToolbar 顶部条沿用(剩余 N / 全部 ✓✗)
  *
- * 要求:调用方在 editor DOM 容器上设 `position: relative`
- * (EditorContainer 默认有 relative,ProposalOverlay 才能绝对定位正确)。
+ * 与 v3 ProposalBridge 的关键差异:
+ * - 弃 ProposalOverlay + rAF + overlayReady(节点树自带渲染,element renderer 直接读 Context)
+ * - 多了 children 参数(EditorContainer 等作为 Provider 子节点)
  */
-function ProposalBridge({ pending, onResolved, onHasPendingChange }: ProposalBridgeProps) {
+function ProposalBridge({ pending, onResolved, onHasPendingChange, children }: ProposalBridgeProps) {
   const editor = useEditorRef();
   const controller = useProposalController(editor, {
     onResolved,
@@ -145,7 +146,7 @@ function ProposalBridge({ pending, onResolved, onHasPendingChange }: ProposalBri
     onHasPendingChangeRef.current?.(controller.hasPending);
   }, [controller.hasPending]);
 
-  // 接收外部传入的 pending proposal:callId 变化时重新 setProposal
+  // 接收外部传入的 pending proposal:callId 变化时重新 setProposal(controller 内部展开节点树)
   useEffect(() => {
     if (pending && pending.callId !== controller.proposal?.callId) {
       controller.setProposal(pending);
@@ -158,42 +159,21 @@ function ProposalBridge({ pending, onResolved, onHasPendingChange }: ProposalBri
 
   const pendingCount = controller.hunks.filter((h) => !controller.decisions.has(h.id)).length;
 
-  // 延迟挂载 ProposalOverlay 一帧:
-  // setHasV3Pending 是父级 state,onHasPendingChange 触发后 readOnly=true 切换 + Plate 内部
-  // 把真编辑器 contenteditable 改为 false 是 React 异步过程。如果 ProposalOverlay 与 controller
-  // 同步挂载,首次 useMemo/useEffect 跑 DOM 查询时 contenteditable 还是 "true",selector
-  // `[data-slate-editor][contenteditable="false"]` 失败 → overlays 空。
-  // 用 rAF 推到下一帧,DOM 更新一定完成。
-  const [overlayReady, setOverlayReady] = useState(false);
-  useEffect(() => {
-    if (controller.hasPending) {
-      const raf = requestAnimationFrame(() => setOverlayReady(true));
-      return () => {
-        cancelAnimationFrame(raf);
-        setOverlayReady(false);
-      };
-    }
-    setOverlayReady(false);
-    return undefined;
-  }, [controller.hasPending]);
-
   return (
-    <>
+    <ProposalControlsContext.Provider
+      value={{
+        acceptOne: controller.acceptOne,
+        rejectOne: controller.rejectOne,
+      }}
+    >
       <ProposalToolbar
         pendingCount={pendingCount}
         totalCount={controller.hunks.length}
         onAcceptAll={controller.acceptAll}
         onRejectAll={controller.rejectAll}
       />
-      {overlayReady && (
-        <ProposalOverlay
-          hunks={controller.hunks}
-          decisions={controller.decisions}
-          onAcceptOne={controller.acceptOne}
-          onRejectOne={controller.rejectOne}
-        />
-      )}
-    </>
+      {children}
+    </ProposalControlsContext.Provider>
   );
 }
 
@@ -381,25 +361,24 @@ export function PlateMarkdownEditor({
         {/* v3 EditorChildrenBridge —— 传了 editorRefSync 才挂,把 editor.children/editor
             写进 ref,外层 getEditorChildren/getEditor 给 use-advisor-chat 算 computeDocDiff 用 */}
         {editorRefSync && <EditorChildrenBridge bridgeRef={editorRefSync} />}
-        <EditorContainer
-          className="prose-draft-editor-surface"
-          style={{ position: 'relative' }}
-          onPointerDownCapture={() => setToolbarSuppressed(false)}
+        {/* v3.1 ProposalBridge 包裹 EditorContainer:
+            controller 展开节点树后,element renderer 通过 ProposalControlsContext 拿 acceptOne/rejectOne;
+            弃用 ProposalOverlay(absolute overlay) + rAF 延迟,节点树自带就地渲染不需要定位上下文。 */}
+        <ProposalBridge
+          pending={v3Proposal}
+          onResolved={onV3Resolved}
+          onHasPendingChange={(hasPending) => {
+            setHasV3Pending(hasPending);
+            onHasV3PendingChange?.(hasPending);
+          }}
         >
-          <Editor variant="default" placeholder="开始写作..." />
-          {/* v3 ProposalBridge 必须放在 EditorContainer 内部:
-              ProposalOverlay 输出的 absolute div 需要 EditorContainer(position:relative)
-              作为定位上下文,top/left 才会相对 editor 内容区算出正确位置;
-              如果挂在 Plate 外层,absolute 会相对 viewport/body → 浮层飘到屏幕左上角。 */}
-          <ProposalBridge
-            pending={v3Proposal}
-            onResolved={onV3Resolved}
-            onHasPendingChange={(hasPending) => {
-              setHasV3Pending(hasPending);
-              onHasV3PendingChange?.(hasPending);
-            }}
-          />
-        </EditorContainer>
+          <EditorContainer
+            className="prose-draft-editor-surface"
+            onPointerDownCapture={() => setToolbarSuppressed(false)}
+          >
+            <Editor variant="default" placeholder="开始写作..." />
+          </EditorContainer>
+        </ProposalBridge>
         {!toolbarSuppressed && (
           <FloatingToolbar>
             <FloatingToolbarButtons
