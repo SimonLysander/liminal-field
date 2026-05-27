@@ -217,9 +217,7 @@ export class TestContext {
     );
     this.app.useGlobalFilters(new AllExceptionsFilter());
 
-    // @ts-expect-error @fastify/cookie 11.x 与 fastify 5.x 核心类型版本漂移，运行时兼容
     await this.app.register(cookie);
-    // @ts-expect-error @fastify/multipart 10.x 与 fastify 5.x 核心类型版本漂移，运行时兼容
     await this.app.register(multipart, {
       limits: { fileSize: 200 * 1024 * 1024 },
     });
