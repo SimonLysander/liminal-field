@@ -16,7 +16,8 @@ export type ToolStatus =
   | 'ambiguous'
   | 'error'
   | 'timeout'
-  | 'invalid'; // 输入结构校验失败(如空 edits)
+  | 'invalid' // 输入结构校验失败(如空 edits)
+  | 'stale'; // baseHash 与服务器当前 hash 不符,需要重新基于最新版生成
 
 export interface ToolResultMeta {
   status?: ToolStatus;
