@@ -128,7 +128,7 @@ export class SettingsController {
 
   @Put('integration-config')
   async saveIntegrationConfig(
-    @Body() dto: { mineruToken?: string },
+    @Body() dto: { mineruToken?: string; tavilyApiKey?: string },
   ): Promise<{ success: boolean }> {
     await this.systemConfigService.saveIntegrationConfig(dto);
     return { success: true };

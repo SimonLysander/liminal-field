@@ -21,6 +21,7 @@ export interface SettingsConfigView {
   };
   integration: {
     hasMineruToken: boolean;
+    hasTavilyApiKey: boolean;
   };
   ai: {
     /** 已配置的 AI 提供商列表（API Key 脱敏，不含原文） */
@@ -86,6 +87,10 @@ export class SystemConfigService implements OnModuleInit {
     'read_conversation_history',
     // v3:单工具纯管道,前端做 diff 与 hunk 审批(替代 v2 rewrite_* 工具)
     'propose_document_rewrite',
+    // 联网能力:web_search(Tavily/Serper/...)+ web_fetch(Jina Reader/...)
+    // 装配层会按 .env 是否配 key 实际挂载(没 key 时 web_search 自动不挂)
+    'web_search',
+    'web_fetch',
   ];
 
   constructor(
@@ -128,10 +133,16 @@ export class SystemConfigService implements OnModuleInit {
       const wa = config?.agentConfigs?.find((c) => c.key === 'writing-advisor');
       if (wa) {
         // 退役的 v2 工具名：rewrite_selection(Task 8 前已删)、rewrite_reference/rewrite_document(Task 9 退役)
-        const v2ToolsToRemove = ['rewrite_selection', 'rewrite_reference', 'rewrite_document'];
+        const v2ToolsToRemove = [
+          'rewrite_selection',
+          'rewrite_reference',
+          'rewrite_document',
+        ];
         const beforeTools = wa.tools;
         wa.tools = wa.tools.filter((t) => !v2ToolsToRemove.includes(t));
-        const removedOldTools = beforeTools.filter((t) => v2ToolsToRemove.includes(t));
+        const removedOldTools = beforeTools.filter((t) =>
+          v2ToolsToRemove.includes(t),
+        );
         const removedOldTool = removedOldTools.length > 0;
         const missing = allTools.filter((t) => !wa.tools.includes(t));
         if (missing.length > 0 || removedOldTool) {
@@ -141,7 +152,9 @@ export class SystemConfigService implements OnModuleInit {
             this.logger.log(`writing-advisor 补齐工具: ${missing.join(', ')}`);
           }
           if (removedOldTool) {
-            this.logger.log(`writing-advisor 移除旧工具: ${removedOldTools.join(', ')}`);
+            this.logger.log(
+              `writing-advisor 移除旧工具: ${removedOldTools.join(', ')}`,
+            );
           }
         }
       }
@@ -162,6 +175,7 @@ export class SystemConfigService implements OnModuleInit {
       },
       integration: {
         hasMineruToken: !!config?.mineruToken,
+        hasTavilyApiKey: !!config?.tavilyApiKey,
       },
       ai: {
         providers: (config?.aiProviders ?? []).map((p) => ({
@@ -245,11 +259,18 @@ export class SystemConfigService implements OnModuleInit {
     );
   }
 
-  async saveIntegrationConfig(input: { mineruToken?: string }): Promise<void> {
+  async saveIntegrationConfig(input: {
+    mineruToken?: string;
+    tavilyApiKey?: string;
+  }): Promise<void> {
     const fields: Record<string, string> = {};
     if (input.mineruToken !== undefined) {
       fields.mineruToken = input.mineruToken;
       process.env.MINERU_TOKEN = input.mineruToken;
+    }
+    if (input.tavilyApiKey !== undefined) {
+      fields.tavilyApiKey = input.tavilyApiKey;
+      process.env.TAVILY_API_KEY = input.tavilyApiKey;
     }
 
     await this.repo.patch(fields);
@@ -511,6 +532,7 @@ export class SystemConfigService implements OnModuleInit {
     gitSyncCron?: string;
     gitSyncEnabled?: boolean;
     mineruToken?: string;
+    tavilyApiKey?: string;
   }): void {
     if (config.remoteUrl) process.env.KB_REMOTE_URL = config.remoteUrl;
     if (config.gitToken) process.env.KB_GIT_TOKEN = config.gitToken;
@@ -523,6 +545,7 @@ export class SystemConfigService implements OnModuleInit {
     process.env.GIT_SYNC_ENABLED =
       config.gitSyncEnabled === false ? 'false' : 'true';
     if (config.mineruToken) process.env.MINERU_TOKEN = config.mineruToken;
+    if (config.tavilyApiKey) process.env.TAVILY_API_KEY = config.tavilyApiKey;
   }
 
   /**

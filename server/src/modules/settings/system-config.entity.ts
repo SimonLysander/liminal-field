@@ -187,6 +187,10 @@ export class SystemConfig {
   @prop({ trim: true, default: '' })
   mineruToken!: string;
 
+  /** Tavily Web Search API key,空 → web_search 工具不挂载(模型看不到不会调) */
+  @prop({ trim: true, default: '' })
+  tavilyApiKey!: string;
+
   // ── AI ──
 
   /**

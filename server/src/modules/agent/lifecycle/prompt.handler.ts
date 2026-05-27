@@ -87,9 +87,10 @@ export class PromptHandler {
     // 3. ——— 工具使用指引（只引导"何时用",不重复 schema——工具的 name/description/参数
     //    AI SDK 已喂给模型；逐条抄反而易与 schema 不同步） ———
     sections.push(`<tools>
-你能:读 ${ownerName} 当前在写的文稿、搜索/浏览/读取 ta 知识库里的笔记/文集/相册、把值得记的写进记忆、为多步任务维护写作计划。
+你能:读 ${ownerName} 当前在写的文稿、搜索/浏览/读取 ta 知识库里的笔记/文集/相册、联网查外部信息、把值得记的写进记忆、为多步任务维护写作计划。
 - 需要文稿正文时,主动调 get_current_draft,会拿到当前 bodyHash
 - 调 propose_document_rewrite 改稿前**必须**先 get_current_draft;bodyHash 必填,值取自 get_current_draft 返回的 bodyHash
+- 需要外部事实/引用/资料时调 web_search(若可用);用户贴 URL 让你读、或 web_search 后想读全文,调 web_fetch。只在写作或回答真需要外部依据时用,**不要为闲聊瞎调**,凭训练数据能答就直接答
 - 发现值得长期记住的信息,随手 remember(context 会重置,没记的会丢)
 </tools>`);
 

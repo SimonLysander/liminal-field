@@ -10,6 +10,9 @@
  * - list_knowledge_base：列出知识库内容目录（ls/tree：看有哪些）
  * - read_document_content：读取单篇文档完整正文
  * - get_current_draft：获取当前编辑文档
+ * - propose_document_rewrite：提议改稿（有 document 时挂）
+ * - web_search：联网搜索（配了 TAVILY_API_KEY 等才挂；未配优雅降级）
+ * - web_fetch：读 URL 全文（Jina Reader，免 key 总挂）
  * - remember：记住信息，走 MemoryAgentService 处理分类/去重/合并
  * - forget：忘记信息，走 MemoryAgentService 匹配删除
  *
@@ -31,6 +34,10 @@ import { createSubAgentTool } from '../tools/sub-agent.tool';
 import { createWriteTasksTool } from '../tools/write-tasks.tool';
 import { createReadConversationHistoryTool } from '../tools/read-conversation-history.tool';
 import { createProposeDocumentRewriteTool } from '../tools/propose-document-rewrite.tool';
+import { createWebSearchTool } from '../tools/web-search.tool';
+import { createWebSearchProviderFromEnv } from '../tools/web-search-provider';
+import { createWebFetchTool } from '../tools/web-fetch.tool';
+import { createWebFetchProviderFromEnv } from '../tools/web-fetch-provider';
 import { AgentSessionRepository } from '../session/agent-session.repository';
 import { AgentMemoryRepository } from '../memory/agent-memory.repository';
 import type { DocumentContext } from '../tools/get-current-document.tool';
@@ -73,6 +80,14 @@ export class ToolAssembler {
     // 保留 lazy 形态为未来"chat 期间文档热更替"留接口——届时只需让 entryContext.document
     // 变成可变引用(或在 lifecycle 中主动 reassign),工具层无需变更。
     const getDocument = () => entryContext.document;
+
+    // 联网搜索:provider 从 .env 选(默认 Tavily),没配 API key 时 createWebSearchProviderFromEnv
+    // 返 undefined,本次装配不挂 web_search 工具(模型看不到自然不会调,优雅降级)。
+    // 这里每次 assemble 调一次 — provider 不持久 state,工厂便宜,不必缓存。
+    const webSearchProvider = createWebSearchProviderFromEnv();
+    // 联网读 URL:Jina Reader 免 key 起步,总会返 provider;装配层无脑挂工具。
+    const webFetchProvider = createWebFetchProviderFromEnv();
+
     const rawTools = {
       // 知识库搜索（grep：按内容找）：全局可用
       search_knowledge_base: createSearchKnowledgeBaseTool(this.contentService),
@@ -120,6 +135,12 @@ export class ToolAssembler {
               createProposeDocumentRewriteTool(getDocument),
           }
         : {}),
+      // 联网搜索:有 provider 才挂(没配 key 时 webSearchProvider=undefined 优雅降级)
+      ...(webSearchProvider
+        ? { web_search: createWebSearchTool(webSearchProvider) }
+        : {}),
+      // 联网读 URL:Jina 免 key 总能用,直接挂
+      web_fetch: createWebFetchTool(webFetchProvider),
     };
 
     // 按白名单过滤工具：allowedTools 不为空时只保留白名单内的工具
