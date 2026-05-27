@@ -207,6 +207,16 @@ export function useAdvisorChat({
         const callId =
           (part as { toolCallId?: string }).toolCallId ?? msg.id ?? '';
         if (resolvedSet.has(callId)) continue;
+        // stale/invalid:服务器拒绝了这个 propose(bodyHash 不匹配 / 缺失 / 无文档)。
+        // 模型在同 turn 已收到提示会重新 propose(新 callId);这里把当前作废,
+        // 避免拉起伪审批。仍 markResolved 保证刷新后也不再被 v3ProposalsByCallId 算出。
+        // 用 proposeStatus 命名避免与外层 useChat 的 status 视觉混淆。
+        const output = (part as { output?: { status?: string } }).output;
+        const proposeStatus = output?.status;
+        if (proposeStatus === 'stale' || proposeStatus === 'invalid') {
+          markResolved(callId);
+          continue;
+        }
         try {
           const oldChildren = getEditorChildren();
           const editor = getEditor();
