@@ -487,6 +487,20 @@ html { font-size: 16px; }
   color: var(--ink);
 }
 
+/* Aurora add-to-chat 引用回指：hover/click 左侧 chip 时临时高亮编辑区原文。
+   使用 CSS Custom Highlight API，不改 Plate 节点树、不污染 markdown。 */
+::highlight(chat-selection) {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: var(--ink);
+}
+
+/* Aurora proposal review:中间内容区审查时高亮模型建议对应的原文范围。
+   只使用浏览器 highlight overlay，不写入 Plate 节点树。 */
+::highlight(ai-edit-proposal-target) {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--ink);
+}
+
 body {
   font-family: var(--font-sans);
   background: var(--paper);
@@ -783,6 +797,15 @@ textarea:focus {
  * 内层 textarea 退出上面那条单层边,避免"框中框"。 */
 textarea.composer-input:focus {
   box-shadow: none;
+}
+
+.composer-input[contenteditable="true"]:focus {
+  box-shadow: none;
+}
+
+.composer-input:empty::before {
+  color: var(--ink-ghost);
+  pointer-events: none;
 }
 
 /* 写作顾问侧栏输入框:focus 环作用在整个容器(输入框真正的边界),
@@ -1132,4 +1155,36 @@ body.gallery-immersive aside {
 @media (prefers-reduced-motion: reduce) {
   .grow-loop img,
   .grow-loop .gs-seed, .grow-loop .gs-bud, .grow-loop .gs-half, .grow-loop .gs-bloom { animation: none; }
+}
+
+/* ── v3 改稿 overlay ──────────────────────────────────────────────────────────
+ * ProposalOverlay 的两套渲染机制:CSS Custom Highlight 染红删 + DOM overlay 浮绿增
+ * --------------------------------------------------------------------------- */
+
+/* CSS Custom Highlight 染"红删":被替换/删除的旧文本范围
+ * 通过 JS 注册到 CSS.highlights('proposal-del', new Highlight(...ranges)) */
+::highlight(proposal-del) {
+  background-color: color-mix(in srgb, var(--mark-red, #D24B3E) 20%, transparent);
+  text-decoration: line-through;
+  text-decoration-color: var(--mark-red, #D24B3E);
+}
+
+/* DOM overlay 浮"绿增":insert/replace 的新内容浮层(不进 Plate 节点树) */
+.proposal-ins {
+  display: block;
+  background-color: color-mix(in srgb, var(--mark-green, #3F9D57) 18%, transparent);
+  border-left: 2px solid var(--mark-green, #3F9D57);
+  padding: 2px 8px;
+  margin: 4px 0;
+  font-family: var(--font-reading, inherit);
+  white-space: pre-wrap;
+  pointer-events: none; /* 不干扰下方编辑器交互 */
+}
+
+/* hunk 浮按钮容器:接受/拒绝按钮绝对定位在 hunk 旁 */
+.proposal-hunk-actions {
+  position: absolute;
+  display: flex;
+  gap: 4px;
+  z-index: 10;
 }
