@@ -274,6 +274,15 @@ export function PlateMarkdownEditor({
     // 裁决完毕后由 controller 主动 serializeMd 干净正文回流(onResolved),不走这条 onChange。
     // api.nodes({at:[]}) 返回数组,非空即还有未决。
     if (editor.getApi(SuggestionPlugin).suggestion.nodes({ at: [] }).length > 0) return;
+    // v3.1 改稿审批守卫:editor 含 proposal-old / proposal-new 临时节点时跳过同步。
+    // 否则 serializeMd 看到这些 type 会输出 "Unreachable code" 警告,且把临时节点写进 bodyMarkdown
+    // 污染 localStorage 草稿。审批完(controller.finalize)节点清干净后 controller 主动调
+    // onResolved → setBody(md, true) 触发一次干净保存。
+    const hasProposalNode = editor.children.some((node) => {
+      const t = (node as { type?: string }).type;
+      return t === 'proposal-old' || t === 'proposal-new';
+    });
+    if (hasProposalNode) return;
     // 过滤掉上传中的 placeholder 节点再序列化，避免脏 HTML 污染 markdown
     const hasPlaceholder = editor.children.some(
       (node) => 'type' in node && (node as { type: string }).type === 'placeholder',

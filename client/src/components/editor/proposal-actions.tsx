@@ -19,18 +19,41 @@ interface Props {
 export function ProposalActions({ hunkId }: Props) {
   const ctx = useContext(ProposalControlsContext);
   if (!hunkId || !ctx) return null;
+  // 拒绝在前、接受在后 —— 让"主动接受"成为右侧的"前进按钮"位置,符合中文阅读流(否定先于肯定)
   return (
     <div
       contentEditable={false}
       style={{
         display: 'flex',
-        gap: 8,
-        marginTop: 6,
-        paddingTop: 4,
+        gap: 6,
+        marginTop: 4,
+        paddingTop: 3,
+        justifyContent: 'flex-end',
         userSelect: 'none',
-        borderTop: '1px dashed color-mix(in srgb, var(--mark-green, #3F9D57) 30%, transparent)',
+        borderTop: '1px dashed color-mix(in srgb, var(--mark-green, #3F9D57) 25%, transparent)',
       }}
     >
+      <button
+        type="button"
+        onClick={() => ctx.rejectOne(hunkId)}
+        aria-label="拒绝这处改动"
+        style={{
+          background: 'transparent',
+          color: 'var(--mark-red, #D24B3E)',
+          border: '1px solid var(--mark-red, #D24B3E)',
+          borderRadius: 3,
+          padding: '1px 8px',
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 3,
+          fontSize: 11,
+          lineHeight: 1.4,
+        }}
+      >
+        <X size={11} />
+        拒绝
+      </button>
       <button
         type="button"
         onClick={() => ctx.acceptOne(hunkId)}
@@ -38,38 +61,19 @@ export function ProposalActions({ hunkId }: Props) {
         style={{
           background: 'var(--mark-green, #3F9D57)',
           color: '#fff',
-          border: 'none',
-          borderRadius: 4,
-          padding: '3px 10px',
+          border: '1px solid var(--mark-green, #3F9D57)',
+          borderRadius: 3,
+          padding: '1px 8px',
           cursor: 'pointer',
           display: 'inline-flex',
           alignItems: 'center',
-          gap: 4,
-          fontSize: 12,
+          gap: 3,
+          fontSize: 11,
+          lineHeight: 1.4,
         }}
       >
-        <Check size={13} />
+        <Check size={11} />
         接受
-      </button>
-      <button
-        type="button"
-        onClick={() => ctx.rejectOne(hunkId)}
-        aria-label="拒绝这处改动"
-        style={{
-          background: 'var(--mark-red, #D24B3E)',
-          color: '#fff',
-          border: 'none',
-          borderRadius: 4,
-          padding: '3px 10px',
-          cursor: 'pointer',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 4,
-          fontSize: 12,
-        }}
-      >
-        <X size={13} />
-        拒绝
       </button>
     </div>
   );
