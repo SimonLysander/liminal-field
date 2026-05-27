@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Hunk } from './compute-doc-diff';
 import { applyProposalToEditor } from './apply-proposal-to-editor';
+import { markResolved } from './resolved-store';
 import { PROPOSAL_OLD, PROPOSAL_NEW } from '@/components/editor/proposal-plugin';
 
 /**
@@ -70,6 +71,7 @@ export function useProposalController(
   /**
    * 全裁决后:节点树此刻已只剩正常 'p' 节点,serializeMd 安全。
    * 仅当有 accepted hunks 时触发 onResolved(全拒绝时不写回 bodyMarkdown)。
+   * 无论 accept 还是 reject,都把 callId 标记为 resolved —— 防刷新后又拉起审批。
    */
   const finalize = useCallback(
     (currentProposal: Proposal, currentDecisions: Map<string, Decision>) => {
@@ -80,6 +82,8 @@ export function useProposalController(
         const md = optsRef.current.serializeMd?.();
         if (md !== undefined) optsRef.current.onResolved?.(md);
       }
+      // 标记 resolved 防刷新后又被 v3ProposalsByCallId 算出 hunks 重新拉起审批
+      markResolved(currentProposal.callId);
       proposalRef.current = undefined;
       setProposalState(undefined);
     },

@@ -1,4 +1,4 @@
-import { Check, X } from 'lucide-react';
+import { PencilLine, Check, X } from 'lucide-react';
 
 interface Props {
   pendingCount: number;
@@ -8,56 +8,94 @@ interface Props {
 }
 
 /**
- * ProposalToolbar —— v3 审批顶部固定条。
+ * ProposalToolbar —— v3.1 审批顶部条(与编辑区同宽 + sticky)。
  *
- * 仅在有 pending hunks 时显示;全裁决完由父级(ProposalBridge)控制隐藏(pendingCount 变为 0 时
- * 此组件自动返回 null)。
- *
- * 设计系统:纸墨 + 长春花紫 accent;红绿语义(接受绿、拒绝红)。
- * sticky 贴顶防滚动后裁决入口消失。
+ * 设计:
+ * - **宽度跟编辑区一致**:外层 max-w + mx-auto(与 EditorContainer 同源 --layout-editor-max)
+ * - **左**:笔图标 + 统计(共 N 处 · 已审 X / 剩 Y)
+ * - **右**:[拒绝全部](outline 红)[接受全部](实心绿)—— 与单 hunk 按钮风格一致
+ * - 半透明纸墨纹 + 浅 accent 调子,与编辑区 visual continuity
+ * - pendingCount === 0 时自动隐藏(裁决完毕)
  */
 export function ProposalToolbar({ pendingCount, totalCount, onAcceptAll, onRejectAll }: Props) {
   if (pendingCount === 0) return null;
+  const decided = totalCount - pendingCount;
 
   return (
     <div
-      className="flex items-center gap-3 px-4 py-2 text-sm sticky top-0 z-20"
+      className="sticky top-0 z-20 mx-auto w-full"
       style={{
-        background: 'color-mix(in srgb, var(--accent) 6%, var(--paper))',
-        borderBottom: '1px solid var(--separator)',
+        maxWidth: 'var(--layout-editor-max)',
+        background: 'color-mix(in srgb, var(--accent) 8%, var(--paper))',
+        border: '1px solid color-mix(in srgb, var(--accent) 20%, transparent)',
+        borderRadius: 6,
+        padding: '6px 12px',
+        marginBottom: 8,
         fontFamily: 'var(--font-reading)',
+        backdropFilter: 'blur(6px)',
       }}
     >
-      <span style={{ color: 'var(--ink-faded)' }}>
-        剩余 {pendingCount} / 共 {totalCount} 处改动
-      </span>
-      <div className="ml-auto flex gap-2">
-        <button
-          type="button"
-          onClick={onAcceptAll}
-          className="flex items-center gap-1 px-3 py-1 rounded text-xs"
-          style={{
-            background: 'var(--mark-green, #2da44e)',
-            color: '#fff',
-            border: 'none',
-            cursor: 'pointer',
-          }}
-        >
-          <Check size={12} /> 全部接受
-        </button>
-        <button
-          type="button"
-          onClick={onRejectAll}
-          className="flex items-center gap-1 px-3 py-1 rounded text-xs"
-          style={{
-            background: 'var(--mark-red, #d63b3b)',
-            color: '#fff',
-            border: 'none',
-            cursor: 'pointer',
-          }}
-        >
-          <X size={12} /> 全部拒绝
-        </button>
+      <div className="flex items-center gap-3 text-sm">
+        {/* 左:统计 */}
+        <div className="flex items-center gap-2" style={{ color: 'var(--ink)' }}>
+          <PencilLine size={14} strokeWidth={2} style={{ color: 'var(--accent)' }} />
+          <span style={{ fontWeight: 500 }}>共 {totalCount} 处改动</span>
+          <span style={{ color: 'var(--ink-faded)', fontSize: 12 }}>
+            ·{' '}
+            {decided > 0 && (
+              <>
+                已审 <strong style={{ color: 'var(--ink)' }}>{decided}</strong> ·{' '}
+              </>
+            )}
+            待审 <strong style={{ color: 'var(--accent)' }}>{pendingCount}</strong>
+          </span>
+        </div>
+
+        {/* 右:全部按钮 */}
+        <div className="ml-auto flex gap-2">
+          <button
+            type="button"
+            onClick={onRejectAll}
+            aria-label="拒绝全部改动"
+            style={{
+              background: 'transparent',
+              color: 'var(--mark-red, #D24B3E)',
+              border: '1px solid var(--mark-red, #D24B3E)',
+              borderRadius: 4,
+              padding: '3px 10px',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              fontSize: 12,
+              lineHeight: 1.4,
+            }}
+          >
+            <X size={12} />
+            拒绝全部
+          </button>
+          <button
+            type="button"
+            onClick={onAcceptAll}
+            aria-label="接受全部改动"
+            style={{
+              background: 'var(--mark-green, #3F9D57)',
+              color: '#fff',
+              border: '1px solid var(--mark-green, #3F9D57)',
+              borderRadius: 4,
+              padding: '3px 10px',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              fontSize: 12,
+              lineHeight: 1.4,
+            }}
+          >
+            <Check size={12} />
+            接受全部
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -32,6 +32,7 @@ import type { Descendant } from 'platejs';
 import { deserializeMd } from '@platejs/markdown';
 import { loadSession, saveSession, type SessionTask } from '@/services/agent';
 import { computeDocDiff } from '@/pages/admin/lib/compute-doc-diff';
+import { readResolved, markResolved } from '@/pages/admin/lib/resolved-store';
 import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
 // edit-session 现仅保留 ReferenceRegistry（渲染层读取历史 references 用于 chip 展示）
 // createEditSession / isEditConfirmation / isReferenceEditRequest 已随 v2 send 逻辑一并删除
@@ -186,9 +187,13 @@ export function useAdvisorChat({
    * getEditorChildren / getEditor 直接作为 useMemo 依赖（render scope 里稳定），
    * 未传时静默返回空对象（上层 Task 8 接入后才有值）。
    */
+  // 已裁决 callId 跳过:防"接受/拒绝后刷新页面 → 又重新进入审批"。
+  // resolved-store 用全局 localStorage 持久化(callId 全局唯一,无需 per-session)。
   const v3ProposalsByCallId = useMemo<Record<string, Proposal>>(() => {
     const result: Record<string, Proposal> = {};
     if (!getEditorChildren || !getEditor) return result;
+
+    const resolvedSet = readResolved();
 
     for (const msg of messages) {
       if (msg.role !== 'assistant' || !Array.isArray(msg.parts)) continue;
@@ -201,11 +206,17 @@ export function useAdvisorChat({
         if (!input?.newMarkdown) continue;
         const callId =
           (part as { toolCallId?: string }).toolCallId ?? msg.id ?? '';
+        if (resolvedSet.has(callId)) continue;
         try {
           const oldChildren = getEditorChildren();
           const editor = getEditor();
           const newChildren = deserializeMd(editor as never, input.newMarkdown) as Descendant[];
           const hunks = computeDocDiff(oldChildren, newChildren);
+          // hunks 为空(editor 已等于 newMarkdown):自动标 resolved + 跳过
+          if (hunks.length === 0) {
+            markResolved(callId);
+            continue;
+          }
           result[callId] = {
             callId,
             newMarkdown: input.newMarkdown,
@@ -331,10 +342,19 @@ export function useAdvisorChat({
     }
   }, [agentInstanceKey, status, messages, sessionKey]);
 
+  // 用 ref 跟踪当前所有 active(未 resolved)proposal callId,发新 prompt 时一次性 mark resolved
+  // (= 用户"忽略"模式:没点 ✓✗ 就发新 prompt,旧 proposal 应当作废)
+  const activeProposalCallIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    activeProposalCallIdsRef.current = new Set(Object.keys(v3ProposalsByCallId));
+  }, [v3ProposalsByCallId]);
+
   const send = useCallback(
     (text: string) => {
       const t = text.trim();
       if (!t) return;
+      // 发新 prompt 时:把当前 active proposal 标 resolved(用户忽略上一个,不希望它继续干扰下一轮)
+      activeProposalCallIdsRef.current.forEach((cid) => markResolved(cid));
       // v3 协议：chips 已拼进 text，不传 metadata.references；transport body 不传 anchor/anchors
       void sendMessage({ text: t }, {
         body: buildAgentRequestBody({
