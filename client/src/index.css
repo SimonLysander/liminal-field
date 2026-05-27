@@ -1157,34 +1157,3 @@ body.gallery-immersive aside {
   .grow-loop .gs-seed, .grow-loop .gs-bud, .grow-loop .gs-half, .grow-loop .gs-bloom { animation: none; }
 }
 
-/* ── v3 改稿 overlay ──────────────────────────────────────────────────────────
- * ProposalOverlay 的两套渲染机制:CSS Custom Highlight 染红删 + DOM overlay 浮绿增
- * --------------------------------------------------------------------------- */
-
-/* CSS Custom Highlight 染"红删":被替换/删除的旧文本范围
- * 通过 JS 注册到 CSS.highlights('proposal-del', new Highlight(...ranges)) */
-::highlight(proposal-del) {
-  background-color: color-mix(in srgb, var(--mark-red, #D24B3E) 20%, transparent);
-  text-decoration: line-through;
-  text-decoration-color: var(--mark-red, #D24B3E);
-}
-
-/* DOM overlay 浮"绿增":insert/replace 的新内容浮层(不进 Plate 节点树) */
-.proposal-ins {
-  display: block;
-  background-color: color-mix(in srgb, var(--mark-green, #3F9D57) 18%, transparent);
-  border-left: 2px solid var(--mark-green, #3F9D57);
-  padding: 2px 8px;
-  margin: 4px 0;
-  font-family: var(--font-reading, inherit);
-  white-space: pre-wrap;
-  pointer-events: none; /* 不干扰下方编辑器交互 */
-}
-
-/* hunk 浮按钮容器:接受/拒绝按钮绝对定位在 hunk 旁 */
-.proposal-hunk-actions {
-  position: absolute;
-  display: flex;
-  gap: 4px;
-  z-index: 10;
-}
