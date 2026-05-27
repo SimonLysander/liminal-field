@@ -32,6 +32,7 @@ import { createWriteTasksTool } from '../tools/write-tasks.tool';
 import { createReadConversationHistoryTool } from '../tools/read-conversation-history.tool';
 import { createRewriteSelectionTool } from '../tools/rewrite-selection.tool';
 import { createRewriteDocumentTool } from '../tools/rewrite-document.tool';
+import { createProposeDocumentRewriteTool } from '../tools/propose-document-rewrite.tool';
 import { AgentSessionRepository } from '../session/agent-session.repository';
 import { AgentMemoryRepository } from '../memory/agent-memory.repository';
 import type { DocumentContext } from '../tools/get-current-document.tool';
@@ -113,6 +114,12 @@ export class ToolAssembler {
         ? {
             rewrite_selection: createRewriteSelectionTool(),
             rewrite_document: createRewriteDocumentTool(),
+          }
+        : {}),
+      // v3:单工具,模型只生成完整新版正文,定位与 diff 由前端做;v2 工具暂留,Task 9 集中删除
+      ...(entryContext.document
+        ? {
+            propose_document_rewrite: createProposeDocumentRewriteTool(),
           }
         : {}),
     };

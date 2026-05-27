@@ -88,6 +88,7 @@ export class SystemConfigService implements OnModuleInit {
     'sub_agent',
     'write_tasks',
     'read_conversation_history',
+    'propose_document_rewrite',
   ];
 
   constructor(
