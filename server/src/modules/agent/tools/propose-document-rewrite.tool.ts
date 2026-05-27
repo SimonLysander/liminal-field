@@ -73,11 +73,11 @@ export function createProposeDocumentRewriteTool(
         });
       }
 
-      const currentBodyHash = computeBodyHash(document.bodyMarkdown ?? '');
+      const currentBodyHash = computeBodyHash(document.bodyMarkdown);
       if (bodyHash !== currentBodyHash) {
         return toolResult(
           '文档已变化,请基于最新版本重新生成',
-          `文档已被修改,以下是当前最新正文(bodyHash: ${currentBodyHash}):\n\n${document.bodyMarkdown ?? ''}`,
+          `文档已被修改,以下是当前最新正文(bodyHash: ${currentBodyHash}):\n\n${document.bodyMarkdown}`,
           {
             status: 'stale',
             currentBodyHash,

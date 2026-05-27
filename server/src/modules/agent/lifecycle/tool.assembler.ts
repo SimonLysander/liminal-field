@@ -68,6 +68,8 @@ export class ToolAssembler {
     tier?: string,
   ): Record<string, any> {
     const memoryKey = entryContext.agentInstanceKey ?? entryContext.sessionKey;
+    // lazy getter:草稿可能在 chat 期间变化,工具每次 execute 重读
+    const getDocument = () => entryContext.document;
     const rawTools = {
       // 知识库搜索（grep：按内容找）：全局可用
       search_knowledge_base: createSearchKnowledgeBaseTool(this.contentService),
@@ -78,7 +80,7 @@ export class ToolAssembler {
         this.noteViewService,
       ),
       // 获取当前草稿画像：标题 + 大纲 + 字数 + 段落数 + 正文
-      get_current_draft: createGetCurrentDraftTool(entryContext.document),
+      get_current_draft: createGetCurrentDraftTool(getDocument),
       // 记忆工具：走 Memory Agent 统一处理分类、去重、合并
       remember: createRememberTool(this.memoryAgent),
       forget: createForgetTool(this.memoryAgent),
@@ -111,7 +113,8 @@ export class ToolAssembler {
       // v3:单工具,模型自由编辑;前端做 diff 与 hunk 审批
       ...(entryContext.document
         ? {
-            propose_document_rewrite: createProposeDocumentRewriteTool(),
+            propose_document_rewrite:
+              createProposeDocumentRewriteTool(getDocument),
           }
         : {}),
     };

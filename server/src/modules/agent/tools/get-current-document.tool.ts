@@ -54,7 +54,7 @@ export function createGetCurrentDraftTool(
           status: 'not_found',
         });
 
-      const full = document.bodyMarkdown ?? '';
+      const full = document.bodyMarkdown;
       const total = full.length;
 
       // 把 offset 自动对齐到行首:模型续读时给的 offset 可能正好落在某行中间
