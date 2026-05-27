@@ -28,10 +28,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DefaultChatTransport } from 'ai';
 import type { UIMessage } from 'ai';
 import { useChat } from '@ai-sdk/react';
+import type { Descendant } from 'platejs';
+import { deserializeMd } from '@platejs/markdown';
 import { loadSession, saveSession, type SessionTask } from '@/services/agent';
 import type { AnchorPayload } from '@/pages/admin/lib/serialize-anchor';
+import type { ChatReferenceSnapshot } from '@/pages/admin/lib/live-chat-selection';
 import type { PendingAiEdit } from '@/pages/admin/lib/use-ai-edit-controller';
-import type { AiEditTool } from '@/pages/admin/lib/apply-ai-edit';
+import type { AiEditProposal } from '@/pages/admin/lib/ai-edit-proposal';
+import { computeDocDiff } from '@/pages/admin/lib/compute-doc-diff';
+import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
+import {
+  ReferenceRegistry,
+  createEditSession,
+  isEditConfirmation,
+  isReferenceEditRequest,
+  type EditSession,
+} from './edit-session';
+import type { ChatReferencesMetadata } from '@/pages/admin/lib/live-chat-selection';
 
 export type Tier = 'flash' | 'standard' | 'think';
 
@@ -44,6 +57,8 @@ const TIER_NEXT: Record<Tier, Tier> = {
 export interface UseAdvisorChatOptions {
   /** 会话标识,不透明字符串 */
   sessionKey: string;
+  /** 草稿级 agent 实例标识；多个业务 session 共享这份记忆/tasks。 */
+  agentInstanceKey?: string;
   /** 后端 agent 入口 key(如 'writing-advisor') */
   agentKey: string;
   /** entryContext.source 标记来源(如 'notes-editor' / 'agent-page') */
@@ -56,17 +71,39 @@ export interface UseAdvisorChatOptions {
   };
   /**
    * 当前编辑器锚点(selection/cursor)，随聊天 transport 传给后端。
-   * 后端 prompt.handler 据此注入 <selection>/<cursor> 节，Aurora 据此选改稿工具。
+   * 后端 prompt.handler 据此注入引用上下文；引用不默认等于编辑目标。
    */
   anchor?: AnchorPayload;
+  /**
+   * 发送时读取最新锚点。用于避免 selectionchange 高频 setState;
+   * 若提供,transport body 优先读它,否则退回 anchorRef.current。
+   */
+  getAnchor?: () => AnchorPayload;
+  /** 后端成功保存本轮新增消息后触发。用于刷新业务会话列表等持久化后动作。 */
+  onAfterSave?: () => void;
+  /**
+   * v3 改稿：获取当前 editor.children，供 computeDocDiff 计算 hunks。
+   * 由 AiAdvisorPanel 透传自 ProseDraftEditor。
+   */
+  getEditorChildren?: () => Descendant[];
+  /**
+   * v3 改稿：获取当前 Plate editor 实例，供 deserializeMd(editor, newMarkdown) 使用。
+   * 由 AiAdvisorPanel 透传自 ProseDraftEditor。
+   */
+  getEditor?: () => unknown;
 }
 
 export function useAdvisorChat({
   sessionKey,
+  agentInstanceKey,
   agentKey,
   source,
   documentContext,
   anchor,
+  getAnchor,
+  onAfterSave,
+  getEditorChildren,
+  getEditor,
 }: UseAdvisorChatOptions) {
   const [tier, setTier] = useState<Tier>('standard');
   const [sessionReady, setSessionReady] = useState(false);
@@ -80,6 +117,14 @@ export function useAdvisorChat({
   const tierRef = useRef(tier);
   // anchorRef:与 docRef 同模式,避免 transport body 回调产生 stale closure
   const anchorRef = useRef<AnchorPayload>(anchor ?? { type: 'none' });
+  const sessionKeyRef = useRef(sessionKey);
+  const agentInstanceKeyRef = useRef(agentInstanceKey);
+  const getAnchorRef = useRef(getAnchor);
+  const onAfterSaveRef = useRef(onAfterSave);
+  const lastSentEditAnchorRef = useRef<AnchorPayload | undefined>(undefined);
+  const referenceRegistryRef = useRef(new ReferenceRegistry());
+  const activeEditSessionRef = useRef<EditSession | undefined>(undefined);
+  const sessionAppliedToolCallIdsRef = useRef<Set<string>>(new Set());
   // 懒加载游标：当前页第一条消息的绝对 index，下次加载传 before=firstIndex
   const firstIndexRef = useRef<number>(0);
   // append 语义游标：记录已保存到后端的消息数量，saveSession 只发 slice(savedCount)
@@ -90,6 +135,14 @@ export function useAdvisorChat({
   }, [documentContext]);
 
   useEffect(() => {
+    sessionKeyRef.current = sessionKey;
+  }, [sessionKey]);
+
+  useEffect(() => {
+    agentInstanceKeyRef.current = agentInstanceKey;
+  }, [agentInstanceKey]);
+
+  useEffect(() => {
     tierRef.current = tier;
   }, [tier]);
 
@@ -97,29 +150,53 @@ export function useAdvisorChat({
     anchorRef.current = anchor ?? { type: 'none' };
   }, [anchor]);
 
+  useEffect(() => {
+    getAnchorRef.current = getAnchor;
+  }, [getAnchor]);
+
+  useEffect(() => {
+    onAfterSaveRef.current = onAfterSave;
+  }, [onAfterSave]);
+
+
   /* eslint-disable react-hooks/refs */
   const [transport] = useState(
     () =>
       new DefaultChatTransport({
         api: '/api/v1/agent/chat',
-        body: () => ({
+        body: () => buildAgentRequestBody({
           tier: tierRef.current,
           agentKey,
-          // relatedMemories 字段已在 U6 废弃（恒空），不再传给后端
-          entryContext: {
-            source,
-            sessionKey,
-            document: docRef.current?.contentItemId
-              ? {
-                  contentItemId: docRef.current.contentItemId,
-                  title: docRef.current.title,
-                  bodyMarkdown: docRef.current.bodyMarkdown,
-                }
-              : undefined,
-            // v2 改稿锚点:每次发送时取 anchorRef 最新值，避免 stale closure
-            anchor: anchorRef.current,
-          },
+          source,
+          sessionKey: sessionKeyRef.current,
+          agentInstanceKey: agentInstanceKeyRef.current,
+          documentContext: docRef.current,
         }),
+        prepareSendMessagesRequest: ({ id, messages, body, trigger, messageId }) => {
+          const lastUserMessage = [...messages]
+            .reverse()
+            .find((message) => message.role === 'user');
+          const references = getReferencesFromMetadata(lastUserMessage?.metadata);
+          const fallbackBody = body ?? {};
+          const entryContext = {
+            ...(fallbackBody.entryContext ?? {}),
+            references: references.length > 0 ? references : fallbackBody.entryContext?.references,
+            anchors: references.length > 0
+              ? references.map((reference) => reference.anchor)
+              : fallbackBody.entryContext?.anchors,
+            anchor: references[0]?.anchor ?? fallbackBody.entryContext?.anchor,
+          };
+          return {
+            body: {
+              ...fallbackBody,
+              id,
+              messages,
+              trigger,
+              messageId,
+              entryContext,
+            },
+          };
+        },
       }),
   );
 
@@ -148,41 +225,113 @@ export function useAdvisorChat({
     return { tasks: t, planTitle: title };
   }, [messages]);
 
-  /**
-   * v2 改稿三工具监听 —— 取最近一次落稳(非 input-streaming)的 rewrite_selection /
-   * insert_at_cursor / rewrite_document 工具调用,产出单个 PendingAiEdit。
-   *
-   * 遍历全部消息 → 工具 part → 跳过 streaming → 取最新一次。
-   * 单个(不是数组):v2 三工具每次只产生一次改稿任务,callId 作为去重 key 和 outcomes 索引键。
-   */
-  const pending = useMemo<PendingAiEdit | undefined>(() => {
-    let latest: PendingAiEdit | undefined;
-    for (const m of messages) {
+  const proposalsByCallId = useMemo<Record<string, AiEditProposal>>(() => {
+    const proposals: Record<string, AiEditProposal> = {};
+    const liveMessages = messages.slice(savedCountRef.current);
+    for (const m of liveMessages) {
       for (const p of m.parts ?? []) {
-        const t = p.type;
-        if (
-          t !== 'tool-rewrite_selection' &&
-          t !== 'tool-rewrite_document'
-        ) {
+        if (p.type !== 'tool-rewrite_reference' && p.type !== 'tool-rewrite_document') {
           continue;
         }
         const part = p as {
           state?: string;
           toolCallId?: string;
-          input?: { newMarkdown?: string; reason?: string };
+          input?: { targetRefId?: string; newMarkdown?: string; reason?: string };
         };
         if (part.state === 'input-streaming') continue;
-        const md = part.input?.newMarkdown;
-        if (typeof md !== 'string' || md.length === 0) continue;
-        latest = {
-          tool: t.slice('tool-'.length) as AiEditTool,
-          newMarkdown: md,
-          callId: part.toolCallId ?? `${m.id}:${t}`,
-        };
+        const newText = part.input?.newMarkdown;
+        if (typeof newText !== 'string' || newText.trim().length === 0) continue;
+        const callId = part.toolCallId ?? `${m.id}:${p.type}`;
+        if (p.type === 'tool-rewrite_document') {
+          const oldText = docRef.current?.bodyMarkdown;
+          if (!oldText) continue;
+          proposals[callId] = {
+            id: callId,
+            title: '建议整篇改写',
+            targetKind: 'document',
+            oldText,
+            newText,
+            reason: part.input?.reason ?? '',
+          };
+        } else {
+          const targetRefId = part.input?.targetRefId;
+          const targetReference =
+            referenceRegistryRef.current.get(targetRefId) ??
+            activeEditSessionRef.current?.targets[0];
+          const oldText = targetReference?.text;
+          if (!oldText) continue;
+          proposals[callId] = {
+            id: callId,
+            title: targetReference
+              ? `建议修改${formatReferenceLocation(targetReference)}`
+              : '建议修改引用',
+            targetKind: 'reference',
+            oldText,
+            newText,
+            reason: part.input?.reason ?? '',
+            targetRefId,
+            targetReference,
+          };
+        }
       }
     }
-    return latest;
+    return proposals;
   }, [messages]);
+
+  /**
+   * v3 改稿：监听 tool-propose_document_rewrite 工具调用，
+   * 用 computeDocDiff 算出 hunks，产出 Proposal 对象。
+   *
+   * 与 v2 proposalsByCallId 并存（v2 监听 tool-rewrite_reference / tool-rewrite_document）；
+   * Task 10 统一清旧时删 v2 路径。
+   *
+   * getEditorChildren / getEditor 直接作为 useMemo 依赖（render scope 里稳定），
+   * 未传时静默返回空对象（上层 Task 8 接入后才有值）。
+   */
+  const v3ProposalsByCallId = useMemo<Record<string, Proposal>>(() => {
+    const result: Record<string, Proposal> = {};
+    if (!getEditorChildren || !getEditor) return result;
+
+    for (const msg of messages) {
+      if (msg.role !== 'assistant' || !Array.isArray(msg.parts)) continue;
+      for (const part of msg.parts) {
+        const partType = (part as { type?: string }).type;
+        if (partType !== 'tool-propose_document_rewrite') continue;
+        const state = (part as { state?: string }).state;
+        if (state !== 'output-available') continue;
+        const input = (part as { input?: { newMarkdown?: string; reason?: string } }).input;
+        if (!input?.newMarkdown) continue;
+        const callId =
+          (part as { toolCallId?: string }).toolCallId ?? msg.id ?? '';
+        try {
+          const oldChildren = getEditorChildren();
+          const editor = getEditor();
+          const newChildren = deserializeMd(editor as never, input.newMarkdown) as Descendant[];
+          const hunks = computeDocDiff(oldChildren, newChildren);
+          result[callId] = {
+            callId,
+            newMarkdown: input.newMarkdown,
+            reason: input.reason ?? '',
+            hunks,
+          };
+        } catch (err) {
+          if (import.meta.env.DEV) {
+            console.error('[use-advisor-chat] propose_document_rewrite diff 失败', err);
+          }
+        }
+      }
+    }
+    return result;
+  }, [messages, getEditorChildren, getEditor]);
+
+  /**
+   * v3 改稿：最近一个 pending Proposal（无则 undefined）。
+   * 上层通过 onProposalChange 回调拿到，透传给 ProposalOverlay / useProposalController。
+   */
+  const pendingProposal = useMemo<Proposal | undefined>(() => {
+    const ids = Object.keys(v3ProposalsByCallId);
+    return ids.length > 0 ? v3ProposalsByCallId[ids[ids.length - 1]] : undefined;
+  }, [v3ProposalsByCallId]);
 
   /**
    * SessionLoad（初始加载）：取最近一页消息，初始化懒加载游标。
@@ -195,12 +344,21 @@ export function useAdvisorChat({
    */
   useEffect(() => {
     let cancelled = false;
-    loadSession(sessionKey)
+    setSessionReady(false);
+    referenceRegistryRef.current = new ReferenceRegistry();
+    activeEditSessionRef.current = undefined;
+    sessionAppliedToolCallIdsRef.current.clear();
+    lastSentEditAnchorRef.current = undefined;
+    savedCountRef.current = 0;
+    firstIndexRef.current = 0;
+    setMessages([]);
+    loadSession(sessionKey, { agentInstanceKey })
       .then((data) => {
         if (cancelled) return;
-        if (data.messages.length > 0) {
-          setMessages(data.messages as unknown as UIMessage[]);
-        }
+        setMessages(data.messages as unknown as UIMessage[]);
+        referenceRegistryRef.current.hydrateFromMessages(
+          data.messages as Array<{ metadata?: unknown }>,
+        );
         // 初始化懒加载游标（绝对 index，用于下次 before 参数）
         firstIndexRef.current = data.firstIndex;
         setHasMore(data.hasMore);
@@ -215,7 +373,7 @@ export function useAdvisorChat({
       cancelled = true;
     };
     // sessionKey 变化才重新加载，documentContext 变化不触发（只用于首次 body）
-  }, [sessionKey, setMessages]);
+  }, [agentInstanceKey, sessionKey, setMessages]);
 
   /**
    * 懒加载更早历史（滚到顶触发）。
@@ -228,7 +386,10 @@ export function useAdvisorChat({
     if (!hasMore || isLoadingMore || firstIndexRef.current === 0) return;
     setIsLoadingMore(true);
     try {
-      const data = await loadSession(sessionKey, { before: firstIndexRef.current });
+      const data = await loadSession(sessionKey, {
+        agentInstanceKey,
+        before: firstIndexRef.current,
+      });
       // prepend 老消息：新页在前，当前页接后（正序：旧→新）
       setMessages((prev) => [
         ...(data.messages as unknown as UIMessage[]),
@@ -244,7 +405,7 @@ export function useAdvisorChat({
     } finally {
       setIsLoadingMore(false);
     }
-  }, [hasMore, isLoadingMore, sessionKey, setMessages]);
+  }, [agentInstanceKey, hasMore, isLoadingMore, sessionKey, setMessages]);
 
   /**
    * AfterChat：回复完成后只追加本轮新增消息（方案A：前端 slice，后端纯 append）。
@@ -263,20 +424,70 @@ export function useAdvisorChat({
     if (wasActive && nowReady && messages.length > savedCountRef.current) {
       const newMessages = messages.slice(savedCountRef.current) as unknown as Record<string, unknown>[];
       const countToSave = savedCountRef.current + newMessages.length;
-      void saveSession(sessionKey, newMessages).then(() => {
-        // 只有后端成功 append 后才推进游标，保证重试安全
-        savedCountRef.current = countToSave;
-      });
+      void saveSession(sessionKey, newMessages, agentInstanceKey)
+        .then(() => {
+          // 只有后端成功 append 后才推进游标，保证重试安全
+          savedCountRef.current = countToSave;
+          onAfterSaveRef.current?.();
+        })
+        .catch((err) => {
+          console.error('[agent-session] 保存会话失败', err);
+        });
     }
-  }, [status, messages, sessionKey]);
+  }, [agentInstanceKey, status, messages, sessionKey]);
 
   const send = useCallback(
-    (text: string) => {
+    (
+      text: string,
+      options: {
+        anchor?: AnchorPayload;
+        anchors?: AnchorPayload[];
+        references?: ChatReferenceSnapshot[];
+      } = {},
+    ) => {
       const t = text.trim();
       if (!t) return;
-      void sendMessage({ text: t });
+      // v2 edit session 逻辑保留（Task 10 才删）
+      const explicitReferences = options.references ?? [];
+      const sessionReferences =
+        explicitReferences.length === 0 && isEditConfirmation(t)
+          ? activeEditSessionRef.current?.targets ?? []
+          : [];
+      const referencesForThisSend =
+        explicitReferences.length > 0 ? explicitReferences : sessionReferences;
+      referenceRegistryRef.current.registerMany(referencesForThisSend);
+      if (explicitReferences.length > 0 && isReferenceEditRequest(t)) {
+        activeEditSessionRef.current = createEditSession(explicitReferences, 'references');
+      } else if (!isEditConfirmation(t)) {
+        activeEditSessionRef.current = undefined;
+      }
+      const anchorForThisSend =
+        referencesForThisSend[0]?.anchor ??
+        options.anchor ??
+        getAnchorRef.current?.() ??
+        anchorRef.current;
+      lastSentEditAnchorRef.current = anchorForThisSend;
+      void sendMessage({
+        text: t,
+        // v3 协议：chips 已拼进 text，不再通过 metadata.references 发送
+        // v2 metadata.references 保留（Task 10 删）：
+        metadata: explicitReferences.length
+          ? { references: explicitReferences }
+          : undefined,
+      }, {
+        // v3 transport body：只传 tier/agentKey/source/sessionKey/agentInstanceKey/entryContext.document
+        // anchor/anchors/references 已从 body 移除（v3 协议，chips 拼进 text）
+        body: buildAgentRequestBody({
+          tier: tierRef.current,
+          agentKey,
+          source,
+          sessionKey,
+          agentInstanceKey,
+          documentContext: docRef.current,
+        }),
+      });
     },
-    [sendMessage],
+    [agentInstanceKey, agentKey, sendMessage, sessionKey, source],
   );
 
   const cycleTier = useCallback(() => setTier((t) => TIER_NEXT[t]), []);
@@ -293,12 +504,79 @@ export function useAdvisorChat({
     loadMore,
     tasks,
     planTitle,
-    // v2 改稿:单个 pending,callId 去重
-    pending,
+    pending: undefined as PendingAiEdit | undefined,
+    // v2 改稿（Task 10 删）
+    proposalsByCallId,
+    // v3 改稿
+    v3ProposalsByCallId,
+    pendingProposal,
     tier,
     cycleTier,
     send,
     stop,
     error,
+  };
+}
+
+function getReferencesFromMetadata(metadata: unknown): ChatReferenceSnapshot[] {
+  const refs = (metadata as ChatReferencesMetadata | undefined)?.references;
+  if (!Array.isArray(refs)) return [];
+  return refs.filter((ref): ref is ChatReferenceSnapshot => {
+    return (
+      typeof ref === 'object' &&
+      ref !== null &&
+      typeof ref.id === 'string' &&
+      typeof ref.order === 'number' &&
+      typeof ref.text === 'string' &&
+      typeof ref.preview === 'string' &&
+      typeof ref.anchor === 'object' &&
+      ref.anchor !== null &&
+      'type' in ref.anchor
+    );
+  });
+}
+
+function formatReferenceLocation(reference: ChatReferenceSnapshot): string {
+  const anchor = reference.anchor;
+  if (anchor.type !== 'range') return '引用';
+  const start = anchor.startPath?.[0] ?? anchor.blockIndex;
+  const end = anchor.endPath?.[0] ?? start;
+  const from = Math.min(start, end) + 1;
+  const to = Math.max(start, end) + 1;
+  return from === to ? `第 ${from} 段` : `第 ${from}-${to} 段`;
+}
+
+function buildAgentRequestBody({
+  tier,
+  agentKey,
+  source,
+  sessionKey,
+  agentInstanceKey,
+  documentContext,
+}: {
+  tier: Tier;
+  agentKey: string;
+  source: string;
+  sessionKey: string;
+  agentInstanceKey?: string;
+  documentContext?: UseAdvisorChatOptions['documentContext'];
+}) {
+  return {
+    tier,
+    agentKey,
+    // relatedMemories 字段已在 U6 废弃（恒空），不再传给后端
+    // v3 协议：anchor/anchors/references 字段已删，chips 拼进 user message text
+    entryContext: {
+      source,
+      sessionKey,
+      agentInstanceKey,
+      document: documentContext?.contentItemId
+        ? {
+            contentItemId: documentContext.contentItemId,
+            title: documentContext.title,
+            bodyMarkdown: documentContext.bodyMarkdown,
+          }
+        : undefined,
+    },
   };
 }

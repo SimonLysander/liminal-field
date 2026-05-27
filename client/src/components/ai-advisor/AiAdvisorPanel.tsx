@@ -5,16 +5,33 @@
  * 本组件只负责侧栏布局 + 选中文字 add-to-chat + 输入框。
  */
 
-import { useCallback, useEffect, useState } from 'react';
-import { ArrowUp, Square, X, Paperclip } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { Descendant } from 'platejs';
+import { ArrowUp, Pencil, Plus, Square, Trash2 } from 'lucide-react';
 import type { AiEditOutcome } from '@/pages/admin/lib/apply-ai-edit';
+import type {
+  AiEditProposal,
+  AiEditProposalOutcome,
+} from '@/pages/admin/lib/ai-edit-proposal';
+import type { ChatSelectionAttachment } from '@/pages/admin/lib/live-chat-selection';
 import type { AnchorPayload } from '@/pages/admin/lib/serialize-anchor';
 import type { PendingAiEdit } from '@/pages/admin/lib/use-ai-edit-controller';
-import { AnchorHint } from './AnchorHint';
+import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
+import {
+  deleteSession,
+  listBusinessSessions,
+  renameBusinessSession,
+  type BusinessSessionSummary,
+} from '@/services/agent';
+import {
+  AiReferenceComposer,
+  type AiReferenceComposerHandle,
+} from './AiReferenceComposer';
+import type { AiEditProposalDecision } from './AiEditProposalCard';
 import { MessageList } from './MessageList';
 import { TaskChecklist } from './TaskChecklist';
-import TextareaAutosize from 'react-textarea-autosize';
 import { useAdvisorChat } from './use-advisor-chat';
+import { toAdvisorSendText } from './advisor-send-text';
 
 const GREETINGS = [
   '写到哪了？',
@@ -34,13 +51,22 @@ export interface AiAdvisorPanelProps {
   contentItemId?: string;
   title?: string;
   bodyMarkdown?: string;
-  /** 编辑器中当前选中的文字（Cursor 式 add-to-chat） */
-  selectedText?: string;
+  /** 已显式添加到聊天的编辑器选区引用（Cursor 式 add-to-chat, live range） */
+  selectionAttachments?: ChatSelectionAttachment[];
+  /** 移除单个已添加的选区附件 */
+  onRemoveSelectionAttachment?: (id: string) => void;
+  /** 清除已添加的选区附件 */
+  onClearSelectedText?: () => void;
   /**
    * 当前编辑器锚点(selection/cursor)，由 ProseDraftEditor 从 AnchorBridge 中转而来。
-   * 随聊天 transport 传给后端，prompt.handler 据此注入 <selection> / <cursor> 节。
+   * 保留给 transport/context 使用；不在 UI 中自动展示，避免拖选即暗示“将改写选中”。
    */
   anchor?: AnchorPayload;
+  /**
+   * 发送消息时读取最新锚点。selection 拖拽过程中最新值写在父级 ref 里，
+   * transport body 通过这个 getter 读取，避免为了拿最新锚点而每次 selectionchange 都 setState。
+   */
+  getAnchor?: () => AnchorPayload;
   /**
    * v2 改稿落稳后上抛单个 pending(tool + newMarkdown + callId)。
    * 父级(ProseDraftEditor)再经 props 透传给 PlateMarkdownEditor 内的 AiEditBridge,
@@ -54,6 +80,28 @@ export interface AiAdvisorPanelProps {
    * 按 toolCallId 精确匹配 AiEditCard,失败时标红 —— 定位失败绝不静默。
    */
   outcomesByCallId?: Record<string, AiEditOutcome>;
+  proposalDecisionsById?: Record<string, AiEditProposalDecision>;
+  activeProposalId?: string;
+  onProposalsChange?: (proposals: Record<string, AiEditProposal>) => void;
+  onPreviewProposal?: (proposal: AiEditProposal) => void;
+  onAcceptProposal?: (proposal: AiEditProposal) => AiEditProposalOutcome;
+  onRejectProposal?: (proposal: AiEditProposal) => void;
+  /**
+   * v3 改稿：最近 pendingProposal 变化时回调上层。
+   * 上层（ProseDraftEditor）拿到后透传给 ProposalOverlay / useProposalController。
+   * 用 ref 模式避免回调不稳定导致 useEffect 频繁触发。
+   */
+  onProposalChange?: (proposal: Proposal | undefined) => void;
+  /**
+   * v3 改稿：获取当前 editor.children，供 useAdvisorChat 里 computeDocDiff 使用。
+   * 由 ProseDraftEditor 通过 getEditorChildren 传入。
+   */
+  getEditorChildren?: () => Descendant[];
+  /**
+   * v3 改稿：获取当前 Plate editor 实例，供 deserializeMd(editor, newMarkdown) 使用。
+   * 由 ProseDraftEditor 通过 getEditor 传入。
+   */
+  getEditor?: () => unknown;
 }
 
 export function AiAdvisorPanel({
@@ -61,18 +109,77 @@ export function AiAdvisorPanel({
   contentItemId,
   title,
   bodyMarkdown,
-  selectedText,
+  selectionAttachments,
+  onRemoveSelectionAttachment,
+  onClearSelectedText,
   anchor,
+  getAnchor,
   onPending,
   outcomesByCallId,
+  proposalDecisionsById,
+  activeProposalId,
+  onProposalsChange,
+  onPreviewProposal,
+  onAcceptProposal,
+  onRejectProposal,
+  onProposalChange,
+  getEditorChildren,
+  getEditor,
 }: AiAdvisorPanelProps) {
-  const [inputValue, setInputValue] = useState('');
+  const agentInstanceKey = sessionKey;
+  const [currentSessionKey, setCurrentSessionKey] = useState(sessionKey);
+  const [sessions, setSessions] = useState<BusinessSessionSummary[]>([]);
+  const [sessionListError, setSessionListError] = useState<string | null>(null);
+  const composerRef = useRef<AiReferenceComposerHandle>(null);
+  const currentSessionKeyRef = useRef(currentSessionKey);
+  const hasPickedInitialSessionRef = useRef(false);
+  const userControlledSessionRef = useRef(false);
+  const [composerEmpty, setComposerEmpty] = useState(true);
   const [greeting] = useState(pickGreeting);
 
-  /** 用户手动取消的选区值;selectedText 变新值时自动重新生效 */
-  const [dismissedText, setDismissedText] = useState<string | undefined>();
-  const activeSelection =
-    selectedText && selectedText !== dismissedText ? selectedText : undefined;
+  const activeSelections = selectionAttachments ?? [];
+
+  const refreshSessions = useCallback(() => {
+    void listBusinessSessions(agentInstanceKey)
+      .then((items) => {
+        setSessionListError(null);
+        const currentKey = currentSessionKeyRef.current;
+        if (!hasPickedInitialSessionRef.current) {
+          hasPickedInitialSessionRef.current = true;
+          if (!userControlledSessionRef.current && items[0]?.sessionKey) {
+            setCurrentSessionKey(items[0].sessionKey);
+            setSessions(items);
+            return;
+          }
+        }
+        setSessions(ensureVisibleSession(items, currentKey, agentInstanceKey));
+      })
+      .catch((error) => {
+        setSessionListError(
+          error instanceof Error ? error.message : '会话列表加载失败',
+        );
+      });
+  }, [agentInstanceKey]);
+
+  useEffect(() => {
+    currentSessionKeyRef.current = currentSessionKey;
+  }, [currentSessionKey]);
+
+  useEffect(() => {
+    userControlledSessionRef.current = false;
+    hasPickedInitialSessionRef.current = false;
+    setCurrentSessionKey(sessionKey);
+  }, [sessionKey]);
+
+  useEffect(() => {
+    refreshSessions();
+  }, [refreshSessions]);
+
+  // v3 改稿：用 ref 保存 onProposalChange，避免回调引用不稳定导致 useEffect 频繁触发
+  const onProposalChangeRef = useRef(onProposalChange);
+  useEffect(() => {
+    onProposalChangeRef.current = onProposalChange;
+  }, [onProposalChange]);
 
   const {
     messages,
@@ -88,37 +195,174 @@ export function AiAdvisorPanel({
     tasks,
     planTitle,
     pending,
+    proposalsByCallId,
+    pendingProposal,
   } = useAdvisorChat({
-    sessionKey,
+    sessionKey: currentSessionKey,
+    agentInstanceKey,
     agentKey: 'writing-advisor',
     source: 'notes-editor',
     documentContext: { contentItemId, title, bodyMarkdown },
     anchor,
+    getAnchor,
+    onAfterSave: refreshSessions,
+    getEditorChildren,
+    getEditor,
   });
+
+  useEffect(() => {
+    onProposalsChange?.(proposalsByCallId);
+  }, [onProposalsChange, proposalsByCallId]);
+
+  // v3 改稿：pendingProposal 变化时通过 ref 回调上层，避免 onProposalChange 引用不稳导致循环
+  useEffect(() => {
+    onProposalChangeRef.current?.(pendingProposal);
+  }, [pendingProposal]);
 
   // v2 改稿:pending 变化时上报给父级,经 PlateMarkdownEditor 透传到 AiEditBridge。
   // 父级需 useCallback 保证引用稳定。
+  const reportedPendingKeyRef = useRef<string | undefined>(undefined);
   useEffect(() => {
+    const key = pending?.callId;
+    if (reportedPendingKeyRef.current === key) return;
+    reportedPendingKeyRef.current = key;
     onPending?.(pending);
   }, [pending, onPending]);
 
-  // 发送:add-to-chat(选中文字拼接到消息前面)
-  const handleSend = useCallback(() => {
-    const text = inputValue.trim();
-    if (!text) return;
-    const finalText = activeSelection
-      ? `[选中文字]\n${activeSelection}\n[/选中文字]\n\n${text}`
-      : text;
-    setInputValue('');
-    if (activeSelection) setDismissedText(activeSelection);
-    send(finalText);
-  }, [inputValue, activeSelection, send]);
+  useEffect(() => {
+    reportedPendingKeyRef.current = undefined;
+    onPending?.(undefined);
+    // v3 改稿：切换会话时也要清 pendingProposal
+    onProposalChangeRef.current?.(undefined);
+  }, [currentSessionKey, onPending]);
 
-  const isEmpty = inputValue.trim().length === 0;
+  // v3 发送：chips 已在 readAndClear 内拼成 markdown > 引用块，只传 text。
+  const handleSend = useCallback(() => {
+    const payload = composerRef.current?.readAndClear() ?? { text: '' };
+    const text = toAdvisorSendText(payload.text);
+    if (!text) return;
+    setComposerEmpty(true);
+    send(text);
+    if (activeSelections.length > 0) onClearSelectedText?.();
+  }, [activeSelections, onClearSelectedText, send]);
+
+  const handleNewSession = useCallback(() => {
+    const nextKey = createBusinessSessionKey(agentInstanceKey);
+    userControlledSessionRef.current = true;
+    hasPickedInitialSessionRef.current = true;
+    setCurrentSessionKey(nextKey);
+    setSessions((prev) => ensureVisibleSession(prev, nextKey, agentInstanceKey));
+    onClearSelectedText?.();
+  }, [agentInstanceKey, onClearSelectedText]);
+
+  const handleRenameSession = useCallback(() => {
+    const current = ensureVisibleSession(
+      sessions,
+      currentSessionKey,
+      agentInstanceKey,
+    ).find((session) => session.sessionKey === currentSessionKey);
+    const nextTitle = window.prompt('会话名称', current?.title ?? '新会话');
+    if (nextTitle == null) return;
+    const cleanTitle = nextTitle.trim();
+    if (!cleanTitle) return;
+    void renameBusinessSession(currentSessionKey, cleanTitle)
+      .then(() => {
+        setSessionListError(null);
+        setSessions((prev) =>
+          ensureVisibleSession(prev, currentSessionKey, agentInstanceKey).map(
+            (session) =>
+              session.sessionKey === currentSessionKey
+                ? { ...session, title: cleanTitle }
+                : session,
+          ),
+        );
+      })
+      .catch((error) => {
+        setSessionListError(
+          error instanceof Error ? error.message : '会话命名失败',
+        );
+      });
+  }, [agentInstanceKey, currentSessionKey, sessions]);
+
+  const handleDeleteSession = useCallback(() => {
+    const deletingKey = currentSessionKey;
+    void deleteSession(deletingKey).then(async () => {
+      const items = await listBusinessSessions(agentInstanceKey);
+      const next = items.find((item) => item.sessionKey !== deletingKey);
+      const nextKey = next?.sessionKey ?? createBusinessSessionKey(agentInstanceKey);
+      setCurrentSessionKey(nextKey);
+      setSessions(ensureVisibleSession(items, nextKey, agentInstanceKey));
+      setSessionListError(null);
+      onClearSelectedText?.();
+    }).catch((error) => {
+      setSessionListError(
+        error instanceof Error ? error.message : '会话删除失败',
+      );
+    });
+  }, [agentInstanceKey, currentSessionKey, onClearSelectedText]);
+
+  const isEmpty = composerEmpty;
 
   return (
     // h-full:在笔记 grid 里等价于行 stretch(无变化);在文集条目 flex 容器里据此撑满高度
     <div className="flex h-full flex-col overflow-hidden">
+      <div
+        className="flex shrink-0 items-center gap-1 px-3 py-2"
+        style={{ borderBottom: '1px solid var(--separator)' }}
+      >
+        <select
+          value={currentSessionKey}
+          onChange={(event) => {
+            userControlledSessionRef.current = true;
+            hasPickedInitialSessionRef.current = true;
+            setCurrentSessionKey(event.target.value);
+          }}
+          className="min-w-0 flex-1 bg-transparent text-xs outline-none"
+          style={{ color: 'var(--ink-faded)' }}
+          aria-label="选择会话"
+        >
+          {ensureVisibleSession(sessions, currentSessionKey, agentInstanceKey).map((session) => (
+            <option key={session.sessionKey} value={session.sessionKey}>
+              {session.title || '新会话'}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={handleRenameSession}
+          className="flex h-7 w-7 items-center justify-center rounded-md"
+          style={{ color: 'var(--ink-faded)' }}
+          aria-label="命名当前会话"
+          title="命名当前会话"
+        >
+          <Pencil size={14} strokeWidth={1.8} />
+        </button>
+        <button
+          type="button"
+          onClick={handleNewSession}
+          className="flex h-7 w-7 items-center justify-center rounded-md"
+          style={{ color: 'var(--ink-faded)' }}
+          aria-label="新会话"
+          title="新会话"
+        >
+          <Plus size={15} strokeWidth={1.8} />
+        </button>
+        <button
+          type="button"
+          onClick={handleDeleteSession}
+          className="flex h-7 w-7 items-center justify-center rounded-md"
+          style={{ color: 'var(--ink-faded)' }}
+          aria-label="删除当前会话"
+          title="删除当前会话"
+        >
+          <Trash2 size={14} strokeWidth={1.8} />
+        </button>
+      </div>
+      {sessionListError && (
+        <div className="shrink-0 px-3 pb-2 text-xs" style={{ color: 'var(--mark-red)' }}>
+          {sessionListError}
+        </div>
+      )}
       {/* 任务计划改为流内联清单(MessageList 末尾渲染),不再在顶部放常驻 TaskBar */}
 
       {/* 消息区 / 空状态 */}
@@ -139,12 +383,18 @@ export function AiAdvisorPanel({
           <MessageList
             messages={messages}
             status={status}
-            sessionKey={sessionKey}
+            sessionKey={currentSessionKey}
             error={error}
             hasMore={hasMore}
             isLoadingMore={isLoadingMore}
             onLoadMore={loadMore}
             outcomesByCallId={outcomesByCallId}
+            proposalsByCallId={proposalsByCallId}
+            proposalDecisionsById={proposalDecisionsById}
+            activeProposalId={activeProposalId}
+            onPreviewProposal={onPreviewProposal}
+            onAcceptProposal={onAcceptProposal}
+            onRejectProposal={onRejectProposal}
           />
         )}
       </div>
@@ -163,50 +413,26 @@ export function AiAdvisorPanel({
 
       {/* 输入区 */}
       <div className="shrink-0 px-3 pb-4 pt-2">
-        {/* 作用对象提示:让用户说话前就知道 Aurora 改动落点(range/cursor 时显示,none 时隐藏) */}
-        <AnchorHint anchor={anchor ?? { type: 'none' }} />
-
-        {/* 选中文字 add-to-chat pill */}
-        {activeSelection && (
-          <div className="mb-2 flex items-center gap-1.5">
-            <span
-              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
-              style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
-            >
-              <Paperclip size={12} strokeWidth={1.5} />
-              已选中 {activeSelection.length} 字
-            </span>
-            <button
-              onClick={() => setDismissedText(selectedText)}
-              className="rounded-full p-0.5 transition-colors hover:opacity-70"
-              style={{ color: 'var(--ink-ghost)' }}
-              aria-label="取消选区"
-            >
-              <X size={12} />
-            </button>
-          </div>
-        )}
-
-        {/* focus 反馈作用在整个容器(输入框真正的边界),内层 textarea 因 composer-input 不再单独描边 */}
+        {/* focus 反馈作用在整个容器(输入框真正的边界),contenteditable 负责 inline 引用 token */}
         <div
-          className="advisor-composer flex items-center gap-2 rounded-xl px-3 py-2 transition-shadow"
+          className="advisor-composer flex items-end gap-2 rounded-xl px-3 py-2 transition-shadow"
           style={{ background: 'var(--shelf)' }}
+          onMouseDown={(event) => {
+            const target = event.target as HTMLElement;
+            if (target.closest('button')) return;
+            composerRef.current?.focusEnd();
+          }}
         >
-          <TextareaAutosize
-            minRows={1}
-            maxRows={4}
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                if (!isEmpty && !isStreaming) handleSend();
-              }
-            }}
+          <AiReferenceComposer
+            key={currentSessionKey}
+            ref={composerRef}
+            selections={activeSelections}
             disabled={isStreaming}
-            placeholder="聊点什么..."
-            className="composer-input flex-1 resize-none border-none bg-transparent text-sm leading-normal outline-none placeholder:text-[var(--ink-ghost)]"
-            style={{ color: 'var(--ink)', opacity: isStreaming ? 0.5 : 1 }}
+            onRemoveSelection={onRemoveSelectionAttachment}
+            onEmptyChange={setComposerEmpty}
+            onSubmit={() => {
+              if (!composerRef.current?.isEmpty() && !isStreaming) handleSend();
+            }}
           />
 
           {/* 长春花紫圆形键(有内容亮、空置淡灰),与全页一致;流式中变停止 */}
@@ -237,4 +463,31 @@ export function AiAdvisorPanel({
       </div>
     </div>
   );
+}
+
+function createBusinessSessionKey(agentInstanceKey: string): string {
+  const id =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${agentInstanceKey}:chat:${id}`;
+}
+
+function ensureVisibleSession(
+  sessions: BusinessSessionSummary[],
+  currentSessionKey: string,
+  agentInstanceKey: string,
+): BusinessSessionSummary[] {
+  if (sessions.some((session) => session.sessionKey === currentSessionKey)) {
+    return sessions;
+  }
+  return [
+    {
+      sessionKey: currentSessionKey,
+      title: currentSessionKey === agentInstanceKey ? '默认会话' : '新会话',
+      messageCount: 0,
+      lastActiveAt: null,
+    },
+    ...sessions,
+  ];
 }
