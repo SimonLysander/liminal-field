@@ -210,9 +210,22 @@ export function useAdvisorChat({
         // stale/invalid:服务器拒绝了这个 propose(bodyHash 不匹配 / 缺失 / 无文档)。
         // 模型在同 turn 已收到提示会重新 propose(新 callId);这里把当前作废,
         // 避免拉起伪审批。仍 markResolved 保证刷新后也不再被 v3ProposalsByCallId 算出。
-        // 用 proposeStatus 命名避免与外层 useChat 的 status 视觉混淆。
-        const output = (part as { output?: { status?: string } }).output;
-        const proposeStatus = output?.status;
+        //
+        // 注:server `toolResult` 返 JSON.stringify 字符串(propose 工具未声明 outputSchema,
+        // AI SDK 不会自动反序列化),status 实际路径是 JSON.parse(output).meta.status。
+        // 兼容未来加 outputSchema 切到结构化对象的情况:object 路径也读 meta.status。
+        const rawOutput = (part as { output?: unknown }).output;
+        let proposeStatus: string | undefined;
+        if (typeof rawOutput === 'string') {
+          try {
+            proposeStatus = (JSON.parse(rawOutput) as { meta?: { status?: string } })
+              .meta?.status;
+          } catch {
+            /* 非 JSON,走正常 diff 路径 */
+          }
+        } else if (rawOutput && typeof rawOutput === 'object') {
+          proposeStatus = (rawOutput as { meta?: { status?: string } }).meta?.status;
+        }
         if (proposeStatus === 'stale' || proposeStatus === 'invalid') {
           markResolved(callId);
           continue;
