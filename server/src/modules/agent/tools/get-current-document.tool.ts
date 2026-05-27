@@ -33,7 +33,7 @@ export function createGetCurrentDraftTool(
 ) {
   return tool({
     description:
-      '读取当前正在编辑的草稿。返回大纲(全)+ 从 offset 起的一段正文(默认约 6000 字),很长时带"还有更多"用 offset 续读。返回 meta.bodyHash 必须在调用 propose_document_rewrite 时作为 baseHash 传回。**调 propose_document_rewrite 之前必须先调本工具拿到 bodyHash。**',
+      '读取当前正在编辑的草稿。返回大纲(全)+ 从 offset 起的一段正文(默认约 6000 字),很长时带"还有更多"用 offset 续读。返回 meta.bodyHash 必须在调用 propose_document_rewrite 时作为 bodyHash 参数传回。**调 propose_document_rewrite 之前必须先调本工具拿到 bodyHash。**',
     inputSchema: jsonSchema<{ offset?: number; limit?: number }>({
       type: 'object',
       properties: {
@@ -56,8 +56,15 @@ export function createGetCurrentDraftTool(
 
       const full = document.bodyMarkdown ?? '';
       const total = full.length;
-      const chunk = full.slice(offset, offset + limit);
-      const hasMore = offset + limit < total;
+
+      // 把 offset 自动对齐到行首:模型续读时给的 offset 可能正好落在某行中间
+      // (比如上一次返回的 nextOffset = offset + limit 是按字符算的)。若不对齐,
+      // chunk 第一行渲染会是行尾片段,但行号显示为完整行号 → 模型按"第 N 行"
+      // 引用时错位。lastIndexOf('\n', offset-1)+1 找上一个 \n 之后的位置,即行首。
+      const alignedOffset =
+        offset > 0 ? full.lastIndexOf('\n', offset - 1) + 1 : 0;
+      const chunk = full.slice(alignedOffset, alignedOffset + limit);
+      const hasMore = alignedOffset + limit < total;
       const outline = document.outline ?? extractHeadings(full);
       const paragraphs = full
         .split(/\n\s*\n/)
@@ -65,7 +72,7 @@ export function createGetCurrentDraftTool(
       const bodyHash = computeBodyHash(full);
 
       // body 加 cat -n 行号前缀:每行 "  N\t<text>",模型可引用"第 N 行"
-      const startLine = full.slice(0, offset).split('\n').length;
+      const startLine = full.slice(0, alignedOffset).split('\n').length;
       const chunkLines = chunk.split('\n');
       const numberedBody = chunkLines
         .map((line, i) => `${(startLine + i).toString().padStart(4)}\t${line}`)
@@ -85,7 +92,7 @@ export function createGetCurrentDraftTool(
         outline.length > 0
           ? `大纲:\n${outline.map((h) => `  ${h}`).join('\n')}`
           : '',
-        `正文(${offset}–${offset + chunk.length} / 共 ${total}):\n${numberedBody}`,
+        `正文(${alignedOffset}–${alignedOffset + chunk.length} / 共 ${total}):\n${numberedBody}`,
       ]
         .filter(Boolean)
         .join('\n\n');
@@ -98,9 +105,10 @@ export function createGetCurrentDraftTool(
         paragraphs,
         outlineCount: outline.length,
         offset,
+        alignedOffset, // 实际起点(行首对齐):API 层面 offset 保留传入值,这里告诉调用者真实读取起点
         shown: chunk.length,
         hasMore,
-        ...(hasMore ? { nextOffset: offset + limit } : {}),
+        ...(hasMore ? { nextOffset: alignedOffset + limit } : {}),
       });
     },
   });

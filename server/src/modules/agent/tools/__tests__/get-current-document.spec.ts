@@ -86,4 +86,38 @@ describe('get_current_draft', () => {
     expect(r.meta?.hasMore).toBe(true);
     expect(r.meta?.nextOffset).toBe(6000);
   });
+
+  it('offset 落在行中间时自动对齐到行首,行号不错位', async () => {
+    // full = "abc\ndef\nghi";offset=1 落在 'b' 处,对齐后应从 0 开始(行首)
+    const body = 'abc\ndef\nghi';
+    const r = parse(
+      await run(
+        createGetCurrentDraftTool(() => docCtx(body)),
+        {
+          offset: 1,
+          limit: 100,
+        },
+      ),
+    );
+    expect(r.meta?.alignedOffset).toBe(0);
+    // 第 1 行内容是 "abc",不是 "bc"
+    expect(r.detail).toContain('   1\tabc');
+    expect(r.detail).not.toContain('   1\tbc');
+  });
+
+  it('offset 已在行首时 alignedOffset === offset', async () => {
+    // full = "abc\ndef\nghi";offset=4 正好是 'def' 行首
+    const body = 'abc\ndef\nghi';
+    const r = parse(
+      await run(
+        createGetCurrentDraftTool(() => docCtx(body)),
+        {
+          offset: 4,
+          limit: 100,
+        },
+      ),
+    );
+    expect(r.meta?.alignedOffset).toBe(4);
+    expect(r.detail).toContain('   2\tdef');
+  });
 });
