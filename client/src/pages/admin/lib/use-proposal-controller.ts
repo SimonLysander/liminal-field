@@ -182,7 +182,12 @@ export function useProposalController(
   const acceptAll = useCallback(() => {
     const currentProposal = proposalRef.current;
     if (!currentProposal) return;
+    // 关键:只处理"未裁决"的 hunks,**不覆盖**已 accept/reject 的 decisions。
+    // 否则用户先逐个接受 4 处再点"全部拒绝",会把已 accepted 也覆盖成 rejected,
+    // 导致 hasAccepted=false → 不触发 onResolved → 已接受的改动**不保存**(刷新丢失)。
+    const previousDecisions = decisionsRef.current;
     currentProposal.hunks.forEach((h) => {
+      if (previousDecisions.has(h.id)) return; // 跳过已裁决
       const oldPaths = findHunkNodePaths(ed, h.id, PROPOSAL_OLD);
       const newPaths = findHunkNodePaths(ed, h.id, PROPOSAL_NEW);
       const all = [
@@ -194,15 +199,20 @@ export function useProposalController(
         else ed.tf.setNodes({ type: 'p', hunkId: undefined }, { at: op.path });
       }
     });
-    const next = new Map<string, Decision>();
-    currentProposal.hunks.forEach((h) => next.set(h.id, 'accepted'));
+    const next = new Map(previousDecisions);
+    currentProposal.hunks.forEach((h) => {
+      if (!next.has(h.id)) next.set(h.id, 'accepted'); // 仅给未裁决的设 accepted
+    });
     commitDecisions(next);
   }, [ed, commitDecisions]);
 
   const rejectAll = useCallback(() => {
     const currentProposal = proposalRef.current;
     if (!currentProposal) return;
+    // 同 acceptAll:只处理未裁决,保留已有 decisions
+    const previousDecisions = decisionsRef.current;
     currentProposal.hunks.forEach((h) => {
+      if (previousDecisions.has(h.id)) return;
       const oldPaths = findHunkNodePaths(ed, h.id, PROPOSAL_OLD);
       const newPaths = findHunkNodePaths(ed, h.id, PROPOSAL_NEW);
       const all = [
@@ -214,8 +224,10 @@ export function useProposalController(
         else ed.tf.setNodes({ type: 'p', hunkId: undefined }, { at: op.path });
       }
     });
-    const next = new Map<string, Decision>();
-    currentProposal.hunks.forEach((h) => next.set(h.id, 'rejected'));
+    const next = new Map(previousDecisions);
+    currentProposal.hunks.forEach((h) => {
+      if (!next.has(h.id)) next.set(h.id, 'rejected');
+    });
     commitDecisions(next);
   }, [ed, commitDecisions]);
 

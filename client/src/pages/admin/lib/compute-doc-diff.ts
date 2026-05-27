@@ -291,7 +291,19 @@ export function computeDocDiff(
   oldChildren: Descendant[],
   newChildren: Descendant[],
 ): Hunk[] {
-  const ops = alignBlocks(oldChildren, newChildren);
+  // 过滤"末尾空段"假阳性:Plate 内部强制 editor.children 末尾保留一个空 paragraph,
+  // 模型给的 newMarkdown 通常不带这个空段 → LCS 算成"delete 末尾空段"hunk,
+  // 用户看到一个空的红底块,毫无意义。
+  // 同样过滤新文档末尾如有空段。
+  const filteredOld = oldChildren.filter((b, i, arr) => {
+    if (i !== arr.length - 1) return true; // 非末尾保留
+    return blockText(b).trim().length > 0; // 末尾非空才保留
+  });
+  const filteredNew = newChildren.filter((b, i, arr) => {
+    if (i !== arr.length - 1) return true;
+    return blockText(b).trim().length > 0;
+  });
+  const ops = alignBlocks(filteredOld, filteredNew);
   const hunks: Hunk[] = [];
 
   for (const op of ops) {
