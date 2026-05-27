@@ -7,22 +7,26 @@
  *
  * 分节结构（由近及远：先"我是谁/你是谁/你能做什么"，再记忆，最后才是当前业务场景）：
  * 1. <owner>     — 介绍所有者（在陪伴谁，有才注入）
- * 2. <document>  — 整篇正文 markdown，模型默认可见可改（v3，有 document.bodyMarkdown 才注入）
- *                  不带块 id/段号标记，纯 markdown；propose_document_rewrite 接收整篇新版正文
- * 3. <role>      — Aurora 是谁（灵魂/人设：另一个自我、最懂你的朋友；固定）
- * 4. <tools>     — 工具能力 + remember 记忆协议（引导主动调用，固定）
- * 5. <core_memories>   — type=user 记忆全文（有才注入）
- * 6. <related_memories> + <conversation_summary> — 本 session 的召回记忆与脉络（有才注入）
- * 7. <instructions>    — 行为约束（含单工具纪律，固定）
- * 8. <current_context> — 当前业务场景：在写哪篇（只点名，正文已在 <document> 节）
+ * 2. <role>      — Aurora 是谁（灵魂/人设：另一个自我、最懂你的朋友；固定）
+ * 3. <tools>     — 工具能力 + Read-before-Edit 协议 + remember 记忆协议（固定）
+ * 4. <core_memories>   — type=user 记忆全文（有才注入）
+ * 5. <related_memories> + <conversation_summary> — 本 session 的召回记忆与脉络（有才注入）
+ * 6. <instructions>    — 行为约束（含 bodyHash 改稿纪律，固定）
+ * 7. <current_context> — 当前业务场景：在写哪篇（只点名，正文不直接注入）
+ * 8. <outline>         — 文档大纲（h1-h3 标题列表，有标题才注入）
  * 9. <tasks>           — 写作计划（有未完成才注入）
  * 10. 入口级 / 全局自定义 system prompt（有才注入）
  *
- * 设计原则（v3）：<document> 节整篇注入，模型读即用；propose_document_rewrite 写回整篇。
- * 不再靠 get_current_draft 按需读——v3 的核心假设是整篇总在上下文里。
+ * 设计原则（v3.1，Read-before-Edit 硬化）：
+ * - 正文不默认注入 prompt（避免长文吃满上下文 + 老版本陈旧）
+ * - 模型要看正文 → 调 get_current_draft 拿 bodyHash + 当前快照
+ * - 改稿 → propose_document_rewrite 必带 bodyHash 校验"基于最新版改"
+ * - 服务器返 stale → 模型基于返回的 currentMarkdown 重生成 newMarkdown + 最新 bodyHash 重试
+ * - <outline> 给模型轻量结构感（定位用户口中"哪一段"），但不替代正文读取
  */
 import { Injectable } from '@nestjs/common';
 import type { AgentMemory } from '../memory/agent-memory.entity';
+import { extractHeadings } from '../tools/markdown.utils';
 
 export interface BuildSystemPromptParams {
   /** 所有者身份信息（从 SystemConfig.ownerProfile 读取） */
@@ -71,15 +75,7 @@ export class PromptHandler {
       sections.push(`<owner>\n${lines.join('\n')}\n</owner>`);
     }
 
-    // 2. ——— <document> 节：整篇正文 markdown 注入，模型默认可见可改。
-    // 不带块 id/段号标记——业界证伪"模型自报 ID/位置不稳定"，由 propose_document_rewrite 接收整篇新版正文。
-    if (params.document?.bodyMarkdown) {
-      sections.push(
-        `<document>\n${params.document.bodyMarkdown}\n</document>`,
-      );
-    }
-
-    // 3. ——— Aurora 是谁（灵魂/人设，不是业务职责） ———
+    // 2. ——— Aurora 是谁（灵魂/人设，不是业务职责） ———
     sections.push(`<role>
 你是 Aurora。
 
@@ -91,9 +87,10 @@ export class PromptHandler {
     // 3. ——— 工具使用指引（只引导"何时用",不重复 schema——工具的 name/description/参数
     //    AI SDK 已喂给模型；逐条抄反而易与 schema 不同步） ———
     sections.push(`<tools>
-你能：读 ${ownerName} 当前在写的文稿、搜索/浏览/读取 ta 知识库里的笔记/文集/相册、把值得记的写进记忆、为多步任务维护写作计划。
-- 需要文稿内容或知识库信息时，主动调对应工具，不要凭记忆或假设
-- 发现值得长期记住的信息，随手 remember（context 会重置，没记的会丢）
+你能:读 ${ownerName} 当前在写的文稿、搜索/浏览/读取 ta 知识库里的笔记/文集/相册、把值得记的写进记忆、为多步任务维护写作计划。
+- 需要文稿正文时,主动调 get_current_draft,会拿到当前 bodyHash
+- 调 propose_document_rewrite 改稿前**必须**先 get_current_draft;bodyHash 必填,值取自 get_current_draft 返回的 bodyHash
+- 发现值得长期记住的信息,随手 remember(context 会重置,没记的会丢)
 </tools>`);
 
     // 5. ——— Core Memories：type=user 全文 ———
@@ -121,22 +118,32 @@ export class PromptHandler {
 
     // 7. ——— 行为约束 ———
     sections.push(`<instructions>
-- 需要文档内容或知识库信息时，先调工具，不要凭空假设
-- 用中文回答，除非 ${ownerName} 明确要求其他语言
+- 需要文档内容或知识库信息时,先调工具,不要凭空假设
+- 用中文回答,除非 ${ownerName} 明确要求其他语言
 - 不重复 ${ownerName} 已说过的话
-- 为 ${ownerName} 起草初稿、片段乃至整篇都可以；你交付的是供 ta 接手打磨的草稿与起点，而非终稿
-- 多步任务先用 write_tasks 列计划再动手；每步更新清单（同一时刻只一个进行中）；全部完成后传空列表清空。简单一步的事不必列计划
+- 为 ${ownerName} 起草初稿、片段乃至整篇都可以;你交付的是供 ta 接手打磨的草稿与起点,而非终稿
+- 多步任务先用 write_tasks 列计划再动手;每步更新清单(同一时刻只一个进行中);全部完成后传空列表清空。简单一步的事不必列计划
+- 改稿前**必先** get_current_draft 拿 bodyHash → propose_document_rewrite 必带 bodyHash(取自上次 get_current_draft 返回的 meta.bodyHash);若服务器返 stale,基于返回的 currentMarkdown 重新生成新版 newMarkdown 并附最新 bodyHash
 - 用户明确要求修改正文时(改紧凑/重写/调整结构等)调用 propose_document_rewrite,给完整新版正文(不要片段);引用块(\`> 第 N 段:「…」\`)是用户特别想让你看的几段,不是必须改的范围——你自由决定改哪;纯讨论/解释/给建议时不调工具,正常聊天即可
 </instructions>`);
 
-    // 8. ——— 当前业务场景：只点名在编辑哪篇，正文已在 <document> 节整篇注入 ———
+    // 8. ——— 当前业务场景：点名在编辑哪篇 + 大纲（v3.1 起正文不再注入）———
     if (params.document) {
       const { title, bodyMarkdown } = params.document;
       const wordCount = bodyMarkdown.length;
       sections.push(`<current_context>
-${ownerName} 当前正在编辑文档《${title || '未命名'}》（约 ${wordCount} 字）。
-正文已在 <document> 节给你了——直接看，不要再调 get_current_draft（那个工具用于读旧版本或别的草稿）。
+${ownerName} 当前正在编辑文档《${title || '未命名'}》(约 ${wordCount} 字)。
+正文不直接注入,需要看时调 get_current_draft;若有标题,大纲见随后一节。
 </current_context>`);
+
+      // <outline>:轻量大纲让模型看到文档结构,定位"用户说改哪段"更快;
+      // 但正文要看仍需调 get_current_draft 拿完整 bodyHash 走 Read-before-Edit。
+      const outline = extractHeadings(bodyMarkdown);
+      if (outline.length > 0) {
+        sections.push(
+          `<outline>\n${outline.map((h) => `  ${h}`).join('\n')}\n</outline>`,
+        );
+      }
     }
 
     // ——— 当前写作计划：有「未完成」任务才注入。
