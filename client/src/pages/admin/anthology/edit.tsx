@@ -34,10 +34,11 @@ const AnthologyEntryEditPage = () => {
       .getById(id)
       .then((detail) => {
         if (cancelled) return;
+        // 带上 key:Aurora 调 read_collection_entry 读兄弟篇时要用 entryKey(不是标题)
         const list = detail.entries
           .map(
             (e, i) =>
-              `${i + 1}. ${e.title || '(无标题)'}${e.key === entryKey ? ' ← 当前正在编辑' : ''}`,
+              `${i + 1}. ${e.title || '(无标题)'} (key: ${e.key})${e.key === entryKey ? ' ← 当前正在编辑' : ''}`,
           )
           .join('\n');
         const desc = detail.description?.trim()

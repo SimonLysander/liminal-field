@@ -22,12 +22,14 @@
 import { Injectable } from '@nestjs/common';
 import { ContentService } from '../../content/content.service';
 import { NoteViewService } from '../../workspace/note-view.service';
+import { AnthologyViewService } from '../../workspace/anthology-view.service';
 import { MemoryAgentService } from '../memory/memory-agent.service';
 import { SubAgentService } from '../sub-agent/sub-agent.service';
 import { createSearchKnowledgeBaseTool } from '../tools/search-content.tool';
 import { createListKnowledgeBaseTool } from '../tools/list-content.tool';
 import { createReadDocumentContentTool } from '../tools/read-content.tool';
 import { createGetCurrentDraftTool } from '../tools/get-current-document.tool';
+import { createReadCollectionEntryTool } from '../tools/read-collection-entry.tool';
 import { createRememberTool } from '../tools/remember.tool';
 import { createForgetTool } from '../tools/forget.tool';
 import { createSubAgentTool } from '../tools/sub-agent.tool';
@@ -54,6 +56,7 @@ export class ToolAssembler {
   constructor(
     private readonly contentService: ContentService,
     private readonly noteViewService: NoteViewService,
+    private readonly anthologyViewService: AnthologyViewService,
     private readonly memoryAgent: MemoryAgentService,
     private readonly subAgentService: SubAgentService,
     private readonly sessionRepo: AgentSessionRepository,
@@ -133,6 +136,15 @@ export class ToolAssembler {
         ? {
             propose_document_rewrite:
               createProposeDocumentRewriteTool(getDocument),
+          }
+        : {}),
+      // 文集条目场景(contentItemId 形如 `${anthologyId}:${entryKey}`)才挂:读同集其它条目
+      ...(entryContext.document?.contentItemId.includes(':')
+        ? {
+            read_collection_entry: createReadCollectionEntryTool(
+              getDocument,
+              this.anthologyViewService,
+            ),
           }
         : {}),
       // 联网搜索:有 provider 才挂(没配 key 时 webSearchProvider=undefined 优雅降级)

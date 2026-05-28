@@ -147,7 +147,9 @@ ${ownerName} 当前正在编辑文档《${title || '未命名'}》(约 ${wordCou
       // 笔记场景无 collectionContext,不注入。
       const collectionContext = params.document.collectionContext?.trim();
       if (collectionContext) {
-        sections.push(`<collection>\n${collectionContext}\n</collection>`);
+        sections.push(
+          `<collection>\n${collectionContext}\n\n(需要看同集某篇的内容,用 read_collection_entry 传它的 entryKey;当前这篇用 get_current_draft)\n</collection>`,
+        );
       }
 
       // <outline>:轻量大纲让模型看到文档结构,定位"用户说改哪段"更快;

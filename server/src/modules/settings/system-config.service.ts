@@ -80,6 +80,8 @@ export class SystemConfigService implements OnModuleInit {
     'list_knowledge_base',
     'read_document_content',
     'get_current_draft',
+    // 文集条目场景:读同集其它条目当前内容(装配层按是否文集条目实际挂载)
+    'read_collection_entry',
     'remember',
     'forget',
     'sub_agent',
