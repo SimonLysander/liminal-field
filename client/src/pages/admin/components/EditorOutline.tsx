@@ -26,6 +26,7 @@ export function EditorOutline({
   const navRef = useRef<HTMLElement>(null);
   // 仅在列表可滚动时才渐隐上下缘,内容随项数变化时重算
   const mask = useScrollFade(navRef, [headings.length]);
+  const hasHeadings = headings.length > 0;
 
   // 当前标题变化时,把激活项滚进大纲可视区(与展示端阅读大纲一致)
   useEffect(() => {
@@ -37,18 +38,20 @@ export function EditorOutline({
 
   return (
     <div className="flex shrink-0 flex-col self-start px-3 pt-2">
-      {/* 列表高度跟随内容、超上限才滚;左侧细线从顶起、长度随内容 */}
+      {/* 列表高度跟随内容、超上限才滚;左侧细线 = 标题列表的"书脊",从顶起、长度随内容。
+          空状态不画线:没有标题就没有结构可代表;且占位文案的 py-6 会把书脊撑到 ~65px,
+          让一条线浮在一行小字旁(线包住的是 padding 不是文字),显得突兀 —— 故仅有标题时才画。 */}
       <nav
         ref={navRef}
         className="overflow-y-auto"
         style={{
           maxHeight: '61.8vh',
-          borderLeft: '1px solid var(--separator)',
+          borderLeft: hasHeadings ? '1px solid var(--separator)' : 'none',
           maskImage: mask,
           WebkitMaskImage: mask,
         }}
       >
-        {headings.length === 0 ? (
+        {!hasHeadings ? (
           <p className="py-6 text-center text-sm" style={{ color: 'var(--ink-ghost)' }}>
             使用标题构建文档结构
           </p>
