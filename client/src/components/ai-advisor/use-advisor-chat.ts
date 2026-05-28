@@ -30,7 +30,7 @@ import type { UIMessage } from 'ai';
 import { useChat } from '@ai-sdk/react';
 import type { Descendant } from 'platejs';
 import { deserializeMd } from '@platejs/markdown';
-import { loadSession, saveSession, type SessionTask } from '@/services/agent';
+import { loadSession, type SessionTask } from '@/services/agent';
 import { computeDocDiff } from '@/pages/admin/lib/compute-doc-diff';
 import { readResolved, markResolved } from '@/pages/admin/lib/resolved-store';
 import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
@@ -99,8 +99,6 @@ export function useAdvisorChat({
   const onAfterSaveRef = useRef(onAfterSave);
   // 懒加载游标：当前页第一条消息的绝对 index，下次加载传 before=firstIndex
   const firstIndexRef = useRef<number>(0);
-  // append 语义游标：记录已保存到后端的消息数量，saveSession 只发 slice(savedCount)
-  const savedCountRef = useRef<number>(0);
 
   useEffect(() => {
     docRef.current = documentContext;
@@ -123,7 +121,7 @@ export function useAdvisorChat({
   }, [onAfterSave]);
 
 
-  /* eslint-disable react-hooks/refs */
+   
   const [transport] = useState(
     () =>
       new DefaultChatTransport({
@@ -154,7 +152,7 @@ export function useAdvisorChat({
   );
 
   const { messages, sendMessage, setMessages, status, stop, error } = useChat({ transport });
-  /* eslint-enable react-hooks/refs */
+   
 
   // 任务清单(钉在输入框上方的独立计划区):从消息流里取最近一次 write_tasks 的入参,实时反映。
   // 跳过 input-streaming(没传完,防闪);空数组生效(write_tasks([]) = 清空)。planTitle 由模型给。
@@ -277,7 +275,6 @@ export function useAdvisorChat({
    */
   useEffect(() => {
     let cancelled = false;
-    savedCountRef.current = 0;
     firstIndexRef.current = 0;
     // 推迟 setState 到微任务，避免在 effect 同步体内调用（react-hooks/set-state-in-effect）
     queueMicrotask(() => {
@@ -292,8 +289,6 @@ export function useAdvisorChat({
         // 初始化懒加载游标（绝对 index，用于下次 before 参数）
         firstIndexRef.current = data.firstIndex;
         setHasMore(data.hasMore);
-        // 初始化 append 游标：已加载的消息已在后端，不需再发送
-        savedCountRef.current = data.messages.length;
         setSessionReady(true);
       })
       .catch(() => {
@@ -328,8 +323,6 @@ export function useAdvisorChat({
       // 更新懒加载游标：指向更早一页的起点
       firstIndexRef.current = data.firstIndex;
       setHasMore(data.hasMore);
-      // append 游标同步增加（prepend 的旧消息数），保证 saveSession 截取的是真正新增部分
-      savedCountRef.current += data.messages.length;
     } catch {
       // 加载失败不崩溃，用户可重试（hasMore 保持，允许再次触发）
     } finally {
@@ -338,11 +331,8 @@ export function useAdvisorChat({
   }, [agentInstanceKey, hasMore, isLoadingMore, sessionKey, setMessages]);
 
   /**
-   * AfterChat：回复完成后只追加本轮新增消息（方案A：前端 slice，后端纯 append）。
-   *
-   * savedCountRef 始终指向"已成功 append 到后端的消息数量"。
-   * 每次 AI 回复结束，messages[savedCount..] 就是本轮新增的 user+assistant 消息。
-   * 发送成功后才更新 savedCountRef，防止网络失败导致漏发。
+   * 一轮对话结束(active→ready)后通知上层刷新会话列表(标题/排序)。
+   * 持久化已由后端 onFinish 接管,这里不再发送任何消息(后端权威上下文)。
    */
   const prevStatusRef = useRef(status);
   useEffect(() => {
@@ -350,21 +340,10 @@ export function useAdvisorChat({
       prevStatusRef.current === 'streaming' || prevStatusRef.current === 'submitted';
     const nowReady = status === 'ready';
     prevStatusRef.current = status;
-
-    if (wasActive && nowReady && messages.length > savedCountRef.current) {
-      const newMessages = messages.slice(savedCountRef.current) as unknown as Record<string, unknown>[];
-      const countToSave = savedCountRef.current + newMessages.length;
-      void saveSession(sessionKey, newMessages, agentInstanceKey)
-        .then(() => {
-          // 只有后端成功 append 后才推进游标，保证重试安全
-          savedCountRef.current = countToSave;
-          onAfterSaveRef.current?.();
-        })
-        .catch((err) => {
-          console.error('[agent-session] 保存会话失败', err);
-        });
+    if (wasActive && nowReady) {
+      onAfterSaveRef.current?.();
     }
-  }, [agentInstanceKey, status, messages, sessionKey]);
+  }, [status]);
 
   // 用 ref 跟踪当前所有 active(未 resolved)proposal callId,发新 prompt 时一次性 mark resolved
   // (= 用户"忽略"模式:没点 ✓✗ 就发新 prompt,旧 proposal 应当作废)

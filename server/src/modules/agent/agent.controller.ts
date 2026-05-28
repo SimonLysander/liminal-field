@@ -21,11 +21,10 @@ import {
   Post,
   Put,
   Query,
-  Req,
   Res,
   Sse,
 } from '@nestjs/common';
-import type { FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyReply } from 'fastify';
 import { Observable } from 'rxjs';
 import { RawResponse } from '../../common/raw-response.decorator';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -48,19 +47,11 @@ export class AgentController {
 
   @RawResponse()
   @Post('agent/chat')
-  async chat(
-    @Body() dto: AgentChatDto,
-    @Res() reply: FastifyReply,
-    @Req() req: FastifyRequest,
-  ) {
-    // AbortController：客户端断开连接时取消 LLM 流式请求
-    const abortController = new AbortController();
-    req.raw.on('close', () => abortController.abort());
-
-    const result = await this.agentService.chat(dto, abortController.signal);
-
-    // Fastify reply.send() 支持 Web API Response，直接转发 SSE 流
-    return reply.send(result.toUIMessageStreamResponse());
+  async chat(@Body() dto: AgentChatDto, @Res() reply: FastifyReply) {
+    // 上下文组装 + 持久化(onFinish/consumeStream)全在 service 内;
+    // service 直接返回 Web Response,这里只负责转发 SSE 流。
+    const response = await this.agentService.chat(dto);
+    return reply.send(response);
   }
 
   /**
@@ -126,11 +117,18 @@ export class AgentController {
   ) {
     const beforeIdx = before !== undefined ? parseInt(before, 10) : undefined;
     const limitNum = limit !== undefined ? parseInt(limit, 10) : undefined;
-    return this.lifecycle.onSessionLoad(key, beforeIdx, limitNum, agentInstanceKey);
+    return this.lifecycle.onSessionLoad(
+      key,
+      beforeIdx,
+      limitNum,
+      agentInstanceKey,
+    );
   }
 
   @Get('agent/session-groups/:agentInstanceKey/sessions')
-  async listBusinessSessions(@Param('agentInstanceKey') agentInstanceKey: string) {
+  async listBusinessSessions(
+    @Param('agentInstanceKey') agentInstanceKey: string,
+  ) {
     return this.lifecycle.listBusinessSessions(agentInstanceKey);
   }
 

@@ -14,10 +14,9 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import {
   convertToModelMessages,
+  createIdGenerator,
   stepCountIs,
   streamText,
-  type StreamTextResult,
-  type ToolSet,
 } from 'ai';
 import { makeRepairToolCall } from './agent.utils';
 import { SystemConfigService } from '../settings/system-config.service';
@@ -41,11 +40,9 @@ export class AgentService {
     private readonly sessionRepo: AgentSessionRepository,
   ) {}
 
-  // 返回类型须显式标注：StreamTextResult 包含 ai 内部 Output 类型，不标注会触发 TS4053
-  async chat(
-    dto: AgentChatDto,
-    abortSignal?: AbortSignal,
-  ): Promise<StreamTextResult<ToolSet, never>> {
+  // 返回 Web Response(toUIMessageStreamResponse 产物),controller 直接 reply.send。
+  // 持久化、consumeStream 都收在本方法内,controller 不碰业务。
+  async chat(dto: AgentChatDto): Promise<Response> {
     // 1. 读取 agent 入口配置（AgentEntryConfig），获取 tier / systemPrompt / tools 白名单
     const agentConfig = dto.agentKey
       ? await this.systemConfigService.getAgentConfig(dto.agentKey)
@@ -85,11 +82,10 @@ export class AgentService {
     // 5. 组装喂模型的"最近原文"。后端权威上下文:历史从 agent_sessions 读(按 token
     //    有界),不再信任前端全量上传。本轮新消息走 dto.message(新协议),过渡期兼容
     //    旧的全量 dto.messages 尾条。
-    const incoming =
-      dto.message ??
+    const incoming = (dto.message ??
       (Array.isArray(dto.messages) && dto.messages.length > 0
         ? dto.messages[dto.messages.length - 1]
-        : undefined);
+        : undefined)) as Record<string, unknown> | undefined;
     if (!incoming) {
       throw new BadRequestException('缺少 message');
     }
@@ -131,7 +127,6 @@ export class AgentService {
       stopWhen: stepCountIs(10),
       // 工具调用烂 JSON 时自动 re-ask 修复,不让整轮崩(provider 偶发,见 agent.utils)
       experimental_repairToolCall: makeRepairToolCall(model),
-      abortSignal,
       experimental_telemetry: { isEnabled: true },
       onStepFinish: ({ stepNumber, toolCalls, usage }) => {
         // 通过 lifecycle 发射工具调用事件，解耦日志记录逻辑
@@ -154,6 +149,29 @@ export class AgentService {
       },
     });
 
-    return result;
+    // 后端权威持久化:流结束时把本轮增量 append 进 agent_sessions(不再靠前端 PUT)。
+    // onFinish 的 messages = originalMessages(=combined) + 本轮新生成消息;
+    // slice(previousCount) 恰好取到 incoming(user) + assistant/tool 消息,映射既有 append-only。
+    const agentInstanceKey = dto.entryContext.agentInstanceKey;
+    const previousCount = previous.length;
+    const response = result.toUIMessageStreamResponse({
+      originalMessages: combined as never,
+      generateMessageId: createIdGenerator({ prefix: 'msg', size: 16 }),
+      onFinish: ({ messages }) => {
+        const delta = (messages as unknown as Record<string, unknown>[]).slice(
+          previousCount,
+        );
+        if (delta.length === 0) return;
+        void this.lifecycle.onAfterChat(
+          sessionKey,
+          delta,
+          aiConfig.contextWindow,
+          agentInstanceKey,
+        );
+      },
+    });
+    // consumeStream:即使客户端断开/按停,服务端也跑完流 → onFinish 持久化不丢本轮。
+    void result.consumeStream();
+    return response;
   }
 }
