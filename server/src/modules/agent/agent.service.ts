@@ -80,12 +80,8 @@ export class AgentService {
     });
 
     // 5. 组装喂模型的"最近原文"。后端权威上下文:历史从 agent_sessions 读(按 token
-    //    有界),不再信任前端全量上传。本轮新消息走 dto.message(新协议),过渡期兼容
-    //    旧的全量 dto.messages 尾条。
-    const incoming = (dto.message ??
-      (Array.isArray(dto.messages) && dto.messages.length > 0
-        ? dto.messages[dto.messages.length - 1]
-        : undefined)) as Record<string, unknown> | undefined;
+    //    有界),不再信任前端全量上传;本轮新消息走单条 dto.message。
+    const incoming = dto.message as Record<string, unknown> | undefined;
     if (!incoming) {
       throw new BadRequestException('缺少 message');
     }

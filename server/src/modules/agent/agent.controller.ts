@@ -2,9 +2,8 @@
  * AgentController — Agent 对话的 HTTP 接口。
  *
  * 接口列表：
- * - POST   /agent/chat              SSE 流式对话
+ * - POST   /agent/chat              SSE 流式对话(上下文组装 + 持久化全在 service)
  * - GET    /agent/sessions/:key     加载会话历史（含自动召回的相关记忆）
- * - PUT    /agent/sessions/:key     保存会话消息（触发异步 compaction）
  * - DELETE /agent/sessions/:key     删除会话（清空对话历史）
  *
  * 设计：Controller 只做参数解析和 HTTP 协议处理，
@@ -33,7 +32,6 @@ import { AgentLifecycle } from './lifecycle/agent-lifecycle.service';
 import { AgentMemoryRepository } from './memory/agent-memory.repository';
 import type { AgentMemoryType } from './memory/agent-memory.entity';
 import { AgentChatDto } from './dto/agent-chat.dto';
-import { SystemConfigService } from '../settings/system-config.service';
 
 @Controller()
 export class AgentController {
@@ -42,7 +40,6 @@ export class AgentController {
     private readonly lifecycle: AgentLifecycle,
     private readonly memoryRepo: AgentMemoryRepository,
     private readonly eventEmitter: EventEmitter2,
-    private readonly systemConfigService: SystemConfigService,
   ) {}
 
   @RawResponse()
@@ -139,31 +136,6 @@ export class AgentController {
   ) {
     await this.lifecycle.renameBusinessSession(key, title ?? '');
     return { ok: true };
-  }
-
-  /**
-   * 保存会话消息。前端在每次 AI 回复完成后调用。
-   * :key 即 agentKey(草稿级标识)。保存后通过事件异步触发 compaction(不阻塞响应)。
-   * 返回当前 tasks,前端用于更新 TaskBar。
-   *
-   * window 取自当前 AI 配置的 contextWindow——compaction 按 token 占比判断是否触发,
-   * 需要窗口大小作分母,在此一并解析后随 onAfterChat 带入事件。
-   */
-  @Put('agent/sessions/:key')
-  async saveSession(
-    @Param('key') key: string,
-    @Body('messages') messages: Record<string, unknown>[] = [],
-    @Body('agentInstanceKey') agentInstanceKey?: string,
-  ) {
-    const aiConfig = await this.systemConfigService.getAiConfig();
-    await this.lifecycle.onAfterChat(
-      key,
-      messages,
-      aiConfig.contextWindow,
-      agentInstanceKey,
-    );
-    const tasks = await this.lifecycle.getSessionTasks(agentInstanceKey ?? key);
-    return { ok: true, tasks };
   }
 
   /** 删除会话（清空对话历史）。 */

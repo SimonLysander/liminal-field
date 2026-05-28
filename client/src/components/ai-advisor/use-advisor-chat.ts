@@ -8,16 +8,15 @@
  * 它们用 send(text) 把最终文本发出去。
  *
  * 生命周期(对应后端 hooks):
- * 1. mount → loadSession(sessionKey) → 恢复对话（首屏加载最近一页）
+ * 1. mount → loadSession(sessionKey) → 恢复对话（首屏加载最近一页，仅供渲染）
  *    session 记忆脉络由后端注入 system prompt，前端不管
  * 2. 滚到顶懒加载 → loadSession(sessionKey, { before: firstIndex }) → 前拼更早消息
- * 3. send → transport body 携带 entryContext(可选文档)
- * 4. 回复完成 → saveSession(sessionKey, newMessages) — 只发本轮新增（方案A append）
+ * 3. send → transport 只发末条 message，历史与持久化全由后端负责(后端权威上下文)
+ * 4. 回复完成(status→ready) → 通知上层刷新会话列表(onAfterSave)，不再发送任何消息
  *
- * 分段聚合分页设计（U7 新增）：
- * - 后端 onAfterChat 是纯 append 语义，前端必须只发新增消息，否则全量重发导致重复追加
- * - savedCountRef 记录已保存的 messages.length，每次回复后截取 messages.slice(savedCount) 发送
- * - hasMoreRef / firstIndexRef 记录懒加载游标，onLoadMore 时传 before=firstIndex
+ * 分段聚合分页设计：
+ * - 持久化由后端 onFinish 接管(append-only)，前端不再 PUT，无 savedCountRef
+ * - firstIndexRef 记录懒加载游标，onLoadMore 时传 before=firstIndex
  * - 懒加载拼接：把旧页消息 prepend 到当前 messages 头部，用户无感分段
  *
  * U6 变更（relatedMemories）：

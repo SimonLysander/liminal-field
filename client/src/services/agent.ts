@@ -71,24 +71,6 @@ export function renameBusinessSession(
   );
 }
 
-/**
- * 保存会话消息（每次 AI 回复完成后调用），返回最新 tasks。
- *
- * 后端 onAfterChat 是纯 append 语义（appendMessages），
- * 因此前端只发本轮新增消息（方案 A），避免全量重发导致重复追加。
- * 调用方需自行维护已保存的消息游标（savedCountRef），截取 messages.slice(savedCount)。
- */
-export function saveSession(
-  sessionKey: string,
-  newMessages: Record<string, unknown>[],
-  agentInstanceKey?: string,
-): Promise<{ ok: boolean; tasks: SessionTask[] }> {
-  return request<{ ok: boolean; tasks: SessionTask[] }>(
-    `/agent/sessions/${encodeURIComponent(sessionKey)}`,
-    { method: 'PUT', body: JSON.stringify({ messages: newMessages, agentInstanceKey }) },
-  );
-}
-
 /** 删除会话（清空对话） */
 export function deleteSession(sessionKey: string): Promise<void> {
   return request(`/agent/sessions/${encodeURIComponent(sessionKey)}`, {

@@ -53,11 +53,7 @@ class EntryContextDto {
 }
 
 export class AgentChatDto {
-  /** AI SDK 发送的 messages 数组(全量)。过渡期保留兜底,Task 7 删除。 */
-  @Allow()
-  messages?: any[];
-
-  /** 新协议:prepareSendMessagesRequest 只发的最新一条 UIMessage。优先于 messages。 */
+  /** prepareSendMessagesRequest 只发的最新一条 UIMessage;历史由后端从 agent_sessions 读。 */
   @Allow()
   message?: any;
 
