@@ -56,6 +56,22 @@ export interface BuildSystemPromptParams {
      */
     collectionContext?: string;
   };
+  /**
+   * 画廊场景(可选):只点场景——画廊标题/张数/有无随笔。
+   * 照片清单、随笔、图说等"内容"不在这里,模型靠 get_current_draft read、view_photos 看图。
+   * 与 document 互斥(画廊不是文稿)。
+   */
+  gallery?: {
+    contentItemId: string;
+    title: string;
+    prose: string;
+    photos: {
+      index: number;
+      fileName: string;
+      caption: string;
+      tags: Record<string, string>;
+    }[];
+  };
   /** 用户在设置中配置的全局自定义系统提示词（可选） */
   customSystemPrompt?: string;
   /** AgentEntryConfig 里为该 agent 入口配置的系统提示词（可选），优先级高于全局配置 */
@@ -160,6 +176,17 @@ ${ownerName} 当前正在编辑文档《${title || '未命名'}》(约 ${wordCou
           `<outline>\n${outline.map((h) => `  ${h}`).join('\n')}\n</outline>`,
         );
       }
+    }
+
+    // ——— 画廊场景：只点场景（在写哪个画廊/几张照片/有无随笔）；
+    // 照片清单/图说/随笔等内容不在这里，模型靠 get_current_draft read、view_photos 看图。
+    // 与 document 互斥（画廊不是文稿）。———
+    if (params.gallery) {
+      const g = params.gallery;
+      sections.push(`<gallery>
+${ownerName} 正在整理画廊《${g.title || '未命名'}》——${g.photos.length} 张照片${g.prose ? ',还配着一段随笔' : ''}。
+这些照片你看得见(想看哪张就看),清单、随笔、每张现有的图说也都能调出来读。${ownerName} 想聊照片、想要图说,顺着 ta 的话自然来就好。
+</gallery>`);
     }
 
     // ——— 当前写作计划：有「未完成」任务才注入。

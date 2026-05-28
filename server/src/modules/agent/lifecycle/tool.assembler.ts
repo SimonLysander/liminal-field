@@ -36,6 +36,10 @@ import { createSubAgentTool } from '../tools/sub-agent.tool';
 import { createWriteTasksTool } from '../tools/write-tasks.tool';
 import { createReadConversationHistoryTool } from '../tools/read-conversation-history.tool';
 import { createProposeDocumentRewriteTool } from '../tools/propose-document-rewrite.tool';
+import { createGetGalleryDraftTool } from '../tools/get-gallery-draft.tool';
+import { createViewPhotosTool } from '../tools/view-photos.tool';
+import { createProposeCaptionTool } from '../tools/propose-caption.tool';
+import type { GalleryContext } from '../tools/gallery-context';
 import { createWebSearchTool } from '../tools/web-search.tool';
 import { createWebSearchProviderFromEnv } from '../tools/web-search-provider';
 import { createWebFetchTool } from '../tools/web-fetch.tool';
@@ -46,6 +50,8 @@ import type { DocumentContext } from '../tools/get-current-document.tool';
 
 export interface EntryContext {
   document?: DocumentContext;
+  /** 画廊场景:照片清单+随笔。存在即走图说写手链路(get_current_draft 换画廊版 + view_photos/propose_caption)。 */
+  gallery?: GalleryContext;
   selectedText?: string;
   sessionKey?: string;
   agentInstanceKey?: string;
@@ -83,6 +89,7 @@ export class ToolAssembler {
     // 保留 lazy 形态为未来"chat 期间文档热更替"留接口——届时只需让 entryContext.document
     // 变成可变引用(或在 lifecycle 中主动 reassign),工具层无需变更。
     const getDocument = () => entryContext.document;
+    const getGallery = () => entryContext.gallery;
 
     // 联网搜索:provider 从 .env 选(默认 Tavily),没配 API key 时 createWebSearchProviderFromEnv
     // 返 undefined,本次装配不挂 web_search 工具(模型看不到自然不会调,优雅降级)。
@@ -100,8 +107,17 @@ export class ToolAssembler {
       read_document_content: createReadDocumentContentTool(
         this.noteViewService,
       ),
-      // 获取当前草稿画像：标题 + 大纲 + 字数 + 段落数 + 正文
-      get_current_draft: createGetCurrentDraftTool(getDocument),
+      // 当前草稿读取:画廊场景换画廊版(读清单+随笔)并附 view_photos/propose_caption;
+      // 否则文稿版(标题+大纲+字数+段落+正文)。同名 get_current_draft 二选一,避免重复 key。
+      ...(entryContext.gallery
+        ? {
+            get_current_draft: createGetGalleryDraftTool(getGallery),
+            view_photos: createViewPhotosTool(getGallery),
+            propose_caption: createProposeCaptionTool(getGallery),
+          }
+        : {
+            get_current_draft: createGetCurrentDraftTool(getDocument),
+          }),
       // 记忆工具：走 Memory Agent 统一处理分类、去重、合并
       remember: createRememberTool(this.memoryAgent),
       forget: createForgetTool(this.memoryAgent),

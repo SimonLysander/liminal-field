@@ -127,7 +127,8 @@ export class AgentLifecycle {
     tools: Record<string, any>;
   }> {
     // agentKey = 草稿级 agent 实例标识；sessionKey 只表示当前业务聊天。
-    const agentKey = dto.entryContext.agentInstanceKey ?? dto.entryContext.sessionKey;
+    const agentKey =
+      dto.entryContext.agentInstanceKey ?? dto.entryContext.sessionKey;
     // 并行加载:user 记忆全文 + 所有者身份 + 本草稿 session 记忆(content + tasks)
     const [coreMemories, ownerProfile, sessionMem] = await Promise.all([
       this.memory.loadCore(),
@@ -145,6 +146,7 @@ export class AgentLifecycle {
       // session 记忆 content = 旧对话提炼出的会话脉络
       sessionMemory: sessionMem?.content || undefined,
       document: dto.entryContext.document,
+      gallery: dto.entryContext.gallery,
       customSystemPrompt: aiConfig.aiSystemPrompt,
       entrySystemPrompt: aiConfig.entrySystemPrompt,
       tasks,

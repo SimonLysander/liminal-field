@@ -97,6 +97,25 @@ export class SystemConfigService implements OnModuleInit {
     'web_fetch',
   ];
 
+  /** gallery-caption-writer 入口的工具集(画廊图说场景)。 */
+  private static readonly GALLERY_CAPTION_TOOLS = [
+    'get_current_draft', // 画廊版:读清单+随笔(装配层按 gallery 场景换实现)
+    'view_photos', // 申请看图(后端 prepareStep 注图)
+    'propose_caption', // 写/改单张图说
+  ];
+
+  /** gallery-caption-writer 的预置入口(预置与补齐共用一份,避免两处手抄)。 */
+  private static readonly GALLERY_CAPTION_ENTRY = {
+    key: 'gallery-caption-writer',
+    name: '图说写手',
+    description: '为画廊照片写/改图说(caption)',
+    enabled: true,
+    systemPrompt:
+      '写图说(caption)的手感:短、具体、贴着画面本身和那篇随笔的气口;别堆形容词、别说正确的废话——有时一句平实的话就够。',
+    tools: [...SystemConfigService.GALLERY_CAPTION_TOOLS],
+    tier: 'vision',
+  };
+
   constructor(
     private readonly repo: SystemConfigRepository,
     private readonly contentRepoService: ContentRepoService,
@@ -128,9 +147,12 @@ export class SystemConfigService implements OnModuleInit {
             tools: [...SystemConfigService.WRITING_ADVISOR_TOOLS],
             tier: 'standard',
           },
+          { ...SystemConfigService.GALLERY_CAPTION_ENTRY },
         ] as AgentEntryConfig[],
       });
-      this.logger.log('预置 writing-advisor agent 配置已写入');
+      this.logger.log(
+        '预置 writing-advisor + gallery-caption-writer agent 配置已写入',
+      );
     } else {
       // 补齐新增工具：已有配置可能缺少后来新加的工具
       const allTools = SystemConfigService.WRITING_ADVISOR_TOOLS;
@@ -161,6 +183,17 @@ export class SystemConfigService implements OnModuleInit {
             );
           }
         }
+      }
+
+      // 补齐 gallery-caption-writer:老库只有 writing-advisor,需补这个新入口
+      if (
+        !config.agentConfigs.some((c) => c.key === 'gallery-caption-writer')
+      ) {
+        config.agentConfigs.push({
+          ...SystemConfigService.GALLERY_CAPTION_ENTRY,
+        });
+        await this.repo.patch({ agentConfigs: config.agentConfigs });
+        this.logger.log('补齐 gallery-caption-writer agent 配置');
       }
     }
   }

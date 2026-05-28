@@ -22,6 +22,7 @@ import { makeRepairToolCall } from './agent.utils';
 import { SystemConfigService } from '../settings/system-config.service';
 import { AgentLifecycle } from './lifecycle/agent-lifecycle.service';
 import { AgentSessionRepository } from './session/agent-session.repository';
+import { GalleryViewService } from '../workspace/gallery-view.service';
 import { splitForCompaction } from './context/compaction-split';
 import { sanitizeAbortedToolCalls } from './context/sanitize-aborted-tool-calls';
 import { dropContentlessMessages } from './context/drop-contentless-messages';
@@ -40,6 +41,7 @@ export class AgentService {
     private readonly systemConfigService: SystemConfigService,
     private readonly lifecycle: AgentLifecycle,
     private readonly sessionRepo: AgentSessionRepository,
+    private readonly galleryView: GalleryViewService,
   ) {}
 
   // 返回 Web Response(toUIMessageStreamResponse 产物),controller 直接 reply.send。
@@ -56,7 +58,12 @@ export class AgentService {
     }
 
     // 2. 读取 AI 配置，tier 优先级：前端传入 > 入口配置 > 默认 standard
-    const tier = dto.tier ?? agentConfig?.tier ?? 'standard';
+    //    例外:vision 入口(画廊图说写手)天然需要多模态模型,不容前端 tier 开关
+    //    (默认 'standard')把它降级成无视觉的文本模型——vision 入口恒用 vision。
+    const tier =
+      agentConfig?.tier === 'vision'
+        ? 'vision'
+        : (dto.tier ?? agentConfig?.tier ?? 'standard');
     const aiConfig = await this.systemConfigService.getAiConfig(tier);
     if (!aiConfig.baseUrl || !aiConfig.apiKey || !aiConfig.model) {
       throw new BadRequestException(
@@ -121,6 +128,16 @@ export class AgentService {
       toKeep as Parameters<typeof convertToModelMessages>[0],
     );
 
+    // 画廊场景:模型调 view_photos 后,把它点名的照片 base64 注进后续步的 user message
+    // (openai-compatible 不让 tool 返图,GV3 实测;故走 prepareStep 注入)。图不进 agent_sessions
+    // (onFinish 持久化的是 toUIMessageStream 的消息,不含此处临时注入),下轮要看再调 view_photos。
+    const gallery = dto.entryContext.gallery;
+    const galleryImageCache = new Map<
+      string,
+      { b64: string; mediaType: string }
+    >();
+    const visibleFileNames = new Set<string>();
+
     // 6. 调用 streamText：AI SDK 内置 ReAct 循环，stopWhen 限制最多 10 步防止无限循环
     const result = streamText({
       model,
@@ -128,6 +145,64 @@ export class AgentService {
       messages: modelMessages,
       tools,
       stopWhen: stepCountIs(10),
+      // 画廊按需注图:扫已执行步骤里的 view_photos,把点名且存在的照片字节注入本步 user message。
+      // 累加语义——之前步看过的图后续步仍可见(模型不会"看完就忘")。
+      prepareStep: gallery
+        ? async ({ steps, messages }) => {
+            for (const s of steps)
+              for (const call of s.toolCalls ?? []) {
+                if (call.toolName !== 'view_photos') continue;
+                const fileNames =
+                  (call.input as { fileNames?: string[] })?.fileNames ?? [];
+                for (const fn of fileNames)
+                  if (gallery.photos.some((p) => p.fileName === fn))
+                    visibleFileNames.add(fn);
+              }
+            if (visibleFileNames.size === 0) return {};
+            const imageParts: Array<
+              | { type: 'text'; text: string }
+              | { type: 'image'; image: string; mediaType: string }
+            > = [];
+            for (const fn of visibleFileNames) {
+              let img = galleryImageCache.get(fn);
+              if (!img) {
+                try {
+                  const { buffer, contentType } =
+                    await this.galleryView.readPhotoBuffer(
+                      gallery.contentItemId,
+                      fn,
+                    );
+                  img = {
+                    b64: buffer.toString('base64'),
+                    mediaType: contentType,
+                  };
+                  galleryImageCache.set(fn, img);
+                } catch {
+                  continue; // 取不到字节(未上传完/已删)→跳过,不打断本轮
+                }
+              }
+              imageParts.push({ type: 'text', text: `[${fn}]` });
+              imageParts.push({
+                type: 'image',
+                image: img.b64,
+                mediaType: img.mediaType,
+              });
+            }
+            if (imageParts.length === 0) return {};
+            return {
+              messages: [
+                ...messages,
+                {
+                  role: 'user',
+                  content: [
+                    { type: 'text', text: '你请求查看的照片:' },
+                    ...imageParts,
+                  ],
+                },
+              ],
+            };
+          }
+        : undefined,
       // 工具调用烂 JSON 时自动 re-ask 修复,不让整轮崩(provider 偶发,见 agent.utils)
       experimental_repairToolCall: makeRepairToolCall(model),
       experimental_telemetry: { isEnabled: true },
