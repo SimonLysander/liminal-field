@@ -137,13 +137,14 @@ export function useAdvisorChat({
           documentContext: docRef.current,
         }),
         prepareSendMessagesRequest: ({ id, messages, body, trigger, messageId }) => {
-          // v3 协议：chips 已拼进 user message text，不再通过 entryContext 传 references/anchors
+          // 后端权威上下文:历史由后端从 agent_sessions 读,前端只发最新这条,
+          // 请求体不再随对话变长。chips 已拼进 user message text。
           const fallbackBody = body ?? {};
           return {
             body: {
               ...fallbackBody,
               id,
-              messages,
+              message: messages[messages.length - 1],
               trigger,
               messageId,
             },
