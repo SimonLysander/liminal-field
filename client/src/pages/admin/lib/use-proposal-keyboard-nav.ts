@@ -3,18 +3,23 @@ import { useEffect } from 'react';
 /**
  * useProposalKeyboardNav —— 审批态全局快捷键。
  *
- * 仅在 enabled=true(controller.hasPending)时挂载 keydown listener:
- *   Y/y      接受当前 active hunk
- *   N/n      拒绝当前 active hunk
- *   J/j      下一个 pending hunk(循环)
- *   K/k      上一个 pending hunk(循环)
- *   ⌘/Ctrl+Enter     接受全部
- *   ⌘/Ctrl+Backspace 拒绝全部
+ * 列表选择心智(Finder / Spotlight 派),仅 3 个键:
+ *   ↑          上一个 pending hunk(循环)
+ *   ↓          下一个 pending hunk(循环)
+ *   Enter      接受当前 active hunk
+ *   Backspace  拒绝当前 active hunk
+ *
+ * 设计取舍:
+ *   - 没有"全部接受/全部拒绝"快捷键(toolbar 按钮够用,这俩低频)
+ *   - 没有 navigate 快捷键变体(j/k 等 vim 派) — ↑↓ 通用心智已足
+ *   - 接管 ↑↓ 抢走浏览器默认页面滚动 — 审批是聚焦任务,navigate hunk 优先级
+ *     高于自由滚动,且 active 切换会 scrollIntoView 把视野带过去,用户不太
+ *     需要手动滚;真要手动滚走鼠标滚轮 / PageUp / PageDown
  *
  * 守卫:
- *   - 焦点在 input/textarea/contenteditable 上不触发(用户正在打字)
- *   - 单字符快捷键不能带任何修饰键(避免 ⌘Y / ⌘N 等浏览器/系统组合误触)
- *   - activeHunkId 为空时 Y/N 静默 noop(没目标可操作)
+ *   - 焦点在 input/textarea/contenteditable=true 时不触发(用户正在打字)
+ *   - 单键不能带修饰键(避免 ⌘↑ / ⇧⏎ 等组合误触)
+ *   - activeHunkId 为空时 Enter/Backspace 静默 noop(没目标可操作)
  *
  * 这个 hook 不知道是哪个 controller — 完全靠传入的回调驱动,便于测试和未来复用。
  */
@@ -26,11 +31,9 @@ export interface UseProposalKeyboardNavOptions {
   rejectOne: (hunkId: string) => void;
   navigateNext: () => void;
   navigatePrev: () => void;
-  acceptAll: () => void;
-  rejectAll: () => void;
 }
 
-/** 检查事件目标是不是"用户正在输入"的元素(避免在编辑器/聊天框打 Y/N 字符时触发) */
+/** 检查事件目标是不是"用户正在输入"的元素(避免在聊天框敲 Enter 时触发) */
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName;
@@ -52,8 +55,6 @@ export function useProposalKeyboardNav(
     rejectOne,
     navigateNext,
     navigatePrev,
-    acceptAll,
-    rejectAll,
   } = options;
 
   useEffect(() => {
@@ -61,53 +62,29 @@ export function useProposalKeyboardNav(
 
     const handler = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target)) return;
-
-      const mod = e.metaKey || e.ctrlKey;
-
-      // ⌘/Ctrl 组合键:全选/全拒
-      if (mod && !e.altKey && !e.shiftKey) {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          acceptAll();
-          return;
-        }
-        if (e.key === 'Backspace' || e.key === 'Delete') {
-          e.preventDefault();
-          rejectAll();
-          return;
-        }
-        return;
-      }
-
-      // 单字符快捷键不能带任何修饰键(避免 ⌘Y / Ctrl+N 等系统组合误触)
-      if (mod || e.altKey || e.shiftKey) return;
+      // 任何修饰键组合 → 不处理(交回浏览器/系统,避免 ⌘↑ 跳行首等被吞)
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
 
       switch (e.key) {
-        case 'y':
-        case 'Y':
+        case 'ArrowDown':
+          e.preventDefault();
+          navigateNext();
+          return;
+        case 'ArrowUp':
+          e.preventDefault();
+          navigatePrev();
+          return;
+        case 'Enter':
           if (activeHunkId) {
             e.preventDefault();
             acceptOne(activeHunkId);
           }
           return;
-        case 'n':
-        case 'N':
+        case 'Backspace':
           if (activeHunkId) {
             e.preventDefault();
             rejectOne(activeHunkId);
           }
-          return;
-        case 'j':
-        case 'J':
-        case 'ArrowDown':
-          e.preventDefault();
-          navigateNext();
-          return;
-        case 'k':
-        case 'K':
-        case 'ArrowUp':
-          e.preventDefault();
-          navigatePrev();
           return;
         default:
           return;
@@ -116,14 +93,5 @@ export function useProposalKeyboardNav(
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [
-    enabled,
-    activeHunkId,
-    acceptOne,
-    rejectOne,
-    navigateNext,
-    navigatePrev,
-    acceptAll,
-    rejectAll,
-  ]);
+  }, [enabled, activeHunkId, acceptOne, rejectOne, navigateNext, navigatePrev]);
 }

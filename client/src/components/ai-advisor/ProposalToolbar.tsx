@@ -49,7 +49,7 @@ export function ProposalToolbar({ pendingCount, totalCount, onAcceptAll, onRejec
             )}
             待审 <strong style={{ color: 'var(--accent)' }}>{pendingCount}</strong>
           </span>
-          {/* 快捷键提示:Y/N 接受拒绝当前,J/K 上下跳,⌘⏎/⌘⌫ 全接全拒 */}
+          {/* 快捷键提示:↑↓ 浏览 hunk,Enter 接受,Backspace 拒绝;全接全拒走按钮 */}
           <span
             className="ml-3 hidden md:inline"
             style={{
@@ -59,7 +59,7 @@ export function ProposalToolbar({ pendingCount, totalCount, onAcceptAll, onRejec
             }}
             title="审批快捷键"
           >
-            Y 接受 · N 拒绝 · J/K 上下 · ⌘⏎ 全接 · ⌘⌫ 全拒
+            ↑↓ 切换 · ⏎ 接受 · ⌫ 拒绝
           </span>
         </div>
 

@@ -160,7 +160,7 @@ function ProposalBridge({ pending, onResolved, onHasPendingChange, children }: P
 
   const pendingCount = controller.hunks.filter((h) => !controller.decisions.has(h.id)).length;
 
-  // 全局快捷键:Y/N/J/K + ⌘⏎/⌘⌫ —— 仅审批进行中挂载
+  // 全局快捷键:↑↓ navigate + ⏎ 接受 + ⌫ 拒绝 —— 仅审批进行中挂载
   useProposalKeyboardNav({
     enabled: controller.hasPending,
     activeHunkId: controller.activeHunkId,
@@ -168,8 +168,6 @@ function ProposalBridge({ pending, onResolved, onHasPendingChange, children }: P
     rejectOne: controller.rejectOne,
     navigateNext: controller.navigateNext,
     navigatePrev: controller.navigatePrev,
-    acceptAll: controller.acceptAll,
-    rejectAll: controller.rejectAll,
   });
 
   return (
