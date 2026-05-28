@@ -48,9 +48,10 @@ export class AgentSessionRepository implements OnApplicationBootstrap {
    */
   async onApplicationBootstrap(): Promise<void> {
     try {
-      const indexes: Array<{ name?: string }> = (await this.sessionModel.collection
-        .indexes()
-        .catch(() => [])) as Array<{ name?: string }>;
+      const indexes: Array<{ name?: string }> =
+        (await this.sessionModel.collection
+          .indexes()
+          .catch(() => [])) as Array<{ name?: string }>;
       const hasLegacy = indexes.some((idx) => idx.name === 'sessionKey_1');
       if (!hasLegacy) return;
       await this.sessionModel.collection.dropIndex('sessionKey_1');
@@ -212,14 +213,12 @@ export class AgentSessionRepository implements OnApplicationBootstrap {
     >();
 
     for (const seg of segs) {
-      const current =
-        byKey.get(seg.agentKey) ??
-        {
-          sessionKey: seg.agentKey,
-          title: '',
-          messageCount: 0,
-          lastActiveAt: null,
-        };
+      const current = byKey.get(seg.agentKey) ?? {
+        sessionKey: seg.agentKey,
+        title: '',
+        messageCount: 0,
+        lastActiveAt: null,
+      };
       current.messageCount += seg.messages.length;
       current.lastActiveAt =
         !current.lastActiveAt || seg.lastActiveAt > current.lastActiveAt
@@ -242,7 +241,10 @@ export class AgentSessionRepository implements OnApplicationBootstrap {
       );
   }
 
-  async renameBusinessSession(sessionKey: string, title: string): Promise<void> {
+  async renameBusinessSession(
+    sessionKey: string,
+    title: string,
+  ): Promise<void> {
     const cleanTitle = title.trim().slice(0, 80);
     const now = new Date();
     const result = await this.sessionModel.updateMany(
