@@ -8,6 +8,7 @@ import type { ReturnModelType } from '@typegoose/typegoose';
 import { Types } from 'mongoose';
 import { getModelToken } from 'nestjs-typegoose';
 import { AgentSession } from './agent-session.entity';
+import { estimateTokens } from '../context/token-estimate';
 
 /**
  * 单段软上限：14MB，留 buffer 给 16MB MongoDB 硬上限。
@@ -136,6 +137,38 @@ export class AgentSessionRepository implements OnApplicationBootstrap {
     }
     // slice(-limit) 保留最新的 limit 条（正序）
     return flat.slice(-limit);
+  }
+
+  /**
+   * 跨段倒取「最近一段、token 不超 window*ratio」的消息(返回正序:旧→新)。
+   * 与 getRecentMessages 区别:按 token 预算而非条数裁剪,口径对齐 splitForCompaction
+   * (ratio 传 TRIGGER_RATIO=0.6),保证读取量 ≥ 后续喂模型量,更早的靠记忆摘要兜。
+   * 从最新段往前累积,累计 token 超预算即停;保底至少返回最近 1 条。
+   */
+  async getRecentByBudget(
+    agentKey: string,
+    window: number,
+    ratio: number,
+  ): Promise<Record<string, unknown>[]> {
+    const budget = window * ratio;
+    const segs = await this.sessionModel
+      .find({ agentKey })
+      .sort({ segIndex: -1 });
+    const flat: Record<string, unknown>[] = [];
+    let acc = 0;
+    // 段倒序(新→旧),段内也倒序累加,才能"从最新一条往前数";保底至少 1 条
+    for (const seg of segs) {
+      for (let i = seg.messages.length - 1; i >= 0; i--) {
+        const m = seg.messages[i];
+        const t = estimateTokens(m);
+        if (acc + t > budget && flat.length >= 1) {
+          return flat; // 已正序(每次 unshift 到头部)
+        }
+        flat.unshift(m);
+        acc += t;
+      }
+    }
+    return flat;
   }
 
   /**

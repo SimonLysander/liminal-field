@@ -273,4 +273,42 @@ describe('AgentSessionRepository — 分段读写', () => {
       await expect(repo.deleteByAgentKey('ghost-agent')).resolves.not.toThrow();
     });
   });
+
+  describe('getRecentByBudget', () => {
+    const big = (n: number) => 'x'.repeat(n);
+
+    it('在 token 预算内返回全部(正序)', async () => {
+      const agentKey = key('budget-small');
+      await repo.appendMessages(agentKey, [
+        { role: 'user', parts: [{ type: 'text', text: 'a' }] },
+        { role: 'assistant', parts: [{ type: 'text', text: 'b' }] },
+      ]);
+      // window=10000, ratio=0.6 → 预算 6000 token,远超 2 条小消息
+      const got = await repo.getRecentByBudget(agentKey, 10000, 0.6);
+      expect(got).toHaveLength(2);
+      expect((got[0] as { role: string }).role).toBe('user');
+      expect((got[1] as { role: string }).role).toBe('assistant');
+    });
+
+    it('超预算时只返回最近若干条(从尾累加,正序)', async () => {
+      const agentKey = key('budget-trim');
+      // 每条 big(10000) 英文 ≈ 3000 token。预算 window=10000*0.3=3000。
+      const msgs = Array.from({ length: 5 }, (_, i) => ({
+        role: i % 2 ? 'assistant' : 'user',
+        parts: [{ type: 'text', text: big(10000) }],
+        tag: i, // 标记顺序,便于断言
+      }));
+      await repo.appendMessages(agentKey, msgs);
+      const got = await repo.getRecentByBudget(agentKey, 10000, 0.3);
+      // 预算只够最近 1 条(每条 ~3000 ≈ 预算),保底至少 1 条;且必须是最新那条(tag=4)
+      expect(got.length).toBeGreaterThanOrEqual(1);
+      expect(got.length).toBeLessThan(5);
+      expect((got[got.length - 1] as { tag: number }).tag).toBe(4);
+    });
+
+    it('空会话 → 空数组', async () => {
+      const got = await repo.getRecentByBudget(key('budget-empty'), 10000, 0.6);
+      expect(got).toEqual([]);
+    });
+  });
 });
