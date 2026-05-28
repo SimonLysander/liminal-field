@@ -716,11 +716,11 @@ export class AnthologyViewService {
       throw new BadRequestException('请先发布文集,才能发布其中的条目');
     }
 
+    // 用 find 拿 entryRef:报错用标题而非内部 key(不向用户泄漏内部 id)
     const indexData = await this.loadIndex(contentItemId);
-    if (!indexData.entries.some((e) => e.key === entryKey)) {
-      throw new NotFoundException(
-        `Entry ${entryKey} not found in anthology ${contentItemId}`,
-      );
+    const entryRef = indexData.entries.find((e) => e.key === entryKey);
+    if (!entryRef) {
+      throw new NotFoundException('条目不存在或已删除');
     }
 
     const latestSnapshot = await this.snapshotRepository.findLatestByFileName(
@@ -728,7 +728,9 @@ export class AnthologyViewService {
       `entries/${entryKey}.md`,
     );
     if (!latestSnapshot) {
-      throw new BadRequestException(`条目 ${entryKey} 尚无内容，无法发布`);
+      throw new BadRequestException(
+        `《${entryRef.title || '未命名条目'}》尚无内容，无法发布`,
+      );
     }
 
     const publishMap = this.buildEntryPublishMap(item);
