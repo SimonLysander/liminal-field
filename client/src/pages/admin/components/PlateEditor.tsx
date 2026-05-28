@@ -29,7 +29,7 @@ import { serializeMd, deserializeMd } from '@platejs/markdown';
 // v3 改稿依赖
 import { useProposalController, type Proposal } from '@/pages/admin/lib/use-proposal-controller';
 import { useProposalKeyboardNav } from '@/pages/admin/lib/use-proposal-keyboard-nav';
-import { ProposalToolbar } from '@/components/ai-advisor/ProposalToolbar';
+// ProposalToolbar 不再由 ProposalBridge 渲染;现在由 ProseDraftEditor 在中间栏顶栏渲染
 import { ProposalControlsContext } from '@/components/editor/proposal-controls-context';
 
 import { fixCodeBlockLines } from '@/components/shared/plate-transforms';
@@ -109,10 +109,21 @@ function AnchorBridge({
 // v3.1 ProposalBridge:Context Provider 模式 — 节点树自带渲染,弃 ProposalOverlay + rAF
 // ────────────────────────────────────────────────────────────────────────────
 
+/** 审批态时,中间栏顶栏需要的 UI state(由 ProseDraftEditor 接住后切换顶栏内容) */
+export interface ProposalUiState {
+  pendingCount: number;
+  totalCount: number;
+  /** 不传引用,父级用 ref 跟踪稳定调用 */
+  acceptAll: () => void;
+  rejectAll: () => void;
+}
+
 interface ProposalBridgeProps {
   pending?: Proposal;
   onResolved?: (cleanMarkdown: string) => void;
   onHasPendingChange?: (hasPending: boolean) => void;
+  /** 审批态时上抛 UI state;退出审批时上抛 null 让父级恢复正常顶栏 */
+  onProposalUiChange?: (state: ProposalUiState | null) => void;
   children: React.ReactNode;
 }
 
@@ -121,13 +132,14 @@ interface ProposalBridgeProps {
  *
  * - controller 收 pending,内部展开节点树 + 提供 acceptOne/rejectOne
  * - 用 ProposalControlsContext.Provider 把回调透给 Plate element renderer 内的 ✓✗ 按钮
- * - ProposalToolbar 顶部条沿用(剩余 N / 全部 ✓✗)
+ * - 审批 toolbar 不再在这里渲染,而是通过 onProposalUiChange 上抛 state,
+ *   由 ProseDraftEditor 在中间栏顶栏渲染(替换"标题/保存/提交"内容,零堆叠)
  *
  * 与 v3 ProposalBridge 的关键差异:
  * - 弃 ProposalOverlay + rAF + overlayReady(节点树自带渲染,element renderer 直接读 Context)
  * - 多了 children 参数(EditorContainer 等作为 Provider 子节点)
  */
-function ProposalBridge({ pending, onResolved, onHasPendingChange, children }: ProposalBridgeProps) {
+function ProposalBridge({ pending, onResolved, onHasPendingChange, onProposalUiChange, children }: ProposalBridgeProps) {
   const editor = useEditorRef();
   const controller = useProposalController(editor, {
     onResolved,
@@ -147,6 +159,41 @@ function ProposalBridge({ pending, onResolved, onHasPendingChange, children }: P
     onHasPendingChangeRef.current?.(controller.hasPending);
   }, [controller.hasPending]);
 
+  // 上抛审批 UI state 给 ProseDraftEditor —— 它在中间栏顶栏渲染审批控件
+  // (替换"标题/保存"等正常顶栏内容,零堆叠)。
+  // 用 ref 跟踪 callback + controller 引用,避免每次 render 把不稳定 fn 写进 state。
+  const onProposalUiChangeRef = useRef(onProposalUiChange);
+  useEffect(() => {
+    onProposalUiChangeRef.current = onProposalUiChange;
+  });
+  // controller 每次 render 都新建,但其方法行为稳定 —— 用 ref 缓存最新引用,
+  // 上抛给父级的 acceptAll/rejectAll 是稳定的代理(内部读 ref.current)。
+  // ref 更新放进 effect(不在 render 期写 ref.current):代理只在按钮点击时读
+  // ref.current,届时 effect 早已 commit,拿到的就是最新 controller。
+  const controllerRef = useRef(controller);
+  useEffect(() => {
+    controllerRef.current = controller;
+  });
+  // 仅 hasPending / pendingCount / totalCount 变化时上抛,
+  // controller fn 引用变化不触发(代理是稳定的,父级不必重渲染)
+  const pendingCountForEffect = controller.hunks.filter(
+    (h) => !controller.decisions.has(h.id),
+  ).length;
+  const totalCountForEffect = controller.hunks.length;
+  useEffect(() => {
+    if (!controller.hasPending) {
+      onProposalUiChangeRef.current?.(null);
+      return;
+    }
+    onProposalUiChangeRef.current?.({
+      pendingCount: pendingCountForEffect,
+      totalCount: totalCountForEffect,
+      // 稳定代理:父级保存这个引用,实际调用时走 ref.current 拿当前 fn
+      acceptAll: () => controllerRef.current.acceptAll(),
+      rejectAll: () => controllerRef.current.rejectAll(),
+    });
+  }, [controller.hasPending, pendingCountForEffect, totalCountForEffect]);
+
   // 接收外部传入的 pending proposal:callId 变化时重新 setProposal(controller 内部展开节点树)
   useEffect(() => {
     if (pending && pending.callId !== controller.proposal?.callId) {
@@ -157,8 +204,6 @@ function ProposalBridge({ pending, onResolved, onHasPendingChange, children }: P
   // controller 对象引用在每次渲染都新建,但此处仅依赖 pending 变化(callId 字符串比较)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending]);
-
-  const pendingCount = controller.hunks.filter((h) => !controller.decisions.has(h.id)).length;
 
   // 全局快捷键:↑↓ navigate + ⏎ 接受 + ⌫ 拒绝 —— 仅审批进行中挂载
   useProposalKeyboardNav({
@@ -179,12 +224,8 @@ function ProposalBridge({ pending, onResolved, onHasPendingChange, children }: P
         setActiveHunkId: controller.setActiveHunkId,
       }}
     >
-      <ProposalToolbar
-        pendingCount={pendingCount}
-        totalCount={controller.hunks.length}
-        onAcceptAll={controller.acceptAll}
-        onRejectAll={controller.rejectAll}
-      />
+      {/* 审批 toolbar 不再在这里渲染:state 通过 onProposalUiChange 上抛给
+          ProseDraftEditor,由它在中间栏顶栏渲染(替换正常顶栏内容)*/}
       {children}
     </ProposalControlsContext.Provider>
   );
@@ -221,6 +262,7 @@ export function PlateMarkdownEditor({
   v3Proposal,
   onV3Resolved,
   onHasV3PendingChange,
+  onProposalUiChange,
   editorRefSync,
 }: {
   initialMarkdown: string;
@@ -246,6 +288,8 @@ export function PlateMarkdownEditor({
   onV3Resolved?: (cleanMarkdown: string) => void;
   /** v3 改稿:有 pending hunks 时上报(让上层切编辑器 readOnly) */
   onHasV3PendingChange?: (hasPending: boolean) => void;
+  /** v3 改稿:审批态 UI state(上层在中间栏顶栏渲染审批控件) */
+  onProposalUiChange?: (state: ProposalUiState | null) => void;
   /**
    * v3 改稿：外层通过此 ref 拿到 editor.children + editor 实例。
    * EditorChildrenBridge 在 <Plate> context 内填充；聊天侧 computeDocDiff / deserializeMd 读取。
@@ -393,6 +437,7 @@ export function PlateMarkdownEditor({
             setHasV3Pending(hasPending);
             onHasV3PendingChange?.(hasPending);
           }}
+          onProposalUiChange={onProposalUiChange}
         >
           <EditorContainer
             className="prose-draft-editor-surface"

@@ -1,9 +1,11 @@
 /**
- * EditorOutline — 编辑器右侧大纲面板(笔记/文集编辑器共用)。
+ * EditorOutline — 编辑器大纲面板(笔记/文集编辑器共用)。
  *
- * 标题固定不滚;列表高度跟随内容、超 61.8vh 才滚动;左侧细线从标题下方起、长度随内容;
+ * 新布局(2026-05-28)挪到左侧栏 [2,1] cell,内部不再渲染 "大纲" 标题——
+ * label 已挪到 [1,1] 顶栏(跟返回按钮一组,符合 Notion 派各栏独立顶栏)。
+ *
+ * 列表高度跟随内容、超 61.8vh 才滚动;左侧细线从顶起、长度随内容;
  * 仅可滚动时上下边缘渐隐(useScrollFade);当前阅读标题高亮(activeIndex)。
- * 原先两个编辑器各自重复一份,抽到此处去重。
  */
 
 import { useEffect, useRef } from 'react';
@@ -34,21 +36,8 @@ export function EditorOutline({
   }, [activeIndex]);
 
   return (
-    <div
-      className="flex shrink-0 flex-col self-start px-4 pt-4"
-      style={{
-        width: 'var(--layout-sidebar)',
-        marginTop: '0',
-      }}
-    >
-      {/* 标题固定不滚 */}
-      <div
-        className="mb-3 shrink-0 text-xs font-semibold uppercase"
-        style={{ color: 'var(--ink-ghost)', letterSpacing: '0.04em' }}
-      >
-        大纲
-      </div>
-      {/* 列表高度跟随内容、超上限才滚;左侧细线从标题下方开始、长度随内容 */}
+    <div className="flex shrink-0 flex-col self-start px-3 pt-2">
+      {/* 列表高度跟随内容、超上限才滚;左侧细线从顶起、长度随内容 */}
       <nav
         ref={navRef}
         className="overflow-y-auto"

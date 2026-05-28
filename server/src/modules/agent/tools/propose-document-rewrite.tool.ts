@@ -23,7 +23,7 @@ export function createProposeDocumentRewriteTool(
 ) {
   return tool({
     description:
-      '为当前草稿生成改稿提议。**调用前必须先 get_current_draft 拿到 bodyHash,然后作为同名参数传入**。服务器对比 bodyHash 与当前文档 hash,不符返回 stale + 最新正文,你需基于最新版重生成。给出 newMarkdown(完整新版正文,不要片段)+ reason(一句话整体意图)+ bodyHash。前端会基于完整新版做算法 diff,红删/绿增 overlay 形式展示,用户逐项 ✓/✗ 决定。引用块(`> 第 N 段:「…」`)只是用户特别想让你看的几段,不是必须改的范围——你自由决定改哪。',
+      '为当前草稿生成改稿提议。**调用前必须先 get_current_draft 拿到 bodyHash,然后作为同名参数传入**。服务器对比 bodyHash 与当前文档 hash,不符返回 stale + 最新正文,你需基于最新版重生成。给出 newMarkdown(完整新版**正文**,不要片段)+ reason(一句话整体意图)+ bodyHash。**newMarkdown 只含正文,不要包含文档标题行(如 `# 标题`)——标题是独立字段,正文不含它;若混入标题,前端 diff 会把标题误判成新增段落**。前端会基于完整新版做算法 diff,红删/绿增 overlay 形式展示,用户逐项 ✓/✗ 决定。引用块(`> 第 N 段:「…」`)只是用户特别想让你看的几段,不是必须改的范围——你自由决定改哪。',
     inputSchema: jsonSchema<{
       newMarkdown: string;
       reason: string;

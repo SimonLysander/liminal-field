@@ -1,5 +1,4 @@
 import { useContext } from 'react';
-import { Check, X } from 'lucide-react';
 import { ProposalControlsContext } from './proposal-controls-context';
 
 interface Props {
@@ -9,70 +8,47 @@ interface Props {
 /**
  * ProposalActions —— hunk 配对底部独立一行的接受/拒绝按钮。
  *
- * 设计:**放在 proposal-new 节点内最底部独立一行**(inline flex row,不再 absolute right)
- * - 一个 hunk(proposal-old + proposal-new 配对)只渲染**一对**按钮(在 new 块上),不在 old 块上重复
- * - 不依赖屏幕宽度,任何 viewport 都看得见
- * - 紧贴 hunk 配对下方,语义清晰("这处改动接受/拒绝")
+ * 设计:**放在 proposal-new 节点内最底部独立一行**(inline flex row)
+ * - 一个 hunk(proposal-old + proposal-new 配对)只渲染**一对**按钮(在 new 块上)
+ * - ghost 风格(小而精致,无边框):拒绝 mark-red 字 / 接受 accent(长春花紫)字,
+ *   hover 才显浅色块。跟顶栏"拒绝全部/接受全部"风格一致。
+ * - 接受用 accent 而非绿 —— 绿留给"已发布/成功"语义,改稿接受用主题色
  *
  * contentEditable={false} 让 Plate readOnly 期间按钮可点击但不被当作可编辑文本。
  */
 export function ProposalActions({ hunkId }: Props) {
   const ctx = useContext(ProposalControlsContext);
   if (!hunkId || !ctx) return null;
-  // 拒绝在前、接受在后 —— 让"主动接受"成为右侧的"前进按钮"位置,符合中文阅读流(否定先于肯定)
+  // 拒绝在前、接受在后 —— "主动接受"落在右侧"前进"位置
   return (
     <div
       contentEditable={false}
+      className="proposal-actions-row"
       style={{
         display: 'flex',
-        gap: 6,
+        gap: 2,
         marginTop: 4,
         paddingTop: 3,
         justifyContent: 'flex-end',
         userSelect: 'none',
-        borderTop: '1px dashed color-mix(in srgb, var(--mark-green, #3F9D57) 25%, transparent)',
       }}
     >
       <button
         type="button"
         onClick={() => ctx.rejectOne(hunkId)}
         aria-label="拒绝这处改动"
-        style={{
-          background: 'transparent',
-          color: 'var(--mark-red, #D24B3E)',
-          border: '1px solid var(--mark-red, #D24B3E)',
-          borderRadius: 3,
-          padding: '1px 8px',
-          cursor: 'pointer',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 3,
-          fontSize: 11,
-          lineHeight: 1.4,
-        }}
+        className="rounded-md px-2 py-0.5 text-xs transition-colors hover:bg-[color-mix(in_srgb,var(--mark-red)_10%,transparent)]"
+        style={{ color: 'var(--mark-red)' }}
       >
-        <X size={11} />
         拒绝
       </button>
       <button
         type="button"
         onClick={() => ctx.acceptOne(hunkId)}
         aria-label="接受这处改动"
-        style={{
-          background: 'var(--mark-green, #3F9D57)',
-          color: '#fff',
-          border: '1px solid var(--mark-green, #3F9D57)',
-          borderRadius: 3,
-          padding: '1px 8px',
-          cursor: 'pointer',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 3,
-          fontSize: 11,
-          lineHeight: 1.4,
-        }}
+        className="rounded-md px-2 py-0.5 text-xs transition-colors hover:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)]"
+        style={{ color: 'var(--accent)', fontWeight: 500 }}
       >
-        <Check size={11} />
         接受
       </button>
     </div>

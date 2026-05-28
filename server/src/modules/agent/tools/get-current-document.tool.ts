@@ -89,12 +89,15 @@ export function createGetCurrentDraftTool(
         `读了第 ${startLine}–${endLine} 行`,
       ];
 
+      // 注意:**不要**把 `# ${title}` 作为正文第一行给 AI —— 标题是独立字段(顶栏 input),
+      // editor 正文 bodyMarkdown 不含它。若混进来,AI 会以为正文带标题,propose 的
+      // newMarkdown 也带上标题,前端 diff(正文 vs 含标题的 newMarkdown)就把标题算成
+      // "新增段落",审批界面冒出一个标题 hunk。标题信息已在 summary《${title}》点名。
       const detail = [
-        `# ${document.title}`,
         outline.length > 0
           ? `大纲:\n${outline.map((h) => `  ${h}`).join('\n')}`
           : '',
-        `正文(${alignedOffset}–${alignedOffset + chunk.length} / 共 ${total}):\n${numberedBody}`,
+        `正文(${alignedOffset}–${alignedOffset + chunk.length} / 共 ${total} 字,不含标题):\n${numberedBody}`,
       ]
         .filter(Boolean)
         .join('\n\n');

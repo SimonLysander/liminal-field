@@ -23,15 +23,15 @@ export function ProposalNewElement(props: PlateElementProps) {
       className="proposal-new-block"
       style={{
         position: 'relative',
-        background: 'color-mix(in srgb, var(--mark-green, #3F9D57) 18%, transparent)',
+        // 新增/提议 = accent(长春花紫),跟项目主题色 + 接受按钮统一;
+        // 绿色专留"已发布/成功",不在 diff 里用(否则语义打架)
+        background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
         borderLeft: isActive
-          ? '4px solid var(--mark-green, #3F9D57)'
-          : '2px solid var(--mark-green, #3F9D57)',
+          ? '4px solid var(--accent)'
+          : '2px solid var(--accent)',
         padding: '4px 12px 6px 12px',
         margin: '4px 0',
-        boxShadow: isActive
-          ? '0 0 0 1.5px var(--mark-green, #3F9D57)'
-          : 'none',
+        boxShadow: isActive ? '0 0 0 1.5px var(--accent)' : 'none',
         opacity: isActive ? 1 : 0.78,
         transition: 'opacity 120ms ease, box-shadow 120ms ease',
       }}

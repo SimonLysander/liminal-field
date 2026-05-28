@@ -7,7 +7,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Descendant } from 'platejs';
-import { ArrowUp, Pencil, Plus, Square, Trash2 } from 'lucide-react';
+import { ArrowUp, ChevronDown, Pencil, Plus, Square, Trash2 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 import type { ChatSelectionAttachment, AnchorPayload } from '@/pages/admin/lib/live-chat-selection';
 import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
 import {
@@ -75,6 +82,8 @@ export interface AiAdvisorPanelProps {
    * 由 ProseDraftEditor 通过 getEditor 传入。
    */
   getEditor?: () => unknown;
+  /** 编辑器是否处于审批态 —— 顶栏据此加 accent 浅底,跟左/中栏统一"审批模式"信号 */
+  inApproval?: boolean;
 }
 
 export function AiAdvisorPanel({
@@ -88,6 +97,7 @@ export function AiAdvisorPanel({
   onProposalChange,
   getEditorChildren,
   getEditor,
+  inApproval,
 }: AiAdvisorPanelProps) {
   const agentInstanceKey = sessionKey;
   const [currentSessionKey, setCurrentSessionKey] = useState(sessionKey);
@@ -99,6 +109,11 @@ export function AiAdvisorPanel({
   const userControlledSessionRef = useRef(false);
   const [composerEmpty, setComposerEmpty] = useState(true);
   const [greeting] = useState(pickGreeting);
+  // inline 会话重命名:renaming=true 时顶栏会话名变输入框(回车确认 / Esc 取消)
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  // 删除二次确认:dropdown 里点"删除"先变"确认删除?",再点才真删
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // 用 useMemo 稳定引用，避免 ?? [] 每次渲染产生新数组引用，触发 useCallback 重建
   const activeSelections = useMemo(() => selectionAttachments ?? [], [selectionAttachments]);
@@ -176,7 +191,7 @@ export function AiAdvisorPanel({
   // 用 callId(字符串)作为依赖,避免 pendingProposal 对象引用每次新建(computeDocDiff
   // 的 hunks 含 random id,useMemo 每次重算都出新对象)触发死循环。
   // closure 仍能拿到最新 pendingProposal(callId 变化时才重新建 closure)。
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   useEffect(() => {
     onProposalChangeRef.current?.(pendingProposal);
   }, [pendingProposal?.callId]);
@@ -205,16 +220,23 @@ export function AiAdvisorPanel({
     onClearSelectedText?.();
   }, [agentInstanceKey, onClearSelectedText]);
 
-  const handleRenameSession = useCallback(() => {
-    const current = ensureVisibleSession(
-      sessions,
-      currentSessionKey,
-      agentInstanceKey,
-    ).find((session) => session.sessionKey === currentSessionKey);
-    const nextTitle = window.prompt('会话名称', current?.title ?? '新会话');
-    if (nextTitle == null) return;
-    const cleanTitle = nextTitle.trim();
-    if (!cleanTitle) return;
+  // 当前会话标题(顶栏显示 + inline 重命名初值)
+  const currentTitle =
+    ensureVisibleSession(sessions, currentSessionKey, agentInstanceKey).find(
+      (s) => s.sessionKey === currentSessionKey,
+    )?.title || '新会话';
+
+  // 进入 inline 重命名:顶栏会话名变输入框,填入当前标题
+  const startRename = useCallback(() => {
+    setRenameValue(currentTitle);
+    setRenaming(true);
+  }, [currentTitle]);
+
+  // 提交 inline 重命名(回车 / 失焦):空或未变则取消,否则落库
+  const commitRename = useCallback(() => {
+    const cleanTitle = renameValue.trim();
+    setRenaming(false);
+    if (!cleanTitle || cleanTitle === currentTitle) return;
     void renameBusinessSession(currentSessionKey, cleanTitle)
       .then(() => {
         setSessionListError(null);
@@ -232,7 +254,9 @@ export function AiAdvisorPanel({
           error instanceof Error ? error.message : '会话命名失败',
         );
       });
-  }, [agentInstanceKey, currentSessionKey, sessions]);
+  }, [agentInstanceKey, currentSessionKey, currentTitle, renameValue]);
+
+  const cancelRename = useCallback(() => setRenaming(false), []);
 
   const handleDeleteSession = useCallback(() => {
     const deletingKey = currentSessionKey;
@@ -256,56 +280,114 @@ export function AiAdvisorPanel({
   return (
     // h-full:在笔记 grid 里等价于行 stretch(无变化);在文集条目 flex 容器里据此撑满高度
     <div className="flex h-full flex-col overflow-hidden">
+      {/* 顶栏(48px,无边框,跟编辑器/大纲栏一条水平线)。
+          - 会话名 DropdownMenu:列表切换 + 底部收纳"重命名/删除"(低频管理不平铺)
+          - inline 重命名:renaming 时会话名变输入框(回车确认 / Esc / 失焦取消)
+          - 新建是高频,独立 [+] 按钮留外面
+          - 审批态加 accent 8% 浅底,跟左/中栏统一"审批模式"信号 */}
       <div
-        className="flex shrink-0 items-center gap-1 px-3 py-2"
-        style={{ borderBottom: '1px solid var(--separator)' }}
+        className="flex h-[48px] shrink-0 items-center gap-1 px-3 transition-colors"
+        style={{
+          background: inApproval
+            ? 'color-mix(in srgb, var(--accent) 8%, var(--paper))'
+            : 'transparent',
+        }}
       >
-        <select
-          value={currentSessionKey}
-          onChange={(event) => {
-            userControlledSessionRef.current = true;
-            hasPickedInitialSessionRef.current = true;
-            setCurrentSessionKey(event.target.value);
-          }}
-          className="min-w-0 flex-1 bg-transparent text-xs outline-none"
-          style={{ color: 'var(--ink-faded)' }}
-          aria-label="选择会话"
-        >
-          {ensureVisibleSession(sessions, currentSessionKey, agentInstanceKey).map((session) => (
-            <option key={session.sessionKey} value={session.sessionKey}>
-              {session.title || '新会话'}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          onClick={handleRenameSession}
-          className="flex h-7 w-7 items-center justify-center rounded-md"
-          style={{ color: 'var(--ink-faded)' }}
-          aria-label="命名当前会话"
-          title="命名当前会话"
-        >
-          <Pencil size={14} strokeWidth={1.8} />
-        </button>
+        {inApproval ? (
+          // 审批态锁定:会话切换/新建/重命名/删除全禁用,只显示当前会话名(纯文字,不可点)
+          // —— 审批是当前会话触发的,切走会语义错位(编辑器审批还在,advisor 却换会话)
+          <span
+            className="min-w-0 flex-1 truncate px-2 py-1 text-sm"
+            style={{ color: 'var(--ink-ghost)' }}
+            title="审批进行中,先处理完改稿再切换会话"
+          >
+            {currentTitle}
+          </span>
+        ) : renaming ? (
+          <input
+            type="text"
+            value={renameValue}
+            autoFocus
+            onChange={(e) => setRenameValue(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                commitRename();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelRename();
+              }
+            }}
+            className="input-ghost min-w-0 flex-1 truncate rounded-md px-2 py-1 text-sm"
+            style={{ color: 'var(--ink-faded)', background: 'var(--shelf)' }}
+            aria-label="重命名会话"
+          />
+        ) : (
+          <DropdownMenu onOpenChange={(open) => { if (!open) setConfirmingDelete(false); }}>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 items-center gap-1 rounded-md px-2 py-1 text-left text-sm outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none data-[state=open]:bg-[var(--shelf)]"
+                style={{ color: 'var(--ink-faded)' }}
+                aria-label="会话菜单"
+                title="切换 / 管理会话"
+              >
+                <span className="min-w-0 flex-1 truncate">{currentTitle}</span>
+                <ChevronDown size={14} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)' }} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-[13rem]">
+              {ensureVisibleSession(sessions, currentSessionKey, agentInstanceKey).map((session) => (
+                <DropdownMenuItem
+                  key={session.sessionKey}
+                  onClick={() => {
+                    userControlledSessionRef.current = true;
+                    hasPickedInitialSessionRef.current = true;
+                    setCurrentSessionKey(session.sessionKey);
+                  }}
+                  style={
+                    session.sessionKey === currentSessionKey
+                      ? { color: 'var(--accent)', fontWeight: 500 }
+                      : { color: 'var(--ink-faded)' }
+                  }
+                >
+                  {session.title || '新会话'}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={startRename} style={{ color: 'var(--ink-faded)' }}>
+                <Pencil size={14} strokeWidth={1.5} />
+                重命名当前
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  if (!confirmingDelete) {
+                    e.preventDefault(); // 不关闭,先变确认态
+                    setConfirmingDelete(true);
+                  } else {
+                    handleDeleteSession();
+                  }
+                }}
+                className="[&_svg]:text-[var(--mark-red)]"
+                style={{ color: 'var(--mark-red)' }}
+              >
+                <Trash2 size={14} strokeWidth={1.5} />
+                {confirmingDelete ? '再点一次确认删除' : '删除当前'}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
         <button
           type="button"
           onClick={handleNewSession}
-          className="flex h-7 w-7 items-center justify-center rounded-md"
-          style={{ color: 'var(--ink-faded)' }}
+          disabled={inApproval}
+          className="rounded-md p-1.5 outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+          style={{ color: 'var(--ink-ghost)' }}
           aria-label="新会话"
-          title="新会话"
+          title={inApproval ? '审批进行中,先处理完改稿' : '新会话'}
         >
-          <Plus size={15} strokeWidth={1.8} />
-        </button>
-        <button
-          type="button"
-          onClick={handleDeleteSession}
-          className="flex h-7 w-7 items-center justify-center rounded-md"
-          style={{ color: 'var(--ink-faded)' }}
-          aria-label="删除当前会话"
-          title="删除当前会话"
-        >
-          <Trash2 size={14} strokeWidth={1.8} />
+          <Plus size={18} strokeWidth={1.5} />
         </button>
       </div>
       {sessionListError && (
