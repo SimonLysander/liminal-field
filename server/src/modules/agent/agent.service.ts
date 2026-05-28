@@ -25,6 +25,7 @@ import { AgentSessionRepository } from './session/agent-session.repository';
 import { splitForCompaction } from './context/compaction-split';
 import { sanitizeAbortedToolCalls } from './context/sanitize-aborted-tool-calls';
 import { dropContentlessMessages } from './context/drop-contentless-messages';
+import { stripNullFields } from './context/strip-null-fields';
 import type { AgentChatDto } from './dto/agent-chat.dto';
 
 /** 喂模型最近原文的 token 占比(与 compaction 同标准:超 60% 才裁,保留到 30% 额度) */
@@ -102,10 +103,13 @@ export class AgentService {
     //    sanitizeAbortedToolCalls:上轮按「停止」时半截的 tool_call 会留在 DB 历史里,
     //    如不处理 convertToModelMessages 会抛 AI_MissingToolResultsError(每个 tool_call
     //    必须配对 tool_result)。先消毒成 output-error 占位,让协议合法 + 给模型留「上次中止了」上下文。
-    //    dropContentlessMessages:丢弃空 assistant 毒消息(parts:[] / 仅 reasoning),否则
-    //    convertToModelMessages 抛 "messages do not match ModelMessage[] schema",整段会话每轮必崩。
+    //    stripNullFields:剔除 DB 存量消息里的显式 null 字段(metadata/providerMetadata…),
+    //    否则 convertToModelMessages 的 UIMessage schema(.optional 拒 null)会拒,导致多轮 turn2 崩。
+    //    dropContentlessMessages:丢弃空 assistant 毒消息(parts:[] / 仅 reasoning)。
     //    splitForCompaction:与 compaction 同一套 token 切分,保证"喂的最近原文"口径一致。
-    const recent = dropContentlessMessages(sanitizeAbortedToolCalls(combined));
+    const recent = dropContentlessMessages(
+      sanitizeAbortedToolCalls(stripNullFields(combined)),
+    );
     const { toKeep } = splitForCompaction(recent, {
       window: aiConfig.contextWindow,
       // 固定开销已并入 system/记忆,此处只关心"最近原文"额度,fixed 给 0 让 keepRatio 满额生效
@@ -157,11 +161,14 @@ export class AgentService {
       originalMessages: combined as never,
       generateMessageId: createIdGenerator({ prefix: 'msg', size: 16 }),
       onFinish: ({ messages }) => {
-        // 本轮增量(incoming user + 本轮 assistant/tool);丢弃空 assistant 毒消息,
-        // 防止模型空回复进库 → 毒死后续每一轮(见 dropContentlessMessages)。
+        // 本轮增量(incoming user + 本轮 assistant/tool)。stripNullFields:持久化前剔除
+        // AI SDK 给的显式 null 字段,保持 DB 干净(否则下轮读出会崩,见 strip-null-fields)。
+        // dropContentlessMessages:丢弃空 assistant 毒消息,防模型空回复进库毒死后续轮。
         const delta = dropContentlessMessages(
-          (messages as unknown as Record<string, unknown>[]).slice(
-            previousCount,
+          stripNullFields(
+            (messages as unknown as Record<string, unknown>[]).slice(
+              previousCount,
+            ),
           ),
         );
         if (delta.length === 0) return;
