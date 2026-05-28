@@ -58,6 +58,8 @@ export interface UseAdvisorChatOptions {
     contentItemId?: string;
     title?: string;
     bodyMarkdown?: string;
+    /** 文集场景的整集脉络(标题/描述+条目列表+当前位置);笔记不传 */
+    collectionContext?: string;
   };
   /** 后端成功保存本轮新增消息后触发。用于刷新业务会话列表等持久化后动作。 */
   onAfterSave?: () => void;
@@ -426,6 +428,7 @@ function buildAgentRequestBody({
             contentItemId: documentContext.contentItemId,
             title: documentContext.title,
             bodyMarkdown: documentContext.bodyMarkdown,
+            collectionContext: documentContext.collectionContext,
           }
         : undefined,
     },

@@ -97,6 +97,32 @@ describe('PromptHandler.buildSystemPrompt', () => {
       expect(out).not.toContain('<current_context>');
     });
 
+    it('document.collectionContext 有 → 注入 <collection> 块(文集场景的整集脉络)', () => {
+      const out = handler.buildSystemPrompt(
+        baseParams({
+          document: {
+            contentItemId: 'ci_x:e002',
+            title: '第二篇',
+            bodyMarkdown: 'x',
+            collectionContext:
+              '本条目属于文集《四季》,共 3 篇:\n1. 春\n2. 夏 ← 当前\n3. 秋',
+          },
+        }),
+      );
+      expect(out).toContain('<collection>');
+      expect(out).toContain('文集《四季》');
+      expect(out).toContain('2. 夏 ← 当前');
+    });
+
+    it('document 无 collectionContext(笔记场景) → 不注入 <collection>', () => {
+      const out = handler.buildSystemPrompt(
+        baseParams({
+          document: { contentItemId: 'ci_1', title: '随笔', bodyMarkdown: 'x' },
+        }),
+      );
+      expect(out).not.toContain('<collection>');
+    });
+
     it('document 无标题 → 用"未命名"占位', () => {
       const out = handler.buildSystemPrompt(
         baseParams({

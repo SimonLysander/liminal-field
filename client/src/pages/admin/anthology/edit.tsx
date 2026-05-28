@@ -11,7 +11,7 @@
  * 提交由后端自动删草稿(无需单独 deleteDraft)。
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { anthologyApi } from '@/services/workspace';
 import { useDraftEditor, type BaseDraftState, type DraftEditorAdapter } from '../lib/use-draft-editor';
@@ -23,6 +23,39 @@ const AnthologyEntryEditPage = () => {
 
   /* AI 顾问:按 writing-advisor 入口配置的 enabled 决定是否渲染 */
   const agentEnabled = useWritingAdvisorEnabled();
+
+  /* 整集脉络:取本文集的标题/描述 + 条目列表 + 当前位置,拼成一段注入给 Aurora,
+     让它编辑单条时有"整集意识"。取不到不阻塞编辑(静默降级)。 */
+  const [collectionContext, setCollectionContext] = useState<string | undefined>();
+  useEffect(() => {
+    if (!agentEnabled || !id || !entryKey) return;
+    let cancelled = false;
+    void anthologyApi
+      .getById(id)
+      .then((detail) => {
+        if (cancelled) return;
+        const list = detail.entries
+          .map(
+            (e, i) =>
+              `${i + 1}. ${e.title || '(无标题)'}${e.key === entryKey ? ' ← 当前正在编辑' : ''}`,
+          )
+          .join('\n');
+        const desc = detail.description?.trim()
+          ? `\n集简介:${detail.description.trim()}`
+          : '';
+        setCollectionContext(
+          `本条目属于文集《${detail.title}》,共 ${detail.entries.length} 篇。${desc}\n条目顺序:\n${list}`,
+        );
+      })
+      .catch((err) => {
+        if (import.meta.env.DEV) {
+          console.warn('[anthology-edit] 取整集脉络失败,降级为无集合上下文', err);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [agentEnabled, id, entryKey]);
 
   /* 文集条目场景适配器:条目草稿字段就是 BaseDraftState(无 summary/changeType) */
   const adapter = useMemo<DraftEditorAdapter<BaseDraftState>>(
@@ -79,7 +112,12 @@ const AnthologyEntryEditPage = () => {
       titlePlaceholder="条目标题"
       advisor={
         agentEnabled && id && entryKey
-          ? { enabled: true, sessionKey: `anthology-${id}-${entryKey}`, contentItemId: `${id}:${entryKey}` }
+          ? {
+              enabled: true,
+              sessionKey: `anthology-${id}-${entryKey}`,
+              contentItemId: `${id}:${entryKey}`,
+              collectionContext,
+            }
           : undefined
       }
     />

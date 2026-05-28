@@ -25,6 +25,11 @@ class DocumentContextDto {
 
   @IsString()
   bodyMarkdown!: string;
+
+  /** 文集场景:前端拼好的整集脉络(标题/描述+条目列表+当前位置)。笔记无此字段。 */
+  @IsString()
+  @IsOptional()
+  collectionContext?: string;
 }
 
 class EntryContextDto {

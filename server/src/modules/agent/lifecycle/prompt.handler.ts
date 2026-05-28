@@ -50,6 +50,11 @@ export interface BuildSystemPromptParams {
     contentItemId: string;
     title: string;
     bodyMarkdown: string;
+    /**
+     * 文集场景的集合脉络(可选):前端拼好的一段文字,描述本条目所属文集的标题/描述 +
+     * 同集条目列表 + 当前位置。笔记场景无此字段。让 Aurora 编辑单条时有"整集意识"。
+     */
+    collectionContext?: string;
   };
   /** 用户在设置中配置的全局自定义系统提示词（可选） */
   customSystemPrompt?: string;
@@ -136,6 +141,14 @@ export class PromptHandler {
 ${ownerName} 当前正在编辑文档《${title || '未命名'}》(约 ${wordCount} 字)。
 正文不直接注入,需要看时调 get_current_draft;若有标题,大纲见随后一节。
 </current_context>`);
+
+      // <collection>:文集场景才有——本条目所属整集的脉络(集合标题/描述 + 同集条目列表 +
+      // 当前位置),让 Aurora 编辑单条时知道它在整集里的位置与邻篇,改稿能顾及整体连贯。
+      // 笔记场景无 collectionContext,不注入。
+      const collectionContext = params.document.collectionContext?.trim();
+      if (collectionContext) {
+        sections.push(`<collection>\n${collectionContext}\n</collection>`);
+      }
 
       // <outline>:轻量大纲让模型看到文档结构,定位"用户说改哪段"更快;
       // 但正文要看仍需调 get_current_draft 拿完整 bodyHash 走 Read-before-Edit。

@@ -50,6 +50,8 @@ export interface AiAdvisorPanelProps {
   contentItemId?: string;
   title?: string;
   bodyMarkdown?: string;
+  /** 文集场景的整集脉络,随 documentContext 注入给后端;笔记不传。 */
+  collectionContext?: string;
   /** 已显式添加到聊天的编辑器选区引用（Cursor 式 add-to-chat, live range） */
   selectionAttachments?: ChatSelectionAttachment[];
   /** 移除单个已添加的选区附件 */
@@ -91,6 +93,7 @@ export function AiAdvisorPanel({
   contentItemId,
   title,
   bodyMarkdown,
+  collectionContext,
   selectionAttachments,
   onRemoveSelectionAttachment,
   onClearSelectedText,
@@ -181,7 +184,7 @@ export function AiAdvisorPanel({
     agentInstanceKey,
     agentKey: 'writing-advisor',
     source: 'notes-editor',
-    documentContext: { contentItemId, title, bodyMarkdown },
+    documentContext: { contentItemId, title, bodyMarkdown, collectionContext },
     onAfterSave: refreshSessions,
     getEditorChildren,
     getEditor,
