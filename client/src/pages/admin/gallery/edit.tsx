@@ -29,7 +29,9 @@ import { PhotoEditModal } from './components/PhotoEditModal';
 import { GalleryProseEditor } from './components/GalleryProseEditor';
 import { MetadataFields } from './components/LocationSelect';
 import { CommitPopover } from './components/CommitPopover';
+import { GalleryAdvisorPanel } from './components/GalleryAdvisorPanel';
 import { useGalleryEditor } from './hooks/useGalleryEditor';
+import { settingsApi } from '@/services/settings';
 
 // ─── 保存状态展示 ───
 
@@ -117,6 +119,18 @@ export default function GalleryEditPage() {
     if (uploading && !window.confirm('照片正在上传中，离开将中断上传。确认离开？')) return;
     navigate(to);
   };
+
+  // 图说写手 Aurora 浮层:仅当当前启用 provider 配了视觉模型时才挂(没视觉模型看不了图)
+  const [hasVision, setHasVision] = useState(false);
+  useEffect(() => {
+    void settingsApi
+      .getConfig()
+      .then((c) => {
+        const active = c.ai.providers.find((p) => p.id === c.ai.activeProviderId);
+        setHasVision(!!active?.visionModel);
+      })
+      .catch(() => setHasVision(false));
+  }, []);
 
   // 照片编辑弹窗状态
   const [modalOpen, setModalOpen] = useState(false);
@@ -272,6 +286,16 @@ export default function GalleryEditPage() {
         onDelete={deletePhoto}
       />
 
+      {/* 图说写手 Aurora —— 右下浮层(配了视觉模型才挂) */}
+      {hasVision && id && (
+        <GalleryAdvisorPanel
+          postId={id}
+          title={title}
+          prose={prose}
+          photos={photos}
+          onApplyCaption={updateCaption}
+        />
+      )}
     </div>
   );
 }

@@ -61,6 +61,18 @@ export interface UseAdvisorChatOptions {
     /** 文集场景的整集脉络(标题/描述+条目列表+当前位置);笔记不传 */
     collectionContext?: string;
   };
+  /** 画廊场景:照片清单+随笔。传了即走图说写手链路(entryContext.gallery)。 */
+  galleryContext?: {
+    contentItemId: string;
+    title: string;
+    prose: string;
+    photos: {
+      index: number;
+      fileName: string;
+      caption: string;
+      tags: Record<string, string>;
+    }[];
+  };
   /** 后端成功保存本轮新增消息后触发。用于刷新业务会话列表等持久化后动作。 */
   onAfterSave?: () => void;
   /**
@@ -81,6 +93,7 @@ export function useAdvisorChat({
   agentKey,
   source,
   documentContext,
+  galleryContext,
   onAfterSave,
   getEditorChildren,
   getEditor,
@@ -94,6 +107,7 @@ export function useAdvisorChat({
 
   // Ref 层：持有最新值供 transport body 回调 / 懒加载逻辑读取（避免 stale closure）
   const docRef = useRef(documentContext);
+  const galleryRef = useRef(galleryContext);
   const tierRef = useRef(tier);
   const sessionKeyRef = useRef(sessionKey);
   const agentInstanceKeyRef = useRef(agentInstanceKey);
@@ -104,6 +118,10 @@ export function useAdvisorChat({
   useEffect(() => {
     docRef.current = documentContext;
   }, [documentContext]);
+
+  useEffect(() => {
+    galleryRef.current = galleryContext;
+  }, [galleryContext]);
 
   useEffect(() => {
     sessionKeyRef.current = sessionKey;
@@ -134,6 +152,7 @@ export function useAdvisorChat({
           sessionKey: sessionKeyRef.current,
           agentInstanceKey: agentInstanceKeyRef.current,
           documentContext: docRef.current,
+          galleryContext: galleryRef.current,
         }),
         prepareSendMessagesRequest: ({ id, messages, body, trigger, messageId }) => {
           // 后端权威上下文:历史由后端从 agent_sessions 读,前端只发最新这条,
@@ -175,6 +194,61 @@ export function useAdvisorChat({
       }
     }
     return { tasks: t, planTitle: title };
+  }, [messages]);
+
+  /**
+   * 画廊图说:监听 tool-propose_caption 工具调用,产出待应用的图说建议。
+   * output 是 toolResult 的 JSON 字符串(propose 工具未声明 outputSchema,AI SDK 不自动反序列化),
+   * 真实路径 = JSON.parse(output).meta.{status,fileName,caption,reason}。已 resolved 的不再冒出。
+   */
+  const captionProposals = useMemo<
+    { callId: string; fileName: string; caption: string; reason: string }[]
+  >(() => {
+    const resolved = readResolved();
+    const out: {
+      callId: string;
+      fileName: string;
+      caption: string;
+      reason: string;
+    }[] = [];
+    const seen = new Set<string>();
+    for (const msg of messages) {
+      if (msg.role !== 'assistant' || !Array.isArray(msg.parts)) continue;
+      for (const part of msg.parts) {
+        const p = part as {
+          type?: string;
+          state?: string;
+          toolCallId?: string;
+          output?: unknown;
+        };
+        if (p.type !== 'tool-propose_caption') continue;
+        if (p.state !== 'output-available') continue;
+        const callId = p.toolCallId ?? msg.id ?? '';
+        if (!callId || seen.has(callId) || resolved.has(callId)) continue;
+        let meta:
+          | { status?: string; fileName?: string; caption?: string; reason?: string }
+          | undefined;
+        if (typeof p.output === 'string') {
+          try {
+            meta = (JSON.parse(p.output) as { meta?: typeof meta }).meta;
+          } catch {
+            /* 非 JSON,跳过 */
+          }
+        } else if (p.output && typeof p.output === 'object') {
+          meta = (p.output as { meta?: typeof meta }).meta;
+        }
+        if (!meta || meta.status !== 'ok' || !meta.fileName || !meta.caption)
+          continue;
+        seen.add(callId);
+        out.push({
+          callId,
+          fileName: meta.fileName,
+          caption: meta.caption,
+          reason: meta.reason ?? '',
+        });
+      }
+    }
+    return out;
   }, [messages]);
 
   /**
@@ -368,6 +442,7 @@ export function useAdvisorChat({
           sessionKey,
           agentInstanceKey,
           documentContext: docRef.current,
+          galleryContext: galleryRef.current,
         }),
       });
     },
@@ -391,6 +466,9 @@ export function useAdvisorChat({
     // v3 改稿
     proposalsByCallId: v3ProposalsByCallId,
     pendingProposal,
+    // 画廊图说:待应用建议 + 标记已处理(应用/忽略后调,避免重复冒出)
+    captionProposals,
+    resolveCaption: markResolved,
     tier,
     cycleTier,
     send,
@@ -406,6 +484,7 @@ function buildAgentRequestBody({
   sessionKey,
   agentInstanceKey,
   documentContext,
+  galleryContext,
 }: {
   tier: Tier;
   agentKey: string;
@@ -413,6 +492,7 @@ function buildAgentRequestBody({
   sessionKey: string;
   agentInstanceKey?: string;
   documentContext?: UseAdvisorChatOptions['documentContext'];
+  galleryContext?: UseAdvisorChatOptions['galleryContext'];
 }) {
   return {
     tier,
@@ -431,6 +511,8 @@ function buildAgentRequestBody({
             collectionContext: documentContext.collectionContext,
           }
         : undefined,
+      // 画廊场景:照片清单+随笔。后端 get_current_draft(画廊版) 从这里 read,prompt 不塞内容。
+      gallery: galleryContext,
     },
   };
 }
