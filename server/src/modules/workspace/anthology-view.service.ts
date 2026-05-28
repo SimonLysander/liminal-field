@@ -681,19 +681,11 @@ export class AnthologyViewService {
    * 文集级发布（上线）：调用 ContentService.publishVersion，
    * 将 ContentItem.publishedVersion 指向当前最新索引 snapshot。
    *
-   * 校验规则：文集必须有至少一个已发布条目（publishedVersionId 非 null），
-   * 否则上线后读者看到的是空文集，没有意义。
+   * 发布顺序(2026-05-28 改):文集先上线,再逐条发布条目(条目发布要求文集已上线,
+   * 见 publishEntry)。故这里不再要求"至少一篇已发布条目"——允许先把文集容器上线
+   * (读者此时看到空/待更新的文集),再陆续发布条目。
    */
   async publishAnthology(contentItemId: string): Promise<void> {
-    // 至少有一个已发布条目才允许整集上线(发布状态读 Mongo)
-    const publishMap = this.buildEntryPublishMap(
-      await this.contentRepository.findById(contentItemId),
-    );
-    if (publishMap.size === 0) {
-      throw new BadRequestException(
-        '无法发布：文集中没有已发布的条目，请先发布至少一篇条目',
-      );
-    }
     await this.contentService.publishVersion(contentItemId);
   }
 
@@ -717,6 +709,13 @@ export class AnthologyViewService {
     contentItemId: string,
     entryKey: string,
   ): Promise<AnthologyAdminDetailDto> {
+    const item = await this.contentRepository.findById(contentItemId);
+    // 发布顺序:必须先发布文集(整集上线),才能发布其中的条目。
+    // 文集未上线时发布条目无意义——读者看不到文集,自然也看不到条目。
+    if (!item?.publishedVersion) {
+      throw new BadRequestException('请先发布文集,才能发布其中的条目');
+    }
+
     const indexData = await this.loadIndex(contentItemId);
     if (!indexData.entries.some((e) => e.key === entryKey)) {
       throw new NotFoundException(
@@ -732,9 +731,7 @@ export class AnthologyViewService {
       throw new BadRequestException(`条目 ${entryKey} 尚无内容，无法发布`);
     }
 
-    const publishMap = this.buildEntryPublishMap(
-      await this.contentRepository.findById(contentItemId),
-    );
+    const publishMap = this.buildEntryPublishMap(item);
     publishMap.set(entryKey, latestSnapshot.versionId);
     await this.contentRepository.setEntryPublishStates(
       contentItemId,

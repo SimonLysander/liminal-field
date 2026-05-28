@@ -384,8 +384,9 @@ export default function AnthologyAdmin() {
       const updated = await anthologyApi.publishEntry(selectedId, selectedEntryKey);
       handleDetailRefresh(updated);
       return true;
-    } catch {
-      banner.error('发布条目失败');
+    } catch (err) {
+      // surface 后端消息(如"请先发布文集,才能发布其中的条目"),让发布顺序可发现
+      banner.error(err instanceof Error ? err.message : '发布条目失败');
       return false;
     } finally {
       setEntryPublishing(false);
