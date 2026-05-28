@@ -53,9 +53,13 @@ class EntryContextDto {
 }
 
 export class AgentChatDto {
-  /** AI SDK 发送的 messages 数组，直接透传给 streamText，不做深层校验 */
+  /** AI SDK 发送的 messages 数组(全量)。过渡期保留兜底,Task 7 删除。 */
   @Allow()
-  messages!: any[];
+  messages?: any[];
+
+  /** 新协议:prepareSendMessagesRequest 只发的最新一条 UIMessage。优先于 messages。 */
+  @Allow()
+  message?: any;
 
   @ValidateNested()
   @Type(() => EntryContextDto)
