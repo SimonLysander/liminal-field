@@ -22,6 +22,7 @@ import {
 import { makeRepairToolCall } from './agent.utils';
 import { SystemConfigService } from '../settings/system-config.service';
 import { AgentLifecycle } from './lifecycle/agent-lifecycle.service';
+import { AgentSessionRepository } from './session/agent-session.repository';
 import { splitForCompaction } from './context/compaction-split';
 import { sanitizeAbortedToolCalls } from './context/sanitize-aborted-tool-calls';
 import type { AgentChatDto } from './dto/agent-chat.dto';
@@ -37,6 +38,7 @@ export class AgentService {
   constructor(
     private readonly systemConfigService: SystemConfigService,
     private readonly lifecycle: AgentLifecycle,
+    private readonly sessionRepo: AgentSessionRepository,
   ) {}
 
   // 返回类型须显式标注：StreamTextResult 包含 ai 内部 Output 类型，不标注会触发 TS4053
@@ -80,20 +82,35 @@ export class AgentService {
       tier,
     });
 
-    // 5. 组装喂模型的"最近原文":按 token 占比裁剪,只喂最近 keepRatio 额度,
-    //    更早的对话精华已在 session 记忆里(随 system prompt 注入),不重复喂。
-    //    为什么用 toKeep:它和 compaction 同一套 token 切分逻辑,保证"喂的最近原文"与
-    //    "compaction 保留的最近原文"口径一致——不会喂了又被算作该压缩。
-    //    dto.messages 是本轮前端发来的完整对话(含最新一条 user 消息),
-    //    以它为基准做 token 倒取(尾部保留),既拿到最新消息又控制住上下文体积。
-    //
-    //    sanitizeAbortedToolCalls:用户上轮按「停止」时半截的 tool_call 会留在 DB / 本轮
-    //    dto.messages 里,如不处理 convertToModelMessages 下面那一步会抛
-    //    AI_MissingToolResultsError(每个 tool_call 必须配对 tool_result)。先消毒成
-    //    output-error 占位,让协议合法 + 给模型留「上次中止了」的上下文,见同名文件注释。
-    const recent = sanitizeAbortedToolCalls(
-      (dto.messages ?? []) as Record<string, unknown>[],
-    );
+    // 5. 组装喂模型的"最近原文"。后端权威上下文:历史从 agent_sessions 读(按 token
+    //    有界),不再信任前端全量上传。本轮新消息走 dto.message(新协议),过渡期兼容
+    //    旧的全量 dto.messages 尾条。
+    const incoming =
+      dto.message ??
+      (Array.isArray(dto.messages) && dto.messages.length > 0
+        ? dto.messages[dto.messages.length - 1]
+        : undefined);
+    if (!incoming) {
+      throw new BadRequestException('缺少 message');
+    }
+
+    // ratio 用 TRIGGER_RATIO:读取量 ≥ 喂模型量,保证 splitForCompaction 有料可切;
+    // 更早的对话精华已在 session 记忆里(随 system prompt 注入),不重复读。
+    const sessionKey = dto.entryContext.sessionKey ?? '';
+    const previous = sessionKey
+      ? await this.sessionRepo.getRecentByBudget(
+          sessionKey,
+          aiConfig.contextWindow,
+          TRIGGER_RATIO,
+        )
+      : [];
+    const combined = [...previous, incoming] as Record<string, unknown>[];
+
+    //    sanitizeAbortedToolCalls:上轮按「停止」时半截的 tool_call 会留在 DB 历史里,
+    //    如不处理 convertToModelMessages 会抛 AI_MissingToolResultsError(每个 tool_call
+    //    必须配对 tool_result)。先消毒成 output-error 占位,让协议合法 + 给模型留「上次中止了」上下文。
+    //    splitForCompaction:与 compaction 同一套 token 切分,保证"喂的最近原文"口径一致。
+    const recent = sanitizeAbortedToolCalls(combined);
     const { toKeep } = splitForCompaction(recent, {
       window: aiConfig.contextWindow,
       // 固定开销已并入 system/记忆,此处只关心"最近原文"额度,fixed 给 0 让 keepRatio 满额生效
