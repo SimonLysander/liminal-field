@@ -32,6 +32,8 @@ export interface SettingsConfigView {
       flashModel: string;
       standardModel: string;
       thinkModel: string;
+      /** 视觉模型,可选;空串表示该 provider 不支持视觉 */
+      visionModel: string;
       hasApiKey: boolean;
     }[];
     /** 当前启用的提供商 id */
@@ -187,6 +189,7 @@ export class SystemConfigService implements OnModuleInit {
           flashModel: p.flashModel,
           standardModel: p.standardModel,
           thinkModel: p.thinkModel,
+          visionModel: p.visionModel ?? '',
           hasApiKey: !!p.apiKey,
         })),
         activeProviderId: config?.activeAiProviderId || '',
@@ -289,6 +292,8 @@ export class SystemConfigService implements OnModuleInit {
     flashModel: string;
     standardModel: string;
     thinkModel: string;
+    /** 视觉模型,可选(创建时一般不填,后续在 UI 补) */
+    visionModel?: string;
     /** 模型上下文窗口(token)，来自提供商预设，用于 compaction 占比计算的分母 */
     contextWindow: number;
   }): Promise<void> {
@@ -303,6 +308,7 @@ export class SystemConfigService implements OnModuleInit {
       flashModel: input.flashModel,
       standardModel: input.standardModel,
       thinkModel: input.thinkModel,
+      visionModel: input.visionModel ?? '',
       contextWindow: input.contextWindow,
     });
     await this.repo.patch({ aiProviders: providers });
@@ -345,6 +351,7 @@ export class SystemConfigService implements OnModuleInit {
       flashModel?: string;
       standardModel?: string;
       thinkModel?: string;
+      visionModel?: string;
       apiKey?: string;
     },
   ): Promise<void> {
@@ -361,6 +368,10 @@ export class SystemConfigService implements OnModuleInit {
           : {}),
         ...(fields.thinkModel !== undefined
           ? { thinkModel: fields.thinkModel }
+          : {}),
+        // 视觉可选:undefined 不动,'' 表示显式清空
+        ...(fields.visionModel !== undefined
+          ? { visionModel: fields.visionModel }
           : {}),
         ...(fields.apiKey !== undefined ? { apiKey: fields.apiKey } : {}),
       };
@@ -399,6 +410,8 @@ export class SystemConfigService implements OnModuleInit {
     if (active) {
       if (tier === 'flash') model = active.flashModel;
       else if (tier === 'think') model = active.thinkModel;
+      else if (tier === 'vision')
+        model = active.visionModel ?? ''; // 画廊用;未配则空,调用方自行处理"无视觉"
       else model = active.standardModel; // 默认 standard
     }
 

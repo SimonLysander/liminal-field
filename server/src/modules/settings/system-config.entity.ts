@@ -83,6 +83,13 @@ export class AiProviderConfig {
   thinkModel!: string;
 
   /**
+   * 视觉(多模态)模型名,**可选**——配了画廊 agent 才能看图写图说。
+   * 不是每个 provider 都有视觉模型(如 DeepSeek 无),留空即该 provider 不支持视觉。
+   */
+  @prop({ trim: true, default: '' })
+  visionModel?: string;
+
+  /**
    * 模型上下文窗口(token)。
    * 算 compaction 占比的分母,预设默认、可在 UI 改。
    * deepseek-v3/r1 支持 64k,通义/智谱视具体模型而定,保守默认 32k。

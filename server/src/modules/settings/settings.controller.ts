@@ -149,6 +149,7 @@ export class SettingsController {
       flashModel: string;
       standardModel: string;
       thinkModel: string;
+      visionModel?: string;
     },
   ): Promise<{ success: boolean; id: string }> {
     const preset = AI_PROVIDER_PRESETS[dto.provider];
@@ -165,6 +166,7 @@ export class SettingsController {
       flashModel: dto.flashModel,
       standardModel: dto.standardModel,
       thinkModel: dto.thinkModel,
+      visionModel: dto.visionModel,
       contextWindow: preset.contextWindow,
     });
     return { success: true, id };
@@ -200,6 +202,7 @@ export class SettingsController {
       flashModel?: string;
       standardModel?: string;
       thinkModel?: string;
+      visionModel?: string;
       apiKey?: string;
     },
   ): Promise<{ success: boolean }> {

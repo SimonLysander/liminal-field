@@ -94,6 +94,34 @@ function TierModelSelects({
   );
 }
 
+// ── 子组件：视觉模型字段(可选、自由输入,与三档并排在同一区) ──────────
+function VisionModelField({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div>
+      <FieldLabel>
+        视觉 模型
+        <span className="ml-1.5 font-normal text-xs" style={{ color: 'var(--ink-ghost)' }}>
+          可选 · 画廊看图写图说;留空则画廊无 AI
+        </span>
+      </FieldLabel>
+      <TextInput
+        value={value}
+        onChange={onChange}
+        placeholder="如 qwen-vl-max / glm-4v;无则留空"
+        disabled={disabled}
+      />
+    </div>
+  );
+}
+
 // ── 子组件：模型行 ────────────────────────────────────────────────
 
 function ProviderRow({
@@ -171,7 +199,7 @@ function ProviderRow({
         </button>
       </div>
 
-      {/* 三 tier 模型名展示 */}
+      {/* 三 tier 模型名展示 + 视觉模型(配了才显示) */}
       <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 pl-5">
         {TIERS.map(({ key, label }) => (
           <span key={key} className="text-xs" style={{ color: 'var(--ink-faded)' }}>
@@ -179,6 +207,12 @@ function ProviderRow({
             {provider[key as keyof typeof provider] as string}
           </span>
         ))}
+        {provider.visionModel && (
+          <span className="text-xs" style={{ color: 'var(--ink-faded)' }}>
+            <span style={{ color: 'var(--ink-ghost)' }}>视觉：</span>
+            {provider.visionModel}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -201,6 +235,8 @@ function EditProviderForm({
     standardModel: provider.standardModel,
     thinkModel: provider.thinkModel,
   });
+  // 视觉模型:可选、独立 state(不进必填三档),自由输入——视觉模型常不在 /models 列表里
+  const [visionModel, setVisionModel] = useState(provider.visionModel ?? '');
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -234,6 +270,7 @@ function EditProviderForm({
         flashModel: tierValues.flashModel,
         standardModel: tierValues.standardModel,
         thinkModel: tierValues.thinkModel,
+        visionModel: visionModel.trim(),
       };
       if (apiKey.trim()) updates.apiKey = apiKey.trim();
       await settingsApi.updateAiProvider(provider.id, updates);
@@ -298,6 +335,9 @@ function EditProviderForm({
         </div>
       )}
 
+      {/* 视觉模型(可选):跟三档并排在同一区,但自由输入、不必填 */}
+      <VisionModelField value={visionModel} onChange={setVisionModel} disabled={saving} />
+
       <div className="flex gap-2">
         <PrimaryButton onClick={() => void handleSave()} disabled={saving}>
           {saving ? '保存中...' : '保存'}
@@ -323,6 +363,8 @@ function AddProviderForm({ onSuccess, onCancel }: {
     standardModel: '',
     thinkModel: '',
   });
+  // 视觉模型:可选、自由输入,不参与三档必填校验
+  const [visionModel, setVisionModel] = useState('');
   const [saving, setSaving] = useState(false);
   const [validateResult, setValidateResult] = useState<{ valid: boolean; message: string } | null>(null);
 
@@ -357,6 +399,7 @@ function AddProviderForm({ onSuccess, onCancel }: {
     setValidateResult(null);
     setAvailableModels([]);
     setTierValues({ flashModel: '', standardModel: '', thinkModel: '' });
+    setVisionModel('');
     if (apiKey.trim()) void fetchModels(id, apiKey);
   }, [apiKey, fetchModels]);
 
@@ -401,6 +444,7 @@ function AddProviderForm({ onSuccess, onCancel }: {
         flashModel: tierValues.flashModel,
         standardModel: tierValues.standardModel,
         thinkModel: tierValues.thinkModel,
+        visionModel: visionModel.trim() || undefined,
       });
       banner.success('AI 提供商已添加');
       await onSuccess();
@@ -462,6 +506,9 @@ function AddProviderForm({ onSuccess, onCancel }: {
           </p>
         </div>
       )}
+
+      {/* 视觉模型(可选):跟三档并排在同一区,但自由输入、不必填 */}
+      <VisionModelField value={visionModel} onChange={setVisionModel} disabled={saving} />
 
       {/* 验证结果 */}
       {validateResult && <ValidationBanner result={validateResult} />}

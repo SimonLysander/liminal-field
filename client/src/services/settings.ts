@@ -46,6 +46,8 @@ export interface SettingsConfigView {
       flashModel: string;
       standardModel: string;
       thinkModel: string;
+      /** 视觉模型,可选;空串表示该 provider 不支持视觉 */
+      visionModel: string;
       hasApiKey: boolean;
     }[];
     /** 当前启用的提供商 id */
@@ -131,6 +133,7 @@ export const settingsApi = {
     flashModel: string;
     standardModel: string;
     thinkModel: string;
+    visionModel?: string;
   }) =>
     request<{ success: boolean; id: string }>('/settings/ai-providers', {
       method: 'POST',
@@ -154,6 +157,7 @@ export const settingsApi = {
       flashModel?: string;
       standardModel?: string;
       thinkModel?: string;
+      visionModel?: string;
       apiKey?: string;
     },
   ) =>
