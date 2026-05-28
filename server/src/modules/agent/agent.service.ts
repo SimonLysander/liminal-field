@@ -180,7 +180,9 @@ export class AgentService {
         );
       },
     });
-    // consumeStream:即使客户端断开/按停,服务端也跑完流 → onFinish 持久化不丢本轮。
+    // consumeStream:客户端断开/按停时也把流消费完,确保 onFinish 触发 → 持久化本轮
+    // 「已生成的内容」(可能只是部分回复;若断在出文本前则 assistant 为空,被
+    // dropContentlessMessages 丢弃,只留 user)。保证的是不损坏/不留毒,而非完整回复。
     void result.consumeStream();
     return response;
   }
