@@ -20,7 +20,6 @@ import { NavigationRepository } from '../navigation/navigation.repository';
 import { ContentService } from '../content/content.service';
 import { OssService } from '../oss/oss.service';
 import { Manifest, ManifestNode, ManifestService } from './manifest.service';
-import { parseAnthologyIndex } from '../workspace/anthology-view.service';
 
 export interface ScanResult {
   /** Git 仓库 content/ 目录下发现的 contentId 列表 */
@@ -156,9 +155,11 @@ export class RecoveryService {
   }
 
   /**
-   * 恢复单条内容，按清单 scope 决定策略：
-   * - notes/gallery：读 main.md，创建一条 snapshot（fileName=null）
-   * - anthology：读 main.md（索引）+ entries/*.md（条目），索引和每篇条目各创建一条 snapshot
+   * 恢复单条内容：读 main.md，创建一条 snapshot（fileName=null）。
+   *
+   * 统一页面树后（2026-05-29）所有 scope 同质——文集条目各自是独立的 ContentItem
+   * （独立 content/<ci> 目录），同样走本方法逐条恢复；父子结构由清单导航树还原
+   * （restoreNavigation → createNodesFromManifest），不再有 anthology 专属的 entries 扫描。
    */
   private async recoverSingleItem(
     contentId: string,
@@ -223,58 +224,11 @@ export class RecoveryService {
       source: 'system',
     });
 
-    // anthology scope：额外恢复 entries/ 下的条目文件
-    if (scope === 'anthology') {
-      await this.recoverAnthologyEntries(contentId, bodyMarkdown, now);
-    }
-
     // 上传最新版本资产到 OSS
     await this.uploadAssetsToOss(contentId, latestVersionId, contentDir);
 
     recoveredIds.add(contentId);
     this.logger.log(`恢复完成: ${contentId} (${title}) [${scope}]`);
-  }
-
-  /**
-   * 恢复 anthology 的条目文件：
-   * 从索引 frontmatter 读取条目列表，逐个读取 entries/{key}.md 并创建 snapshot。
-   * 以索引为权威——索引里有但磁盘上没有的条目跳过（warn），磁盘上多余的文件忽略。
-   */
-  private async recoverAnthologyEntries(
-    contentId: string,
-    indexMarkdown: string,
-    now: Date,
-  ): Promise<void> {
-    const indexData = parseAnthologyIndex(indexMarkdown);
-    if (indexData.entries.length === 0) return;
-
-    const contentDir = join(this.contentRoot, contentId);
-
-    for (const entry of indexData.entries) {
-      const filePath = join(contentDir, `entries/${entry.key}.md`);
-      let entryMarkdown = '';
-      try {
-        entryMarkdown = await readFile(filePath, 'utf8');
-      } catch {
-        this.logger.warn(`${contentId}: entries/${entry.key}.md 不存在，跳过`);
-        continue;
-      }
-
-      await this.contentSnapshotRepository.create({
-        versionId: nanoid(16),
-        contentItemId: contentId,
-        title: entry.title,
-        summary: '',
-        bodyMarkdown: entryMarkdown,
-        assetRefs: [],
-        createdAt: now,
-        changeNote: '从远端恢复',
-        source: 'system',
-        fileName: `entries/${entry.key}.md`,
-      });
-    }
-
-    this.logger.log(`${contentId}: 恢复 ${indexData.entries.length} 篇条目`);
   }
 
   /**

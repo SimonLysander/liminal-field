@@ -1,18 +1,14 @@
 /**
  * anthology-archive-recovery.e2e-spec.ts — 文集条目「归档 → 恢复」全流程回归。
  *
- * 守护的 bug(2026-05-23 修复):
- *   `archiveToGit` 曾硬编码只写 main.md、无视 snapshot.fileName,且 saveContent 提交分支
- *   用 `if (!isSubFile)` 跳过子文件归档 → 文集条目正文(entries/*.md)从不写进 Git →
- *   恢复时读不到磁盘文件 → 正文永久丢失。
+ * 统一页面树 Phase 2(2026-05-29)后:文集条目 = 独立子 ContentItem(自己的
+ * content/<ci> 目录),正文写在它自己的 main.md;父子结构由清单导航树还原。
  *
  * 两条断言各守一段链路:
  * 1. 主路径立即归档:saveEntry 后【不调 retryPendingArchives 兜底】,断言条目正文
- *    被 fire-and-forget 的 archiveToGit 写进 Git 工作树并提交。这一条专门守 P2 主路径
- *    修复——回退 P2 后文件永不出现,本断言会超时变红(已实测对照)。
+ *    被 fire-and-forget 的 archiveToGit 写进它自己的 content/<entryKey>/main.md 并提交。
  * 2. 完整往返:写 manifest → 清空 Mongo → 从 Git recovery,断言条目正文穿越后存活。
- *    覆盖 manifest scope 判定 + recoverAnthologyEntries 读盘重建(无 manifest 会把
- *    anthology 误判为 notes、跳过条目,即历史"恢复丢结构"的另一面)。
+ *    覆盖 manifest 导航树重建(把条目子节点挂回文集之下)。
  *
  * 隔离性:沿用 helpers 的 MongoMemoryServer(内存库)+ 临时 Git 仓,绝不触碰真实数据。
  */
@@ -75,7 +71,7 @@ describe('Anthology 归档 → 恢复 全流程 (e2e regression)', () => {
     await ctx.teardown();
   });
 
-  it('主路径立即把条目正文归档进 Git entries/*.md,且清空 Mongo 后能从 Git 完整恢复', async () => {
+  it('主路径立即把条目正文归档进它自己的 content/<entryKey>/main.md,且清空 Mongo 后能从 Git 完整恢复', async () => {
     // ── 1. 建文集 + 加条目(带正文)── 走真实 addEntry + saveEntry
     const anthologyId = await createAnthologyItem(
       ctx.app,
@@ -88,8 +84,8 @@ describe('Anthology 归档 → 恢复 全流程 (e2e regression)', () => {
     });
 
     // ── 2. 断言【主路径归档】:不调 retryPendingArchives 兜底,直接等 fire-and-forget
-    //        的 archiveToGit 把 entries/<key>.md 写盘。这一步专门守 P2 主路径修复。
-    const entryRelPath = `content/${anthologyId}/entries/${entryKey}.md`;
+    //        的 archiveToGit 把条目子 ContentItem 的 main.md 写盘(entryKey 即子 ci id)。
+    const entryRelPath = `content/${entryKey}/main.md`;
     const entryAbsPath = join(ctx.tmpGitDir, entryRelPath);
     const diskContent = await waitForFileContaining(entryAbsPath, MARKER);
     expect(diskContent).not.toBeNull(); // null = 主路径没归档(P2 退化)
@@ -126,7 +122,7 @@ describe('Anthology 归档 → 恢复 全流程 (e2e regression)', () => {
     expect(detailRes.body.data.bodyMarkdown).toContain(MARKER);
   });
 
-  it('条目发布状态只存 Mongo、不写进 Git main.md,恢复后重置为未发布', async () => {
+  it('条目发布状态(子 ContentItem.publishedVersion)不进 Git,恢复后重置为未发布', async () => {
     const anthologyId = await createAnthologyItem(
       ctx.app,
       cookie,
@@ -137,38 +133,38 @@ describe('Anthology 归档 → 恢复 全流程 (e2e regression)', () => {
       bodyMarkdown: '正文内容',
     });
 
-    // 发布条目 + 整集上线
+    // 发布顺序：文集先上线，再发布条目（publishEntry 守卫文集已发布）
+    await supertest(ctx.app.getHttpServer())
+      .put(`/api/v1/spaces/anthology/items/${anthologyId}/publish`)
+      .set('Cookie', cookie)
+      .expect(200);
     await supertest(ctx.app.getHttpServer())
       .put(
         `/api/v1/spaces/anthology/items/${anthologyId}/entries/${entryKey}/publish`,
       )
       .set('Cookie', cookie)
       .expect(200);
-    await supertest(ctx.app.getHttpServer())
-      .put(`/api/v1/spaces/anthology/items/${anthologyId}/publish`)
-      .set('Cookie', cookie)
-      .expect(200);
 
     const anthologySvc = ctx.app.get(AnthologyViewService);
     const contentRepo = ctx.app.get(ContentRepository);
 
-    // 发布生效:发布状态落在 Mongo ContentItem.entryPublishStates
-    const itemAfterPublish = await contentRepo.findById(anthologyId);
-    expect(itemAfterPublish?.entryPublishStates?.length).toBe(1);
+    // 发布生效:发布状态落在条目子 ContentItem(entryKey 即其 id)的 publishedVersion
+    expect(
+      (await contentRepo.findById(entryKey))?.publishedVersion,
+    ).toBeTruthy();
     const adminAfter = await anthologySvc.toAdminDetail(anthologyId);
     expect(adminAfter.entries[0].publishedVersionId).not.toBeNull();
 
-    // flush Git + manifest,断言 main.md(进 Git 的文件)里【不含】publishedVersionId
+    // flush Git + manifest,断言条目子 ContentItem 的 main.md 里【不含】publishedVersionId
     const gitSvc = ctx.app.get(ContentGitService);
     await gitSvc.retryPendingArchives();
     await ctx.app.get(ManifestService).writeManifest();
     await gitSvc.commitManifestIfChanged();
-    const mainMd = await readFile(
-      join(ctx.tmpGitDir, 'content', anthologyId, 'main.md'),
+    const entryMainMd = await readFile(
+      join(ctx.tmpGitDir, 'content', entryKey, 'main.md'),
       'utf8',
     );
-    expect(mainMd).toContain(entryKey); // 结构(条目)在
-    expect(mainMd).not.toContain('publishedVersionId'); // 发布状态不在 Git
+    expect(entryMainMd).not.toContain('publishedVersionId'); // 发布状态不在 Git
 
     // 清空 Mongo → 从 Git 恢复
     await contentRepo.deleteAll();
@@ -178,8 +174,9 @@ describe('Anthology 归档 → 恢复 全流程 (e2e regression)', () => {
     await recovery.execute((await recovery.scan()).missingInDb);
 
     // 恢复后:条目结构回来了,但发布状态被重置为未发布(需手动重发)
-    const itemAfterRecover = await contentRepo.findById(anthologyId);
-    expect(itemAfterRecover?.entryPublishStates ?? []).toHaveLength(0);
+    expect(
+      (await contentRepo.findById(entryKey))?.publishedVersion ?? null,
+    ).toBeNull();
     const adminAfterRecover = await anthologySvc.toAdminDetail(anthologyId);
     expect(adminAfterRecover.entries).toHaveLength(1); // 条目还在
     expect(adminAfterRecover.entries[0].publishedVersionId).toBeNull(); // 但未发布

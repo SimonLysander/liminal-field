@@ -12,7 +12,7 @@
  * 设计说明：
  * - 每个 describe 尽量共享同一个 TestContext（beforeAll），避免重复启动 MongoMemoryServer。
  * - 只有发布测试需要独立 TestContext（保证 published 状态干净）。
- * - entry key 现在是 nanoid 格式（e_xxxxxxxx），测试中不断言具体值，
+ * - entry key 现在是条目子 ContentItem 的 id（ci_xxx 格式），测试中不断言具体值，
  *   而是通过 addAnthologyEntry 返回的 entryKey 动态获取。
  */
 import supertest from 'supertest';
@@ -108,8 +108,8 @@ describe('Anthology CRUD (e2e)', () => {
       expect(detail.id).toBe(id);
       expect(Array.isArray(detail.entries)).toBe(true);
       expect(detail.entries).toHaveLength(1);
-      // entry key 现在是 nanoid 格式，只断言格式，不断言具体值
-      expect(entryKey).toMatch(/^e_/);
+      // entry key 现在是条目子 ContentItem 的 id（ci_xxx），只断言格式
+      expect(entryKey).toMatch(/^ci_/);
       expect(detail.entries[0].key).toBe(entryKey);
       expect(detail.entries[0].title).toBe('第一篇');
     });
@@ -128,9 +128,9 @@ describe('Anthology CRUD (e2e)', () => {
       });
 
       expect(detail.entries).toHaveLength(2);
-      // 两个 key 都符合 nanoid 格式且互不相同（不再测自增序号）
-      expect(detail.entries[0].key).toMatch(/^e_/);
-      expect(detail.entries[1].key).toMatch(/^e_/);
+      // 两个 key 都是 ci_xxx 格式且互不相同
+      expect(detail.entries[0].key).toMatch(/^ci_/);
+      expect(detail.entries[1].key).toMatch(/^ci_/);
       expect(detail.entries[0].key).not.toBe(detail.entries[1].key);
       // 第一个条目 key 与首次添加时一致（顺序稳定）
       expect(detail.entries[0].key).toBe(key1);
@@ -381,15 +381,15 @@ describe('Anthology 发布 (e2e)', () => {
       bodyMarkdown: '这是发布测试的第一篇。',
     });
 
-    // 新发布流程：先发布条目（设置 publishedVersionId），再发布文集
-    await supertest(ctx.app.getHttpServer())
-      .put(`/api/v1/spaces/anthology/items/${id}/entries/${entryKey}/publish`)
+    // 发布顺序（2026-05-28）：文集先上线，再发布条目（publishEntry 守卫文集已发布）
+    const res = await supertest(ctx.app.getHttpServer())
+      .put(`/api/v1/spaces/anthology/items/${id}/publish`)
       .set('Cookie', cookie)
       .send({})
       .expect(200);
 
-    const res = await supertest(ctx.app.getHttpServer())
-      .put(`/api/v1/spaces/anthology/items/${id}/publish`)
+    await supertest(ctx.app.getHttpServer())
+      .put(`/api/v1/spaces/anthology/items/${id}/entries/${entryKey}/publish`)
       .set('Cookie', cookie)
       .send({})
       .expect(200);
@@ -397,15 +397,14 @@ describe('Anthology 发布 (e2e)', () => {
     expect(res.body.data.status).toBe('published');
   });
 
-  it('空文集发布 → 400（无条目不允许发布）', async () => {
+  it('空文集发布 → 200（文集先发：容器可先上线，读者暂见空集）', async () => {
     const id = await createAnthologyItem(ctx.app, cookie, '空文集发布测试');
-    // 不添加任何条目
-
+    // 不添加任何条目；「文集先发」设计允许空集容器先上线
     await supertest(ctx.app.getHttpServer())
       .put(`/api/v1/spaces/anthology/items/${id}/publish`)
       .set('Cookie', cookie)
       .send({})
-      .expect(400);
+      .expect(200);
   });
 
   it('展示端未登录可以拿到已发布文集列表', async () => {
@@ -417,13 +416,13 @@ describe('Anthology 发布 (e2e)', () => {
 
     // 新发布流程：先发布条目，再发布文集
     await supertest(ctx.app.getHttpServer())
-      .put(`/api/v1/spaces/anthology/items/${id}/entries/${entryKey}/publish`)
+      .put(`/api/v1/spaces/anthology/items/${id}/publish`)
       .set('Cookie', cookie)
       .send({})
       .expect(200);
 
     await supertest(ctx.app.getHttpServer())
-      .put(`/api/v1/spaces/anthology/items/${id}/publish`)
+      .put(`/api/v1/spaces/anthology/items/${id}/entries/${entryKey}/publish`)
       .set('Cookie', cookie)
       .send({})
       .expect(200);
@@ -456,13 +455,13 @@ describe('Anthology 发布 (e2e)', () => {
 
     // 新发布流程：先发布条目（设置 publishedVersionId），再发布文集
     await supertest(ctx.app.getHttpServer())
-      .put(`/api/v1/spaces/anthology/items/${id}/entries/${entryKey}/publish`)
+      .put(`/api/v1/spaces/anthology/items/${id}/publish`)
       .set('Cookie', cookie)
       .send({})
       .expect(200);
 
     await supertest(ctx.app.getHttpServer())
-      .put(`/api/v1/spaces/anthology/items/${id}/publish`)
+      .put(`/api/v1/spaces/anthology/items/${id}/entries/${entryKey}/publish`)
       .set('Cookie', cookie)
       .send({})
       .expect(200);
@@ -486,13 +485,13 @@ describe('Anthology 发布 (e2e)', () => {
 
     // 新发布流程：先发布条目，再发布文集
     await supertest(ctx.app.getHttpServer())
-      .put(`/api/v1/spaces/anthology/items/${id}/entries/${entryKey}/publish`)
+      .put(`/api/v1/spaces/anthology/items/${id}/publish`)
       .set('Cookie', cookie)
       .send({})
       .expect(200);
 
     await supertest(ctx.app.getHttpServer())
-      .put(`/api/v1/spaces/anthology/items/${id}/publish`)
+      .put(`/api/v1/spaces/anthology/items/${id}/entries/${entryKey}/publish`)
       .set('Cookie', cookie)
       .send({})
       .expect(200);
@@ -539,13 +538,13 @@ describe('Anthology 发布 (e2e)', () => {
 
     // 新发布流程：先发布条目，再发布文集
     await supertest(ctx.app.getHttpServer())
-      .put(`/api/v1/spaces/anthology/items/${id}/entries/${entryKey}/publish`)
+      .put(`/api/v1/spaces/anthology/items/${id}/publish`)
       .set('Cookie', cookie)
       .send({})
       .expect(200);
 
     await supertest(ctx.app.getHttpServer())
-      .put(`/api/v1/spaces/anthology/items/${id}/publish`)
+      .put(`/api/v1/spaces/anthology/items/${id}/entries/${entryKey}/publish`)
       .set('Cookie', cookie)
       .send({})
       .expect(200);

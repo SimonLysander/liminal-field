@@ -1,22 +1,21 @@
 /**
  * AnthologyViewService — 文集 scope 的特有视图逻辑。
  *
- * 架构角色：与 GalleryViewService 对称，处理 anthology scope 独有的：
- * - 索引文件（main.md）的 frontmatter 解析/序列化
- * - 条目文件（entries/eXXX.md）的 frontmatter + 正文解析/序列化
- * - 条目的增删改查（每次操作产生新 snapshot）
- * - 展示端 / 管理端 DTO 组装
+ * 架构角色（统一页面树 Phase 2，2026-05-29 重构）：
+ * 文集 = 一个 NavigationNode（scope=anthology，容器），其下每篇条目都是真正的
+ * **子 NavigationNode**（parentId=文集节点，scope=anthology），各自背一个独立的
+ * ContentItem（通过 contentService.createContent 创建）。条目正文/版本/草稿走子
+ * ContentItem 的常规笔记机制（fileName 始终 null，与 notes 完全一致）。
  *
- * 文件协议（详见 docs/unified-content-architecture.md）：
- * - 索引：main.md，frontmatter 含 title/description/entries 列表
- * - 条目：entries/eXXX.md，frontmatter 含 title/date，正文是 Markdown
+ * 关键约定：
+ * - **entryKey = 子节点的 contentItemId（ci_xxx）**。前端把 entryKey 当不透明字符串，
+ *   保持 HTTP 契约不变；后端用它直接定位子 ContentItem。
+ * - 条目的发布 = 子 ContentItem.publishedVersion（per-node），不再有 entryPublishStates。
+ * - 文集容器的 main.md 只存 title/description（不再有 entries 列表——子节点才是权威来源）。
  *
- * 版本存储：
- * - 索引快照：fileName=null（ContentItem.latestVersion 跟踪的即此）
- * - 条目快照：fileName="entries/e001.md" 等（不影响 latestVersion）
- *
- * 不包含 CRUD 的创建/删除逻辑（由 WorkspaceService 处理），
- * 也不处理 Navigation 索引（由 WorkspaceService 负责注册）。
+ * date 保存：条目没有独立的日期字段，复用「笔记式 frontmatter」——把 date 作为一行
+ * frontmatter 写进子 ContentItem 的 bodyMarkdown 头部，对外返回 DTO 时剥离 frontmatter
+ * 只给正文。这样 date 随条目自己的版本历史一起 round-trip，且子节点仍是普通 ContentItem。
  */
 import {
   BadRequestException,
@@ -24,18 +23,15 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { nanoid } from 'nanoid';
 import * as yaml from 'js-yaml';
 import { ContentRepository } from '../content/content.repository';
 import { ContentSnapshotRepository } from '../content/content-snapshot.repository';
 import type { ContentSnapshot } from '../content/content-snapshot.entity';
 import { ContentService } from '../content/content.service';
-import {
-  ContentStatus,
-  ContentItem,
-  EntryPublishState,
-} from '../content/content-item.entity';
+import { ContentStatus } from '../content/content-item.entity';
 import { ContentSaveAction } from '../content/dto/save-content.dto';
+import { NavigationRepository } from '../navigation/navigation.repository';
+import type { NavigationNode } from '../navigation/navigation.entity';
 import {
   AnthologyPublicListItemDto,
   AnthologyPublicDetailDto,
@@ -53,51 +49,28 @@ import { SaveDraftDto } from './dto/save-draft.dto';
 
 // ─── 内部数据结构 ───────────────────────────────────────────────────────────
 
-/**
- * 索引 frontmatter 中的单个条目引用（存储结构）。
- *
- * 只含「内容 + 结构」字段(key/title/date/顺序),会序列化进 main.md → Git。
- * 发布状态(哪个条目、哪个版本对读者可见)不在这里——它是业务状态,只存
- * MongoDB 的 ContentItem.entryPublishStates,不进 Git(2026-05 重构,见该实体注释)。
- */
-interface FrontmatterEntryRef {
-  key: string;
-  title: string;
-  date: string | null;
-}
-
-/** 解析 main.md 的返回结构。 */
+/** 解析文集索引 frontmatter（main.md）的返回结构。 */
 interface ParsedAnthologyIndex {
   title: string;
   description: string;
-  entries: FrontmatterEntryRef[];
 }
 
-/** 解析条目文件的返回结构。 */
+/** 解析条目内容（子 ContentItem bodyMarkdown）的返回结构。 */
 interface ParsedEntryContent {
-  title: string;
+  /** 条目日期（frontmatter date 行），无则 null。 */
   date: string | null;
-  /** frontmatter 后的正文 Markdown。 */
+  /** frontmatter 后的正文 Markdown（对外只返回这一段）。 */
   bodyMarkdown: string;
 }
 
 // ─── 纯函数（解析/序列化）── export 供单元测试 ──────────────────────────────
 
 /**
- * 解析文集索引 frontmatter（main.md bodyMarkdown）。
- *
- * 边界情况：
- * - 无 frontmatter → 返回空默认值
- * - frontmatter 中 entries 缺失 → 默认 []
- * - entries 中 date 字段可以是 Date 对象（js-yaml 自动转换），转换为 ISO 日期字符串
- * - publishedVersionId 缺失 → 默认 null（向后兼容旧索引文件）
+ * 解析文集索引 frontmatter（main.md bodyMarkdown），只取 title/description。
+ * 条目列表不再存进索引——子节点才是权威来源。
  */
 export function parseAnthologyIndex(raw: string): ParsedAnthologyIndex {
-  const defaults: ParsedAnthologyIndex = {
-    title: '',
-    description: '',
-    entries: [],
-  };
+  const defaults: ParsedAnthologyIndex = { title: '', description: '' };
 
   if (!raw.startsWith('---')) return defaults;
 
@@ -113,25 +86,22 @@ export function parseAnthologyIndex(raw: string): ParsedAnthologyIndex {
     return defaults;
   }
 
-  const title = typeof parsed.title === 'string' ? parsed.title : '';
-  const description =
-    typeof parsed.description === 'string' ? parsed.description : '';
+  return {
+    title: typeof parsed.title === 'string' ? parsed.title : '',
+    description:
+      typeof parsed.description === 'string' ? parsed.description : '',
+  };
+}
 
-  const rawEntries = Array.isArray(parsed.entries) ? parsed.entries : [];
-  const entries: FrontmatterEntryRef[] = rawEntries
-    .filter(
-      (e): e is Record<string, unknown> => e !== null && typeof e === 'object',
-    )
-    .map((e) => ({
-      key: typeof e.key === 'string' ? e.key : '',
-      title: typeof e.title === 'string' ? e.title : '',
-      // js-yaml 会将符合 ISO 格式的日期自动解析为 Date 对象
-      date: normalizeDate(e.date),
-      // 旧索引里可能还带 publishedVersionId,这里直接忽略——发布状态已迁到 Mongo。
-    }))
-    .filter((e) => e.key !== '');
-
-  return { title, description, entries };
+/**
+ * 序列化文集索引为 main.md bodyMarkdown（纯 frontmatter，无正文，无 entries 列表）。
+ */
+export function serializeAnthologyIndex(data: ParsedAnthologyIndex): string {
+  const yamlStr = yaml.dump(
+    { title: data.title, description: data.description },
+    { indent: 2, lineWidth: -1, forceQuotes: true, quotingType: '"' },
+  );
+  return `---\n${yamlStr}---\n`;
 }
 
 /**
@@ -149,42 +119,11 @@ function normalizeDate(value: unknown): string | null {
 }
 
 /**
- * 序列化文集索引为 main.md bodyMarkdown（纯 frontmatter，无正文）。
- * entries 中的 date 始终以字符串写出，避免 js-yaml 反向解析。
- * 只写「内容+结构」(key/title/date/顺序);发布状态不写入 Git(见 FrontmatterEntryRef 注释)。
- */
-export function serializeAnthologyIndex(data: ParsedAnthologyIndex): string {
-  const frontmatterObj: Record<string, unknown> = {
-    title: data.title,
-    description: data.description,
-    entries: data.entries.map((e) => ({
-      key: e.key,
-      title: e.title,
-      // 写入 YAML 时用带引号的字符串，防止 js-yaml 把日期转回 Date 对象
-      ...(e.date !== null ? { date: e.date } : {}),
-    })),
-  };
-
-  const yamlStr = yaml.dump(frontmatterObj, {
-    indent: 2,
-    lineWidth: -1,
-    /* 强制引号，防止 js-yaml 把日期字符串 "2026-05-19" 序列化为 Date 格式 */
-    forceQuotes: true,
-    quotingType: '"',
-  });
-  return `---\n${yamlStr}---\n`;
-}
-
-/**
- * 解析条目文件（entries/eXXX.md bodyMarkdown）。
- * frontmatter 含 title + date，正文是 Markdown。
+ * 解析条目内容：从子 ContentItem 的 bodyMarkdown 头部剥离可选的 date frontmatter，
+ * 返回 date + 纯正文。无 frontmatter 时整体即正文、date 为 null。
  */
 export function parseEntryContent(raw: string): ParsedEntryContent {
-  const defaults: ParsedEntryContent = {
-    title: '',
-    date: null,
-    bodyMarkdown: raw,
-  };
+  const defaults: ParsedEntryContent = { date: null, bodyMarkdown: raw };
 
   if (!raw.startsWith('---')) return defaults;
 
@@ -201,41 +140,25 @@ export function parseEntryContent(raw: string): ParsedEntryContent {
     return defaults;
   }
 
-  return {
-    title: typeof parsed.title === 'string' ? parsed.title : '',
-    date: normalizeDate(parsed.date),
-    bodyMarkdown: body,
-  };
+  return { date: normalizeDate(parsed.date), bodyMarkdown: body };
 }
 
 /**
- * 序列化条目为带 frontmatter 的完整文件内容。
- * bodyMarkdown 参数是纯正文（不含 frontmatter），后端包装 frontmatter 后存储。
+ * 序列化条目内容：把 date 作为一行 frontmatter 包到正文头部供存储。
+ * date 为 null 时不写 frontmatter，直接存纯正文（与笔记一致）。
  */
 export function serializeEntryContent(data: {
-  title: string;
   date: string | null;
   bodyMarkdown: string;
 }): string {
-  const frontmatterObj: Record<string, unknown> = { title: data.title };
+  if (!data.date) return data.bodyMarkdown;
+
   /* 日期强制用引号字符串，防止 js-yaml 把 "2026-05-19" 解析为 Date 对象再序列化成怪格式 */
-  if (data.date) frontmatterObj.date = data.date;
-
-  const yamlStr = yaml.dump(frontmatterObj, {
-    indent: 2,
-    lineWidth: -1,
-    forceQuotes: true,
-    quotingType: '"',
-  });
+  const yamlStr = yaml.dump(
+    { date: data.date },
+    { indent: 2, lineWidth: -1, forceQuotes: true, quotingType: '"' },
+  );
   return `---\n${yamlStr}---\n\n${data.bodyMarkdown}`;
-}
-
-/**
- * 生成唯一的条目 key（e_{nanoid8}）。
- * 用 nanoid 而非自增序号，避免删除条目后重建同名 key 导致旧 snapshot 污染新条目。
- */
-export function generateEntryKey(): string {
-  return `e_${nanoid(8)}`;
 }
 
 // ─── Service ────────────────────────────────────────────────────────────────
@@ -249,12 +172,13 @@ export class AnthologyViewService {
     private readonly contentService: ContentService,
     private readonly snapshotRepository: ContentSnapshotRepository,
     private readonly editorDraftRepository: EditorDraftRepository,
+    private readonly navigationRepository: NavigationRepository,
   ) {}
 
   // ── 内部辅助 ──────────────────────────────────────────────────────────────
 
   /**
-   * 加载并解析最新的索引 snapshot（main.md）。
+   * 加载并解析最新的索引 snapshot（main.md），只含 title/description。
    * 刚创建尚无快照时返回空默认值（不抛异常）。
    */
   private async loadIndex(
@@ -265,103 +189,70 @@ export class AnthologyViewService {
       throw new NotFoundException(`Anthology ${contentItemId} not found`);
 
     const versionId = item.latestVersion?.versionId;
-    if (!versionId) return { title: '', description: '', entries: [] };
+    if (!versionId) return { title: '', description: '' };
 
     const snapshot = await this.snapshotRepository.findByVersionId(versionId);
-    if (!snapshot) return { title: '', description: '', entries: [] };
+    if (!snapshot) return { title: '', description: '' };
 
     return parseAnthologyIndex(snapshot.bodyMarkdown);
   }
 
   /**
-   * 将新的索引数据序列化并提交为新 snapshot（fileName=null → 更新 latestVersion）。
-   *
-   * title 回退策略：
-   * - indexData.title 非空时直接使用（正常路径）
-   * - indexData.title 为空时（文集刚创建、首次添加条目尚无索引 snapshot），
-   *   回退到 ContentItem.latestVersion.title（createContent 时已写入 dto.title）。
-   * - ContentSnapshot.title 是 required 字段，不能传空字符串。
+   * 定位文集容器的 NavigationNode。找不到（不是文集 / 已删）抛 404。
    */
-  private async commitIndex(
+  private async getAnthologyNode(
     contentItemId: string,
-    indexData: ParsedAnthologyIndex,
-    changeNote: string,
-  ): Promise<void> {
-    // 当 indexData.title 为空时（首次 addEntry，文集尚无索引 snapshot），
-    // 从 ContentItem.latestVersion 取创建时存入的 title，避免 Mongoose required 校验失败。
-    let resolvedTitle = indexData.title;
-    if (!resolvedTitle) {
-      const item = await this.contentRepository.findById(contentItemId);
-      resolvedTitle = item?.latestVersion?.title ?? '';
-    }
-
-    const bodyMarkdown = serializeAnthologyIndex(indexData);
-    await this.contentService.saveContent(contentItemId, {
-      title: resolvedTitle,
-      summary: indexData.description,
-      bodyMarkdown,
-      changeNote,
-      status: ContentStatus.committed,
-      action: ContentSaveAction.commit,
-      // fileName 不传（= null），表示这是 main.md，会更新 latestVersion
-    });
+  ): Promise<NavigationNode> {
+    const node =
+      await this.navigationRepository.findByContentItemId(contentItemId);
+    if (!node)
+      throw new NotFoundException(`Anthology ${contentItemId} not found`);
+    return node;
   }
 
   /**
-   * 保存条目 snapshot（fileName="entries/eXXX.md"）。
-   * 不会影响 ContentItem.latestVersion（只跟踪 main.md）。
+   * 列出文集下的子条目节点（按 order 升序）。
+   * 子节点 = parentId 指向文集节点、scope=anthology 的节点。
    */
-  private async commitEntry(
-    contentItemId: string,
-    entryKey: string,
-    dto: SaveAnthologyEntryDto,
-  ): Promise<void> {
-    const fullContent = serializeEntryContent({
-      title: dto.title,
-      date: dto.date ?? null,
-      bodyMarkdown: dto.bodyMarkdown,
-    });
-
-    await this.contentService.saveContent(contentItemId, {
-      title: dto.title,
-      summary: dto.title,
-      bodyMarkdown: fullContent,
-      changeNote: dto.changeNote ?? `编辑条目 ${entryKey}`,
-      status: ContentStatus.committed,
-      action: ContentSaveAction.commit,
-      fileName: `entries/${entryKey}.md`,
-    });
-  }
-
-  /**
-   * 若文集已发布（publishedVersion 非 null），同步更新 publishedVersion 指向最新索引 snapshot。
-   * 条目级发布/取消发布后调用，确保读者看到最新的条目列表。
-   */
-  private async syncPublishedVersionIfNeeded(
-    contentItemId: string,
-  ): Promise<void> {
-    const item = await this.contentRepository.findById(contentItemId);
-    if (item?.publishedVersion) {
-      await this.contentService.publishVersion(contentItemId);
-    }
-  }
-
-  /** 从 ContentItem.entryPublishStates 构建 entryKey → 已发布 versionId 的映射(发布状态的唯一来源)。 */
-  private buildEntryPublishMap(item: ContentItem | null): Map<string, string> {
-    return new Map(
-      (item?.entryPublishStates ?? []).map((s) => [
-        s.entryKey,
-        s.publishedVersionId,
-      ]),
+  private async listEntryNodes(
+    anthologyNode: NavigationNode,
+  ): Promise<NavigationNode[]> {
+    return this.navigationRepository.findChildrenByParentId(
+      anthologyNode._id.toString(),
+      'anthology',
     );
   }
 
-  /** 发布映射 → 持久化数组(buildEntryPublishMap 的逆)。 */
-  private mapToStates(map: Map<string, string>): EntryPublishState[] {
-    return [...map].map(([entryKey, publishedVersionId]) => ({
-      entryKey,
-      publishedVersionId,
-    }));
+  /**
+   * 定位某条目的子节点（entryKey = 子 contentItemId）。
+   * 校验它确实挂在该文集之下，避免越文集访问。
+   */
+  private async getEntryNode(
+    anthologyNode: NavigationNode,
+    entryKey: string,
+  ): Promise<NavigationNode> {
+    const node = await this.navigationRepository.findByContentItemId(entryKey);
+    if (!node || node.parentId?.toString() !== anthologyNode._id.toString()) {
+      throw new NotFoundException(`Entry ${entryKey} not found`);
+    }
+    return node;
+  }
+
+  /**
+   * 读取某条目子 ContentItem 的最新 snapshot（main.md，fileName=null）。
+   */
+  private async loadEntryLatestSnapshot(
+    entryKey: string,
+  ): Promise<ContentSnapshot | null> {
+    return this.contentService.getLatestSnapshot(entryKey, null);
+  }
+
+  /** 条目子 ContentItem 的标题：取其 latestVersion.title。 */
+  private entryTitle(
+    node: NavigationNode,
+    item: { latestVersion?: { title: string } } | null,
+  ): string {
+    return item?.latestVersion?.title || node.name;
   }
 
   /**
@@ -385,97 +276,110 @@ export class AnthologyViewService {
     return { prev, next };
   }
 
+  /**
+   * 把若干条目节点组装成 { key, title, date } 的有序列表（目录展示用）。
+   * date 从每个条目子 ContentItem 的正文 frontmatter 读取（兜底快照 createdAt）。
+   */
+  private async toEntryRefs(
+    nodes: NavigationNode[],
+  ): Promise<{ key: string; title: string; date: string | null }[]> {
+    return Promise.all(
+      nodes.map(async (node) => {
+        const key = node.contentItemId;
+        const item = await this.contentRepository.findById(key);
+        const snapshot = await this.loadEntryLatestSnapshot(key);
+        const parsed = snapshot
+          ? parseEntryContent(snapshot.bodyMarkdown)
+          : { date: null, bodyMarkdown: '' };
+        const date =
+          parsed.date ??
+          (snapshot ? snapshot.createdAt.toISOString().split('T')[0] : null);
+        return { key, title: this.entryTitle(node, item), date };
+      }),
+    );
+  }
+
   // ── 条目 CRUD ────────────────────────────────────────────────────────────
 
   /**
    * 添加条目：
-   * 1. 生成新条目 key（nanoid）
-   * 2. 创建初始空 snapshot
-   * 3. 更新索引 snapshot（添加新条目到 entries 列表）
+   * 1. 创建子 ContentItem（contentService.createContent）
+   * 2. 在文集节点下挂一个子 NavigationNode（contentItemId=子 ci，order=现有子节点数）
+   * 3. 若带正文，提交一次内容（commit，fileName=null，date 写进 frontmatter）
+   *
+   * entryKey = 子 ContentItem 的 id。
    */
   async addEntry(
     contentItemId: string,
     dto: SaveAnthologyEntryDto,
   ): Promise<AnthologyAdminDetailDto> {
-    const indexData = await this.loadIndex(contentItemId);
-    const newKey = generateEntryKey();
+    const anthologyNode = await this.getAnthologyNode(contentItemId);
+    const existingChildren = await this.listEntryNodes(anthologyNode);
 
-    // 创建初始空 snapshot（与 Notes createContent 一致：source='system', changeNote='自动创建'）
-    // 用户内容由编辑器提交，这里只做系统初始化
-    await this.contentService.saveContent(contentItemId, {
-      title: dto.title,
-      summary: '',
-      bodyMarkdown: '',
-      changeNote: '自动创建',
-      status: ContentStatus.committed,
-      action: ContentSaveAction.commit,
-      fileName: `entries/${newKey}.md`,
-      source: 'system',
+    // 1. 子 ContentItem（与笔记一致，只建 Mongo 记录）
+    const child = await this.contentService.createContent({ title: dto.title });
+
+    // 2. 子 NavigationNode：order 排到现有子节点末尾
+    await this.navigationRepository.create({
+      name: dto.title,
+      scope: 'anthology',
+      parentId: anthologyNode._id.toString(),
+      contentItemId: child.id,
+      order: existingChildren.length,
     });
 
-    // 更新索引（添加新条目到末尾，新条目默认未发布）
-    const newEntry: FrontmatterEntryRef = {
-      key: newKey,
-      title: dto.title,
-      date: dto.date ?? null,
-    };
-    const updatedIndex: ParsedAnthologyIndex = {
-      ...indexData,
-      entries: [...indexData.entries, newEntry],
-    };
-    await this.commitIndex(
-      contentItemId,
-      updatedIndex,
-      `添加条目 ${newKey}: ${dto.title}`,
-    );
+    // 3. 有正文时提交（date 包进 frontmatter）。空正文留给后续 saveEntry。
+    if (dto.bodyMarkdown) {
+      await this.commitEntryContent(child.id, dto);
+    }
 
     return this.toAdminDetail(contentItemId);
   }
 
+  /** 提交条目内容到子 ContentItem（fileName=null，date 写进 frontmatter）。 */
+  private async commitEntryContent(
+    entryKey: string,
+    dto: SaveAnthologyEntryDto,
+  ): Promise<void> {
+    const bodyMarkdown = serializeEntryContent({
+      date: dto.date ?? null,
+      bodyMarkdown: dto.bodyMarkdown,
+    });
+    await this.contentService.saveContent(entryKey, {
+      title: dto.title,
+      summary: dto.title,
+      bodyMarkdown,
+      changeNote: dto.changeNote ?? `编辑条目 ${dto.title}`,
+      status: ContentStatus.committed,
+      action: ContentSaveAction.commit,
+      // fileName 不传（null）——条目就是普通 ContentItem
+    });
+  }
+
   /**
    * 编辑条目：
-   * 1. 提交条目内容新版本 snapshot
-   * 2. 如果 title 或 date 变了，更新索引中对应的冗余字段
-   * 3. 提交成功后自动删除该条目的草稿（与 notes commit 后删草稿对称）
+   * 1. 提交内容新版本到子 ContentItem
+   * 2. 同步子节点 name 为 dto.title
+   * 3. 删除该节点草稿（与 notes commit 后删草稿对称）
    */
   async saveEntry(
     contentItemId: string,
     entryKey: string,
     dto: SaveAnthologyEntryDto,
   ): Promise<AnthologyAdminDetailDto> {
-    const indexData = await this.loadIndex(contentItemId);
-    const entryRef = indexData.entries.find((e) => e.key === entryKey);
-    if (!entryRef) {
-      throw new NotFoundException(
-        `Entry ${entryKey} not found in anthology ${contentItemId}`,
-      );
-    }
+    const anthologyNode = await this.getAnthologyNode(contentItemId);
+    const entryNode = await this.getEntryNode(anthologyNode, entryKey);
 
-    // 提交条目内容新版本
-    await this.commitEntry(contentItemId, entryKey, dto);
+    await this.commitEntryContent(entryKey, dto);
 
-    // title 或 date 有变化时同步更新索引冗余字段（不修改 publishedVersionId）
-    const titleChanged = entryRef.title !== dto.title;
-    const dateChanged = entryRef.date !== (dto.date ?? null);
+    // 同步子节点名（标题冗余在节点 name 上，列表无需读快照即可显示）
+    await this.navigationRepository.update(entryNode._id.toString(), {
+      name: dto.title,
+    });
 
-    if (titleChanged || dateChanged) {
-      const updatedEntries = indexData.entries.map((e) =>
-        e.key === entryKey
-          ? // 只更新 title/date 元数据(发布状态在 Mongo,与索引无关)
-            { ...e, title: dto.title, date: dto.date ?? null }
-          : e,
-      );
-      await this.commitIndex(
-        contentItemId,
-        { ...indexData, entries: updatedEntries },
-        `更新条目 ${entryKey} 元数据`,
-      );
-    }
-
-    // 提交成功后自动清理该条目的草稿（忽略错误，不影响主流程）
-    const fileName = `entries/${entryKey}.md`;
+    // 提交成功后清理该条目草稿（忽略错误，不影响主流程）
     await this.editorDraftRepository
-      .deleteByContentItemAndFileName(contentItemId, fileName)
+      .deleteByContentItemId(entryKey)
       .catch((err) =>
         this.logger.warn(`清理条目草稿失败（非致命）: ${String(err)}`),
       );
@@ -484,48 +388,40 @@ export class AnthologyViewService {
   }
 
   /**
-   * 删除条目：从索引移除 + 清理该条目的所有 snapshot 和草稿。
+   * 删除条目：已发布的条目（子 ContentItem.publishedVersion 非空）不能直接删。
+   * 删除子 NavigationNode + 子 ContentItem 及其快照、草稿。
    */
   async removeEntry(
     contentItemId: string,
     entryKey: string,
   ): Promise<AnthologyAdminDetailDto> {
-    const indexData = await this.loadIndex(contentItemId);
-    const entryRef = indexData.entries.find((e) => e.key === entryKey);
-    if (!entryRef) {
-      throw new NotFoundException(
-        `Entry ${entryKey} not found in anthology ${contentItemId}`,
-      );
-    }
+    const anthologyNode = await this.getAnthologyNode(contentItemId);
+    const entryNode = await this.getEntryNode(anthologyNode, entryKey);
 
-    // 已发布的条目不能直接删除，必须先取消发布(发布状态读 Mongo)
-    const publishMap = this.buildEntryPublishMap(
-      await this.contentRepository.findById(contentItemId),
-    );
-    if (publishMap.has(entryKey)) {
+    const item = await this.contentRepository.findById(entryKey);
+    if (item?.publishedVersion) {
       throw new BadRequestException('已发布的条目不能删除，请先取消发布');
     }
 
-    // 从索引移除
-    const updatedIndex: ParsedAnthologyIndex = {
-      ...indexData,
-      entries: indexData.entries.filter((e) => e.key !== entryKey),
-    };
-    await this.commitIndex(contentItemId, updatedIndex, `删除条目 ${entryKey}`);
+    // 删子节点（索引）
+    await this.navigationRepository.deleteById(entryNode._id.toString());
 
-    // 删除条目后同步已发布版本（否则展示端仍显示已删除的条目）
-    await this.syncPublishedVersionIfNeeded(contentItemId);
-
-    // 并行清理该条目的所有 snapshot 和草稿（非致命，失败不影响主流程）
-    const fileName = `entries/${entryKey}.md`;
+    // 并行清理子 ContentItem / 快照 / 草稿（非致命，失败不影响主流程）
     await Promise.all([
+      this.contentRepository
+        .deleteById(entryKey)
+        .catch((err) =>
+          this.logger.warn(
+            `清理条目 ContentItem 失败（非致命）: ${String(err)}`,
+          ),
+        ),
       this.snapshotRepository
-        .deleteByFileName(contentItemId, fileName)
+        .deleteByContentItemId(entryKey)
         .catch((err) =>
           this.logger.warn(`清理条目 snapshot 失败（非致命）: ${String(err)}`),
         ),
       this.editorDraftRepository
-        .deleteByContentItemAndFileName(contentItemId, fileName)
+        .deleteByContentItemId(entryKey)
         .catch((err) =>
           this.logger.warn(`清理条目草稿失败（非致命）: ${String(err)}`),
         ),
@@ -535,119 +431,108 @@ export class AnthologyViewService {
   }
 
   /**
-   * 重排条目顺序：newOrder 必须包含且仅包含当前所有条目的 key。
+   * 重排条目顺序：newOrder = 子 contentItemId 列表，必须与当前子节点集合完全一致。
+   * 映射每个 contentItemId 到其子节点 id，bulkUpdateOrder 落 order。
    */
   async reorderEntries(
     contentItemId: string,
     newOrder: string[],
   ): Promise<AnthologyAdminDetailDto> {
-    const indexData = await this.loadIndex(contentItemId);
-    const currentKeys = new Set(indexData.entries.map((e) => e.key));
+    const anthologyNode = await this.getAnthologyNode(contentItemId);
+    const children = await this.listEntryNodes(anthologyNode);
 
-    // 校验：新顺序的 key 集合必须与当前完全一致
+    // contentItemId → 子节点 id
+    const idByKey = new Map(
+      children.map((node) => [node.contentItemId, node._id.toString()]),
+    );
+
     const isValidOrder =
-      newOrder.length === currentKeys.size &&
-      newOrder.every((k) => currentKeys.has(k));
-
+      newOrder.length === children.length &&
+      newOrder.every((key) => idByKey.has(key));
     if (!isValidOrder) {
       throw new BadRequestException(
         'newOrder 必须包含且仅包含当前所有条目的 key',
       );
     }
 
-    // 按新顺序重排（保持 title/date 等元数据不变）
-    const entryMap = new Map(indexData.entries.map((e) => [e.key, e]));
-    const reorderedEntries = newOrder.map((k) => entryMap.get(k)!);
-
-    await this.commitIndex(
-      contentItemId,
-      { ...indexData, entries: reorderedEntries },
-      '重排条目顺序',
+    await this.navigationRepository.bulkUpdateOrder(
+      newOrder.map((key, order) => ({ id: idByKey.get(key)!, order })),
     );
 
     return this.toAdminDetail(contentItemId);
   }
 
   /**
-   * 获取单篇条目详情（展示端 + 管理端通用）。
-   * 含正文和 prev/next 导航（按索引顺序）。
+   * 获取单篇条目详情（展示端 + 管理端通用）。含正文和 prev/next 导航。
    *
-   * @param usePublished true 时从已发布版本的索引中取 prev/next（展示端），
-   *                     false 时从最新索引取（管理端/编辑场景）。
+   * @param usePublished true 时只在「文集已发布 + 条目已发布」时可见，正文取条目已发布
+   *                     版本的冻结 snapshot；false 时取条目最新 snapshot（管理端/编辑）。
    */
   async getEntryDetail(
     contentItemId: string,
     entryKey: string,
     usePublished = false,
   ): Promise<AnthologyEntryDetailDto> {
-    const item = await this.contentRepository.findById(contentItemId);
-    if (!item)
-      throw new NotFoundException(`Anthology ${contentItemId} not found`);
+    const anthologyNode = await this.getAnthologyNode(contentItemId);
 
-    // 取索引：展示端用已发布版本，管理端用最新版本
-    let indexData: ParsedAnthologyIndex;
+    // 展示端：文集本身必须已发布
     if (usePublished) {
-      if (!item.publishedVersion) {
+      const anthologyItem =
+        await this.contentRepository.findById(contentItemId);
+      if (!anthologyItem?.publishedVersion) {
         throw new NotFoundException(
           `Anthology ${contentItemId} is not published`,
         );
       }
-      const publishedSnapshot = await this.snapshotRepository.findByVersionId(
-        item.publishedVersion.versionId!,
-      );
-      indexData = publishedSnapshot
-        ? parseAnthologyIndex(publishedSnapshot.bodyMarkdown)
-        : { title: '', description: '', entries: [] };
-    } else {
-      indexData = await this.loadIndex(contentItemId);
     }
 
-    // 展示端只能看到已发布的条目(发布状态读 Mongo,不在索引里)
-    const publishMap = this.buildEntryPublishMap(item);
-    const visibleEntries = usePublished
-      ? indexData.entries.filter((e) => publishMap.has(e.key))
-      : indexData.entries;
+    // 兄弟列表（按 order），展示端只保留已发布的条目
+    const children = await this.listEntryNodes(anthologyNode);
+    const childItems = await Promise.all(
+      children.map((node) =>
+        this.contentRepository.findById(node.contentItemId),
+      ),
+    );
+    const visiblePairs = children
+      .map((node, i) => ({ node, item: childItems[i] }))
+      .filter(({ item }) => (usePublished ? !!item?.publishedVersion : true));
 
-    const entryIdx = visibleEntries.findIndex((e) => e.key === entryKey);
+    const visibleRefs = visiblePairs.map(({ node, item }) => ({
+      key: node.contentItemId,
+      title: this.entryTitle(node, item),
+    }));
+
+    const entryIdx = visibleRefs.findIndex((e) => e.key === entryKey);
     if (entryIdx === -1) {
-      throw new NotFoundException(
-        `Entry ${entryKey} not found in anthology ${contentItemId}`,
-      );
+      throw new NotFoundException(`Entry ${entryKey} not found`);
     }
+    const { node: entryNode, item: entryItem } = visiblePairs[entryIdx];
 
-    const entryRef = visibleEntries[entryIdx];
-    const fileName = `entries/${entryKey}.md`;
-
+    // 正文 snapshot：展示端取已发布冻结版本，管理端取最新版本
     let entrySnapshot: ContentSnapshot | null;
-    const publishedVid = publishMap.get(entryKey);
-    if (usePublished && publishedVid) {
-      // 展示端：从 Mongo 记录的已发布 versionId 取冻结 snapshot（严格版本隔离）
-      entrySnapshot =
-        await this.snapshotRepository.findByVersionId(publishedVid);
+    if (usePublished) {
+      const publishedVid = entryItem?.publishedVersion?.versionId;
+      entrySnapshot = publishedVid
+        ? await this.snapshotRepository.findByVersionId(publishedVid)
+        : null;
     } else {
-      // 管理端：从最新 snapshot 读取内容
-      entrySnapshot = await this.snapshotRepository.findLatestByFileName(
-        contentItemId,
-        fileName,
-      );
+      entrySnapshot = await this.loadEntryLatestSnapshot(entryKey);
     }
+
+    const { prev, next } = this.buildPrevNext(visibleRefs, entryIdx);
 
     if (!entrySnapshot) {
-      // 展示端:已发布条目却查不到正文快照(发布版本被删/悬空)→ 维持严格 404,
-      // 不向读者露出空的"已发布"内容。
+      // 展示端:已发布条目却查不到正文快照(版本悬空)→ 严格 404,不向读者露空内容。
       if (usePublished) {
         throw new NotFoundException(
           `Entry ${entryKey} has no content snapshot`,
         );
       }
-      // 管理端:条目在索引里登记、但正文快照缺失(历史恢复丢正文 / 归档未回填子文件)。
-      // 这是可恢复态——返回空正文让编辑器正常打开,用户重写保存即重建正文快照(自愈),
-      // 不应以 404 把用户堵死在原始错误页。
-      const { prev, next } = this.buildPrevNext(visibleEntries, entryIdx);
+      // 管理端:正文快照缺失(历史恢复丢正文)→ 返回空正文让编辑器正常打开(自愈),不堵死用户。
       return {
         key: entryKey,
-        title: entryRef.title,
-        date: entryRef.date ?? new Date().toISOString().split('T')[0],
+        title: this.entryTitle(entryNode, entryItem),
+        date: new Date().toISOString().split('T')[0],
         updatedAt: new Date().toISOString(),
         bodyMarkdown: '',
         prev,
@@ -655,18 +540,13 @@ export class AnthologyViewService {
       };
     }
 
-    // updatedAt：始终取该条目最新 snapshot 的 createdAt（与 NoteReader 的 updatedAt 同语义）
-    const latestSnapshot = await this.snapshotRepository.findLatestByFileName(
-      contentItemId,
-      fileName,
-    );
-
+    // updatedAt 取该条目最新 snapshot 的 createdAt（与 NoteReader 同语义）
+    const latestSnapshot = await this.loadEntryLatestSnapshot(entryKey);
     const parsed = parseEntryContent(entrySnapshot.bodyMarkdown);
-    const { prev, next } = this.buildPrevNext(visibleEntries, entryIdx);
 
     return {
       key: entryKey,
-      title: parsed.title || entrySnapshot.title,
+      title: this.entryTitle(entryNode, entryItem),
       date: parsed.date ?? entrySnapshot.createdAt.toISOString().split('T')[0],
       updatedAt: (latestSnapshot ?? entrySnapshot).createdAt.toISOString(),
       bodyMarkdown: parsed.bodyMarkdown,
@@ -678,135 +558,90 @@ export class AnthologyViewService {
   // ── 发布 ──────────────────────────────────────────────────────────────────
 
   /**
-   * 文集级发布（上线）：调用 ContentService.publishVersion，
-   * 将 ContentItem.publishedVersion 指向当前最新索引 snapshot。
-   *
-   * 发布顺序(2026-05-28 改):文集先上线,再逐条发布条目(条目发布要求文集已上线,
-   * 见 publishEntry)。故这里不再要求"至少一篇已发布条目"——允许先把文集容器上线
-   * (读者此时看到空/待更新的文集),再陆续发布条目。
+   * 文集级发布（上线）：把文集容器的 publishedVersion 指向当前最新索引 snapshot。
+   * 发布顺序(2026-05-28):文集先上线、再逐条发布条目（见 publishEntry）。
    */
   async publishAnthology(contentItemId: string): Promise<void> {
     await this.contentService.publishVersion(contentItemId);
   }
 
   /**
-   * 文集级取消发布（下线）：调用 ContentService.unpublishVersion，
-   * 清除 publishedVersion 指针，读者立即看不到该文集。
+   * 文集级取消发布（下线）：清除文集容器的 publishedVersion，读者立即看不到该文集。
    */
   async unpublishAnthology(contentItemId: string): Promise<void> {
     await this.contentService.unpublishVersion(contentItemId);
   }
 
   /**
-   * 发布单篇条目(只动 Mongo,不写 Git):
-   * 1. 查该条目最新 snapshot versionId
-   * 2. 写入 ContentItem.entryPublishStates(发布状态的唯一来源)
-   * 3. 文集已上线时,把冻结结构刷到最新(让本条目进入读者可见的结构);仅改 Mongo
-   *
-   * 注:发布状态不再写进 main.md/Git——它是业务状态,恢复时清零、由用户手动重发。
+   * 发布单篇条目 = 发布子 ContentItem 的最新版本（per-node publishedVersion）。
+   * 发布顺序:必须先发布文集（整集上线），才能发布其中的条目。
    */
   async publishEntry(
     contentItemId: string,
     entryKey: string,
   ): Promise<AnthologyAdminDetailDto> {
-    const item = await this.contentRepository.findById(contentItemId);
-    // 发布顺序:必须先发布文集(整集上线),才能发布其中的条目。
-    // 文集未上线时发布条目无意义——读者看不到文集,自然也看不到条目。
-    if (!item?.publishedVersion) {
+    const anthologyItem = await this.contentRepository.findById(contentItemId);
+    if (!anthologyItem?.publishedVersion) {
       throw new BadRequestException('请先发布文集,才能发布其中的条目');
     }
 
-    // 用 find 拿 entryRef:报错用标题而非内部 key(不向用户泄漏内部 id)
-    const indexData = await this.loadIndex(contentItemId);
-    const entryRef = indexData.entries.find((e) => e.key === entryKey);
-    if (!entryRef) {
-      throw new NotFoundException('条目不存在或已删除');
-    }
+    const anthologyNode = await this.getAnthologyNode(contentItemId);
+    await this.getEntryNode(anthologyNode, entryKey); // 校验条目存在且属于该文集
 
-    const latestSnapshot = await this.snapshotRepository.findLatestByFileName(
-      contentItemId,
-      `entries/${entryKey}.md`,
-    );
-    if (!latestSnapshot) {
-      throw new BadRequestException(
-        `《${entryRef.title || '未命名条目'}》尚无内容，无法发布`,
-      );
-    }
-
-    const publishMap = this.buildEntryPublishMap(item);
-    publishMap.set(entryKey, latestSnapshot.versionId);
-    await this.contentRepository.setEntryPublishStates(
-      contentItemId,
-      this.mapToStates(publishMap),
-    );
-
-    await this.syncPublishedVersionIfNeeded(contentItemId);
+    await this.contentService.publishVersion(entryKey);
     return this.toAdminDetail(contentItemId);
   }
 
   /**
-   * 取消发布单篇条目(只动 Mongo):从 entryPublishStates 移除该条目。
+   * 取消发布单篇条目 = 清除子 ContentItem 的 publishedVersion。
    */
   async unpublishEntry(
     contentItemId: string,
     entryKey: string,
   ): Promise<AnthologyAdminDetailDto> {
-    const indexData = await this.loadIndex(contentItemId);
-    if (!indexData.entries.some((e) => e.key === entryKey)) {
-      throw new NotFoundException(
-        `Entry ${entryKey} not found in anthology ${contentItemId}`,
-      );
-    }
+    const anthologyNode = await this.getAnthologyNode(contentItemId);
+    await this.getEntryNode(anthologyNode, entryKey);
 
-    const publishMap = this.buildEntryPublishMap(
-      await this.contentRepository.findById(contentItemId),
-    );
-    publishMap.delete(entryKey);
-    await this.contentRepository.setEntryPublishStates(
-      contentItemId,
-      this.mapToStates(publishMap),
-    );
-
-    await this.syncPublishedVersionIfNeeded(contentItemId);
+    await this.contentService.unpublishVersion(entryKey);
     return this.toAdminDetail(contentItemId);
   }
 
   /**
-   * 批量发布所有条目(只动 Mongo):把每个有内容的条目设为发布其最新 snapshot。
+   * 批量发布所有条目：逐个发布有内容（有 latestVersion）的子 ContentItem 最新版本。
+   * 无内容（从未提交）的条目跳过；已发布且无变更的项 publishVersion 不抛错（指向最新即可）。
    */
   async publishAllEntries(
     contentItemId: string,
   ): Promise<AnthologyAdminDetailDto> {
-    const indexData = await this.loadIndex(contentItemId);
+    const anthologyNode = await this.getAnthologyNode(contentItemId);
+    const children = await this.listEntryNodes(anthologyNode);
 
-    // 并行取每个有内容条目的最新 snapshot versionId
-    const states = (
-      await Promise.all(
-        indexData.entries.map(async (e): Promise<EntryPublishState | null> => {
-          const latestSnapshot =
-            await this.snapshotRepository.findLatestByFileName(
-              contentItemId,
-              `entries/${e.key}.md`,
+    await Promise.all(
+      children.map(async (node) => {
+        const item = await this.contentRepository.findById(node.contentItemId);
+        // 仅发布有已提交版本的条目（latestVersion.versionId 存在）
+        if (item?.latestVersion?.versionId) {
+          await this.contentService
+            .publishVersion(node.contentItemId)
+            .catch((err) =>
+              this.logger.warn(
+                `批量发布条目 ${node.contentItemId} 失败（跳过）: ${String(err)}`,
+              ),
             );
-          return latestSnapshot
-            ? { entryKey: e.key, publishedVersionId: latestSnapshot.versionId }
-            : null; // 无内容条目跳过
-        }),
-      )
-    ).filter((s): s is EntryPublishState => s !== null);
+        }
+      }),
+    );
 
-    await this.contentRepository.setEntryPublishStates(contentItemId, states);
-    await this.syncPublishedVersionIfNeeded(contentItemId);
     return this.toAdminDetail(contentItemId);
   }
 
   /**
-   * 发布最新版(供一键发布全部 publish-all 统一派发;实现 ScopePublisher)。
-   * 文集特有:先发布所有有内容的条目,再整集上线(无可发布条目时 publishAnthology 抛错)。
+   * 发布最新版（供一键发布全部 publish-all 统一派发;实现 ScopePublisher）。
+   * 文集特有:先逐条发布所有有内容的条目,再整集上线。
    */
   async publishLatest(contentItemId: string): Promise<void> {
-    await this.publishAllEntries(contentItemId);
     await this.publishAnthology(contentItemId);
+    await this.publishAllEntries(contentItemId);
   }
 
   // ── 条目草稿 CRUD ────────────────────────────────────────────────────────
@@ -826,37 +661,31 @@ export class AnthologyViewService {
   }
 
   /**
-   * 获取条目草稿。先验证文集存在，再按 fileName 查询草稿。
+   * 获取条目草稿。entryKey 即子 ContentItem id，走普通笔记草稿机制（fileName=null）。
    * 无草稿返回 null（200），避免 404 噪音。
    */
   async getEntryDraft(
     contentItemId: string,
     entryKey: string,
   ): Promise<EditorDraftDto | null> {
-    await this.contentService.assertContentItemExists(contentItemId);
-    const fileName = `entries/${entryKey}.md`;
-    const draft = await this.editorDraftRepository.findByContentItemAndFileName(
-      contentItemId,
-      fileName,
-    );
+    await this.contentService.assertContentItemExists(entryKey);
+    const draft =
+      await this.editorDraftRepository.findByContentItemId(entryKey);
     if (!draft) return null;
     return this.toDraftDto(draft);
   }
 
   /**
-   * 保存条目草稿（autosave）。
-   * 只写 MongoDB，不产生 Git snapshot。
+   * 保存条目草稿（autosave）。只写 MongoDB，不产生 Git snapshot。
    */
   async saveEntryDraft(
     contentItemId: string,
     entryKey: string,
     dto: SaveDraftDto,
   ): Promise<EditorDraftDto> {
-    await this.contentService.assertContentEditable(contentItemId);
-    const fileName = `entries/${entryKey}.md`;
-    const draft = await this.editorDraftRepository.saveWithFileName({
-      contentItemId,
-      fileName,
+    await this.contentService.assertContentEditable(entryKey);
+    const draft = await this.editorDraftRepository.save({
+      contentItemId: entryKey,
       title: dto.title,
       summary: dto.summary ?? '',
       bodyMarkdown: dto.bodyMarkdown,
@@ -869,40 +698,29 @@ export class AnthologyViewService {
 
   /**
    * 丢弃条目草稿。
-   * 前端用户主动丢弃时调用；saveEntry 提交后也会自动调用（内部逻辑）。
    */
   async deleteEntryDraft(
     contentItemId: string,
     entryKey: string,
   ): Promise<void> {
-    await this.contentService.assertContentItemExists(contentItemId);
-    const fileName = `entries/${entryKey}.md`;
-    await this.editorDraftRepository.deleteByContentItemAndFileName(
-      contentItemId,
-      fileName,
-    );
+    await this.contentService.assertContentItemExists(entryKey);
+    await this.editorDraftRepository.deleteByContentItemId(entryKey);
   }
 
   // ── 条目版本历史 ─────────────────────────────────────────────────────────
 
   /**
    * 获取单篇条目的历史版本内容（按 versionId 精确查找 snapshot）。
-   *
-   * 用于管理端版本时间线点击后，在中栏展示历史版本正文。
-   * 与 NoteViewService.getByVersion 语义对等：
-   *   - 从 snapshot 解析 frontmatter（title/date）+ 正文
-   *   - prev/next 从最新索引取（管理端视角，不区分是否已发布）
-   *
-   * @param contentItemId 文集 ContentItem ID
-   * @param entryKey      条目 key（e001 等），用于定位索引 prev/next
-   * @param versionId     目标 snapshot 的 versionId
+   * 与 NoteViewService.getByVersion 语义对等。
    */
   async getEntryByVersion(
     contentItemId: string,
     entryKey: string,
     versionId: string,
   ): Promise<AnthologyEntryDetailDto> {
-    await this.contentService.assertContentItemExists(contentItemId);
+    const anthologyNode = await this.getAnthologyNode(contentItemId);
+    const entryNode = await this.getEntryNode(anthologyNode, entryKey);
+    const entryItem = await this.contentRepository.findById(entryKey);
 
     const snapshot = await this.snapshotRepository.findByVersionId(versionId);
     if (!snapshot) {
@@ -911,14 +729,21 @@ export class AnthologyViewService {
 
     const parsed = parseEntryContent(snapshot.bodyMarkdown);
 
-    // prev/next 从最新索引取（管理端预览历史版本，导航仍以当前条目列表为准）
-    const indexData = await this.loadIndex(contentItemId);
-    const entryIdx = indexData.entries.findIndex((e) => e.key === entryKey);
-    const { prev, next } = this.buildPrevNext(indexData.entries, entryIdx);
+    // prev/next 从当前条目列表取（管理端预览历史版本，导航仍以当前列表为准）
+    const children = await this.listEntryNodes(anthologyNode);
+    const childItems = await Promise.all(
+      children.map((n) => this.contentRepository.findById(n.contentItemId)),
+    );
+    const refs = children.map((n, i) => ({
+      key: n.contentItemId,
+      title: this.entryTitle(n, childItems[i]),
+    }));
+    const entryIdx = refs.findIndex((e) => e.key === entryKey);
+    const { prev, next } = this.buildPrevNext(refs, entryIdx);
 
     return {
       key: entryKey,
-      title: parsed.title || snapshot.title,
+      title: this.entryTitle(entryNode, entryItem),
       date: parsed.date ?? snapshot.createdAt.toISOString().split('T')[0],
       updatedAt: snapshot.createdAt.toISOString(),
       bodyMarkdown: parsed.bodyMarkdown,
@@ -928,18 +753,19 @@ export class AnthologyViewService {
   }
 
   /**
-   * 获取单篇条目的版本历史（fileName="entries/eXXX.md" 对应的 snapshot 列表）。
-   * 用于管理端右侧面板的版本时间线组件，与 Notes 的 getHistory 语义对等。
+   * 获取单篇条目的版本历史（子 ContentItem 的 main.md 快照列表）。
+   * 与 Notes 的 getHistory 语义对等。
    */
   async getEntryHistory(
     contentItemId: string,
     entryKey: string,
   ): Promise<ContentHistoryEntryDto[]> {
-    await this.contentService.assertContentItemExists(contentItemId);
-    const fileName = `entries/${entryKey}.md`;
+    const anthologyNode = await this.getAnthologyNode(contentItemId);
+    await this.getEntryNode(anthologyNode, entryKey);
+
     const snapshots = await this.contentService.listVersionsByFileName(
-      contentItemId,
-      fileName,
+      entryKey,
+      null,
     );
     return snapshots.map((snap) => ({
       versionId: snap.versionId,
@@ -956,10 +782,10 @@ export class AnthologyViewService {
 
   /**
    * 加载已发布版本的索引：校验文集存在且已发布，返回 ContentItem + 解析后的索引数据。
-   * 展示端 DTO 共用此逻辑，避免重复的 findById + publishedVersion 校验 + snapshot 加载。
+   * 展示端 DTO 共用此逻辑。
    */
   private async loadPublishedIndex(contentItemId: string): Promise<{
-    item: Awaited<ReturnType<ContentRepository['findById']>> & {};
+    item: NonNullable<Awaited<ReturnType<ContentRepository['findById']>>>;
     indexData: ParsedAnthologyIndex;
   }> {
     const item = await this.contentRepository.findById(contentItemId);
@@ -976,61 +802,56 @@ export class AnthologyViewService {
     );
     const indexData = publishedSnapshot
       ? parseAnthologyIndex(publishedSnapshot.bodyMarkdown)
-      : { title: '', description: '', entries: [] };
+      : { title: '', description: '' };
 
     return { item, indexData };
   }
 
+  /** 已发布的子条目节点（按 order）。供展示端列表/详情共用。 */
+  private async listPublishedEntryNodes(
+    anthologyNode: NavigationNode,
+  ): Promise<NavigationNode[]> {
+    const children = await this.listEntryNodes(anthologyNode);
+    const items = await Promise.all(
+      children.map((n) => this.contentRepository.findById(n.contentItemId)),
+    );
+    return children.filter((_n, i) => !!items[i]?.publishedVersion);
+  }
+
   /**
-   * 展示端列表 DTO：从已发布版本的索引读取，entryCount 只计算已发布条目数。
+   * 展示端列表 DTO：从已发布版本读取，entryCount 只计算已发布条目数。
    */
   async toPublicListItem(
     contentItemId: string,
   ): Promise<AnthologyPublicListItemDto> {
     const { item, indexData } = await this.loadPublishedIndex(contentItemId);
-    const publishMap = this.buildEntryPublishMap(item);
-    const publishedEntries = indexData.entries.filter((e) =>
-      publishMap.has(e.key),
-    );
+    const anthologyNode = await this.getAnthologyNode(contentItemId);
+    const publishedNodes = await this.listPublishedEntryNodes(anthologyNode);
 
     return {
       id: contentItemId,
       title: item.publishedVersion!.title || indexData.title,
       description: indexData.description,
-      entryCount: publishedEntries.length,
+      entryCount: publishedNodes.length,
       updatedAt: item.updatedAt.toISOString(),
     };
   }
 
   /**
-   * 展示端详情 DTO：从已发布版本的索引读取，只包含已发布条目。
-   * 条目元数据（title/date）从索引冗余字段直接取，不读 snapshot 正文。
+   * 展示端详情 DTO：从已发布版本读取，只包含已发布条目。
    */
   async toPublicDetail(
     contentItemId: string,
   ): Promise<AnthologyPublicDetailDto> {
     const { item, indexData } = await this.loadPublishedIndex(contentItemId);
-    const publishMap = this.buildEntryPublishMap(item);
-    const publishedEntries = indexData.entries.filter((e) =>
-      publishMap.has(e.key),
-    );
+    const anthologyNode = await this.getAnthologyNode(contentItemId);
+    const publishedNodes = await this.listPublishedEntryNodes(anthologyNode);
 
     return {
       id: contentItemId,
       title: item.publishedVersion!.title || indexData.title,
       description: indexData.description,
-      entries: await Promise.all(
-        publishedEntries.map(async (e) => {
-          // date 兜底：索引里没有时从已发布 snapshot 的 createdAt 取
-          let date = e.date;
-          const pubVid = publishMap.get(e.key);
-          if (!date && pubVid) {
-            const snap = await this.snapshotRepository.findByVersionId(pubVid);
-            if (snap) date = snap.createdAt.toISOString().split('T')[0];
-          }
-          return { key: e.key, title: e.title, date };
-        }),
-      ),
+      entries: await this.toEntryRefs(publishedNodes),
     };
   }
 
@@ -1045,12 +866,14 @@ export class AnthologyViewService {
       throw new NotFoundException(`Anthology ${contentItemId} not found`);
 
     const indexData = await this.loadIndex(contentItemId);
+    const anthologyNode = await this.getAnthologyNode(contentItemId);
+    const children = await this.listEntryNodes(anthologyNode);
 
     return {
       id: contentItemId,
       title: item.latestVersion?.title || indexData.title,
       description: indexData.description,
-      entryCount: indexData.entries.length,
+      entryCount: children.length,
       status: item.publishedVersion ? 'published' : 'committed',
       hasUnpublishedChanges: item.publishedVersion
         ? item.latestVersion?.versionId !== item.publishedVersion.versionId
@@ -1060,11 +883,10 @@ export class AnthologyViewService {
   }
 
   /**
-   * 管理端详情 DTO：从最新版本读取，含条目 hasContent、publishedVersionId、hasUnpublishedChanges。
-   *
-   * 每个条目的 hasUnpublishedChanges 判断：
-   * - publishedVersionId 为 null → false（未发布，无"未发布的改动"概念）
-   * - publishedVersionId 非 null，且最新 snapshot versionId != publishedVersionId → true
+   * 管理端详情 DTO：每条目的状态来自其子 ContentItem。
+   * - hasContent: 子 ContentItem 最新 snapshot 存在且正文非空
+   * - publishedVersionId: 子 ContentItem.publishedVersion.versionId（null=未发布）
+   * - hasUnpublishedChanges: 子 ContentItem 最新 versionId != 已发布 versionId
    */
   async toAdminDetail(contentItemId: string): Promise<AnthologyAdminDetailDto> {
     const item = await this.contentRepository.findById(contentItemId);
@@ -1072,34 +894,37 @@ export class AnthologyViewService {
       throw new NotFoundException(`Anthology ${contentItemId} not found`);
 
     const indexData = await this.loadIndex(contentItemId);
-    // 发布状态读 Mongo;DTO 仍照常暴露 publishedVersionId,前端无感
-    const publishMap = this.buildEntryPublishMap(item);
+    const anthologyNode = await this.getAnthologyNode(contentItemId);
+    const children = await this.listEntryNodes(anthologyNode);
 
-    // 并行查询每个条目的 snapshot 状态（hasContent + hasUnpublishedChanges）
-    const entriesWithContent: AnthologyAdminEntryRef[] = await Promise.all(
-      indexData.entries.map(async (e): Promise<AnthologyAdminEntryRef> => {
-        const fileName = `entries/${e.key}.md`;
-        const snapshot = await this.snapshotRepository.findLatestByFileName(
-          contentItemId,
-          fileName,
-        );
-        const hasContent =
-          snapshot !== null && snapshot.bodyMarkdown.length > 0;
-        const publishedVersionId = publishMap.get(e.key) ?? null;
+    const entries: AnthologyAdminEntryRef[] = await Promise.all(
+      children.map(async (node): Promise<AnthologyAdminEntryRef> => {
+        const key = node.contentItemId;
+        const entryItem = await this.contentRepository.findById(key);
+        const snapshot = await this.loadEntryLatestSnapshot(key);
+        const parsed = snapshot
+          ? parseEntryContent(snapshot.bodyMarkdown)
+          : { date: null, bodyMarkdown: '' };
 
-        // 已发布且最新 snapshot 与已发布版本不同 → 有未发布的新改动
+        const hasContent = parsed.bodyMarkdown.length > 0;
+        const publishedVersionId =
+          entryItem?.publishedVersion?.versionId ?? null;
+        const latestVersionId = entryItem?.latestVersion?.versionId ?? null;
+
+        // 已发布且最新版本与已发布版本不同 → 有未发布的新改动
         const hasUnpublishedChanges =
           publishedVersionId !== null &&
-          snapshot !== null &&
-          snapshot.versionId !== publishedVersionId;
+          latestVersionId !== null &&
+          latestVersionId !== publishedVersionId;
+
+        const date =
+          parsed.date ??
+          (snapshot ? snapshot.createdAt.toISOString().split('T')[0] : null);
 
         return {
-          key: e.key,
-          title: e.title,
-          // date 兜底：索引里没有时从 snapshot 的 createdAt 取
-          date:
-            e.date ??
-            (snapshot ? snapshot.createdAt.toISOString().split('T')[0] : null),
+          key,
+          title: this.entryTitle(node, entryItem),
+          date,
           hasContent,
           publishedVersionId,
           hasUnpublishedChanges,
@@ -1115,7 +940,7 @@ export class AnthologyViewService {
       hasUnpublishedChanges: item.publishedVersion
         ? item.latestVersion?.versionId !== item.publishedVersion.versionId
         : false,
-      entries: entriesWithContent,
+      entries,
     };
   }
 }

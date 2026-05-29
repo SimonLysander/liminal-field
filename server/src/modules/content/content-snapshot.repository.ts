@@ -137,6 +137,12 @@ export class ContentSnapshotRepository {
     return result.deletedCount ?? 0;
   }
 
+  /** 删除某 contentItemId 下的全部 snapshot（删除整个 ContentItem 时清理，如文集条目子节点） */
+  async deleteByContentItemId(contentItemId: string): Promise<number> {
+    const result = await this.model.deleteMany({ contentItemId });
+    return result.deletedCount ?? 0;
+  }
+
   /** 清空全部 snapshot */
   async deleteAll(): Promise<number> {
     const result = await this.model.deleteMany({});
