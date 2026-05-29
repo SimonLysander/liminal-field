@@ -19,6 +19,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { structureApi } from '@/services/structure';
+import { notesApi } from '@/services/workspace';
+import MarkdownBody from '@/components/shared/MarkdownBody';
 import type {
   StructureNode,
   FolderOverview,
@@ -92,19 +94,29 @@ export function FolderOverviewPanel({
   const confirm = useConfirm();
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [overview, setOverview] = useState<FolderOverview | null>(null);
+  /* 节点同质化:文件夹也有自己的正文(各自的 ContentItem),展示在子项列表上方 */
+  const [body, setBody] = useState('');
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await structureApi.getFolderOverview(node.id);
+      const [data, detail] = await Promise.all([
+        structureApi.getFolderOverview(node.id),
+        node.contentItemId
+          ? notesApi
+              .getById(node.contentItemId, { visibility: 'all' })
+              .catch(() => null)
+          : Promise.resolve(null),
+      ]);
       setOverview(data);
+      setBody(detail?.bodyMarkdown ?? '');
     } catch {
       /* 静默失败，显示空状态 */
     } finally {
       setLoading(false);
     }
-  }, [node.id]);
+  }, [node.id, node.contentItemId]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 异步数据加载
@@ -295,6 +307,13 @@ export function FolderOverviewPanel({
         </DropdownMenu>
         </div>
       </div>
+
+      {/* ---- 文件夹自己的正文(若有)：渲染方式与 ContentVersionView 一致 ---- */}
+      {body && (
+        <div className="text-lg leading-[1.9]">
+          <MarkdownBody markdown={body} contentItemId={node.contentItemId} />
+        </div>
+      )}
 
       {/* ---- 分隔线 ---- */}
       {children.length > 0 && (
