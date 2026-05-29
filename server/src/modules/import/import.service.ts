@@ -378,7 +378,8 @@ export class ImportService {
    * 外层用 BatchImportSession 聚合。
    */
   async batchParse(
-    parentId: string,
+    // parentId 可选：undefined/'' 表示导入到 scope 根目录
+    parentId: string | undefined,
     files: Array<{
       relativePath: string;
       buffer: Buffer;
@@ -458,10 +459,10 @@ export class ImportService {
       });
     }
 
-    // 创建批量会话
+    // 创建批量会话（parentId 为空串时存 undefined，表示导入到根目录）
     await this.batchSessionRepo.create({
       id: batchId,
-      parentId,
+      parentId: parentId || undefined,
       items: items.map((i) => ({
         parseId: i.parseId,
         relativePath: i.relativePath,
@@ -512,7 +513,8 @@ export class ImportService {
    */
   async batchConfirm(dto: {
     batchId: string;
-    parentId: string;
+    // parentId 可选：undefined/'' → 顶层节点建在 scope 根下
+    parentId?: string;
     selectedPaths: string[];
   }): Promise<{ jobId: string; foldersCreated: number; docsCreated: number }> {
     const batchSession = await this.batchSessionRepo.findById(dto.batchId);
@@ -537,7 +539,12 @@ export class ImportService {
     });
 
     // 全部后台执行（FOLDER 创建 + 内容处理 + Git + 清理）
-    void this.processBatchItems(jobId, selectedItems, dto.parentId);
+    // 空串归一成 undefined，createStructureNode 对 parentId=undefined 建在根下
+    void this.processBatchItems(
+      jobId,
+      selectedItems,
+      dto.parentId || undefined,
+    );
 
     return { jobId, foldersCreated: 0, docsCreated: selectedItems.length };
   }
@@ -550,12 +557,14 @@ export class ImportService {
   private async processBatchItems(
     jobId: string,
     items: Array<{ parseId: string; relativePath: string; title: string }>,
-    rootParentId: string,
+    // rootParentId 可选：undefined 表示在 scope 根下创建节点
+    rootParentId: string | undefined,
   ): Promise<void> {
     const progress = this.jobProgress.get(jobId)!;
     try {
       // 1. 创建 FOLDER 结构
-      const folderMap = new Map<string, string>();
+      // folderMap 的 key '' 对应根目录，value 为 rootParentId（可能是 undefined）
+      const folderMap = new Map<string, string | undefined>();
       folderMap.set('', rootParentId);
 
       const dirPaths = new Set<string>();
@@ -573,8 +582,10 @@ export class ImportService {
         const folderName = parts[parts.length - 1];
         const parentPath = parts.slice(0, -1).join('/');
         const parentNodeId = folderMap.get(parentPath) ?? rootParentId;
-        const existingChildren =
-          await this.navigationRepository.findChildrenByParentId(parentNodeId);
+        // parentNodeId 为 undefined 时查根节点，否则查指定父节点的子节点
+        const existingChildren = parentNodeId
+          ? await this.navigationRepository.findChildrenByParentId(parentNodeId)
+          : await this.navigationRepository.listByParentId(undefined);
         const existing = existingChildren.find((n) => n.name === folderName);
         if (existing) {
           folderMap.set(dirPath, existing._id.toString());

@@ -236,6 +236,64 @@ describe('Batch Import (e2e)', () => {
     });
   });
 
+  describe('根目录导入（parentId 为空）', () => {
+    it('batch-parse 不传 parentId → 不再 400，返回 batchId', async () => {
+      const zip = new JSZip();
+      zip.file('root-doc.md', '# 根目录测试\n\n直接建在 notes 根下。');
+      const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+      // 不传 parentId field，模拟从根目录触发导入
+      const parseRes = await supertest(ctx.app.getHttpServer())
+        .post('/api/v1/spaces/notes/import/batch-parse')
+        .set('Cookie', cookie)
+        .attach('archive', zipBuffer, {
+          filename: 'import.zip',
+          contentType: 'application/zip',
+        })
+        .expect(201);
+
+      expect(parseRes.body.code).toBe(0);
+      const { batchId, items } = parseRes.body.data;
+      expect(batchId).toBeTruthy();
+      expect(items).toHaveLength(1);
+    });
+
+    it('batch-confirm 不传 parentId → 节点建在根下（type=DOC，无父节点）', async () => {
+      const zip = new JSZip();
+      zip.file('root-confirm.md', '# 根目录确认测试\n\n应建在 notes 根下。');
+      const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+      // batch-parse 不传 parentId
+      const parseRes = await supertest(ctx.app.getHttpServer())
+        .post('/api/v1/spaces/notes/import/batch-parse')
+        .set('Cookie', cookie)
+        .attach('archive', zipBuffer, {
+          filename: 'import.zip',
+          contentType: 'application/zip',
+        })
+        .expect(201);
+
+      const { batchId, items } = parseRes.body.data;
+      const selectedPaths = items.map((i: any) => i.relativePath);
+
+      // batch-confirm 不传 parentId
+      const confirmRes = await supertest(ctx.app.getHttpServer())
+        .post('/api/v1/spaces/notes/import/batch-confirm')
+        .set('Cookie', cookie)
+        .send({ batchId, selectedPaths })
+        .expect(201);
+
+      expect(confirmRes.body.code).toBe(0);
+      const { jobId, docsCreated } = confirmRes.body.data;
+      expect(jobId).toBeTruthy();
+      expect(docsCreated).toBe(1);
+
+      // 等待后台任务完成
+      const progress = await waitForBatchJobDone(ctx.app, jobId, cookie);
+      expect(progress.status).toBe('done');
+    });
+  });
+
   describe('取消导入清理临时文件', () => {
     it('POST batch-parse → DELETE batch/:batchId → GET batch/:batchId 返回 404', async () => {
       const zip = new JSZip();

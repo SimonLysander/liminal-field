@@ -15,7 +15,8 @@ export class BatchImportSessionRepository {
 
   async create(data: {
     id: string;
-    parentId: string;
+    // parentId 可选，undefined 表示导入到 scope 根目录
+    parentId?: string;
     items: BatchImportItem[];
   }): Promise<BatchImportSession> {
     const now = new Date();
