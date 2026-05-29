@@ -2,10 +2,9 @@ import { useTheme } from '@/hooks/use-theme';
 import { Sun, Moon } from 'lucide-react';
 
 /**
- * Topbar — 右上角浮动胶囊按钮
+ * Topbar — 右上角主题切换图标按钮(无胶囊)
  *
- * 配色跟随设计系统（--shelf / --separator / --ink-faded），
- * 和 Sidebar 视觉一致。
+ * 无胶囊设计:不要玻璃底/描边/阴影,只留图标 + hover 淡底,跟全站图标按钮一致。
  */
 export default function Topbar() {
   const { theme, setTheme } = useTheme();
@@ -15,15 +14,8 @@ export default function Topbar() {
       className="pointer-events-none absolute right-3 top-3 z-10 flex items-center justify-end"
     >
       <button
-        className="pointer-events-auto flex h-8 w-8 items-center justify-center rounded-full transition-all duration-200 hover:scale-110 active:scale-95"
-        style={{
-          backdropFilter: 'blur(12px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(12px) saturate(180%)',
-          background: 'var(--glass-bg)',
-          border: '1px solid var(--glass-border)',
-          boxShadow: 'var(--glass-shadow)',
-          color: 'var(--ink-faded)',
-        }}
+        className="pointer-events-auto flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-150 hover:bg-[var(--hover-overlay)]"
+        style={{ color: 'var(--ink-faded)' }}
         onClick={() =>
           setTheme(theme === 'daylight' ? 'midnight' : 'daylight')
         }

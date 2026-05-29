@@ -245,7 +245,7 @@ export default function GalleryEditPage() {
             className="h-full transition-all duration-300"
             style={{
               width: `${Math.round((uploadProgress.uploaded / uploadProgress.total) * 100)}%`,
-              background: 'var(--ink)',
+              background: 'var(--accent)',
             }}
           />
         </div>
