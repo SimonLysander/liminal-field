@@ -235,7 +235,14 @@ export class TestContext {
     if (this.app) await this.app.close();
     if (this.mongod) await this.mongod.stop();
     if (this.tmpGitDir)
-      await rm(this.tmpGitDir, { recursive: true, force: true });
+      // maxRetries/retryDelay 兜底:fire-and-forget 的 git archive 可能在 app.close() 后仍
+      // 往 .git/objects 写对象,与递归删除竞态致 ENOTEMPTY。重试几次等异步写完即可清干净。
+      await rm(this.tmpGitDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
   }
 }
 
