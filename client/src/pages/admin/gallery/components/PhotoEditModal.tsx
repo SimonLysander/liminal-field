@@ -252,7 +252,7 @@ export function PhotoEditModal({
       open={open}
       onClose={handleClose}
       title={<span className="sr-only">照片编辑</span>}
-      className={`flex overflow-hidden rounded-xl p-0 border-0 [&>button:last-child]:hidden ${isLandscape ? 'flex-col' : 'flex-row'} max-w-[760px] w-[760px]`}
+      className={`flex max-h-[90vh] overflow-hidden rounded-xl p-0 border-0 [&>button:last-child]:hidden ${isLandscape ? 'flex-col' : 'flex-row'} max-w-[760px] w-[760px]`}
     >
       {/* 文件名 — 整个 modal 左上角 */}
       <span
@@ -286,12 +286,13 @@ export function PhotoEditModal({
           ...(isLandscape ? {} : { minHeight: '480px' }),
         }}
       >
-        {/* 大图预览:横幅 w-full + 高度随比例(铺满宽、不裁切、无侧边灰条);竖幅 contain */}
+        {/* 大图预览:横幅 w-full 铺满宽,高度封顶 48vh(留出信息区+操作栏不超屏);
+            object-cover 保证封顶时不变形、不留侧边灰条,只在屏幕过矮时轻微裁上下。竖幅 contain。 */}
         <img
           src={photo.url}
           alt={photo.fileName}
-          className={isLandscape ? 'block w-full' : 'h-full w-full object-contain'}
-          style={isLandscape ? { maxHeight: '70vh' } : { maxHeight: '420px' }}
+          className={isLandscape ? 'block w-full object-cover' : 'h-full w-full object-contain'}
+          style={isLandscape ? { maxHeight: '48vh' } : { maxHeight: '420px' }}
           draggable={false}
         />
 
@@ -335,9 +336,12 @@ export function PhotoEditModal({
 
       {/* ── 信息区（横幅在下方，竖幅在右侧）── */}
       <div
-        className="flex flex-1 flex-col"
+        className="flex min-h-0 flex-1 flex-col"
         style={{ background: 'var(--paper)' }}
       >
+        {/* 可滚区:EXIF + 图说。内容超高(如展开拍摄参数)时此区内部滚动,
+            操作栏不被撑出屏外——配合 Modal 的 max-h-[90vh] 保证整窗不超屏。 */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
         {/* 信息条 — 收起态合并为一行（方案 D），展开态显示编辑网格 */}
         <div className="px-5 pt-4">
           {isEditingExif ? (
@@ -374,7 +378,7 @@ export function PhotoEditModal({
         <div style={{ height: '0.5px', background: 'var(--separator)', margin: '12px 20px 0' }} />
 
         {/* Caption — 参数下方,带标签 + 清晰边界(与页面元数据字段同一套外观) */}
-        <div className="flex-1 px-5 pt-3">
+        <div className="px-5 pb-4 pt-3">
           <div className="mb-1.5 text-xs font-medium" style={{ color: 'var(--ink-faded)' }}>
             图说
           </div>
@@ -400,9 +404,10 @@ export function PhotoEditModal({
             </div>
           </div>
         </div>
+        </div>
 
-        {/* 操作栏：左"设为封面"，右"完成" */}
-        <div className="flex items-center justify-between px-5 py-4">
+        {/* 操作栏：左"设为封面"，右"完成"——固定底部,可滚区内容滚动时始终可见 */}
+        <div className="flex shrink-0 items-center justify-between border-t border-[var(--separator)] px-5 py-4">
           <Button variant="ghost" size="sm" onClick={handleSetCover}>
             设为封面
           </Button>
