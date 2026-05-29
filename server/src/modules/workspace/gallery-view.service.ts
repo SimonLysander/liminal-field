@@ -319,7 +319,21 @@ export class GalleryViewService {
   }
 
   /** 构建草稿照片的 MinIO 代理 URL。 */
-  private buildDraftPhotoUrl(contentItemId: string, fileName: string): string {
+  /**
+   * 草稿照片 URL：OSS 就绪时用直连 URL + 图片处理(缩放),避免编辑器拉原图(实测 9~10MB);
+   * 未就绪降级为代理(原图)。与 buildPhotoUrl 同策略,差别只在草稿 OSS key 无 assets/ 前缀。
+   */
+  private buildDraftPhotoUrl(
+    contentItemId: string,
+    fileName: string,
+    process?: string,
+  ): string {
+    if (this.minioService.isDraftStorageReady()) {
+      return this.minioService.getPublicUrl(
+        `${contentItemId}/${fileName}`,
+        process,
+      );
+    }
     return `/api/v1/spaces/gallery/items/${contentItemId}/draft-assets/${fileName}`;
   }
 
@@ -628,7 +642,11 @@ export class GalleryViewService {
                 p.file,
                 OssService.IMAGE_PRESETS.detail,
               )
-            : this.buildDraftPhotoUrl(contentItemId, p.file);
+            : this.buildDraftPhotoUrl(
+                contentItemId,
+                p.file,
+                OssService.IMAGE_PRESETS.detail,
+              );
         return {
           file: p.file,
           url,
