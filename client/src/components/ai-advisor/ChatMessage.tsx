@@ -40,6 +40,8 @@ interface ChatMessageProps {
   proposalsByCallId?: Record<string, Proposal>;
   /** v3 改稿：点击 AiEditProposalCard 跳转到编辑器审批 */
   onJumpToEditor?: () => void;
+  /** 内联工具卡片渲染器(场景注入):为工具 part 在原位渲染卡片,返回 null 用默认 ToolCallCard。 */
+  renderToolCard?: (part: unknown) => ReactNode | null;
 }
 
 /** 将 DynamicToolUIPart 的 state 映射到 ToolCallCard 的 state 类型 */
@@ -60,6 +62,7 @@ export function ChatMessage({
   comfortable,
   proposalsByCallId,
   onJumpToEditor,
+  renderToolCard,
 }: ChatMessageProps) {
   if (role === 'user') {
     const references = getMessageReferences(metadata);
@@ -115,6 +118,10 @@ export function ChatMessage({
           if (part.type.startsWith('tool-')) {
             const toolName = part.type.slice(5); // 去掉 "tool-" 前缀
             if (toolName === 'write_tasks') return null; // 清单统一渲染在消息末尾
+
+            // 场景注入的内联卡片优先(如画廊 propose_caption):返回非 null 即原位渲染
+            const scenarioCard = renderToolCard?.(part);
+            if (scenarioCard != null) return <div key={i}>{scenarioCard}</div>;
 
             const p = part as Record<string, unknown>;
             const state = typeof p.state === 'string' ? mapToolState(p.state) : 'call';

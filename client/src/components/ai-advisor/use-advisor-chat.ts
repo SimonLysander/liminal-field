@@ -198,14 +198,14 @@ export function useAdvisorChat({
   }, [messages]);
 
   /**
-   * 画廊图说:监听 tool-propose_caption 工具调用,产出待应用的图说建议。
+   * 画廊图说:监听 tool-propose_caption 工具调用,产出图说建议(按 callId 索引)。
    * output 是 toolResult 的 JSON 字符串(propose 工具未声明 outputSchema,AI SDK 不自动反序列化),
-   * 真实路径 = JSON.parse(output).meta.{status,fileName,caption,reason}。已 resolved 的不再冒出。
+   * 真实路径 = JSON.parse(output).meta.{status,fileName,caption,reason}。
+   * 不在此过滤"已应用"——应用与否是 UI 局部态,由内联卡片(InlineCaptionCard)自管,避免非响应式 store。
    */
   const captionProposals = useMemo<
     { callId: string; fileName: string; caption: string; reason: string }[]
   >(() => {
-    const resolved = readResolved();
     const out: {
       callId: string;
       fileName: string;
@@ -225,7 +225,7 @@ export function useAdvisorChat({
         if (p.type !== 'tool-propose_caption') continue;
         if (p.state !== 'output-available') continue;
         const callId = p.toolCallId ?? msg.id ?? '';
-        if (!callId || seen.has(callId) || resolved.has(callId)) continue;
+        if (!callId || seen.has(callId)) continue;
         let meta:
           | { status?: string; fileName?: string; caption?: string; reason?: string }
           | undefined;
@@ -466,9 +466,8 @@ export function useAdvisorChat({
     // v3 改稿
     proposalsByCallId: v3ProposalsByCallId,
     pendingProposal,
-    // 画廊图说:待应用建议 + 标记已处理(应用/忽略后调,避免重复冒出)
+    // 画廊图说:按 callId 索引的图说建议(内联卡片据此渲染+应用)
     captionProposals,
-    resolveCaption: markResolved,
     tier,
     cycleTier,
     send,
@@ -516,5 +515,5 @@ function buildAgentRequestBody({
   };
 }
 
-/** 钩子返回的完整聊天对象 —— 供 AdvisorSidebar 落地槽(renderBelowMessages)读取。 */
+/** 钩子返回的完整聊天对象 —— 供 AdvisorSidebar 内联工具卡片(renderToolCard)读取。 */
 export type AdvisorChat = ReturnType<typeof useAdvisorChat>;

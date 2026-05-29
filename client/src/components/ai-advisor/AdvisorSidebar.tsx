@@ -4,7 +4,7 @@
  * 外壳(会话管理 + 消息流 + 输入框 + 布局)全场景共用;场景差异只经四个口子进来:
  *   context             —— agent 知道什么(原样进 entryContext)
  *   agentKey/source     —— 连哪个后端入口
- *   renderBelowMessages —— 落地槽:消息流与输入框之间的场景专属 UI(拿 chat 自渲染+应用)
+ *   renderToolCard —— 内联工具卡片:把某工具 part 渲染在消息流原位(拿 chat 自渲染+应用)
  *   editorBridge        —— 富文本编辑场景的可选适配(选区 chip + 改稿 overlay 桥接 + 审批态)
  */
 
@@ -80,8 +80,11 @@ export interface AdvisorSidebarProps {
   context?: AdvisorContext;
   /** 空状态问候(可选,缺省随机) */
   greeting?: string;
-  /** 落地槽:消息流与输入框之间渲染场景专属 UI;拿 chat 自渲染+应用。 */
-  renderBelowMessages?: (chat: AdvisorChat) => ReactNode;
+  /**
+   * 内联工具卡片:把某个工具 part 渲染在消息流原位(如画廊 propose_caption 的应用卡片)。
+   * 返回 null 则回退默认 ToolCallCard。拿 chat 读已解析的 proposals + 落地能力。
+   */
+  renderToolCard?: (part: unknown, chat: AdvisorChat) => ReactNode | null;
   /** 富文本编辑场景的可选适配(画廊等不传) */
   editorBridge?: AdvisorEditorBridge;
 }
@@ -93,7 +96,7 @@ export function AdvisorSidebar({
   source,
   context,
   greeting: greetingProp,
-  renderBelowMessages,
+  renderToolCard,
   editorBridge,
 }: AdvisorSidebarProps) {
   // 编辑器适配:解构成与原 body 一致的局部名,使下方逻辑无需改动
@@ -197,6 +200,11 @@ export function AdvisorSidebar({
     proposalsByCallId,
     pendingProposal,
   } = chat;
+
+  // 把 chat 绑进内联卡片渲染器,使 MessageList/ChatMessage 不需感知具体场景
+  const renderToolCardBound = renderToolCard
+    ? (part: unknown) => renderToolCard(part, chat)
+    : undefined;
 
   // v3 改稿：pendingProposal 变化时通过 ref 回调上层。
   // 用 callId(字符串)作为依赖,避免 pendingProposal 对象引用每次新建(computeDocDiff
@@ -432,12 +440,10 @@ export function AdvisorSidebar({
             isLoadingMore={isLoadingMore}
             onLoadMore={loadMore}
             proposalsByCallId={proposalsByCallId}
+            renderToolCard={renderToolCardBound}
           />
         )}
       </div>
-
-      {/* 落地槽:场景专属 UI(如画廊 caption 卡片),钉在输入框上方 */}
-      {renderBelowMessages?.(chat)}
 
       {/* 独立「计划区」:钉在输入框上方。外层 px-3 对齐输入框盒,内层 px-3 对齐框内文字。 */}
       {tasks.some((t) => t.status !== 'done') && (

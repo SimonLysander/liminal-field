@@ -29,7 +29,7 @@ import { PhotoEditModal } from './components/PhotoEditModal';
 import { GalleryProseEditor } from './components/GalleryProseEditor';
 import { MetadataFields } from './components/LocationSelect';
 import { CommitPopover } from './components/CommitPopover';
-import { CaptionProposalCards } from './components/CaptionProposalCards';
+import { InlineCaptionCard } from './components/InlineCaptionCard';
 import { AdvisorSidebar } from '@/components/ai-advisor/AdvisorSidebar';
 import { useGalleryEditor } from './hooks/useGalleryEditor';
 import { settingsApi } from '@/services/settings';
@@ -307,16 +307,31 @@ export default function GalleryEditPage() {
               },
             }}
             greeting="想聊聊这些照片，还是要我写图说？"
-            renderBelowMessages={(chat) => (
-              <CaptionProposalCards
-                proposals={chat.captionProposals}
-                photoUrl={(fn) => photos.find((p) => p.fileName === fn)?.url}
-                onApply={(fn, cap, callId) => {
-                  updateCaption(fn, cap);
-                  chat.resolveCaption(callId);
-                }}
-              />
-            )}
+            renderToolCard={(part, chat) => {
+              const p = part as {
+                type?: string;
+                state?: string;
+                toolCallId?: string;
+              };
+              if (p?.type !== 'tool-propose_caption' || p.state !== 'output-available')
+                return null;
+              // 非 ok(invalid/not_found)的不在 captionProposals 里 → 回退默认 ToolCallCard
+              const proposal = chat.captionProposals.find(
+                (c) => c.callId === p.toolCallId,
+              );
+              if (!proposal) return null;
+              // 对话后照片可能被增删:目标 fileName 不在当前集合 → 禁用应用,避免"已应用却没落"的误导
+              const photo = photos.find((ph) => ph.fileName === proposal.fileName);
+              return (
+                <InlineCaptionCard
+                  caption={proposal.caption}
+                  reason={proposal.reason}
+                  photoUrl={photo?.url}
+                  available={!!photo}
+                  onApply={() => updateCaption(proposal.fileName, proposal.caption)}
+                />
+              );
+            }}
           />
         </aside>
       )}

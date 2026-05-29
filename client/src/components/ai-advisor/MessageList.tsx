@@ -9,7 +9,7 @@
  * - 加载期间显示 spinner 防止重复触发（isLoadingMore 由父控制）
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import type { UIMessage } from 'ai';
 import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
 import { ChatMessage } from './ChatMessage';
@@ -36,6 +36,8 @@ interface MessageListProps {
   proposalsByCallId?: Record<string, Proposal>;
   /** v3 改稿：点击 AiEditProposalCard 跳转编辑器审批 */
   onJumpToEditor?: () => void;
+  /** 内联工具卡片渲染器(场景注入):为某个工具 part 在原位渲染卡片,返回 null 用默认 ToolCallCard。 */
+  renderToolCard?: (part: unknown) => ReactNode | null;
 }
 
 export function MessageList({
@@ -49,6 +51,7 @@ export function MessageList({
   onLoadMore,
   proposalsByCallId,
   onJumpToEditor,
+  renderToolCard,
 }: MessageListProps) {
   const edgeFadeMask =
     'linear-gradient(to bottom, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%)';
@@ -159,6 +162,7 @@ export function MessageList({
               comfortable={comfortable}
               proposalsByCallId={proposalsByCallId}
               onJumpToEditor={onJumpToEditor}
+              renderToolCard={renderToolCard}
             />
           </div>
         );
