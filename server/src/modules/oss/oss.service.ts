@@ -115,20 +115,26 @@ export class OssService implements OnModuleInit, MinioDraftStorageStatus {
     };
   }
 
-  /** 模块初始化：探测 bucket 是否存在以确认连通性 */
+  /**
+   * 模块初始化：getBucketInfo 仅作连通性【自检/记录】,不作硬门控。
+   *
+   * 凭据由构造器 getOrThrow 保证已配置 → 默认就绪。getPublicUrl 只是本地拼签名 URL(不发网络),
+   * 真实可用性由实际请求暴露;且"未就绪"的代理回退本身也要读 OSS,并不提供额外韧性。
+   * 所以【单次启动探测超时/失败不该永久禁用缩放管线】——曾因一次 getBucketInfo 超时,整页图片
+   * 降级成代理原图(9~10MB)直到重启。改成:默认就绪 + 探测失败仅记录,不 flip false。
+   */
   async onModuleInit() {
     this.draftStorageInitError = null;
+    this.draftStorageReady = true;
     const cfg = this.getDraftStorageConfig();
     const target = `${cfg.endpoint}/${this.bucketName}`;
     try {
       await this.client.getBucketInfo(this.bucketName);
-      this.draftStorageReady = true;
     } catch (err: unknown) {
-      this.draftStorageReady = false;
       const cause = err instanceof Error ? err.message : String(err);
       this.draftStorageInitError = cause;
       this.logger.warn(
-        `OSS: unreachable at ${target} — draft uploads will fail. Cause: ${cause}`,
+        `OSS: getBucketInfo 自检失败(非致命,仍按已配置就绪处理) ${target} — ${cause}`,
       );
     }
   }
