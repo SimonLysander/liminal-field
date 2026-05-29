@@ -336,13 +336,18 @@ export class ImportService {
         changeNote,
       );
     } catch {
-      // Git 失败 → 回滚 ContentItem，保留 session 和临时文件供用户重试
+      // Git 失败 → 回滚刚创建的 ContentItem + ContentSnapshot
+      // （importContent 已写入 snapshot，只删 ContentItem 会留下孤悬快照占盘），
+      // 保留 session 和临时文件供用户重试
       await this.contentRepository.deleteById(contentId);
+      await this.snapshotRepository.deleteByContentItemId(contentId);
       throw new BadRequestException('导入提交失败：Git commit error');
     }
 
     if (!commitHash) {
+      // 无变更可提交 → 同样回滚 ContentItem + ContentSnapshot，避免快照泄漏
       await this.contentRepository.deleteById(contentId);
+      await this.snapshotRepository.deleteByContentItemId(contentId);
       throw new BadRequestException('导入提交失败：无变更可提交');
     }
 

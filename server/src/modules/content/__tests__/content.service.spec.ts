@@ -181,7 +181,9 @@ describe('ContentService', () => {
     });
 
     // admin 视图传 latestVersion.versionId
-    expect(snapshotRepository.findByVersionId).toHaveBeenCalledWith('vid_latest');
+    expect(snapshotRepository.findByVersionId).toHaveBeenCalledWith(
+      'vid_latest',
+    );
     expect(result).toMatchObject({
       title: 'Latest committed title',
       summary: 'Latest committed summary',
@@ -419,7 +421,9 @@ describe('ContentService', () => {
     } as never);
     snapshotRepository.create.mockResolvedValue({} as never);
     // archiveToGit 是 fire-and-forget，recordCommittedContentChange 在后台异步调用
-    contentGitService.recordCommittedContentChange.mockResolvedValue('after123');
+    contentGitService.recordCommittedContentChange.mockResolvedValue(
+      'after123',
+    );
 
     await service.saveContent('ci_test', {
       title: 'After',
@@ -434,7 +438,7 @@ describe('ContentService', () => {
     expect(contentRepository.update.mock.calls[0]?.[1]).toEqual(
       expect.objectContaining({
         latestVersion: expect.objectContaining({
-          commitHash: '',    // 异步回填前 commitHash 为空
+          commitHash: '', // 异步回填前 commitHash 为空
           title: 'After',
           summary: 'After',
         }),

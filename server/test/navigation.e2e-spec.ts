@@ -21,19 +21,20 @@ describe('Navigation (e2e)', () => {
   });
 
   describe('POST /api/v1/structure-nodes', () => {
-    it('创建文件夹节点（type=FOLDER）→ 201', async () => {
+    it('新建节点无子节点时 type=DOC（统一页面树:type 由子节点动态计算）→ 201', async () => {
+      // 统一页面树重构后,节点不再有静态 FOLDER/DOC 类型字段;
+      // type 由「是否有子节点」动态计算 —— 刚创建、还没有子节点的节点一律是 DOC。
       const res = await supertest(ctx.app.getHttpServer())
         .post('/api/v1/structure-nodes')
         .set('Cookie', cookie)
         .send({
           name: '测试文件夹',
-          type: 'FOLDER',
           scope: 'notes',
         })
         .expect(201);
 
       expect(res.body.data.name).toBe('测试文件夹');
-      expect(res.body.data.type).toBe('FOLDER');
+      expect(res.body.data.type).toBe('DOC');
       expect(res.body.data.id).toBeDefined();
     });
 
