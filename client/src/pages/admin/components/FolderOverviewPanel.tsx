@@ -204,6 +204,19 @@ export function FolderOverviewPanel({
 
         {/* 操作：高频平铺 + 低频 ··· */}
         <div className="flex items-center gap-2 pt-1">
+        {/* 节点同质化(2026-05-29)：文件夹也有自己的正文(各自的 ContentItem)，可直接编辑本主题正文。
+            硬跳转规避 Plate 编辑器复用旧实例的底层限制（见 feedback_plate_hard_refresh）。 */}
+        {node.contentItemId && (
+          <button
+            className="rounded-lg px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-80"
+            style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
+            onClick={() => {
+              window.location.href = `/admin/notes/${node.contentItemId}/edit`;
+            }}
+          >
+            编辑正文
+          </button>
+        )}
         <button
           className="rounded-lg px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-80"
           style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
