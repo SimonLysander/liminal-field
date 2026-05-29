@@ -26,6 +26,7 @@ import {
   galleryApi,
   type UpdateGalleryPostDto,
 } from '@/services/workspace';
+import { useLocalDraftBuffer } from '../../lib/use-local-draft-buffer';
 
 // ─── 状态类型 ───
 
@@ -46,6 +47,19 @@ export interface LocalEditorPhoto {
 export interface UploadProgress {
   uploaded: number;
   total: number;
+}
+
+/**
+ * 本地草稿快照(local-first):画廊的完整可恢复编辑态,即时镜像到 localStorage。
+ * 与笔记/文集统一走 useLocalDraftBuffer——崩溃/刷新/关页不丢改动。
+ */
+interface LocalGalleryDraft {
+  title: string;
+  prose: string;
+  date: string | null;
+  location: string | null;
+  cover: string | null;
+  photos: LocalEditorPhoto[];
 }
 
 export interface GalleryEditorState {
@@ -80,6 +94,8 @@ export interface GalleryEditorActions {
   updateLocation: (location: string | null) => void;
   save: () => Promise<void>;
   commit: (changeNote?: string) => Promise<void>;
+  /** 清本地草稿缓存(丢弃草稿后调,防失效内容被当未同步草稿恢复) */
+  clearLocalDraft: () => void;
 }
 
 // ─── Hook ───
@@ -116,6 +132,41 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
   useEffect(() => { locationRef.current = location; }, [location]);
   useEffect(() => { coverRef.current = coverPhotoFileName; }, [coverPhotoFileName]);
 
+  // local-first 本地缓冲:与笔记/文集统一,每次改动即时镜像 localStorage,崩溃/刷新/关页不丢。
+  // 解构出各方法(均 useCallback by storageKey,引用稳定),避免依赖整个 buffer 对象致 effect 抖动。
+  const {
+    loadPending: loadLocalPending,
+    onChange: writeLocalDraft,
+    beginSync: beginLocalSync,
+    endSync: endLocalSync,
+    clear: clearLocalDraft,
+  } = useLocalDraftBuffer<LocalGalleryDraft>(
+    postId ? `gallery:${postId}` : null,
+  );
+
+  // 有未保存改动时,任一字段变化即时写本地(零延迟);服务器草稿仍走下面 1.5s 防抖。
+  useEffect(() => {
+    if (loading || saveStatus === 'saved') return;
+    writeLocalDraft({
+      title,
+      prose,
+      date,
+      location,
+      cover: coverPhotoFileName,
+      photos,
+    });
+  }, [
+    saveStatus,
+    title,
+    prose,
+    photos,
+    date,
+    location,
+    coverPhotoFileName,
+    loading,
+    writeLocalDraft,
+  ]);
+
   // ─── 初始化加载 ───
   // 使用 /editor 端点：后端已合并草稿+正式版，前端直接消费，无需手动 photoMap 合并
 
@@ -146,13 +197,27 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
           tags: p.tags,
         })));
         setSaveStatus('saved');
+
+        // local-first reconcile:本地缓存"存在即未同步"(成功同步会清空)。
+        // 上次没存完就崩了/刷新了 → 用本地未同步内容覆盖服务器版并标脏重传。
+        const localPending = loadLocalPending();
+        if (localPending) {
+          setTitle(localPending.title);
+          setProse(localPending.prose);
+          setDate(localPending.date);
+          setLocation(localPending.location);
+          setCoverPhotoFileName(localPending.cover);
+          setPhotos(localPending.photos);
+          setSaveStatus('dirty');
+        }
       } catch {
         banner.error('加载画廊动态失败');
       } finally {
         setLoading(false);
       }
     })();
-  }, [postId]);
+    // loadLocalPending 引用稳定(随 storageKey 变),纳入依赖
+  }, [postId, loadLocalPending]);
 
   // ─── 构建结构化保存 payload（前端不再序列化 frontmatter，后端负责） ───
 
@@ -177,19 +242,22 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
 
     setSaveStatus('saving');
     const startedAt = Date.now();
+    // local-first:抓同步快照,成功后仅当期间无新改动时清本地(防竞态)
+    const syncToken = beginLocalSync();
     try {
       await galleryApi.saveDraft(id, buildSavePayload());
       setLastSavedAt(new Date().toISOString());
+      endLocalSync(syncToken);
       // 与笔记/文集编辑器一致:"保存中"至少停留 ~800ms,否则呼吸点一闪而过
       const remain = 800 - (Date.now() - startedAt);
       if (remain > 0) await new Promise((resolve) => setTimeout(resolve, remain));
       setSaveStatus('saved');
     } catch (err) {
       console.error('[useGalleryEditor] 自动保存失败:', err);
-      // 自动保存失败时不打断用户，还原为 dirty 以便下次重试
+      // 自动保存失败时不打断用户，还原为 dirty 以便下次重试(本地缓存保留,内容不丢)
       setSaveStatus('dirty');
     }
-  }, [buildSavePayload]);
+  }, [buildSavePayload, beginLocalSync, endLocalSync]);
 
   // saveStatus 变为 dirty 后 1500ms 触发自动保存
   useEffect(() => {
@@ -320,15 +388,17 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     const id = effectiveIdRef.current;
     if (!id) return;
     setSaveStatus('saving');
+    const syncToken = beginLocalSync();
     try {
       await galleryApi.saveDraft(id, buildSavePayload());
+      endLocalSync(syncToken);
       setSaveStatus('saved');
       // SaveStatus badge 已提供 inline 反馈，无需弹窗
     } catch {
       setSaveStatus('dirty');
       banner.error('保存失败');
     }
-  }, [buildSavePayload]);
+  }, [buildSavePayload, beginLocalSync, endLocalSync]);
 
   // ─── 提交（Git commit + 删除草稿） ───
 
@@ -339,6 +409,7 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     try {
       await galleryApi.update(id, { ...buildSavePayload(), changeNote: changeNote || '提交' });
       await galleryApi.deleteDraft(id).catch(() => {});
+      clearLocalDraft(); // 已提交,本地草稿失效,清掉防下次打开被当未同步草稿恢复
       setSaveStatus('saved');
       // 提交成功，页面跳转即为反馈，无需弹窗
     } catch (err) {
@@ -347,7 +418,7 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
       setSaveStatus('dirty');
       banner.error('提交失败');
     }
-  }, [buildSavePayload]);
+  }, [buildSavePayload, clearLocalDraft]);
 
   return {
     loading,
@@ -372,5 +443,6 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     updateLocation,
     save,
     commit,
+    clearLocalDraft: clearLocalDraft,
   };
 }

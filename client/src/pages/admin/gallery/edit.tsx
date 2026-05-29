@@ -89,6 +89,7 @@ export default function GalleryEditPage() {
     updateLocation,
     save,
     commit,
+    clearLocalDraft,
   } = useGalleryEditor(id);
 
   const uploading = uploadProgress !== null;
@@ -155,6 +156,7 @@ export default function GalleryEditPage() {
     const ok = await confirm({ title: '丢弃草稿', message: '确认丢弃当前草稿？', danger: true, confirmLabel: '丢弃' });
     if (!ok) return;
     await galleryApi.deleteDraft(id);
+    clearLocalDraft(); // 已丢弃,清本地草稿缓存,防下次打开被当未同步草稿恢复
     navigate(`/admin/gallery?post=${id}`);
   };
 
@@ -322,12 +324,15 @@ export default function GalleryEditPage() {
               if (!proposal) return null;
               // 对话后照片可能被增删:目标 fileName 不在当前集合 → 禁用应用,避免"已应用却没落"的误导
               const photo = photos.find((ph) => ph.fileName === proposal.fileName);
+              // 已应用 = 数据派生(照片当前 caption 就是这条建议),刷新后/重提议后都自动正确
+              const applied = !!photo && photo.caption === proposal.caption;
               return (
                 <InlineCaptionCard
                   caption={proposal.caption}
                   reason={proposal.reason}
                   photoUrl={photo?.url}
                   available={!!photo}
+                  applied={applied}
                   onApply={() => updateCaption(proposal.fileName, proposal.caption)}
                 />
               );

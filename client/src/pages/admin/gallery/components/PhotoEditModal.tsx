@@ -195,7 +195,8 @@ export function PhotoEditModal({
        */
       if (prevPhotoIdRef.current && prevPhotoIdRef.current !== photo.id) {
         const prevPhoto = photos.find((p) => p.id === prevPhotoIdRef.current);
-        if (prevPhoto) {
+        // 仅当用户真的改了才写回——否则会用本地草稿覆盖外部(如 Aurora)刚写的 caption
+        if (prevPhoto && captionDraft !== (prevPhoto.caption ?? '')) {
           onCaptionChange(prevPhoto.id, captionDraft);
         }
       }
@@ -206,6 +207,19 @@ export function PhotoEditModal({
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photo?.id]);
+
+  /*
+   * 打开弹窗时,用当前照片的最新 caption 重新同步草稿。
+   * 否则:外部(如 Aurora 图说写手)对同一张照片改了 caption(photo.id 没变),
+   * 上面那个仅依赖 photo.id 的 effect 不触发,弹窗会显示打开前的旧值(看似"没刷新")。
+   */
+  useEffect(() => {
+    if (!open || !photo) return;
+    // 推迟到微任务,避免 effect 同步体内 setState(与本文件其它 effect 一致)
+    void Promise.resolve().then(() => setCaptionDraft(photo.caption ?? ''));
+    // 仅在开合切换时同步;photo 切换由 [photo?.id] effect 负责
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   if (!photo) return null;
 
@@ -220,9 +234,9 @@ export function PhotoEditModal({
     if (hasNext) setCurrentIndex((i) => i + 1);
   };
 
-  /* 关闭前提交当前 caption */
+  /* 关闭前提交当前 caption（仅当用户真改了，避免覆盖外部刚写的 caption） */
   const handleClose = () => {
-    onCaptionChange(photo.id, captionDraft);
+    if (captionDraft !== (photo.caption ?? '')) onCaptionChange(photo.id, captionDraft);
     onClose();
   };
 

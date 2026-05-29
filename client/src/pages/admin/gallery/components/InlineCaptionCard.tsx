@@ -2,10 +2,11 @@
  * InlineCaptionCard — 画廊图说写手的内联落地卡片。
  *
  * 由 AdvisorSidebar 的 renderToolCard 注入,渲染在消息流里 propose_caption 工具调用的原位
- * (不再钉在底部)。点「应用」落到照片(useGalleryEditor.updateCaption)并就地反馈「已应用」。
- * 应用态是 UI 局部 state——刷新后复位无妨,caption 已落库,重复应用幂等。
+ * (不再钉在底部)。点「应用」落到照片(useGalleryEditor.updateCaption)。
+ *
+ * 「已应用」态**从数据派生**(applied = 该照片当前 caption === 本条建议),不用本地 state:
+ * 这样刷新后仍正确(caption 已落库)、重新提议后也各自正确(只有当前生效的那条显示已应用)。
  */
-import { useState } from 'react';
 import { Check } from 'lucide-react';
 
 interface InlineCaptionCardProps {
@@ -15,6 +16,8 @@ interface InlineCaptionCardProps {
   photoUrl?: string;
   /** 目标照片是否仍在当前画廊(对话后照片可能被增删) */
   available: boolean;
+  /** 该建议是否已是照片当前 caption(数据派生,父组件传入) */
+  applied: boolean;
   /** 应用到照片(= useGalleryEditor.updateCaption) */
   onApply: () => void;
 }
@@ -24,9 +27,9 @@ export function InlineCaptionCard({
   reason,
   photoUrl,
   available,
+  applied,
   onApply,
 }: InlineCaptionCardProps) {
-  const [applied, setApplied] = useState(false);
   const disabled = applied || !available;
   const label = applied ? '已应用' : available ? '应用' : '照片已移除';
   return (
@@ -54,10 +57,7 @@ export function InlineCaptionCard({
       <button
         type="button"
         disabled={disabled}
-        onClick={() => {
-          onApply();
-          setApplied(true);
-        }}
+        onClick={onApply}
         className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors disabled:cursor-default"
         style={
           applied
