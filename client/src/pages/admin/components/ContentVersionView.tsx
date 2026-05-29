@@ -180,10 +180,9 @@ export const ContentVersionView = ({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  // 关闭菜单后 Radix 把焦点交回触发按钮,全局 :focus-visible 会画一道长春花紫
-                  // 环 → 看着像残留的"框"。这是鼠标驱动的图标按钮,抑制 focus 环;改用 open 态淡底
-                  // 表达"菜单已展开"的状态,既无残留框又保留可感知的激活反馈。
-                  className="flex h-6 w-6 items-center justify-center rounded-md transition-opacity hover:opacity-70 focus:outline-none focus-visible:shadow-none data-[state=open]:bg-[var(--hover-overlay)] data-[state=open]:opacity-100"
+                  // focus 环的残留"框"在全局 index.css 收(aria-haspopup="menu":focus-visible 去环);
+                  // 这里只补 open 态淡底,表达"菜单已展开"的激活反馈。
+                  className="flex h-6 w-6 items-center justify-center rounded-md transition-opacity hover:opacity-70 focus:outline-none data-[state=open]:bg-[var(--hover-overlay)] data-[state=open]:opacity-100"
                   style={{ color: 'var(--ink-ghost)' }}
                 >
                   <MoreHorizontal size={14} strokeWidth={1.5} />

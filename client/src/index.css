@@ -553,11 +553,16 @@ body:not(.gallery-immersive)::after {
 }
 
 /* Radix 浮层(菜单/对话框)打开时会获得焦点,但它们自带 highlighted 高亮,
- * 不需要外层 focus 环——否则整张菜单卡片外圈一道"大边框"。 */
+ * 不需要外层 focus 环——否则整张菜单卡片外圈一道"大边框"。
+ * 同理浮层【触发按钮】(aria-haspopup="menu",如 ··· 下拉):菜单关闭后 Radix 把焦点交回
+ * 触发器,会残留一圈长春花紫环看着像 bug;菜单本身就是它的反馈,触发器不需要 focus 环。
+ * 注:此规则必须放在这条全局未分层 :focus-visible 里——Tailwind v4 的 focus-visible:shadow-none
+ * 工具类在 @layer utilities 内,永远压不过未分层的全局规则,只能在源头收。 */
 [role="menu"]:focus-visible,
 [role="menuitem"]:focus-visible,
 [role="dialog"]:focus-visible,
-[role="alertdialog"]:focus-visible {
+[role="alertdialog"]:focus-visible,
+[aria-haspopup="menu"]:focus-visible {
   box-shadow: none;
 }
 
