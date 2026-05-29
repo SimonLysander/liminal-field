@@ -167,15 +167,14 @@ export class AgentService {
               let img = galleryImageCache.get(fn);
               if (!img) {
                 try {
-                  const { buffer, contentType } =
-                    await this.galleryView.readPhotoBuffer(
+                  // 严格走 OSS 缩放版(webp,~1280px),不读磁盘、不取原图
+                  // (见「agent 工具不读磁盘」原则);模型不需要高清,多图才扛得住。
+                  const { buffer, mediaType } =
+                    await this.galleryView.readPhotoForVision(
                       gallery.contentItemId,
                       fn,
                     );
-                  img = {
-                    b64: buffer.toString('base64'),
-                    mediaType: contentType,
-                  };
+                  img = { b64: buffer.toString('base64'), mediaType };
                   galleryImageCache.set(fn, img);
                 } catch {
                   continue; // 取不到字节(未上传完/已删)→跳过,不打断本轮

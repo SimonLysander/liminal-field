@@ -749,6 +749,36 @@ export class GalleryViewService {
   }
 
   /**
+   * 读取照片的「视觉版」——给 agent 注入模型用。
+   *
+   * 严格只走 OSS + 服务端缩放(IMAGE_PRESETS.vision, ~1280px webp),**不读磁盘、不取原图**:
+   * - 对齐「agent 工具不碰磁盘」原则 + V2 OSS 热服务;
+   * - 模型不需要高清,缩放后每张几十~一两百 KB,多图注入才扛得住。
+   *
+   * key 约定:committed 在 `assets/{id}/{fileName}`,draft 在 `{id}/{fileName}`(无前缀)。先 assets 后 draft。
+   */
+  async readPhotoForVision(
+    contentItemId: string,
+    fileName: string,
+  ): Promise<{ buffer: Buffer; mediaType: string }> {
+    const preset = OssService.IMAGE_PRESETS.vision;
+    try {
+      const buffer = await this.minioService.getObjectProcessed(
+        `assets/${contentItemId}/${fileName}`,
+        preset,
+      );
+      return { buffer, mediaType: 'image/webp' };
+    } catch {
+      // 未提交(或异步归档前):草稿对象在无前缀 key 下
+      const buffer = await this.minioService.getObjectProcessed(
+        `${contentItemId}/${fileName}`,
+        preset,
+      );
+      return { buffer, mediaType: 'image/webp' };
+    }
+  }
+
+  /**
    * V2: 读取照片文件，优先磁盘，磁盘未命中时回退 OSS draft/ 路径。
    * 草稿照片提交后异步下载到磁盘，在此期间从 OSS 直接读取避免 404。
    */

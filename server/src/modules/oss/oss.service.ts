@@ -228,6 +228,20 @@ export class OssService implements OnModuleInit, MinioDraftStorageStatus {
       : Buffer.from(result.content as Uint8Array);
   }
 
+  /**
+   * 按 objectKey 下载并在 OSS 端应用图片处理(如 IMAGE_PRESETS.vision 缩放+webp),返回处理后 Buffer。
+   * 给 agent 视觉注入用:缩放在 OSS 端做,后端只搬小图,不读磁盘、不取原图。
+   */
+  async getObjectProcessed(
+    objectKey: string,
+    process: string,
+  ): Promise<Buffer> {
+    const result = await this.client.get(objectKey, { process });
+    return Buffer.isBuffer(result.content)
+      ? result.content
+      : Buffer.from(result.content as Uint8Array);
+  }
+
   /** 列出指定前缀下的全部对象 key（最多 1000 条，生产数据量足够） */
   async listByPrefix(prefix: string): Promise<string[]> {
     const result = await this.client.list({ prefix, 'max-keys': 1000 }, {});
@@ -245,6 +259,8 @@ export class OssService implements OnModuleInit, MinioDraftStorageStatus {
     cover: 'image/resize,w_400/format,webp',
     /** 详情轮播 ~1200px */
     detail: 'image/resize,w_1200/format,webp',
+    /** agent 视觉注入 ~1280px:够模型看清写图说,远非高清,多图也扛得住 */
+    vision: 'image/resize,w_1280/format,webp',
     /** 笔记阅读宽度 ~800px */
     reading: 'image/resize,w_800/format,webp',
     /** Lightbox 全屏 ~2000px */
