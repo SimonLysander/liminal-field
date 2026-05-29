@@ -307,7 +307,8 @@ function NoteReader({ id }: { id: string }) {
           <button
             className="text-md transition-colors duration-150 hover:text-[var(--ink-faded)]"
             style={{ color: 'var(--ink-ghost)' }}
-            onClick={() => navigate('/note')}
+            // 返回上一级(通常是父页),不再写死回根列表
+            onClick={() => navigate(-1)}
           >
             ← 返回
           </button>
