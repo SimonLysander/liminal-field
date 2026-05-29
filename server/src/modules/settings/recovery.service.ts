@@ -232,6 +232,41 @@ export class RecoveryService {
   }
 
   /**
+   * 为「清单记了 contentItemId、但 Git 无其 content/ 目录」的空壳文件夹补建一个空 ContentItem
+   * (+ 一条空正文 snapshot),用原 id,使导航节点能解析、详情可读(空正文),不留悬挂死节点。
+   * 幂等:该 id 已存在(理论上不会,防御)则直接返回。
+   */
+  private async ensureEmptyContentItem(
+    contentId: string,
+    title: string,
+  ): Promise<void> {
+    if (await this.contentRepository.findById(contentId)) return;
+
+    const versionId = nanoid(16);
+    const now = new Date();
+    await this.contentRepository.create({
+      id: contentId,
+      latestVersion: { versionId, commitHash: '', title, summary: '' },
+      publishedVersion: null,
+      changeLogs: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    await this.contentSnapshotRepository.create({
+      versionId,
+      contentItemId: contentId,
+      title,
+      summary: '',
+      bodyMarkdown: '',
+      assetRefs: [],
+      createdAt: now,
+      changeNote: '恢复:补建空壳文件夹内容',
+      source: 'system',
+    });
+    this.logger.log(`补建空壳文件夹内容: ${contentId} (${title})`);
+  }
+
+  /**
    * 解析 README.md，提取标题（第一个 # 行）和摘要（标题后第一个非空段落）。
    * 文件不存在或格式异常时用 fallback。
    */
@@ -354,13 +389,21 @@ export class RecoveryService {
         continue;
       }
 
-      // 节点同质化:每个节点都要 contentItemId;清单里的文件夹节点没有,临时 mint 一个空 ContentItem。
+      // 节点同质化:每个节点都要指向【真实存在】的 ContentItem。两种情况要补空壳:
+      // ① 清单根本没记 contentItemId(老式文件夹节点)→ mint 一个新 id 的空 ContentItem;
+      // ② 记了 contentItemId 但它【没被恢复】(git 无其 content/ 目录——空壳文件夹从未提交
+      //    正文,recoverSingleItem 不会扫到它)。若直接拿原 id 建导航节点,会得到指向不存在
+      //    ContentItem 的悬挂死节点(点开 404)。用【原 id】补建空 ContentItem:既消除悬挂,
+      //    又保持与清单一致、跨多次恢复 id 稳定。
       let contentItemId = node.contentItemId;
       if (!contentItemId) {
         const content = await this.contentService.createContent({
           title: node.name,
         });
         contentItemId = content.id;
+      } else if (!recoveredIds.has(contentItemId)) {
+        await this.ensureEmptyContentItem(contentItemId, node.name);
+        recoveredIds.add(contentItemId);
       }
       const created = await this.navigationRepository.create({
         name: node.name,
