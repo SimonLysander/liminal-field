@@ -83,6 +83,9 @@ export class TestContext {
     // ─── 3. 设置必要的环境变量 ───
     process.env.JWT_SECRET = 'test-secret-for-e2e';
     process.env.ADMIN_PASSWORD = 'test-password';
+    // 关掉 commit 后去抖自动 push:让 e2e 完全掌控 push 时机(显式调 push-to-remote),
+    // 避免后台定时器在测试中途/teardown 时触发,污染推送断言。
+    process.env.GIT_PUSH_DEBOUNCE_MS = '0';
 
     // ─── 4. 初始化 OSS 内存存储（每个 TestContext 独立，互不干扰） ───
     this.ossStore = new Map<string, Buffer>();

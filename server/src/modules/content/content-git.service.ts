@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Mutex } from 'async-mutex';
 import { existsSync } from 'fs';
@@ -15,7 +20,7 @@ import { ContentRepository } from './content.repository';
 import { ContentRepoService } from './content-repo.service';
 
 @Injectable()
-export class ContentGitService implements OnModuleInit {
+export class ContentGitService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ContentGitService.name);
 
   private static readonly defaultAuthorName = 'Liminal Field';
@@ -25,6 +30,8 @@ export class ContentGitService implements OnModuleInit {
   private git: SimpleGit;
   /** Git 写操作互斥锁：add → diff → commit 必须原子化，防止并发请求交叉污染 staged 区域 */
   private readonly writeLock = new Mutex();
+  /** commit 后去抖 push 的定时器句柄;连续 commit 会重置它,只在静默期满后推一次 */
+  private pushDebounceTimer: NodeJS.Timeout | null = null;
   /** init 结束后写入，供 StartupDiagnostics 打出与原先单行日志同等粒度的一行摘要 */
   private kbGitSummaryLine: string | null = null;
 
@@ -82,6 +89,14 @@ export class ContentGitService implements OnModuleInit {
     );
 
     this.kbGitSummaryLine = `KB Git: OK — branch: ${branch?.trim() ?? '?'}, commits: ${commitCount?.trim() ?? '?'}, remote: ${remoteSafe}`;
+  }
+
+  /** 优雅关闭:清掉悬空的去抖 push 定时器,避免进程退出/测试结束后才触发。 */
+  onModuleDestroy(): void {
+    if (this.pushDebounceTimer) {
+      clearTimeout(this.pushDebounceTimer);
+      this.pushDebounceTimer = null;
+    }
   }
 
   /** Step 1: 仓库不存在则 git init（不自动 clone，clone 只在用户触发恢复时） */
@@ -326,7 +341,9 @@ export class ContentGitService implements OnModuleInit {
           trackedPath,
         ]);
 
-      return this.run(() => this.git.revparse(['HEAD']));
+      const commitHash = await this.run(() => this.git.revparse(['HEAD']));
+      this.schedulePush(); // git 内容已变更 → 去抖推远端
+      return commitHash;
     });
   }
 
@@ -367,7 +384,9 @@ export class ContentGitService implements OnModuleInit {
         })
         .raw(['commit', '-m', commitMsg]);
 
-      return this.run(() => this.git.revparse(['HEAD']));
+      const commitHash = await this.run(() => this.git.revparse(['HEAD']));
+      this.schedulePush(); // 批量导入提交后同样去抖推远端
+      return commitHash;
     });
   }
 
@@ -709,6 +728,44 @@ export class ContentGitService implements OnModuleInit {
       this.logger.error(`Failed to push ${currentBranch}: ${msg}`);
       return { success: false, message: `同步失败: ${msg}` };
     }
+  }
+
+  /** 去抖窗口(ms):默认 15s。GIT_PUSH_DEBOUNCE_MS 可调;设 0/负数/非法值 = 关闭自动 push。 */
+  private resolvePushDebounceMs(): number {
+    const raw = process.env.GIT_PUSH_DEBOUNCE_MS?.trim();
+    if (raw === undefined || raw === '') return 15_000;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  /**
+   * commit 成功后去抖调度一次 push:连续 commit 不断重置定时器,只在静默
+   * GIT_PUSH_DEBOUNCE_MS 后推一次,把"距上次 push 的全盘灾难丢失窗口"压到去抖窗口级别,
+   * 又不至于每次 commit 都打远端。触发轴只挂"会改 git 内容的 commit",与 publish 等业务
+   * 状态无关(发布态本就不进 Git)。窗口 ≤0 = 关闭(测试/特殊部署用)。
+   */
+  private schedulePush(): void {
+    if (!this.isSyncEnabled()) return;
+    const debounceMs = this.resolvePushDebounceMs();
+    if (debounceMs <= 0) return;
+    if (this.pushDebounceTimer) clearTimeout(this.pushDebounceTimer);
+    this.pushDebounceTimer = setTimeout(() => {
+      this.pushDebounceTimer = null;
+      void this.debouncedPush();
+    }, debounceMs);
+    // 不让定时器拖住进程退出(优雅关闭/测试)
+    this.pushDebounceTimer.unref?.();
+  }
+
+  /** 去抖到点执行:有写操作在跑则改期一轮,避免与 commit 抢锁或推到一半的状态。 */
+  private async debouncedPush(): Promise<void> {
+    if (this.writeLock.isLocked()) {
+      this.schedulePush();
+      return;
+    }
+    // pushCurrentBranch 内部已自吞错误并返回结果,这里不会抛
+    const result = await this.pushCurrentBranch();
+    this.logger.debug(`Debounced push: ${result.message}`);
   }
 
   /**
