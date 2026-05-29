@@ -24,6 +24,7 @@ import { ContentStatus } from '../content/content-item.entity';
 import { ContentSaveAction } from '../content/dto/save-content.dto';
 import { NavigationRepository } from '../navigation/navigation.repository';
 import { NavigationScope } from '../navigation/navigation.entity';
+import { AnthologyViewService } from './anthology-view.service';
 import { CreateWorkspaceItemDto } from './dto/create-workspace-item.dto';
 import { UpdateWorkspaceItemDto } from './dto/update-workspace-item.dto';
 import {
@@ -48,6 +49,7 @@ export class WorkspaceService {
     private readonly contentRepoService: ContentRepoService,
     private readonly snapshotRepository: ContentSnapshotRepository,
     private readonly navigationRepository: NavigationRepository,
+    private readonly anthologyViewService: AnthologyViewService,
   ) {}
 
   /**
@@ -93,6 +95,12 @@ export class WorkspaceService {
       contentItemId: detail.id,
       order: siblings.length,
     });
+
+    // 协议 A:文集容器创建时立即提交其 main.md(title/description),确保归档进 Git、
+    // 清库后可从 Git 恢复容器。放在 create 而非 addEntry,避免与条目归档并发争用 git。
+    if (scope === 'anthology') {
+      await this.anthologyViewService.commitContainerIndex(detail.id);
+    }
 
     return this.getById(scope, detail.id);
   }

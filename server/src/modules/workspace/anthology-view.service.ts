@@ -336,6 +336,27 @@ export class AnthologyViewService {
     return this.toAdminDetail(contentItemId);
   }
 
+  /**
+   * 提交文集容器自身的 main.md（仅 title/description，无 entries 列表）。
+   * 节点同质化后条目改子节点、容器索引不再随条目变,但仍需提交一次让它归档进 Git
+   * (content/<ci>/main.md),否则清空 Mongo 后无法从 Git 恢复容器(协议 A 欠账)。
+   */
+  /** 公开:文集容器创建时由 WorkspaceService 调用一次,提交容器 main.md 以归档进 Git。 */
+  async commitContainerIndex(contentItemId: string): Promise<void> {
+    const item = await this.contentRepository.findById(contentItemId);
+    if (!item) return;
+    const title = item.latestVersion?.title ?? '';
+    const description = item.latestVersion?.summary ?? '';
+    await this.contentService.saveContent(contentItemId, {
+      title,
+      summary: description,
+      bodyMarkdown: serializeAnthologyIndex({ title, description }),
+      changeNote: '归档文集容器索引',
+      status: ContentStatus.committed,
+      action: ContentSaveAction.commit,
+    });
+  }
+
   /** 提交条目内容到子 ContentItem（fileName=null，date 写进 frontmatter）。 */
   private async commitEntryContent(
     entryKey: string,

@@ -90,9 +90,15 @@ describe('Anthology 归档 → 恢复 全流程 (e2e regression)', () => {
     const diskContent = await waitForFileContaining(entryAbsPath, MARKER);
     expect(diskContent).not.toBeNull(); // null = 主路径没归档(P2 退化)
 
-    // 且已被 git 跟踪(写盘 + commit 都完成,而非仅留在工作树未提交)
+    // 且已被 git 跟踪。归档 commit 是 fire-and-forget + writeLock 串行,
+    // 容器与条目的归档会排队,故轮询等待条目被提交(而非假设写盘后立即提交)。
     const git = simpleGit(ctx.tmpGitDir);
-    const tracked = (await git.raw(['ls-files', entryRelPath])).trim();
+    let tracked = '';
+    for (let i = 0; i < 40; i++) {
+      tracked = (await git.raw(['ls-files', entryRelPath])).trim();
+      if (tracked === entryRelPath) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
     expect(tracked).toBe(entryRelPath);
 
     // ── 3. 写 manifest(恢复据此判 scope=anthology 才会扫 entries/)+ 提交 ──

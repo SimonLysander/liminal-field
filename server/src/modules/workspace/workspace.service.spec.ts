@@ -25,12 +25,17 @@ function createMocks() {
     findByContentItemId: jest.fn(),
   };
 
+  const mockAnthologyViewService = {
+    commitContainerIndex: jest.fn(),
+  };
+
   const service = new WorkspaceService(
     mockContentService as never,
     mockContentRepository as never,
     mockContentRepoService as never,
     mockSnapshotRepository as never,
     mockNavigationRepository as never,
+    mockAnthologyViewService as never,
   );
 
   return {
