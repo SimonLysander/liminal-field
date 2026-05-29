@@ -1,14 +1,14 @@
 /*
- * GalleryAdvisorPanel — 画廊图说写手 Aurora 的浮层面板。
+ * GalleryAdvisorPanel — 画廊图说写手 Aurora。
  *
- * 与笔记/文集的三栏侧栏不同:画廊是单列布局,故做成右下浮层(FAB 开合),不改页面结构。
- * 复用 useAdvisorChat + MessageList;图说建议(propose_caption)在输入框上方以卡片冒出,
- * 点「应用」落到 useGalleryEditor.updateCaption。短文案不做 diff。
+ * 与笔记/文集编辑器统一:advisor 作为右侧独立栏(非浮窗),自管内部 48px 顶栏 + 消息流 + 输入框,
+ * 填满所在栏(h-full)。复用 useAdvisorChat + MessageList;图说建议(propose_caption)在输入框
+ * 上方以卡片冒出,点「应用」落到 useGalleryEditor.updateCaption。短文案不做 diff。
  *
  * 仅在配了 visionModel 时由父组件挂载(没视觉模型 agent 看不了图)。
  */
 import { useCallback, useRef, useState } from 'react';
-import { ArrowUp, Check, MessagesSquare, Square, X } from 'lucide-react';
+import { ArrowUp, Check, Square } from 'lucide-react';
 import { useAdvisorChat } from '@/components/ai-advisor/use-advisor-chat';
 import { MessageList } from '@/components/ai-advisor/MessageList';
 
@@ -35,7 +35,6 @@ export function GalleryAdvisorPanel({
   photos,
   onApplyCaption,
 }: GalleryAdvisorPanelProps) {
-  const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -85,57 +84,28 @@ export function GalleryAdvisorPanel({
     [photos],
   );
 
-  // 收起时:右下角 FAB
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-40 flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-transform hover:scale-105"
-        style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}
-        aria-label="打开图说写手"
-        title="图说写手 Aurora"
-      >
-        <MessagesSquare size={20} strokeWidth={1.75} />
-      </button>
-    );
-  }
-
   return (
-    <div
-      className="fixed bottom-6 right-6 z-40 flex flex-col overflow-hidden rounded-2xl shadow-2xl"
-      style={{
-        width: 'min(400px, calc(100vw - 2rem))',
-        height: 'min(72vh, 640px)',
-        background: 'var(--paper)',
-        border: '1px solid var(--separator)',
-      }}
-    >
-      {/* 顶栏 */}
-      <div
-        className="flex h-12 shrink-0 items-center justify-between px-4"
-        style={{ borderBottom: '1px solid var(--separator)' }}
-      >
-        <span className="text-sm font-medium" style={{ color: 'var(--ink)' }}>
+    // 填满所在栏(右栏),自管 48px 顶栏 + 消息流 + 输入框,与 AiAdvisorPanel 同构
+    <div className="flex h-full flex-col overflow-hidden">
+      {/* 顶栏(48px,无边框,跟编辑器各栏顶栏对齐一条水平线) */}
+      <div className="flex h-[48px] shrink-0 items-center px-3">
+        <span
+          className="min-w-0 flex-1 truncate px-2 py-1 text-sm"
+          style={{ color: 'var(--ink-faded)' }}
+        >
           图说写手
         </span>
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          className="rounded-md p-1.5 transition-colors hover:bg-[var(--shelf)]"
-          style={{ color: 'var(--ink-ghost)' }}
-          aria-label="收起"
-        >
-          <X size={16} strokeWidth={1.5} />
-        </button>
       </div>
 
-      {/* 消息区 */}
+      {/* 消息区 / 空状态 */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {sessionReady && messages.length === 0 && (
-          <div className="flex flex-1 items-center justify-center px-6 text-center">
-            <p className="text-sm font-light" style={{ color: 'var(--ink-ghost)' }}>
-              想聊聊这些照片，还是要我帮忙写图说？
+          <div className="flex flex-1 items-center justify-center px-5 text-center">
+            <p
+              className="text-lg font-light"
+              style={{ color: 'var(--ink-ghost)', letterSpacing: '0.02em' }}
+            >
+              想聊聊这些照片，还是要我写图说？
             </p>
           </div>
         )}
@@ -154,10 +124,7 @@ export function GalleryAdvisorPanel({
 
       {/* 图说建议卡片(钉在输入框上方) */}
       {captionProposals.length > 0 && (
-        <div
-          className="max-h-[40%] shrink-0 space-y-2 overflow-y-auto px-3 py-2"
-          style={{ borderTop: '1px solid var(--separator)' }}
-        >
+        <div className="max-h-[40%] shrink-0 space-y-2 overflow-y-auto px-3 pb-2">
           {captionProposals.map((cp) => {
             const photo = photoByName(cp.fileName);
             return (
@@ -202,10 +169,10 @@ export function GalleryAdvisorPanel({
         </div>
       )}
 
-      {/* 输入区 */}
-      <div className="shrink-0 px-3 pb-3 pt-2">
+      {/* 输入区(与 AiAdvisorPanel 同规格) */}
+      <div className="shrink-0 px-3 pb-4 pt-2">
         <div
-          className="flex items-end gap-2 rounded-xl px-3 py-2"
+          className="advisor-composer flex items-end gap-2 rounded-xl px-3 py-2 transition-shadow"
           style={{ background: 'var(--shelf)' }}
         >
           <textarea

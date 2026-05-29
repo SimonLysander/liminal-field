@@ -162,7 +162,10 @@ export default function GalleryEditPage() {
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden">
+    // 与笔记/文集编辑器一样的心智:左侧内容区 + 右侧 Aurora 整列(自管顶栏)
+    <div className="flex h-screen overflow-hidden">
+      {/* 左侧:画廊内容区(顶栏 + 滚动内容) */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       {/* 顶栏：扁平,与笔记/文集编辑器统一(返回图标 + 标题 + 保存/提交/主题切换)。
           散文工具栏已统一为浮动工具栏,不再 portal 到顶栏中央。 */}
       <header className="flex shrink-0 items-center justify-between px-4" style={{ height: 52 }}>
@@ -273,6 +276,26 @@ export default function GalleryEditPage() {
           />
         </div>
       </div>
+      </div>
+
+      {/* 右侧:图说写手 Aurora 整列(配了视觉模型才挂),与笔记/文集 advisor 同心智 */}
+      {hasVision && id && (
+        <aside
+          className="shrink-0"
+          style={{
+            width: 'clamp(20rem, 26vw, 30rem)',
+            borderLeft: '1px solid var(--separator)',
+          }}
+        >
+          <GalleryAdvisorPanel
+            postId={id}
+            title={title}
+            prose={prose}
+            photos={photos}
+            onApplyCaption={updateCaption}
+          />
+        </aside>
+      )}
 
       {/* 照片编辑弹窗 */}
       <PhotoEditModal
@@ -285,17 +308,6 @@ export default function GalleryEditPage() {
         onSetCover={setCover}
         onDelete={deletePhoto}
       />
-
-      {/* 图说写手 Aurora —— 右下浮层(配了视觉模型才挂) */}
-      {hasVision && id && (
-        <GalleryAdvisorPanel
-          postId={id}
-          title={title}
-          prose={prose}
-          photos={photos}
-          onApplyCaption={updateCaption}
-        />
-      )}
     </div>
   );
 }
