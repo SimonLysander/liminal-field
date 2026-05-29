@@ -12,11 +12,13 @@ import { smoothBounce } from '@/lib/motion';
 import Topbar from '@/components/global/Topbar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ContentVersionView } from '../components/ContentVersionView';
-import { FolderOverviewPanel } from '../components/FolderOverviewPanel';
 import { NodeFormModal } from '../components/NodeFormModal';
 import { AdminStructurePanel } from '../components/AdminStructurePanel';
 import { MoveToDialog } from '../components/MoveToDialog';
 import { useAdminWorkspace } from '../hooks/useAdminWorkspace';
+import { structureApi } from '@/services/structure';
+import { useConfirm } from '@/contexts/ConfirmContext';
+import { banner } from '@/components/ui/banner-api';
 import type { DraftPresence } from '../types';
 import type { ContentHistoryEntry } from '@/services/workspace';
 import { LoadingState, ContentFade } from '@/components/LoadingState';
@@ -24,7 +26,28 @@ import { VersionTimeline } from '../components/VersionTimeline';
 
 const ContentAdmin = () => {
   const workspace = useAdminWorkspace();
+  const confirm = useConfirm();
   /* 选中节点的恢复由 useAdminWorkspace 的 URL 同步处理 */
+
+  /* 节点同质化:右侧统一展示"当前节点"——选中的文档,或进入的文件夹本身;两者都是一篇笔记。 */
+  const activeNode = workspace.selectedNode ?? workspace.currentFolderNode;
+
+  /* 发布全部:对有子节点的节点,发布其子树(从 ··· 菜单触发)。 */
+  const handlePublishAll = useCallback(async () => {
+    if (!activeNode) return;
+    const ok = await confirm({
+      title: '发布全部',
+      message: `将发布「${activeNode.name}」下的全部文档。`,
+      confirmLabel: '确认发布',
+    });
+    if (!ok) return;
+    await structureApi.batchPublish(activeNode.id);
+    banner.success('已发布');
+    workspace.reloadLevel();
+    if (activeNode.contentItemId) {
+      void workspace.loadFormalContent(activeNode.contentItemId);
+    }
+  }, [activeNode, confirm, workspace]);
 
   /* ---- TOC ----
    * 数据：来自 API 返回的 headings（formalContent 或 preview），不再解析 markdown
@@ -83,8 +106,8 @@ const ContentAdmin = () => {
     el.addEventListener('animationend', () => el.classList.remove('toc-highlight'), { once: true });
   }, [getHeadingEls]);
 
-  const editUrl = workspace.selectedNode?.contentItemId
-    ? `/admin/notes/${workspace.selectedNode.contentItemId}/edit`
+  const editUrl = activeNode?.contentItemId
+    ? `/admin/notes/${activeNode.contentItemId}/edit`
     : null;
 
   return (
@@ -121,22 +144,22 @@ const ContentAdmin = () => {
               <div className="mx-auto w-full max-w-[var(--layout-reading-max)]">
               <AnimatePresence mode="wait">
                 <motion.div
-                  key={workspace.selectedNode?.id ?? workspace.currentFolderNode?.id ?? 'empty'}
+                  key={activeNode?.id ?? 'empty'}
                   initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -2 }}
                   transition={{ duration: 0.2, ease: smoothBounce }}
                 >
-                  {workspace.selectedNode?.contentItemId ? (
+                  {activeNode?.contentItemId ? (
                     <ContentVersionView
-                      node={workspace.selectedNode}
+                      node={activeNode}
                       content={workspace.formalContent}
                       loading={workspace.contentLoading}
                       error={workspace.contentError}
                       preview={workspace.preview}
                       previewLoading={workspace.previewLoading}
                       onSaveSummary={workspace.updateSummary}
-                      onReload={() => workspace.loadFormalContent(workspace.selectedNode!.contentItemId!)}
+                      onReload={() => workspace.loadFormalContent(activeNode.contentItemId!)}
                       onPublish={workspace.publishContent}
                       onUnpublish={workspace.unpublishContent}
                       onExitPreview={workspace.exitPreview}
@@ -144,19 +167,10 @@ const ContentAdmin = () => {
                       onEdit={workspace.openEdit}
                       onDelete={workspace.setDeleteTarget}
                       onMoveTo={workspace.setMoveTarget}
-                    />
-                  ) : workspace.currentFolderNode ? (
-                    <FolderOverviewPanel
-                      node={workspace.currentFolderNode}
-                      onSelectNode={workspace.selectNode}
-                      onEnterFolder={workspace.enterFolder}
-                      onReload={workspace.reloadLevel}
-                      onEdit={workspace.openEdit}
-                      onDelete={workspace.setDeleteTarget}
-                      onMoveTo={workspace.setMoveTarget}
+                      onPublishAll={activeNode.hasChildren ? handlePublishAll : undefined}
                     />
                   ) : (
-                    <EmptyState title="未选择节点" subtitle="从左侧列表中选择一个文件夹或文档开始。" />
+                    <EmptyState title="未选择节点" subtitle="从左侧选择一个节点开始。" />
                   )}
                 </motion.div>
               </AnimatePresence>
@@ -169,7 +183,7 @@ const ContentAdmin = () => {
             className="flex shrink-0 flex-col overflow-hidden px-5 py-7"
             style={{ width: 'var(--layout-context)' }}
           >
-            {workspace.selectedNode?.contentItemId ? (
+            {activeNode?.contentItemId ? (
               <FormalSidePanel
                 toc={toc}
                 activeIndex={activeIndex}

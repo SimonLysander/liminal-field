@@ -273,8 +273,11 @@ export function useAdminWorkspace() {
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
-  /* 用 contentItemId 驱动内容加载（不依赖 selectedNode 引用） */
-  const activeContentItemId = selectedNode?.contentItemId ?? null;
+  /* 用 contentItemId 驱动内容加载（不依赖 selectedNode 引用）。
+   * 节点同质化:有子节点的"文件夹"也是一篇笔记——进入它(currentFolderNode)时也加载其自身正文,
+   * 右侧统一走 ContentVersionView,不再有文件夹专属视图。doc 优先于当前文件夹。 */
+  const activeNode = selectedNode ?? currentFolderNode;
+  const activeContentItemId = activeNode?.contentItemId ?? null;
   const prevContentItemIdRef = useRef<string | null>(null);
 
   const probeDraftPresence = useCallback(async (contentItemId: string) => {

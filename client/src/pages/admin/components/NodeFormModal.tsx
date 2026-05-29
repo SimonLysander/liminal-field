@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { parseError } from '../helpers';
 import { type ModalState, type NodeSubmitPayload } from '../types';
 import { importApi } from '@/services/import';
+import { setPendingImportFiles } from '../batch-import-store';
 import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
 import { Modal } from '@/components/shared/Modal';
 import { Input } from '@/components/ui/input';
@@ -36,6 +37,7 @@ export const NodeFormModal = ({
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
   const isCreate = modal.mode === 'create';
@@ -99,6 +101,33 @@ export const NodeFormModal = ({
     }
   };
 
+  /* 导入文件夹:目录批量导入。从「新建」触发(导入是创建级动作,挂在节点上别扭),导进当前位置。 */
+  const handleFolderClick = () => folderInputRef.current?.click();
+
+  const handleFolderSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    let hasMd = false;
+    for (let i = 0; i < files.length; i++) {
+      if (files[i].webkitRelativePath.endsWith('.md')) {
+        hasMd = true;
+        break;
+      }
+    }
+    if (!hasMd) {
+      setError('文件夹中未找到 .md 文件');
+      e.target.value = '';
+      return;
+    }
+    // FileList 不支持 structured clone,存到模块变量(与原 FolderOverviewPanel 一致)
+    setPendingImportFiles(files);
+    onClose();
+    const params = new URLSearchParams();
+    if (modal.parentId) params.set('parentId', modal.parentId);
+    navigate(`/admin/notes/batch-import?${params.toString()}`);
+    e.target.value = '';
+  };
+
   return (
     <>
       {/* ThresholdOverlay 放在 Modal 外层，确保文件导入时全屏遮罩可见 */}
@@ -156,6 +185,26 @@ export const NodeFormModal = ({
                 }}
               >
                 {importing ? '解析中...' : '从文件导入'}
+              </button>
+              <input
+                ref={folderInputRef}
+                type="file"
+                className="hidden"
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- webkitdirectory 非标准属性
+                {...({ webkitdirectory: '', directory: '', multiple: true } as any)}
+                onChange={handleFolderSelected}
+              />
+              <button
+                type="button"
+                onClick={handleFolderClick}
+                className="w-full rounded-lg py-2 text-center text-sm font-medium transition-opacity duration-150"
+                style={{
+                  background: 'var(--shelf)',
+                  color: 'var(--ink-faded)',
+                  border: '1px dashed var(--separator)',
+                }}
+              >
+                导入文件夹
               </button>
             </>
           )}

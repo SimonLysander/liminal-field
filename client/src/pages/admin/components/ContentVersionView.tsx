@@ -41,6 +41,7 @@ export const ContentVersionView = ({
   onEdit,
   onDelete,
   onMoveTo,
+  onPublishAll,
 }: ContentVersionViewProps) => {
   const confirm = useConfirm();
 
@@ -175,7 +176,7 @@ export const ContentVersionView = ({
           />
 
           {/* 低频管理操作 */}
-          {(onEdit || onDelete || onMoveTo) && (
+          {(onEdit || onDelete || onMoveTo || onPublishAll) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -186,6 +187,15 @@ export const ContentVersionView = ({
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-[120px]">
+                {/* 发布全部:仅对有子节点的节点显示,发布其子树 */}
+                {onPublishAll && (
+                  <>
+                    <DropdownMenuItem onClick={() => void onPublishAll()}>
+                      发布全部
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 {onEdit && (
                   <DropdownMenuItem onClick={() => onEdit(node)}>
                     重命名
