@@ -6,7 +6,7 @@ import {
   IsString,
   Min,
 } from 'class-validator';
-import { NavigationNodeType, NavigationScope } from '../navigation.entity';
+import { NavigationScope } from '../navigation.entity';
 
 export class CreateNavigationNodeDto {
   @IsString()
@@ -21,13 +21,10 @@ export class CreateNavigationNodeDto {
   @IsOptional()
   parentId?: string;
 
-  @IsEnum(NavigationNodeType)
-  @IsNotEmpty()
-  nodeType: NavigationNodeType;
-
+  // 节点同质化:每个节点都挂一个 ContentItem,故必填
   @IsString()
-  @IsOptional()
-  contentItemId?: string;
+  @IsNotEmpty()
+  contentItemId: string;
 
   @IsInt()
   @Min(0)

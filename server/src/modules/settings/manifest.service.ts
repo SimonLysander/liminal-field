@@ -16,10 +16,7 @@ import * as yaml from 'js-yaml';
 import { NavigationRepository } from '../navigation/navigation.repository';
 import { ContentRepository } from '../content/content.repository';
 import { ContentRepoService } from '../content/content-repo.service';
-import {
-  NavigationNodeType,
-  NavigationScope,
-} from '../navigation/navigation.entity';
+import { NavigationScope } from '../navigation/navigation.entity';
 
 /** 清单中单个导航节点的序列化结构 */
 export interface ManifestNode {
@@ -164,9 +161,10 @@ export class ManifestService {
       return { id: nodeId, name: '', type: 'FOLDER', order: 0 };
     }
 
-    const isFolder = node.nodeType === NavigationNodeType.subject;
     const children =
       await this.navigationRepository.findChildrenByParentId(nodeId);
+    // 节点同质化:有子节点 = 文件夹,叶子 = 文档。
+    const isFolder = children.length > 0;
 
     const manifestNode: ManifestNode = {
       id: node._id.toString(),
@@ -193,16 +191,16 @@ export class ManifestService {
     const roots = await this.navigationRepository.findRootNodes(scope);
     let count = 0;
 
-    // 广度优先遍历统计 content 节点
+    // 广度优先遍历统计内容（叶子）节点。节点同质化:叶子(无子节点) = 一篇内容。
     const queue = [...roots];
     while (queue.length > 0) {
       const node = queue.shift()!;
-      if (node.nodeType === NavigationNodeType.content) {
-        count++;
-      }
       const children = await this.navigationRepository.findChildrenByParentId(
         node._id.toString(),
       );
+      if (children.length === 0) {
+        count++;
+      }
       queue.push(...children);
     }
 

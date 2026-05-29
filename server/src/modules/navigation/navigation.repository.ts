@@ -2,18 +2,13 @@ import { Injectable, Inject } from '@nestjs/common';
 import { getModelToken } from 'nestjs-typegoose';
 import type { ReturnModelType } from '@typegoose/typegoose';
 import { Types } from 'mongoose';
-import {
-  NavigationNode,
-  NavigationNodeType,
-  NavigationScope,
-} from './navigation.entity';
+import { NavigationNode, NavigationScope } from './navigation.entity';
 
 export interface CreateNavigationNode {
   name: string;
   scope?: string;
   parentId?: string;
-  nodeType: NavigationNodeType;
-  contentItemId?: string;
+  contentItemId: string;
   order?: number;
 }
 
@@ -21,7 +16,6 @@ export interface CreateNavigationNode {
 export interface UpdateNavigationNode {
   name?: string;
   parentId?: string;
-  nodeType?: NavigationNodeType;
   contentItemId?: string;
   order?: number;
 }
@@ -39,7 +33,6 @@ export class NavigationRepository {
       // CreateNavigationNode.scope 为 string，调用方保证值为 NavigationScope 枚举成员
       scope: (navigation.scope as NavigationScope) ?? NavigationScope.notes,
       parentId: navigation.parentId,
-      nodeType: navigation.nodeType,
       contentItemId: navigation.contentItemId,
       order: navigation.order ?? 0,
       createdAt: new Date(),

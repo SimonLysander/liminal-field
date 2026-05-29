@@ -54,7 +54,6 @@ import { EditorDraftRepository } from './editor-draft.repository';
 import { SaveGalleryPostDto } from './dto/save-gallery-post.dto';
 import { OssService } from '../oss/oss.service';
 import { NavigationRepository } from '../navigation/navigation.repository';
-import { NavigationNodeType } from '../navigation/navigation.entity';
 
 /** main.md frontmatter 中单张照片的结构。 */
 interface FrontmatterPhoto {
@@ -967,20 +966,16 @@ export class GalleryViewService {
   ): Promise<GalleryPublicListItemDto[]> {
     // 取 gallery scope 所有导航节点，过滤出有 contentItemId 的条目
     const nodes = await this.navigationRepository.findRootNodes('gallery');
-    const contentNodes = nodes.filter(
-      (n) => n.nodeType === NavigationNodeType.content && n.contentItemId,
-    );
+    const contentNodes = nodes.filter((n) => n.contentItemId != null);
 
     const dtos: GalleryPublicListItemDto[] = [];
     for (const node of contentNodes) {
       // 只处理已发布的内容
-      const content = await this.contentRepository.findById(
-        node.contentItemId!,
-      );
+      const content = await this.contentRepository.findById(node.contentItemId);
       if (!content?.publishedVersion) continue;
 
       try {
-        const dto = await this.toPublicListItemDto(node.contentItemId!);
+        const dto = await this.toPublicListItemDto(node.contentItemId);
         dtos.push(dto);
       } catch (error) {
         // 个别条目加载失败不阻断整体列表（如 git 资源缺失等边缘情况）

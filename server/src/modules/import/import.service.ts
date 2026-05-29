@@ -23,7 +23,6 @@ import { ConfirmImportDto } from './dto/confirm-import.dto';
 import type { FastifyReply } from 'fastify';
 import { processMarkdown } from './markdown-post-processor';
 import { NavigationRepository } from '../navigation/navigation.repository';
-import { NavigationNodeType } from '../navigation/navigation.entity';
 import {
   ContentChangeType,
   type ContentVersion,
@@ -576,10 +575,7 @@ export class ImportService {
         const parentNodeId = folderMap.get(parentPath) ?? rootParentId;
         const existingChildren =
           await this.navigationRepository.findChildrenByParentId(parentNodeId);
-        const existing = existingChildren.find(
-          (n) =>
-            n.name === folderName && n.nodeType === NavigationNodeType.subject,
-        );
+        const existing = existingChildren.find((n) => n.name === folderName);
         if (existing) {
           folderMap.set(dirPath, existing._id.toString());
         } else {

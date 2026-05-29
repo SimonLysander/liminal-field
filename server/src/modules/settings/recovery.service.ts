@@ -17,7 +17,7 @@ import { ContentRepository } from '../content/content.repository';
 import { ContentSnapshotRepository } from '../content/content-snapshot.repository';
 import { ContentRepoService } from '../content/content-repo.service';
 import { NavigationRepository } from '../navigation/navigation.repository';
-import { NavigationNodeType } from '../navigation/navigation.entity';
+import { ContentService } from '../content/content.service';
 import { OssService } from '../oss/oss.service';
 import { Manifest, ManifestNode, ManifestService } from './manifest.service';
 import { parseAnthologyIndex } from '../workspace/anthology-view.service';
@@ -53,6 +53,7 @@ export class RecoveryService {
     private readonly contentRepoService: ContentRepoService,
     private readonly ossService: OssService,
     private readonly manifestService: ManifestService,
+    private readonly contentService: ContentService,
   ) {
     this.repoRoot = this.contentRepoService.repoRoot;
     this.contentRoot = join(this.repoRoot, 'content');
@@ -362,7 +363,6 @@ export class RecoveryService {
         await this.navigationRepository.create({
           name: item.latestVersion?.title ?? contentId,
           scope: 'notes',
-          nodeType: NavigationNodeType.content,
           contentItemId: contentId,
           order: 0,
         });
@@ -400,14 +400,18 @@ export class RecoveryService {
         continue;
       }
 
+      // 节点同质化:每个节点都要 contentItemId;清单里的文件夹节点没有,临时 mint 一个空 ContentItem。
+      let contentItemId = node.contentItemId;
+      if (!contentItemId) {
+        const content = await this.contentService.createContent({
+          title: node.name,
+        });
+        contentItemId = content.id;
+      }
       const created = await this.navigationRepository.create({
         name: node.name,
         scope,
-        nodeType:
-          node.type === 'FOLDER'
-            ? NavigationNodeType.subject
-            : NavigationNodeType.content,
-        contentItemId: node.contentItemId,
+        contentItemId,
         // parentId 存的是 ObjectId，NavigationRepository.create 接受字符串
         parentId: parentId ?? undefined,
         order: node.order,

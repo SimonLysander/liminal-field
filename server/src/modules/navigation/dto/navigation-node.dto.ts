@@ -1,9 +1,8 @@
-import { NavigationNode, NavigationNodeType } from '../navigation.entity';
+import { NavigationNode } from '../navigation.entity';
 
 export class NavigationNodeDto {
   id: string;
   name: string;
-  nodeType: NavigationNodeType;
   parentId?: string;
   contentItemId?: string;
   order: number;
@@ -18,7 +17,6 @@ export class NavigationNodeDto {
     const dto = new NavigationNodeDto();
     dto.id = entity._id.toString();
     dto.name = entity.name;
-    dto.nodeType = entity.nodeType;
     dto.parentId = entity.parentId?.toString();
     dto.contentItemId = entity.contentItemId?.toString();
     dto.order = entity.order ?? 0;
