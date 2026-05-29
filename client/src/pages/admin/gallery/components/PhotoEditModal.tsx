@@ -373,18 +373,16 @@ export function PhotoEditModal({
 
         <div style={{ height: '0.5px', background: 'var(--separator)', margin: '12px 20px 0' }} />
 
-        {/* Caption — 参数下方，保持原生 textarea 并用 token 写法 */}
+        {/* Caption — 参数下方,带标签 + 清晰边界(与页面元数据字段同一套外观) */}
         <div className="flex-1 px-5 pt-3">
+          <div className="mb-1.5 text-xs font-medium" style={{ color: 'var(--ink-faded)' }}>
+            图说
+          </div>
           <div className="relative">
             <textarea
-              className="w-full resize-none rounded-sm px-3 py-2.5 text-sm outline-none transition-colors duration-150"
-              style={{
-                background: 'var(--shelf)',
-                color: 'var(--ink)',
-                border: '1px solid var(--separator)',
-                minHeight: '72px',
-              }}
-              placeholder="添加说明..."
+              className="w-full resize-none rounded-md border border-[var(--separator)] bg-[var(--shelf)] px-3 py-2.5 text-sm outline-none transition-colors hover:border-[var(--box-border)] focus:border-[var(--accent)]"
+              style={{ color: 'var(--ink)', minHeight: '72px' }}
+              placeholder="给这张照片写一句说明…"
               maxLength={30}
               value={captionDraft}
               onChange={(e) => setCaptionDraft(e.target.value)}
