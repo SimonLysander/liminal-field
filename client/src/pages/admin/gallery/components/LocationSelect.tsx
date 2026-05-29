@@ -215,13 +215,15 @@ export function PhotoMetadataFields({ tags, fileSize, dimensions, onChange }: Ph
               {prefix && (
                 <span className="shrink-0 text-xs" style={{ color: 'var(--ink-ghost)' }}>{prefix}</span>
               )}
-              <Input
+              {/* 裸 input,无自身边框/底色——外层盒子才是唯一的「框」,避免框中框 */}
+              <input
                 type="text"
                 value={rawValue}
                 onChange={(e) => handleFieldChange(key, e.target.value, format)}
                 onBlur={(e) => handleFieldBlur(key, e.target.value, pattern)}
                 placeholder={placeholder}
-                className="h-7 flex-1 border-0 bg-transparent px-1 text-sm hover:bg-transparent focus:bg-transparent"
+                className="min-w-0 flex-1 bg-transparent px-1 text-sm outline-none placeholder:text-[var(--ink-ghost)]"
+                style={{ color: 'var(--ink)' }}
               />
               {suffix && (
                 <span className="shrink-0 text-xs" style={{ color: 'var(--ink-ghost)' }}>{suffix}</span>

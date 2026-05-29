@@ -278,20 +278,20 @@ export function PhotoEditModal({
         <X size={12} strokeWidth={2} />
       </button>
 
-      {/* ── 照片预览区：横幅在上方（全宽），竖幅在左侧（固定宽） ── */}
+      {/* ── 照片预览区：横幅按宽度铺满(不留两侧灰边),竖幅在左侧固定宽 ── */}
       <div
         className={`relative flex shrink-0 items-center justify-center ${isLandscape ? 'w-full' : 'w-[320px]'}`}
         style={{
           background: 'var(--shelf)',
-          ...(isLandscape ? { height: '340px' } : { minHeight: '480px' }),
+          ...(isLandscape ? {} : { minHeight: '480px' }),
         }}
       >
-        {/* 大图预览 */}
+        {/* 大图预览:横幅 w-full + 高度随比例(铺满宽、不裁切、无侧边灰条);竖幅 contain */}
         <img
           src={photo.url}
           alt={photo.fileName}
-          className="h-full w-full object-contain"
-          style={isLandscape ? { maxHeight: '320px' } : { maxHeight: '420px' }}
+          className={isLandscape ? 'block w-full' : 'h-full w-full object-contain'}
+          style={isLandscape ? { maxHeight: '70vh' } : { maxHeight: '420px' }}
           draggable={false}
         />
 
