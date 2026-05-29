@@ -144,6 +144,13 @@ export class AgentService {
       messages: modelMessages,
       tools,
       stopWhen: stepCountIs(10),
+      // 流中途错误(provider 在响应头已发出后失败)结构化记录,否则只进 SSE error part、
+      // 服务端无日志,违反「不静默失败」纪律,排错只能靠猜。
+      onError: ({ error }: { error: unknown }) =>
+        this.logger.error(
+          'streamText 流错误',
+          error instanceof Error ? error.stack : String(error),
+        ),
       // 画廊按需注图:只注「刚执行那步」新调的 view_photos 的图——看完那步注一次,之后不每步重发
       // (模型对图的描述已写进上下文,够后续用;要再看它会再调 view_photos → 下一步再注)。省视觉 token、提速。
       prepareStep: gallery
@@ -249,18 +256,31 @@ export class AgentService {
           ),
         );
         if (delta.length === 0) return;
-        void this.lifecycle.onAfterChat(
-          sessionKey,
-          delta,
-          aiConfig.contextWindow,
-          agentInstanceKey,
-        );
+        void this.lifecycle
+          .onAfterChat(
+            sessionKey,
+            delta,
+            aiConfig.contextWindow,
+            agentInstanceKey,
+          )
+          .catch((err: unknown) =>
+            this.logger.error(
+              `onAfterChat 调用异常 sessionKey=${sessionKey}`,
+              err instanceof Error ? err.stack : String(err),
+            ),
+          );
       },
     });
     // consumeStream:客户端断开/按停时也把流消费完,确保 onFinish 触发 → 持久化本轮
     // 「已生成的内容」(可能只是部分回复;若断在出文本前则 assistant 为空,被
     // dropContentlessMessages 丢弃,只留 user)。保证的是不损坏/不留毒,而非完整回复。
-    void result.consumeStream();
+    // consumeStream 返回 PromiseLike(无 .catch),用 Promise.resolve 包一层再挂错误日志
+    void Promise.resolve(result.consumeStream()).catch((err: unknown) =>
+      this.logger.error(
+        'consumeStream 失败',
+        err instanceof Error ? err.stack : String(err),
+      ),
+    );
     return response;
   }
 }

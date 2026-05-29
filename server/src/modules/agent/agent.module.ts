@@ -46,8 +46,11 @@ import { SettingsModule } from '../settings/settings.module';
 
 @Module({
   imports: [
-    // EventEmitter 在模块级注册（app.module.ts 未全局注册）
-    EventEmitterModule.forRoot(),
+    // EventEmitter 在模块级注册（app.module.ts 未全局注册）。
+    // maxListeners 调高(默认 10):每个 sub-agent-progress SSE 订阅给同一 emitter
+    // 加 2 个 listener(step+done),多标签页/并发订阅 ≥5 个就会触发
+    // MaxListenersExceededWarning。断开时 teardown 会正确移除,无真实泄漏。
+    EventEmitterModule.forRoot({ maxListeners: 50 }),
     TypegooseModule.forFeature([AgentMemory, AgentSession]),
     ContentModule,
     WorkspaceModule,

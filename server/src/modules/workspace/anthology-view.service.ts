@@ -658,7 +658,8 @@ export class AnthologyViewService {
 
   /**
    * 发布最新版（供一键发布全部 publish-all 统一派发;实现 ScopePublisher）。
-   * 文集特有:先逐条发布所有有内容的条目,再整集上线。
+   * 文集特有顺序(2026-05-28 决策,见 publishEntry 守卫):先整集上线,再逐条发布条目。
+   * ——单条目发布要求文集必须已发布(publishEntry 守卫),故 publish-all 同样「容器先、条目后」。
    */
   async publishLatest(contentItemId: string): Promise<void> {
     await this.publishAnthology(contentItemId);

@@ -15,7 +15,7 @@
  * - agent.afterChat    → CompactionListener（触发 compaction 检查）
  * - agent.afterToolUse → ToolUseListener（记录工具调用日志）
  */
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SessionHandler } from './session.handler';
 import { MemoryHandler } from './memory.handler';
@@ -32,6 +32,8 @@ const SESSION_PAGE_LIMIT = 50;
 
 @Injectable()
 export class AgentLifecycle {
+  private readonly logger = new Logger(AgentLifecycle.name);
+
   constructor(
     private readonly session: SessionHandler,
     private readonly memory: MemoryHandler,
@@ -175,7 +177,18 @@ export class AgentLifecycle {
     agentInstanceKey?: string,
   ): Promise<void> {
     const memoryKey = agentInstanceKey ?? sessionKey;
-    await this.session.save(sessionKey, newMessages);
+    // 持久化失败必须显式记录:本钩子在 streamText.onFinish 里被 void 调用,
+    // 若 session.save 抛错(Mongo 瞬时故障等)且不捕获,本轮对话会静默丢失
+    // (append-only 历史缺这一轮),还会产生进程级 unhandledRejection。
+    try {
+      await this.session.save(sessionKey, newMessages);
+    } catch (err) {
+      this.logger.error(
+        `onAfterChat 持久化失败 sessionKey=${sessionKey}: 本轮 ${newMessages.length} 条消息未入库`,
+        err instanceof Error ? err.stack : String(err),
+      );
+      return; // 未成功持久化则不触发 compaction(无新内容可压缩)
+    }
     this.eventEmitter.emit('agent.afterChat', {
       agentKey: memoryKey,
       sessionKey,
