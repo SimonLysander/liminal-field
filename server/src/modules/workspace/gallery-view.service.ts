@@ -796,7 +796,7 @@ export class GalleryViewService {
   }
 
   /**
-   * V2: 读取照片文件，优先磁盘，磁盘未命中时回退 OSS draft/ 路径。
+   * V2: 读取照片文件，优先磁盘，磁盘未命中时回退 OSS 草稿对象。
    * 草稿照片提交后异步下载到磁盘，在此期间从 OSS 直接读取避免 404。
    */
   async readPhotoBuffer(
@@ -809,8 +809,10 @@ export class GalleryViewService {
         fileName,
       );
     } catch {
-      // 磁盘未命中（异步归档尚未完成），回退 OSS draft 路径
-      const ossKey = `draft/${contentItemId}/${fileName}`;
+      // 磁盘未命中（异步归档尚未完成），回退 OSS 草稿对象。
+      // key 必须与 uploadDraftAsset 写入格式一致 = `{contentItemId}/{fileName}`（无 draft/ 前缀），
+      // 否则必然 404（曾因带 draft/ 前缀导致归档完成前代理读图全挂）。
+      const ossKey = `${contentItemId}/${fileName}`;
       const buffer = await this.minioService.getObject(ossKey);
       const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
       const mimeMap: Record<string, string> = {

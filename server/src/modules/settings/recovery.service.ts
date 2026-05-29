@@ -345,7 +345,10 @@ export class RecoveryService {
     recoveredIds: Set<string>,
   ): Promise<void> {
     if (!manifest) {
-      // 无清单：平铺恢复，所有内容放到 notes 根节点
+      // 无清单：平铺恢复，所有内容放到 notes 根节点。
+      // order 必须递增 —— 否则同 order=0 多节点的列表顺序退化为 Mongo 内部 _id 序，
+      // 与恢复前不一致（虽无清单已无法还原真实顺序，至少保证稳定确定的排列）。
+      let order = 0;
       for (const contentId of recoveredIds) {
         const item = await this.contentRepository.findById(contentId);
         if (!item) continue;
@@ -353,7 +356,7 @@ export class RecoveryService {
           name: item.latestVersion?.title ?? contentId,
           scope: 'notes',
           contentItemId: contentId,
-          order: 0,
+          order: order++,
         });
       }
       return;
