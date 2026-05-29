@@ -26,7 +26,7 @@ import {
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { X, Loader2 } from 'lucide-react';
+import { X, Loader2, RotateCcw } from 'lucide-react';
 import type { LocalEditorPhoto, UploadProgress } from '../hooks/useGalleryEditor';
 
 // ---------- Props ----------
@@ -38,6 +38,8 @@ interface PhotoGridProps {
   onPhotoClick: (index: number) => void;
   onDelete: (photoId: string) => void;
   onUpload: (files: File[]) => void;
+  /** 重试失败照片上传，photoId 对应 error:true 的占位卡 */
+  onRetry: (photoId: string) => void;
 }
 
 // ---------- SortablePhoto ----------
@@ -54,11 +56,13 @@ function SortablePhoto({
   index,
   onClick,
   onDelete,
+  onRetry,
 }: {
   photo: LocalEditorPhoto;
   index: number;
   onClick: (index: number) => void;
   onDelete: (photoId: string) => void;
+  onRetry: (photoId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: photo.id,
@@ -95,6 +99,28 @@ function SortablePhoto({
         </div>
       )}
 
+      {/* 上传失败遮罩：淡红底 + 重试按钮（纸墨风格，无胶囊） */}
+      {photo.error && (
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-center gap-1.5"
+          style={{ background: 'var(--danger-soft)' }}
+        >
+          <button
+            className="flex items-center gap-1 rounded px-2 py-1 text-2xs font-medium transition-colors duration-150"
+            style={{
+              color: 'var(--danger)',
+              border: '1px solid var(--danger)',
+              background: 'transparent',
+            }}
+            onClick={(e) => { e.stopPropagation(); onRetry(photo.id); }}
+            aria-label="重试上传"
+          >
+            <RotateCcw size={10} strokeWidth={2.5} />
+            重试
+          </button>
+        </div>
+      )}
+
       {/* 删除按钮 — hover 时右上角出现（Apple Photos 风格） */}
       <button
         className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full opacity-0 transition-opacity duration-150 group-hover:opacity-100"
@@ -120,7 +146,7 @@ function SortablePhoto({
 
 // ---------- PhotoGrid ----------
 
-export function PhotoGrid({ photos, uploadProgress, onReorder, onPhotoClick, onDelete, onUpload }: PhotoGridProps) {
+export function PhotoGrid({ photos, uploadProgress, onReorder, onPhotoClick, onDelete, onUpload, onRetry }: PhotoGridProps) {
   const uploading = uploadProgress !== null;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -173,6 +199,7 @@ export function PhotoGrid({ photos, uploadProgress, onReorder, onPhotoClick, onD
                 index={index}
                 onClick={onPhotoClick}
                 onDelete={onDelete}
+                onRetry={onRetry}
               />
             ))}
 

@@ -39,6 +39,10 @@ export interface LocalEditorPhoto {
   fileName: string;
   /** 上传中标记，网格显示加载遮罩 */
   uploading?: boolean;
+  /** 上传失败标记：true 时显示错误态 + 重试按钮，占位卡保留不删除 */
+  error?: boolean;
+  /** 原始 File 对象，重试时用于重新上传；成功后的真实照片无此字段 */
+  file?: File;
   size: number;
   caption: string;
   tags: Record<string, string>;
@@ -88,6 +92,8 @@ export interface GalleryEditorActions {
   updateCaption: (photoId: string, caption: string) => void;
   updatePhotoTags: (photoId: string, tags: Record<string, string>) => void;
   uploadPhotos: (files: File[]) => Promise<void>;
+  /** 重试单张失败照片：用卡片保存的原始 File 重新走上传逻辑，再失败继续保持 error 态 */
+  retryUpload: (photoId: string) => Promise<void>;
   deletePhoto: (photoId: string) => void;
   setCover: (photoId: string) => void;
   updateDate: (date: string | null) => void;
@@ -333,6 +339,7 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     if (!id) return;
 
     // 立即用本地预览插入占位卡片（uploading=true），用户马上看到缩略图+加载态
+    // file 字段保留原始 File 对象，供失败后重试使用
     const placeholders: LocalEditorPhoto[] = files.map((file) => ({
       id: `pending-${file.name}-${Date.now()}`,
       url: URL.createObjectURL(file),
@@ -341,15 +348,18 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
       caption: '',
       tags: {},
       uploading: true,
+      file,
     }));
     setPhotos((prev) => [...prev, ...placeholders]);
 
     // 逐张上传，完成后用真实数据替换对应占位
+    // 失败时改为 error:true 保留占位卡（不删除），用户可在卡片上点重试
     let failed = 0;
     setUploadProgress({ uploaded: 0, total: files.length });
     for (let i = 0; i < files.length; i++) {
       try {
         const r = await galleryApi.uploadPhoto(id, files[i]);
+        // 成功：用真实照片数据替换占位，释放本地预览 URL
         setPhotos((prev) =>
           prev.map((p) =>
             p.id === placeholders[i].id
@@ -357,16 +367,72 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
               : p,
           ),
         );
-      } catch {
-        setPhotos((prev) => prev.filter((p) => p.id !== placeholders[i].id));
+        URL.revokeObjectURL(placeholders[i].url);
+      } catch (err) {
+        // 失败：保留占位卡并标为 error 态，不删除、不释放 blob URL（重试时还要展示预览）
+        console.error(`[useGalleryEditor] 上传失败 ${files[i].name}:`, err);
+        setPhotos((prev) =>
+          prev.map((p) =>
+            p.id === placeholders[i].id
+              ? { ...p, uploading: false, error: true }
+              : p,
+          ),
+        );
         failed++;
       }
-      URL.revokeObjectURL(placeholders[i].url);
       setUploadProgress({ uploaded: i + 1, total: files.length });
     }
     setUploadProgress(null);
     setSaveStatus('dirty');
-    if (failed > 0) banner.error(`${failed} 张照片上传失败`);
+    if (failed > 0) banner.error(`${failed} 张照片上传失败，可在卡片上点「重试」`);
+  }, []);
+
+  /**
+   * 重试单张失败照片：
+   *   1. 找到 error:true 的占位卡，取出保存的原始 File
+   *   2. 置回 uploading:true / error:false
+   *   3. 重新调 API，成功替换成真实照片，再失败继续保持 error:true
+   */
+  const retryUpload = useCallback(async (photoId: string) => {
+    const id = effectiveIdRef.current;
+    if (!id) return;
+
+    // 读出占位卡保存的原始 File
+    const targetPhoto = photosRef.current.find((p) => p.id === photoId);
+    if (!targetPhoto?.file) {
+      console.error('[useGalleryEditor] retryUpload: 未找到原始 File，无法重试', photoId);
+      return;
+    }
+    const file = targetPhoto.file;
+
+    // 置回上传中态
+    setPhotos((prev) =>
+      prev.map((p) => (p.id === photoId ? { ...p, uploading: true, error: false } : p)),
+    );
+
+    try {
+      const r = await galleryApi.uploadPhoto(id, file);
+      // 成功：替换为真实照片数据，释放 blob URL
+      setPhotos((prev) => {
+        const placeholder = prev.find((p) => p.id === photoId);
+        if (placeholder?.url.startsWith('blob:')) {
+          URL.revokeObjectURL(placeholder.url);
+        }
+        return prev.map((p) =>
+          p.id === photoId
+            ? { id: r.fileName, url: r.url, fileName: r.fileName, size: r.size, caption: '', tags: r.exif }
+            : p,
+        );
+      });
+      setSaveStatus('dirty');
+    } catch (err) {
+      // 再失败：回到 error 态，保留卡片供用户再次重试
+      console.error(`[useGalleryEditor] 重试上传失败 ${file.name}:`, err);
+      setPhotos((prev) =>
+        prev.map((p) => (p.id === photoId ? { ...p, uploading: false, error: true } : p)),
+      );
+      banner.error(`「${file.name}」重试失败，请稍后再试`);
+    }
   }, []);
 
   /** 删除照片：纯本地操作，从 photos 数组移除 + 标记 dirty。MinIO 清理在 commit/discard 时统一处理。 */
@@ -437,6 +503,7 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     updateCaption,
     updatePhotoTags,
     uploadPhotos,
+    retryUpload,
     deletePhoto,
     setCover,
     updateDate,

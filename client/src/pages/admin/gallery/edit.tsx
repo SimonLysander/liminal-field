@@ -82,6 +82,7 @@ export default function GalleryEditPage() {
     updateCaption,
     updatePhotoTags,
     uploadPhotos,
+    retryUpload,
     uploadProgress,
     deletePhoto,
     setCover,
@@ -262,6 +263,7 @@ export default function GalleryEditPage() {
             onPhotoClick={handlePhotoClick}
             onDelete={deletePhoto}
             onUpload={(files) => void uploadPhotos(files)}
+            onRetry={(photoId) => void retryUpload(photoId)}
           />
 
           {/* 日期 + 地点 */}
