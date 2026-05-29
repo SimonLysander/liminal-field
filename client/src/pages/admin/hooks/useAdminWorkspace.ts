@@ -70,9 +70,10 @@ export function useAdminWorkspace() {
         ? await structureApi.getChildren(parentId, { visibility: 'all', scope: 'notes' })
         : await structureApi.getRootNodes({ visibility: 'all', scope: 'notes' });
       setNodes(result.children);
-      const folderPath = result.path.filter((n) => n.type === 'FOLDER');
-      setPathNodes(folderPath);
-      setBreadcrumb(folderPath.map((n) => ({ id: n.id, name: n.name })));
+      // 节点同质化:路径含所有祖先(不再只留 type==='FOLDER'),这样进入任意节点(含叶子)
+      // 都能正确显示它自己的正文 + 面包屑,并在它下面新建子页面。
+      setPathNodes(result.path);
+      setBreadcrumb(result.path.map((n) => ({ id: n.id, name: n.name })));
     } catch (loadError) {
       // parentId 不存在（404）→ 清掉无效 topic，fallback 到根节点
       const { isApiError } = await import('@/services/request');

@@ -14,7 +14,7 @@
 import { ContentFade, LoadingState } from '@/components/LoadingState';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import type { StructureNode } from '@/services/structure';
-import { ChevronLeft, ChevronRight, Folder, Plus, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileStack, Folder, Plus, RefreshCw } from 'lucide-react';
 import { useCallback, useState } from 'react';
 
 /* ---------- Types ---------- */
@@ -50,7 +50,6 @@ function NodeItem({
   isSelected,
   isDragging,
   dropTarget,
-  onSelect,
   onEnterFolder,
   onDragStart,
   onDragOver,
@@ -70,7 +69,10 @@ function NodeItem({
   onDragEnd: () => void;
   onDrop: (e: React.DragEvent) => void;
 }) {
-  const isFolder = node.type === 'FOLDER';
+  // 节点同质化:点任意节点都进入它(看正文 + 在它下新建子页面)。
+  // node.type==='FOLDER' 仅表示"有子节点"(后端按子节点数算),只用于图标/箭头的"有子"提示,
+  // 不再是文件夹 vs 文稿的交互之分。
+  const hasChildren = node.type === 'FOLDER';
   const isDropTarget = dropTarget?.nodeId === node.id;
 
   return (
@@ -103,17 +105,11 @@ function NodeItem({
         onDragOver={(e) => onDragOver(e, node.id)}
         onDragEnd={onDragEnd}
         onDrop={onDrop}
-        onClick={() => {
-          if (isFolder) {
-            onEnterFolder(node);
-          } else {
-            onSelect(node);
-          }
-        }}
+        onClick={() => onEnterFolder(node)}
       >
-        {/* Icon / 序号 */}
-        {isFolder ? (
-          <Folder
+        {/* 有子节点 = 带层级页面图标;叶子 = 序号 */}
+        {hasChildren ? (
+          <FileStack
             size={14}
             strokeWidth={1.5}
             className="shrink-0"
@@ -138,8 +134,8 @@ function NodeItem({
           {node.name}
         </span>
 
-        {/* 文件夹用 chevron 提示可展开 */}
-        {isFolder && (
+        {/* 有子节点用 chevron 提示可钻入 */}
+        {hasChildren && (
           <ChevronRight
             size={12}
             strokeWidth={1.5}
