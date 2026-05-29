@@ -388,15 +388,16 @@
 /* ========== Global Resets & Typography ========== */
 
 :root {
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+  /* 全站统一霞鹜文楷(2026-05-29):品牌字体,UI/标题/阅读体一律 LXGW WenKai 打头,
+   * 系统字体仅作缺字/emoji 兜底。webfont 见 index.html(ZeoSeven 292 动态子集,按需下字)。
+   * 西文/数字用该字族原生,不另配西文(见 design-language §4.2)。Logo 走 Alex Brush 不受影响。 */
+  --font-sans: "LXGW WenKai", -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
     "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
-  --font-serif: "New York", "Iowan Old Style", "Apple Garamond", Baskerville,
+  --font-serif: "LXGW WenKai", "New York", "Iowan Old Style", "Apple Garamond", Baskerville,
     Georgia, ui-serif, serif;
-  /* 阅读体:霞鹜文楷(子集 webfont,见 index.html 注入 ZeoSeven 292)+ 系统宋兜底。
-   * 西文/数字用该字族原生,不另配西文(实测配对反而割裂,见 design-language §4.2)。 */
   --font-reading: "LXGW WenKai", "Songti SC", "Songti TC", var(--font-serif);
   --font-mono: "SF Mono", SFMono-Regular, ui-monospace, Menlo, Consolas, monospace;
-  --font-title: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+  --font-title: "LXGW WenKai", -apple-system, BlinkMacSystemFont, "SF Pro Display",
     "Segoe UI", Helvetica, Arial, sans-serif;
   /*
    * Border radius — tiered system, px values scale with element size.
