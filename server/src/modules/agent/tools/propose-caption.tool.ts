@@ -15,7 +15,10 @@ export function createProposeCaptionTool(
 ) {
   return tool({
     description:
-      '为某张照片提议图说(caption)。传 fileName + caption(+可选 reason)。图说要短、具体、贴合画面与随笔语气。用户会在界面上一键应用。',
+      '为某张照片**提议**图说(caption)。传 fileName + caption(+可选 reason)。' +
+      '**这只是提议,不会自动生效**——用户要在卡片上点「应用」才真正写入照片。' +
+      '所以调用后请说类似「我提议了图说『…』,满意就点应用」,**绝不要**说「已更新/已改好/已保存」(改动还没生效,那是假的)。' +
+      '图说要短、具体、贴合画面与随笔语气。',
     inputSchema: jsonSchema<{
       fileName: string;
       caption: string;

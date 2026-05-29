@@ -136,7 +136,6 @@ export class AgentService {
       string,
       { b64: string; mediaType: string }
     >();
-    const visibleFileNames = new Set<string>();
 
     // 6. 调用 streamText：AI SDK 内置 ReAct 循环，stopWhen 限制最多 10 步防止无限循环
     const result = streamText({
@@ -145,25 +144,29 @@ export class AgentService {
       messages: modelMessages,
       tools,
       stopWhen: stepCountIs(10),
-      // 画廊按需注图:扫已执行步骤里的 view_photos,把点名且存在的照片字节注入本步 user message。
-      // 累加语义——之前步看过的图后续步仍可见(模型不会"看完就忘")。
+      // 画廊按需注图:只注「刚执行那步」新调的 view_photos 的图——看完那步注一次,之后不每步重发
+      // (模型对图的描述已写进上下文,够后续用;要再看它会再调 view_photos → 下一步再注)。省视觉 token、提速。
       prepareStep: gallery
         ? async ({ steps, messages }) => {
-            for (const s of steps)
-              for (const call of s.toolCalls ?? []) {
-                if (call.toolName !== 'view_photos') continue;
-                const fileNames =
-                  (call.input as { fileNames?: string[] })?.fileNames ?? [];
-                for (const fn of fileNames)
-                  if (gallery.photos.some((p) => p.fileName === fn))
-                    visibleFileNames.add(fn);
-              }
-            if (visibleFileNames.size === 0) return {};
+            const lastStep = steps[steps.length - 1];
+            const fresh: string[] = [];
+            for (const call of lastStep?.toolCalls ?? []) {
+              if (call.toolName !== 'view_photos') continue;
+              const fileNames =
+                (call.input as { fileNames?: string[] })?.fileNames ?? [];
+              for (const fn of fileNames)
+                if (
+                  gallery.photos.some((p) => p.fileName === fn) &&
+                  !fresh.includes(fn)
+                )
+                  fresh.push(fn);
+            }
+            if (fresh.length === 0) return {};
             const imageParts: Array<
               | { type: 'text'; text: string }
               | { type: 'image'; image: string; mediaType: string }
             > = [];
-            for (const fn of visibleFileNames) {
+            for (const fn of fresh) {
               let img = galleryImageCache.get(fn);
               if (!img) {
                 try {
