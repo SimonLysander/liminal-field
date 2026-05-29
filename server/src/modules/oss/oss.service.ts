@@ -259,8 +259,13 @@ export class OssService implements OnModuleInit, MinioDraftStorageStatus {
     cover: 'image/resize,w_400/format,webp',
     /** 详情轮播 ~1200px */
     detail: 'image/resize,w_1200/format,webp',
-    /** agent 视觉注入 ~1280px:够模型看清写图说,远非高清,多图也扛得住 */
-    vision: 'image/resize,w_1280/format,webp',
+    /**
+     * agent 视觉注入守卫:**最长边**封顶 896 + limit_1(只降不升)+ webp。
+     * - limit_1:原图小于阈值则原样返回——「发现超大才降到阈值下」,本就小的不动;
+     * - l_(最长边)而非 w_(宽):竖图也守得住,封住总分辨率 → 封住视觉 token(按切片算,与文件大小无关);
+     * - 视觉 token 大致随分辨率^2,896 比 1280 砍掉约一半,写图说够清晰、又快又省。
+     */
+    vision: 'image/resize,l_896,limit_1/format,webp',
     /** 笔记阅读宽度 ~800px */
     reading: 'image/resize,w_800/format,webp',
     /** Lightbox 全屏 ~2000px */
