@@ -29,7 +29,8 @@ import { PhotoEditModal } from './components/PhotoEditModal';
 import { GalleryProseEditor } from './components/GalleryProseEditor';
 import { MetadataFields } from './components/LocationSelect';
 import { CommitPopover } from './components/CommitPopover';
-import { GalleryAdvisorPanel } from './components/GalleryAdvisorPanel';
+import { CaptionProposalCards } from './components/CaptionProposalCards';
+import { AdvisorSidebar } from '@/components/ai-advisor/AdvisorSidebar';
 import { useGalleryEditor } from './hooks/useGalleryEditor';
 import { settingsApi } from '@/services/settings';
 
@@ -278,7 +279,7 @@ export default function GalleryEditPage() {
       </div>
       </div>
 
-      {/* 右侧:图说写手 Aurora 整列(配了视觉模型才挂),与笔记/文集 advisor 同心智 */}
+      {/* 右侧:图说写手整列(配了视觉模型才挂),与笔记/文集共用 AdvisorSidebar */}
       {hasVision && id && (
         <aside
           className="shrink-0"
@@ -287,12 +288,35 @@ export default function GalleryEditPage() {
             borderLeft: '1px solid var(--separator)',
           }}
         >
-          <GalleryAdvisorPanel
-            postId={id}
-            title={title}
-            prose={prose}
-            photos={photos}
-            onApplyCaption={updateCaption}
+          <AdvisorSidebar
+            sessionKey={`gallery:${id}`}
+            agentInstanceKey={`gallery:${id}`}
+            agentKey="gallery-caption-writer"
+            source="gallery-editor"
+            context={{
+              gallery: {
+                contentItemId: id,
+                title,
+                prose,
+                photos: photos.map((p, i) => ({
+                  index: i,
+                  fileName: p.fileName,
+                  caption: p.caption,
+                  tags: p.tags ?? {},
+                })),
+              },
+            }}
+            greeting="想聊聊这些照片，还是要我写图说？"
+            renderBelowMessages={(chat) => (
+              <CaptionProposalCards
+                proposals={chat.captionProposals}
+                photoUrl={(fn) => photos.find((p) => p.fileName === fn)?.url}
+                onApply={(fn, cap, callId) => {
+                  updateCaption(fn, cap);
+                  chat.resolveCaption(callId);
+                }}
+              />
+            )}
           />
         </aside>
       )}

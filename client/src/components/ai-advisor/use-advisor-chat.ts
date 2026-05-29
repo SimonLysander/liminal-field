@@ -44,25 +44,20 @@ const TIER_NEXT: Record<Tier, Tier> = {
   think: 'flash',
 };
 
-export interface UseAdvisorChatOptions {
-  /** 会话标识,不透明字符串 */
-  sessionKey: string;
-  /** 草稿级 agent 实例标识；多个业务 session 共享这份记忆/tasks。 */
-  agentInstanceKey?: string;
-  /** 后端 agent 入口 key(如 'writing-advisor') */
-  agentKey: string;
-  /** entryContext.source 标记来源(如 'notes-editor' / 'agent-page') */
-  source: string;
-  /** 可选:绑定的文档(侧栏写作顾问传;全页总助手不传) */
-  documentContext?: {
+/**
+ * 场景上下文 —— 原样进后端 entryContext,侧栏与本钩子都不解读内容。
+ * 新场景 = 这里加一个字段 + 后端 entryContext 加对应字段;通用件代码不动。
+ */
+export type AdvisorContext = {
+  /** 富文本场景(笔记/文集):正文 + 文集脉络 */
+  document?: {
     contentItemId?: string;
     title?: string;
     bodyMarkdown?: string;
-    /** 文集场景的整集脉络(标题/描述+条目列表+当前位置);笔记不传 */
     collectionContext?: string;
   };
-  /** 画廊场景:照片清单+随笔。传了即走图说写手链路(entryContext.gallery)。 */
-  galleryContext?: {
+  /** 画廊场景:照片清单 + 随笔 */
+  gallery?: {
     contentItemId: string;
     title: string;
     prose: string;
@@ -73,6 +68,19 @@ export interface UseAdvisorChatOptions {
       tags: Record<string, string>;
     }[];
   };
+};
+
+export interface UseAdvisorChatOptions {
+  /** 会话标识,不透明字符串 */
+  sessionKey: string;
+  /** 草稿级 agent 实例标识；多个业务 session 共享这份记忆/tasks。 */
+  agentInstanceKey?: string;
+  /** 后端 agent 入口 key(如 'writing-advisor') */
+  agentKey: string;
+  /** entryContext.source 标记来源(如 'notes-editor' / 'agent-page') */
+  source: string;
+  /** 场景上下文(原样透传进 entryContext);各场景按需给 document / gallery / 未来字段。 */
+  context?: AdvisorContext;
   /** 后端成功保存本轮新增消息后触发。用于刷新业务会话列表等持久化后动作。 */
   onAfterSave?: () => void;
   /**
@@ -92,8 +100,7 @@ export function useAdvisorChat({
   agentInstanceKey,
   agentKey,
   source,
-  documentContext,
-  galleryContext,
+  context,
   onAfterSave,
   getEditorChildren,
   getEditor,
@@ -106,8 +113,7 @@ export function useAdvisorChat({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   // Ref 层：持有最新值供 transport body 回调 / 懒加载逻辑读取（避免 stale closure）
-  const docRef = useRef(documentContext);
-  const galleryRef = useRef(galleryContext);
+  const contextRef = useRef(context);
   const tierRef = useRef(tier);
   const sessionKeyRef = useRef(sessionKey);
   const agentInstanceKeyRef = useRef(agentInstanceKey);
@@ -116,12 +122,8 @@ export function useAdvisorChat({
   const firstIndexRef = useRef<number>(0);
 
   useEffect(() => {
-    docRef.current = documentContext;
-  }, [documentContext]);
-
-  useEffect(() => {
-    galleryRef.current = galleryContext;
-  }, [galleryContext]);
+    contextRef.current = context;
+  }, [context]);
 
   useEffect(() => {
     sessionKeyRef.current = sessionKey;
@@ -151,8 +153,7 @@ export function useAdvisorChat({
           source,
           sessionKey: sessionKeyRef.current,
           agentInstanceKey: agentInstanceKeyRef.current,
-          documentContext: docRef.current,
-          galleryContext: galleryRef.current,
+          context: contextRef.current,
         }),
         prepareSendMessagesRequest: ({ id, messages, body, trigger, messageId }) => {
           // 后端权威上下文:历史由后端从 agent_sessions 读,前端只发最新这条,
@@ -441,8 +442,7 @@ export function useAdvisorChat({
           source,
           sessionKey,
           agentInstanceKey,
-          documentContext: docRef.current,
-          galleryContext: galleryRef.current,
+          context: contextRef.current,
         }),
       });
     },
@@ -483,17 +483,16 @@ function buildAgentRequestBody({
   source,
   sessionKey,
   agentInstanceKey,
-  documentContext,
-  galleryContext,
+  context,
 }: {
   tier: Tier;
   agentKey: string;
   source: string;
   sessionKey: string;
   agentInstanceKey?: string;
-  documentContext?: UseAdvisorChatOptions['documentContext'];
-  galleryContext?: UseAdvisorChatOptions['galleryContext'];
+  context?: AdvisorContext;
 }) {
+  const document = context?.document;
   return {
     tier,
     agentKey,
@@ -503,16 +502,19 @@ function buildAgentRequestBody({
       source,
       sessionKey,
       agentInstanceKey,
-      document: documentContext?.contentItemId
+      document: document?.contentItemId
         ? {
-            contentItemId: documentContext.contentItemId,
-            title: documentContext.title,
-            bodyMarkdown: documentContext.bodyMarkdown,
-            collectionContext: documentContext.collectionContext,
+            contentItemId: document.contentItemId,
+            title: document.title,
+            bodyMarkdown: document.bodyMarkdown,
+            collectionContext: document.collectionContext,
           }
         : undefined,
       // 画廊场景:照片清单+随笔。后端 get_current_draft(画廊版) 从这里 read,prompt 不塞内容。
-      gallery: galleryContext,
+      gallery: context?.gallery,
     },
   };
 }
+
+/** 钩子返回的完整聊天对象 —— 供 AdvisorSidebar 落地槽(renderBelowMessages)读取。 */
+export type AdvisorChat = ReturnType<typeof useAdvisorChat>;

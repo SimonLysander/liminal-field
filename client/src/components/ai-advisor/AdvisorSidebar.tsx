@@ -1,11 +1,14 @@
 /**
- * AiAdvisorPanel — 写作顾问,编辑器三栏布局的左栏(紧凑侧栏布局)。
+ * AdvisorSidebar — 通用 AI 顾问侧栏(场景无关)。
  *
- * 对话核心(useChat / 会话 / tier / tasks)抽到 useAdvisorChat,与全页总助手共用。
- * 本组件只负责侧栏布局 + 选中文字 add-to-chat + 输入框。
+ * 外壳(会话管理 + 消息流 + 输入框 + 布局)全场景共用;场景差异只经四个口子进来:
+ *   context             —— agent 知道什么(原样进 entryContext)
+ *   agentKey/source     —— 连哪个后端入口
+ *   renderBelowMessages —— 落地槽:消息流与输入框之间的场景专属 UI(拿 chat 自渲染+应用)
+ *   editorBridge        —— 富文本编辑场景的可选适配(选区 chip + 改稿 overlay 桥接 + 审批态)
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Descendant } from 'platejs';
 import { ArrowUp, ChevronDown, Pencil, Plus, Square, Trash2 } from 'lucide-react';
 import {
@@ -15,7 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import type { ChatSelectionAttachment, AnchorPayload } from '@/pages/admin/lib/live-chat-selection';
+import type { ChatSelectionAttachment } from '@/pages/admin/lib/live-chat-selection';
 import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
 import {
   deleteSession,
@@ -29,7 +32,11 @@ import {
 } from './AiReferenceComposer';
 import { MessageList } from './MessageList';
 import { TaskChecklist } from './TaskChecklist';
-import { useAdvisorChat } from './use-advisor-chat';
+import {
+  useAdvisorChat,
+  type AdvisorChat,
+  type AdvisorContext,
+} from './use-advisor-chat';
 import { toAdvisorSendText } from './advisor-send-text';
 
 const GREETINGS = [
@@ -44,65 +51,63 @@ function pickGreeting() {
   return GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
 }
 
-export interface AiAdvisorPanelProps {
-  /** 会话标识,不透明字符串,调用方决定语义 */
-  sessionKey: string;
-  contentItemId?: string;
-  title?: string;
-  bodyMarkdown?: string;
-  /** 文集场景的整集脉络,随 documentContext 注入给后端;笔记不传。 */
-  collectionContext?: string;
-  /** 已显式添加到聊天的编辑器选区引用（Cursor 式 add-to-chat, live range） */
+/** 富文本编辑场景的可选适配:选区 chip + 改稿 overlay 桥接 + 审批态。画廊等非编辑器场景不传。 */
+export interface AdvisorEditorBridge {
+  /** v3 改稿:获取当前 editor.children,供 computeDocDiff 使用。 */
+  getEditorChildren: () => Descendant[];
+  /** v3 改稿:获取当前 Plate editor 实例,供 deserializeMd 使用。 */
+  getEditor: () => unknown;
+  /** v3 改稿:最近 pendingProposal 变化时回调上层(交编辑器叠加审批)。 */
+  onProposalChange: (proposal: Proposal | undefined) => void;
+  /** 已显式添加到聊天的编辑器选区引用(Cursor 式 add-to-chat)。 */
   selectionAttachments?: ChatSelectionAttachment[];
-  /** 移除单个已添加的选区附件 */
   onRemoveSelectionAttachment?: (id: string) => void;
-  /** 清除已添加的选区附件 */
   onClearSelectedText?: () => void;
-  /**
-   * 当前编辑器锚点(selection/cursor)，由 ProseDraftEditor 从 AnchorBridge 中转而来。
-   * 保留给 transport/context 使用；不在 UI 中自动展示，避免拖选即暗示”将改写选中”。
-   */
-  anchor?: AnchorPayload;
-  /**
-   * 发送消息时读取最新锚点。selection 拖拽过程中最新值写在父级 ref 里，
-   * transport body 通过这个 getter 读取，避免为了拿最新锚点而每次 selectionchange 都 setState。
-   */
-  getAnchor?: () => AnchorPayload;
-  /**
-   * v3 改稿：最近 pendingProposal 变化时回调上层。
-   * 上层（ProseDraftEditor）拿到后透传给 ProposalOverlay / useProposalController。
-   * 用 ref 模式避免回调不稳定导致 useEffect 频繁触发。
-   */
-  onProposalChange?: (proposal: Proposal | undefined) => void;
-  /**
-   * v3 改稿：获取当前 editor.children，供 useAdvisorChat 里 computeDocDiff 使用。
-   * 由 ProseDraftEditor 通过 getEditorChildren 传入。
-   */
-  getEditorChildren?: () => Descendant[];
-  /**
-   * v3 改稿：获取当前 Plate editor 实例，供 deserializeMd(editor, newMarkdown) 使用。
-   * 由 ProseDraftEditor 通过 getEditor 传入。
-   */
-  getEditor?: () => unknown;
-  /** 编辑器是否处于审批态 —— 顶栏据此加 accent 浅底,跟左/中栏统一"审批模式"信号 */
+  /** 编辑器是否处于审批态 —— 顶栏据此加 accent 浅底。 */
   inApproval?: boolean;
 }
 
-export function AiAdvisorPanel({
+export interface AdvisorSidebarProps {
+  /** 会话标识,不透明字符串,调用方决定语义 */
+  sessionKey: string;
+  /** 草稿级 agent 实例标识(记忆/tasks/会话列表挂这里);缺省取 sessionKey。 */
+  agentInstanceKey?: string;
+  /** 后端 agent 入口标识,必填(通用件不偏向任何场景) */
+  agentKey: string;
+  /** entryContext.source 标记来源(如 'notes-editor' / 'gallery-editor') */
+  source: string;
+  /** 场景上下文(原样透传进 entryContext);各场景按需给 document / gallery / 未来字段。 */
+  context?: AdvisorContext;
+  /** 空状态问候(可选,缺省随机) */
+  greeting?: string;
+  /** 落地槽:消息流与输入框之间渲染场景专属 UI;拿 chat 自渲染+应用。 */
+  renderBelowMessages?: (chat: AdvisorChat) => ReactNode;
+  /** 富文本编辑场景的可选适配(画廊等不传) */
+  editorBridge?: AdvisorEditorBridge;
+}
+
+export function AdvisorSidebar({
   sessionKey,
-  contentItemId,
-  title,
-  bodyMarkdown,
-  collectionContext,
-  selectionAttachments,
-  onRemoveSelectionAttachment,
-  onClearSelectedText,
-  onProposalChange,
-  getEditorChildren,
-  getEditor,
-  inApproval,
-}: AiAdvisorPanelProps) {
-  const agentInstanceKey = sessionKey;
+  agentInstanceKey: agentInstanceKeyProp,
+  agentKey,
+  source,
+  context,
+  greeting: greetingProp,
+  renderBelowMessages,
+  editorBridge,
+}: AdvisorSidebarProps) {
+  // 编辑器适配:解构成与原 body 一致的局部名,使下方逻辑无需改动
+  const {
+    getEditorChildren,
+    getEditor,
+    onProposalChange,
+    selectionAttachments,
+    onRemoveSelectionAttachment,
+    onClearSelectedText,
+    inApproval,
+  } = editorBridge ?? {};
+
+  const agentInstanceKey = agentInstanceKeyProp ?? sessionKey;
   const [currentSessionKey, setCurrentSessionKey] = useState(sessionKey);
   const [sessions, setSessions] = useState<BusinessSessionSummary[]>([]);
   const [sessionListError, setSessionListError] = useState<string | null>(null);
@@ -111,7 +116,9 @@ export function AiAdvisorPanel({
   const hasPickedInitialSessionRef = useRef(false);
   const userControlledSessionRef = useRef(false);
   const [composerEmpty, setComposerEmpty] = useState(true);
-  const [greeting] = useState(pickGreeting);
+  // 空状态问候:场景给了就用场景的,否则随机一句(只挑一次)
+  const [fallbackGreeting] = useState(pickGreeting);
+  const greeting = greetingProp ?? fallbackGreeting;
   // inline 会话重命名:renaming=true 时顶栏会话名变输入框(回车确认 / Esc 取消)
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
@@ -164,6 +171,16 @@ export function AiAdvisorPanel({
     onProposalChangeRef.current = onProposalChange;
   }, [onProposalChange]);
 
+  const chat = useAdvisorChat({
+    sessionKey: currentSessionKey,
+    agentInstanceKey,
+    agentKey,
+    source,
+    context,
+    onAfterSave: refreshSessions,
+    getEditorChildren,
+    getEditor,
+  });
   const {
     messages,
     status,
@@ -179,16 +196,7 @@ export function AiAdvisorPanel({
     planTitle,
     proposalsByCallId,
     pendingProposal,
-  } = useAdvisorChat({
-    sessionKey: currentSessionKey,
-    agentInstanceKey,
-    agentKey: 'writing-advisor',
-    source: 'notes-editor',
-    documentContext: { contentItemId, title, bodyMarkdown, collectionContext },
-    onAfterSave: refreshSessions,
-    getEditorChildren,
-    getEditor,
-  });
+  } = chat;
 
   // v3 改稿：pendingProposal 变化时通过 ref 回调上层。
   // 用 callId(字符串)作为依赖,避免 pendingProposal 对象引用每次新建(computeDocDiff
@@ -427,6 +435,9 @@ export function AiAdvisorPanel({
           />
         )}
       </div>
+
+      {/* 落地槽:场景专属 UI(如画廊 caption 卡片),钉在输入框上方 */}
+      {renderBelowMessages?.(chat)}
 
       {/* 独立「计划区」:钉在输入框上方。外层 px-3 对齐输入框盒,内层 px-3 对齐框内文字。 */}
       {tasks.some((t) => t.status !== 'done') && (

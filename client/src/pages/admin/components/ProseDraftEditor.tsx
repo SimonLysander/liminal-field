@@ -22,7 +22,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { LoadingState } from '@/components/LoadingState';
 import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
 import { DraftAssetProvider } from '@/contexts/DraftAssetContext';
-import { AiAdvisorPanel } from '@/components/ai-advisor/AiAdvisorPanel';
+import { AdvisorSidebar } from '@/components/ai-advisor/AdvisorSidebar';
 import { PlateMarkdownEditor, type EditorBridgeHandle, type ProposalUiState } from './PlateEditor';
 import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
 import type { ChatSelectionAttachment } from '@/pages/admin/lib/live-chat-selection';
@@ -375,19 +375,27 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
       {/* [1,3]+[2,3] AiAdvisorPanel 独占第三列(row-span 2),内部自管顶栏 + 消息流 */}
       {advisor?.enabled ? (
         <div style={{ gridColumn: 3, gridRow: '1 / span 2', minHeight: 0 }}>
-          <AiAdvisorPanel
+          <AdvisorSidebar
             sessionKey={advisor.sessionKey}
-            contentItemId={advisor.contentItemId}
-            title={editor.state.title}
-            bodyMarkdown={editor.state.bodyMarkdown}
-            collectionContext={advisor.collectionContext}
-            selectionAttachments={chatSelections}
-            onRemoveSelectionAttachment={removeChatSelection}
-            onClearSelectedText={clearChatSelections}
-            onProposalChange={handleProposalChange}
-            getEditorChildren={getEditorChildren}
-            getEditor={getEditor}
-            inApproval={!!proposalUi}
+            agentKey="writing-advisor"
+            source="notes-editor"
+            context={{
+              document: {
+                contentItemId: advisor.contentItemId,
+                title: editor.state.title,
+                bodyMarkdown: editor.state.bodyMarkdown,
+                collectionContext: advisor.collectionContext,
+              },
+            }}
+            editorBridge={{
+              getEditorChildren,
+              getEditor,
+              onProposalChange: handleProposalChange,
+              selectionAttachments: chatSelections,
+              onRemoveSelectionAttachment: removeChatSelection,
+              onClearSelectedText: clearChatSelections,
+              inApproval: !!proposalUi,
+            }}
           />
         </div>
       ) : (
