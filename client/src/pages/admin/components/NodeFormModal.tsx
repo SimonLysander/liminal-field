@@ -1,7 +1,5 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Folder, FileText } from 'lucide-react';
-import type { StructureNodeType } from '@/services/structure';
 import { parseError } from '../helpers';
 import { type ModalState, type NodeSubmitPayload } from '../types';
 import { importApi } from '@/services/import';
@@ -14,8 +12,9 @@ import { FieldError } from '@/components/ui/field-error';
 /**
  * Modal dialog for creating or editing tree nodes.
  *
- * Create mode: user picks "主题"(FOLDER) or "文稿"(DOC), enters a name.
- * DOC creation uses node name as content title — no separate title/summary fields.
+ * 节点同质化(2026-05-29):不再区分主题/文稿,新建即"建一个页面"(都有正文、都能挂子节点)。
+ * Create mode: 只输名称 → 建页面 → 跳编辑器(沿用原 DOC 行为);可选「从文件导入」。
+ * 页面成为"容器"是因为它有了子节点,不在创建时选类型。
  * Edit mode: simple rename dialog.
  *
  * 外壳迁移：原 fixed inset-0 + blur + motion → 统一 <Modal> 标准组件（L3）。
@@ -33,7 +32,6 @@ export const NodeFormModal = ({
   onSubmit: (payload: NodeSubmitPayload) => Promise<void>;
 }) => {
   const [name, setName] = useState(modal.node?.name ?? '');
-  const [type, setType] = useState<StructureNodeType>(modal.node?.type ?? 'FOLDER');
   const [submitting, setSubmitting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState('');
@@ -57,8 +55,9 @@ export const NodeFormModal = ({
       if (isCreate) {
         await onSubmit({
           node: {
+            // 节点同质化:新建即一个页面。type 仅为兼容 DTO,后端已忽略(由是否有子节点决定容器性)。
             name: name.trim(),
-            type,
+            type: 'DOC',
             parentId: modal.parentId,
           },
         });
@@ -100,11 +99,6 @@ export const NodeFormModal = ({
     }
   };
 
-  const typeOptions: { value: StructureNodeType; label: string; icon: React.ReactNode }[] = [
-    { value: 'FOLDER', label: '主题', icon: <Folder size={15} strokeWidth={1.5} /> },
-    { value: 'DOC', label: '文稿', icon: <FileText size={15} strokeWidth={1.5} /> },
-  ];
-
   return (
     <>
       {/* ThresholdOverlay 放在 Modal 外层，确保文件导入时全屏遮罩可见 */}
@@ -136,35 +130,12 @@ export const NodeFormModal = ({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder={isCreate && type === 'DOC' ? '例如：世界观构建笔记' : '例如：世界观构建'}
+              placeholder="例如：世界观构建"
               autoFocus
             />
           </FieldLabel>
 
           {isCreate && (
-            <FieldLabel label="类型">
-              {/* 类型切换按钮组：自定义选中态（accent），原样保留逻辑与样式 */}
-              <div className="flex gap-1.5">
-                {typeOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setType(option.value)}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-colors duration-150"
-                    style={{
-                      background: type === option.value ? 'var(--accent)' : 'var(--shelf)',
-                      color: type === option.value ? 'var(--accent-contrast)' : 'var(--ink-faded)',
-                    }}
-                  >
-                    {option.icon}
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </FieldLabel>
-          )}
-
-          {isCreate && type === 'DOC' && (
             <>
               <input
                 ref={fileInputRef}
