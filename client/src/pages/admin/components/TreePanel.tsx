@@ -86,7 +86,7 @@ const TreeNodeItem = ({
       )}
 
       <div
-        className="group flex cursor-pointer items-center gap-2 rounded-[10px] px-2.5 py-[7px] transition-all duration-150"
+        className="group flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-[7px] transition-all duration-150"
         style={{
           marginLeft: `${depth * 14}px`,
           background: isDropTarget && dropTarget.position === 'inside'

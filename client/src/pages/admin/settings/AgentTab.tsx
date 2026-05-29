@@ -253,7 +253,7 @@ function AgentCard({
 
   return (
     <div
-      className="rounded-xl p-5 space-y-4"
+      className="rounded-lg p-5 space-y-4"
       style={{
         background: 'var(--paper-dark)',
         border: '0.5px solid var(--separator)',

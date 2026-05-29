@@ -7,7 +7,6 @@
  *   - 右侧面板不再有发布/删除操作
  */
 
-import { useState } from 'react';
 import { Plus, Trash2, MoreHorizontal } from 'lucide-react';
 import { ActionButton } from '@/components/ui/action-button';
 import {
@@ -34,8 +33,6 @@ function EntryListRow({
   onClick: () => void;
   onDelete: () => void;
 }) {
-  const [hovered, setHovered] = useState(false);
-
   /*
    * 条目发布状态圆点：
    * - 绿色：已发布且无未发布变更
@@ -50,10 +47,7 @@ function EntryListRow({
 
   return (
     <div
-      className="group flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 transition-colors duration-150"
-      style={{ background: hovered ? 'var(--shelf)' : 'transparent' }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      className="group flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 transition-colors duration-150 hover:bg-[var(--shelf)]"
       onClick={onClick}
     >
       {/* 序号 */}
@@ -89,15 +83,12 @@ function EntryListRow({
 
       {/* hover 显示操作按钮（阻止点击冒泡到行的 onClick） */}
       <div
-        className="flex items-center gap-1 transition-opacity duration-150"
-        style={{ opacity: hovered ? 1 : 0 }}
+        className="flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
         onClick={(e) => e.stopPropagation()}
       >
         <button
-          className="flex h-6 w-6 items-center justify-center rounded-md transition-colors duration-150"
+          className="flex h-6 w-6 items-center justify-center rounded-md transition-colors duration-150 hover:bg-[var(--paper)] hover:text-[var(--mark-red)]"
           style={{ color: 'var(--ink-ghost)' }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--paper)'; e.currentTarget.style.color = 'var(--mark-red)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-ghost)'; }}
           onClick={onDelete}
           title="删除"
         >
@@ -216,10 +207,8 @@ export function EntryListPanel({
             {/* AddEntryPopover 以按钮为锚点就近弹出,无需外部 open state */}
             <AddEntryPopover onSubmit={onAddEntry}>
               <button
-                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors duration-150"
+                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors duration-150 hover:bg-[var(--shelf)]"
                 style={{ color: 'var(--ink-faded)' }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--shelf)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
                 <Plus size={11} strokeWidth={2} />
                 添加条目

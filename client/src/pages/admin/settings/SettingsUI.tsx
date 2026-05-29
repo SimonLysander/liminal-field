@@ -570,7 +570,7 @@ export function Toggle({
       <span
         className="inline-block h-4 w-4 rounded-full transition-transform duration-200"
         style={{
-          background: '#fff',
+          background: 'var(--paper-white)',
           boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
           transform: checked ? 'translateX(18px)' : 'translateX(2px)',
         }}

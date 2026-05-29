@@ -231,8 +231,8 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
               </span>
               {/* Claude 风:一行 · 分隔的极淡提示(Type to search · Space to toggle …)*/}
               <span
-                className="hidden lg:inline"
-                style={{ color: 'var(--ink-ghost)', fontSize: 11 }}
+                className="hidden text-xs lg:inline"
+                style={{ color: 'var(--ink-ghost)' }}
               >
                 ↑↓ 浏览 · ⏎ 接受 · ⌫ 拒绝
               </span>
