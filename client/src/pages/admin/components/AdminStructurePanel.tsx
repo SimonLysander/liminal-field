@@ -280,7 +280,9 @@ export function AdminStructurePanel({
                   className="max-w-[120px] cursor-pointer truncate rounded px-1 py-0.5 text-xs transition-colors duration-150"
                   style={{ color: 'var(--ink-light)' }}
                   title={breadcrumb[0].name}
-                  onClick={() => onGoToBreadcrumb(null)}
+                  // 点父级页面名 → 进入该页(它自己也是一篇笔记),不是回根目录。
+                  // (回根用左侧 < 箭头;面包屑名代表"这个页面",点它应打开它的正文。)
+                  onClick={() => onGoToBreadcrumb(0)}
                 >
                   {breadcrumb[0].name}
                 </span>
