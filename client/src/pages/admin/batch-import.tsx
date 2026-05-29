@@ -21,6 +21,7 @@ import JSZip from 'jszip';
 import { importApi } from '@/services/import';
 import type { BatchParsedItem } from '@/services/import';
 import MarkdownBody from '@/components/shared/MarkdownBody';
+import { Input } from '@/components/ui/input';
 import { useSessionCountdown, markSessionStart, clearSessionStart } from './hooks/useSessionCountdown';
 import { getPendingImportFiles, clearPendingImportFiles } from './batch-import-store';
 
@@ -163,15 +164,36 @@ export default function BatchImportPage() {
   // 从模块 store 获取文件数组（FolderOverviewPanel 选择文件夹后存入，Array.from 复制避免 input 重置后引用失效）
   const [incomingFiles] = useState<File[] | null>(() => getPendingImportFiles());
 
-  // Phase 1: 从 FileList 提取 .md 条目（纯客户端同步计算，用 useMemo 而非 useEffect）
+  // 选中文件夹的原始根名（来自 webkitRelativePath 的第一段，全程不变，用于 JSZip 路径替换）
+  const originalRootPrefix = useMemo(
+    () => incomingFiles?.[0]?.webkitRelativePath.split('/')[0] ?? '',
+    [incomingFiles],
+  );
+
+  // 包裹根节点名：用户可编辑，默认等于所选文件夹名。
+  // 所有内部路径（localEntries.relativePath / checked / selectedPath / parsedMap key）
+  // 统一以 rootName 为第一段（= 服务端收到 zip 里的路径），确保 selectedPaths confirm 时能直接对齐。
+  const [rootName, setRootName] = useState<string>(() => {
+    const files = getPendingImportFiles();
+    return files?.[0]?.webkitRelativePath.split('/')[0] ?? '';
+  });
+  // 用 ref 在异步 useEffect 里读最新 rootName（闭包陷阱保护）
+  const rootNameRef = useRef(rootName);
+  useEffect(() => { rootNameRef.current = rootName; }, [rootName]);
+
+  // Phase 1: 从 FileList 提取 .md 条目
+  // relativePath = `${rootName}/${子路径}`，包含根名段，与服务端 session 里的路径格式保持一致。
   const initialEntries = useMemo<LocalFileEntry[]>(() => {
     if (!incomingFiles || incomingFiles.length === 0) return [];
+    const prefix = incomingFiles[0].webkitRelativePath.split('/')[0]; // 初始根名
     const entries: LocalFileEntry[] = [];
     for (let i = 0; i < incomingFiles.length; i++) {
       const f = incomingFiles[i];
       if (f.webkitRelativePath.endsWith('.md')) {
         const parts = f.webkitRelativePath.split('/');
-        const relativePath = parts.slice(1).join('/');
+        // 保留完整相对路径（根名/子路径），仅在 originalRootPrefix 不同时归一化
+        const subPath = parts.slice(1).join('/');
+        const relativePath = subPath ? prefix + '/' + subPath : prefix;
         entries.push({ relativePath, name: parts[parts.length - 1], file: f });
       }
     }
@@ -180,7 +202,7 @@ export default function BatchImportPage() {
 
   // 本地文件条目（可被恢复逻辑覆盖）
   const [localEntries, setLocalEntries] = useState<LocalFileEntry[]>(initialEntries);
-  // 解析结果（Phase 2，逐步填充）
+  // 解析结果（Phase 2，逐步填充）—— key = 服务端 item.relativePath（含 rootName 前缀）
   const [parsedMap, setParsedMap] = useState<Map<string, BatchParsedItem>>(new Map());
   // 上传+解析进度
   const [parseProgress, setParseProgress] = useState({ done: 0, total: initialEntries.length });
@@ -190,6 +212,25 @@ export default function BatchImportPage() {
 
   const [checked, setChecked] = useState<Set<string>>(() => new Set(initialEntries.map((e) => e.relativePath)));
   const [selectedPath, setSelectedPath] = useState<string | null>(() => initialEntries[0]?.relativePath ?? null);
+
+  // rootName 改变时批量替换 localEntries / parsedMap / checked / selectedPath 里的路径前缀，
+  // 保持所有 key 与当前 rootName 对齐（后端 confirm 用 key 匹配 session，故必须一致）
+  const prevRootNameRef = useRef(rootName);
+  useEffect(() => {
+    const prev = prevRootNameRef.current;
+    if (prev === rootName) return;
+    prevRootNameRef.current = rootName;
+    const replacePrefix = (p: string) =>
+      p.startsWith(prev + '/') ? rootName + p.slice(prev.length) : p;
+    setLocalEntries((es) => es.map((e) => ({ ...e, relativePath: replacePrefix(e.relativePath) })));
+    setParsedMap((m) => {
+      const next = new Map<string, BatchParsedItem>();
+      for (const [k, v] of m) next.set(replacePrefix(k), { ...v, relativePath: replacePrefix(v.relativePath) });
+      return next;
+    });
+    setChecked((s) => new Set([...s].map(replacePrefix)));
+    setSelectedPath((p) => (p ? replacePrefix(p) : p));
+  }, [rootName]);
   const [previewMarkdown, setPreviewMarkdown] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -207,17 +248,20 @@ export default function BatchImportPage() {
     if (!incomingFiles || initialEntries.length === 0 || parseComplete) return;
 
     const run = async () => {
-      const rootPrefix = incomingFiles[0].webkitRelativePath.split('/')[0];
       const zip = new JSZip();
 
-      // 把所有文件加入 zip，保留相对路径（去掉根文件夹名）
+      // 把所有文件加入 zip，用 rootNameRef.current（用户最新填写的根节点名）替换原始文件夹前缀。
+      // 后端收到 rootName/sub/file.md → 将 rootName 建为包裹根节点，内容挂其下。
+      const currentRootName = rootNameRef.current;
       for (let i = 0; i < incomingFiles.length; i++) {
         const f = incomingFiles[i];
-        const relPath = f.webkitRelativePath.startsWith(rootPrefix + '/')
-          ? f.webkitRelativePath.slice(rootPrefix.length + 1)
+        // 剥掉原始前缀（originalRootPrefix），拼上用户可编辑的 rootName
+        const subPath = f.webkitRelativePath.startsWith(originalRootPrefix + '/')
+          ? f.webkitRelativePath.slice(originalRootPrefix.length + 1)
           : f.webkitRelativePath;
-        // 跳过 .DS_Store 等隐藏文件
-        if (relPath.startsWith('.') || relPath.includes('/.')) continue;
+        const relPath = currentRootName ? currentRootName + '/' + subPath : subPath;
+        // 跳过 .DS_Store 等隐藏文件（检查子路径段是否有隐藏名）
+        if (subPath.startsWith('.') || subPath.includes('/.')) continue;
         zip.file(relPath, f);
 
         // 更新进度（打包阶段占 40%）
@@ -244,9 +288,27 @@ export default function BatchImportPage() {
         const result = await importApi.batchParse(formData);
         setBatchId(result.batchId);
 
+        // 用服务端返回的 relativePath（= zip 内路径，含 rootName 前缀）建立 parsedMap，
+        // 同步更新 localEntries / checked / selectedPath 使 key 与服务端对齐。
         const map = new Map<string, BatchParsedItem>();
         for (const item of result.items) map.set(item.relativePath, item);
         setParsedMap(map);
+        setLocalEntries(result.items.map((item) => {
+          // 找原始 File 对象：通过不含根名的子路径在 incomingFiles 里匹配
+          const subPath = item.relativePath.includes('/')
+            ? item.relativePath.slice(item.relativePath.indexOf('/') + 1)
+            : item.relativePath;
+          const origFile = incomingFiles.find((f) =>
+            f.webkitRelativePath.endsWith('/' + subPath) || f.webkitRelativePath === subPath,
+          );
+          return {
+            relativePath: item.relativePath,
+            name: item.relativePath.split('/').pop() ?? item.relativePath,
+            file: origFile ?? (null as unknown as File),
+          };
+        }));
+        setChecked(new Set(result.items.map((i) => i.relativePath)));
+        setSelectedPath(result.items[0]?.relativePath ?? null);
         setParseProgress({ done: initialEntries.length, total: initialEntries.length });
         setParseComplete(true);
 
@@ -263,8 +325,8 @@ export default function BatchImportPage() {
     };
 
     void run();
-     
-  }, [incomingFiles, initialEntries, parentId, parseComplete]);
+
+  }, [incomingFiles, initialEntries, parentId, parseComplete, originalRootPrefix]);
 
   // 恢复已有会话（刷新或从 URL 进入）— 仅处理 API 恢复，sessionStorage 恢复在 state 初始化中完成
   const urlBatchId = searchParams.get('batchId');
@@ -348,7 +410,8 @@ export default function BatchImportPage() {
     }).finally(() => setPreviewLoading(false));
   }, [selectedPath, parsedMap, localEntries]);
 
-  // 树结构
+  // 树结构：localEntries.relativePath 已经包含 rootName 前缀（= 服务端路径格式），直接用。
+  // parsedMap key 与 relativePath 完全对齐，无需额外转换。
   const treeEntries = useMemo(
     () => localEntries.map((e) => ({ relativePath: e.relativePath, parsed: parsedMap.get(e.relativePath) ?? null })),
     [localEntries, parsedMap],
@@ -365,10 +428,11 @@ export default function BatchImportPage() {
   }, []);
 
   const folderCount = useMemo(() => {
+    // relativePath 格式为 rootName/子路径，从 i=2 起跳过包裹根自身，只统计子目录数
     const dirs = new Set<string>();
     for (const e of localEntries) {
       const parts = e.relativePath.split('/');
-      for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join('/'));
+      for (let i = 2; i < parts.length; i++) dirs.add(parts.slice(0, i).join('/'));
     }
     return dirs.size;
   }, [localEntries]);
@@ -506,9 +570,19 @@ export default function BatchImportPage() {
               <ArrowLeft size={14} strokeWidth={1.5} />
               返回
             </button>
-            <span className="text-sm font-medium" style={{ color: 'var(--ink)' }}>
-              导入文件夹{parentName ? ` → 「${parentName}」` : ''}
-            </span>
+            {/* 包裹根节点名——可编辑，默认等于所选文件夹名，导入后作为顶层节点标题 */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs shrink-0" style={{ color: 'var(--ink-ghost)' }}>根节点</span>
+              <Input
+                value={rootName}
+                onChange={(e) => setRootName(e.target.value)}
+                placeholder="导入根节点名"
+                className="h-6 w-40 text-xs px-2"
+              />
+              {parentName && (
+                <span className="text-xs shrink-0" style={{ color: 'var(--ink-faded)' }}>→ 「{parentName}」</span>
+              )}
+            </div>
             {parseComplete && (
               <span className="text-2xs tabular-nums" style={{ color: countdown.urgent ? 'var(--mark-red)' : 'var(--ink-ghost)' }}>
                 {countdown.expired ? '会话已过期' : countdown.display}
