@@ -25,6 +25,7 @@ import { banner } from '@/components/ui/banner-api';
 import { smoothBounce } from '@/lib/motion';
 import { notesApi as contentItemsApi } from '@/services/workspace';
 import type { ContentDetail } from '@/services/workspace';
+import { structureApi } from '@/services/structure';
 import MarkdownBody from '@/components/shared/MarkdownBody';
 import { LoadingState } from '@/components/LoadingState';
 import { X, Sparkles } from 'lucide-react';
@@ -32,14 +33,24 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { useScrollFade } from '@/hooks/use-scroll-fade';
 
 /* ================================================================
- * /note      → NoteListView  已发布文章列表
- * /note/:id  → NoteReader     文章阅读器
+ * 阅读端按 URL query 分发（与 Sidebar 同源：URL 是唯一真相）：
+ *   /note?doc=<id>     → NoteReader   文章阅读器（叶子文档正文）
+ *   /note?topic=<id>   → FolderReader 主题着陆页（节点同质化:文件夹也有自己的正文）
+ *   /note              → NoteListView 未选态邀请
+ *
+ * 节点同质化(2026-05-29)：每个导航节点都有自己的 ContentItem，
+ * 文件夹/主题节点也可能携带正文。与管理端 FolderOverviewPanel 对齐——
+ * 进入文件夹时渲染其自身正文（若有），空正文则回退到邀请空态。
+ * doc 优先于 topic：同时存在时展示具体文档。
  * ================================================================ */
 
 export default function NotePage() {
   const [searchParams] = useSearchParams();
   const noteId = searchParams.get('doc');
-  return noteId ? <NoteReader id={noteId} /> : <NoteListView />;
+  const topicId = searchParams.get('topic');
+  if (noteId) return <NoteReader id={noteId} />;
+  if (topicId) return <FolderReader nodeId={topicId} />;
+  return <NoteListView />;
 }
 
 /* ---------- Empty State ---------- */
@@ -51,6 +62,99 @@ function NoteListView() {
       image="/garden/reading-invite.webp"
       title="选择一篇笔记开始阅读"
     />
+  );
+}
+
+/* ---------- Folder / Topic Landing ---------- */
+
+/**
+ * FolderReader — 主题（文件夹节点）着陆页。
+ *
+ * 节点同质化后文件夹也有自己的 ContentItem，这里渲染其已发布正文。
+ * 与管理端 FolderOverviewPanel 对齐（取正文 → MarkdownBody 渲染 → 空正文不渲染），
+ * 但展示端的子项列表由 Sidebar 抽屉下钻承载，故主面板只负责呈现主题自身正文。
+ *
+ * 数据流：topicId →（公开的 /structure-nodes/:id/path）取末节点拿 contentItemId
+ *        → notesApi.getById（不传 visibility=all，仅取已发布正文）。
+ * 任一步失败或正文为空 → 回退到 NoteListView 邀请空态，不打断阅读体验。
+ */
+function FolderReader({ nodeId }: { nodeId: string }) {
+  const [content, setContent] = useState<ContentDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      setLoading(true);
+      try {
+        // path 末节点即当前主题节点本身，从中取其 ContentItem id
+        const path = await structureApi.getPathByNodeId(nodeId);
+        const self = path[path.length - 1];
+        const contentItemId = self?.contentItemId;
+        if (!contentItemId) {
+          if (!cancelled) setContent(null);
+          return;
+        }
+        // 不传 visibility=all：展示端只读已发布正文，未发布则后端 404，按空正文处理
+        const data = await contentItemsApi.getById(contentItemId);
+        if (!cancelled) setContent(data);
+      } catch {
+        // 主题无正文 / 未发布 / 加载失败：静默降级为空态，沿用既有邀请页
+        if (!cancelled) setContent(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [nodeId]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <LoadingState />
+      </div>
+    );
+  }
+
+  // 主题自身无正文（空 body 或无 ContentItem）→ 回退到既有未选态邀请
+  if (!content || !content.bodyMarkdown) {
+    return <NoteListView />;
+  }
+
+  const title = content.publishedVersion?.title ?? content.latestVersion.title ?? '';
+
+  return (
+    <div className="relative flex w-full items-stretch overflow-hidden">
+      <div className="flex-1 overflow-y-auto py-12">
+        <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 max-[520px]:px-4">
+          {/* 主题标题 — 与 NoteReader 一致的衬线大标题入场 */}
+          <motion.div
+            className="relative mb-10 text-5xl font-bold leading-snug tracking-tight"
+            style={{ fontFamily: 'var(--font-serif)', color: 'var(--ink)' }}
+            initial={{ opacity: 0, y: 10, filter: 'blur(4px)' }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            transition={{ duration: 0.5, ease: smoothBounce }}
+          >
+            {title}
+          </motion.div>
+
+          {/* Markdown 正文 — 复用 NoteReader 同款 prose 容器与 MarkdownBody 渲染 */}
+          <motion.div
+            className="note-prose text-lg leading-[1.9]"
+            style={{ color: 'var(--ink-light)' }}
+            initial={{ opacity: 0, y: 8, filter: 'blur(4px)' }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            transition={{ duration: 0.5, delay: 0.15, ease: smoothBounce }}
+          >
+            <MarkdownBody markdown={content.bodyMarkdown} contentItemId={content.id} />
+          </motion.div>
+        </div>
+      </div>
+    </div>
   );
 }
 
