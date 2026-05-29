@@ -346,7 +346,7 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
       {/* [2,2] 编辑器内容 */}
       <div className="min-w-0 overflow-y-auto overflow-x-hidden" data-scroll-container>
         {editor.error && editor.loaded && (
-          <div className="px-6 py-2" style={{ background: 'rgba(255,59,48,0.06)' }}>
+          <div className="px-6 py-2" style={{ background: 'var(--danger-soft)' }}>
             <p className="text-sm" style={{ color: 'var(--mark-red)' }}>{editor.error}</p>
           </div>
         )}

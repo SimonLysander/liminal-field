@@ -80,7 +80,7 @@ export function VersionStatusPill({ isPublished }: { isPublished: boolean }) {
     <span
       className="inline-flex items-center gap-[5px] rounded-full px-2.5 py-[3px] text-2xs font-medium"
       style={{
-        background: isPublished ? 'rgba(52,199,89,0.1)' : 'var(--accent-soft)',
+        background: isPublished ? 'var(--success-soft)' : 'var(--accent-soft)',
         color: isPublished ? 'var(--mark-green)' : 'var(--ink-faded)',
       }}
     >

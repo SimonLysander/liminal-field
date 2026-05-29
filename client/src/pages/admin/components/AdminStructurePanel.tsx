@@ -368,7 +368,7 @@ export function AdminStructurePanel({
           {loading ? (
             <LoadingState />
           ) : error ? (
-            <div className="rounded-xl p-3" style={{ background: 'rgba(255,59,48,0.06)' }}>
+            <div className="rounded-xl p-3" style={{ background: 'var(--danger-soft)' }}>
               <p className="text-xs" style={{ color: 'var(--mark-red)' }}>
                 {error}
               </p>

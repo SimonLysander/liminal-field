@@ -361,7 +361,7 @@ export const TreePanel = ({
             加载中...
           </div>
         ) : error ? (
-          <div className="rounded-xl p-3" style={{ background: 'rgba(255,59,48,0.06)' }}>
+          <div className="rounded-xl p-3" style={{ background: 'var(--danger-soft)' }}>
             <p className="text-xs" style={{ color: 'var(--mark-red)' }}>{error}</p>
             <button
               className="mt-2 text-xs font-medium transition-colors duration-150"

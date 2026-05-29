@@ -189,6 +189,10 @@
   --mark-green: #3F9D57;  /* 纸墨化成功绿(原 #34C759) */
   --danger: var(--mark-red);
   --success: var(--mark-green);
+  /* 危险/成功 的淡底(状态 pill、错误框)。统一散落各处的硬编码 iOS rgba,
+   * 跟 --accent-soft 同套写法,随主题自动适配明暗。 */
+  --danger-soft: color-mix(in srgb, var(--danger) 7%, transparent);
+  --success-soft: color-mix(in srgb, var(--success) 12%, transparent);
 
   /* Structure */
   --spine: rgba(60,60,67,0.06);
@@ -300,6 +304,9 @@
   --mark-green: #4FBE6E;  /* 纸墨化成功绿(midnight) */
   --danger: var(--mark-red);
   --success: var(--mark-green);
+  /* 暗底下淡底略提不透明度以保可见(同 --accent-soft 的明暗差异处理) */
+  --danger-soft: color-mix(in srgb, var(--danger) 14%, transparent);
+  --success-soft: color-mix(in srgb, var(--success) 18%, transparent);
 
   --spine: rgba(84,84,88,0.18);
   --spine-strong: rgba(84,84,88,0.36);

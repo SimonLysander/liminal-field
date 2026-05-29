@@ -221,14 +221,12 @@ export function MoveToDialog({ node, scope, onConfirm, onClose }: MoveToDialogPr
               {filteredFolders.map((folder) => (
                 <div
                   key={folder.id}
-                  className="flex cursor-pointer items-center gap-2 rounded-[10px] px-2.5 py-[7px] transition-colors duration-150"
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors duration-150 hover:bg-[var(--shelf)]"
                   style={{ color: 'var(--ink-light)' }}
                   onClick={() => enterFolder(folder)}
-                  onMouseOver={(e) => { e.currentTarget.style.background = 'var(--shelf)'; }}
-                  onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
                 >
                   <Folder size={14} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)' }} />
-                  <span className="min-w-0 flex-1 truncate text-sm">
+                  <span className="min-w-0 flex-1 truncate text-base">
                     {folder.name}
                   </span>
                   {folder.hasChildren && (

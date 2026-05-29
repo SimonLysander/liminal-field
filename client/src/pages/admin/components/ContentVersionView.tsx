@@ -122,7 +122,7 @@ export const ContentVersionView = ({
       {loading ? (
         <LoadingState label="加载内容中" />
       ) : error ? (
-        <div className="rounded-xl p-4" style={{ background: 'rgba(255,59,48,0.06)' }}>
+        <div className="rounded-xl p-4" style={{ background: 'var(--danger-soft)' }}>
           <p className="text-sm" style={{ color: 'var(--mark-red)' }}>{error}</p>
         </div>
       ) : (
@@ -321,7 +321,7 @@ function VersionStatusPill({ isPublished, commitHash }: { isPublished: boolean; 
     <span
       className="inline-flex items-center gap-[5px] rounded-full px-2.5 py-[3px] text-2xs font-medium"
       style={{
-        background: isPublished ? 'rgba(52,199,89,0.1)' : 'var(--accent-soft)',
+        background: isPublished ? 'var(--success-soft)' : 'var(--accent-soft)',
         color: isPublished ? 'var(--mark-green)' : 'var(--ink-faded)',
       }}
     >
