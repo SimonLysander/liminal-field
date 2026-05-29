@@ -769,6 +769,27 @@ body.theme-transitioning [data-slate-leaf] {
 .enter-delay-4 { animation-delay: 240ms; }
 .enter-delay-5 { animation-delay: 320ms; }
 
+/* 弹窗(Modal/Dialog)入场/退场 — 复用 §7.2 enter-rise 语义:淡入 + 自下凝聚 + 雾散(blur→清晰),
+ * 退场反向轻沉。替换 shadcn 默认的「左上斜飞 + zoom 弹跳 + duration-200 魔法值」(设计漂移)。
+ * 关键:居中由 Tailwind v4 的独立 `translate: -50% -50%` 属性负责(DialogContent 上的 translate-x/y-[-50%]);
+ * 这里只用 `transform: translateY()` 做「上升」增量——translate 属性与 transform 属性各管一层、自动合成,
+ * 不可在此再写 translate(-50%) 否则与居中叠加致弹窗飞出屏(踩过)。同 .enter-rise 用裸 translateY。
+ * data-state 由 Radix Dialog 驱动;Radix 监听 animationend 决定退场动画跑完再卸载。 */
+@keyframes dialog-rise-in {
+  from { opacity: 0; transform: translateY(8px); filter: blur(4px); }
+  to   { opacity: 1; transform: translateY(0);   filter: blur(0); }
+}
+@keyframes dialog-sink-out {
+  from { opacity: 1; transform: translateY(0);   filter: blur(0); }
+  to   { opacity: 0; transform: translateY(6px); filter: blur(3px); }
+}
+.dialog-motion[data-state='open'] {
+  animation: dialog-rise-in var(--duration-slow) var(--ease-spring) both;
+}
+.dialog-motion[data-state='closed'] {
+  animation: dialog-sink-out var(--duration-fast) var(--ease-out) both;
+}
+
 /* Agent 消息「凝聚」入场(design-language §7.2):模糊→清晰 + 微升,呼应箴言"云雾凝为现实"。
  * 仅元素 mount 时跑一次(消息按 msg.id 稳定 key,流式 token 更新不重放)。比 enter-rise 更克制。 */
 @keyframes agent-msg-rise {

@@ -246,13 +246,15 @@ export function PhotoEditModal({
 
   return (
     // title 传入 sr-only span，满足 Radix Dialog 无障碍要求（不渲染可见标题）。
-    // className 覆盖 DialogContent 默认样式：p-0 去内边距，border-0 去边框，flex 覆盖 grid，
-    // [&>button:last-child]:hidden 隐藏 shadcn 内置关闭按钮，使用自定义绝对定位关闭按钮。
+    // className 覆盖 DialogContent 默认:p-0/border-0 去内边距与边框、flex 覆盖 grid、
+    //   gap-0 去默认 gap-4(否则 sr-only 标题作为首个 flex 子与图片间留 16px、顶部露出弹窗底色)、
+    //   max-h-[90vh]+overflow-hidden 防超屏、[&>button:last-child]:hidden 隐藏 shadcn 内置关闭按钮。
+    //   图片贴弹窗顶边,上方圆角由 rounded-xl 裁切。
     <Modal
       open={open}
       onClose={handleClose}
       title={<span className="sr-only">照片编辑</span>}
-      className={`flex max-h-[90vh] overflow-hidden rounded-xl p-0 border-0 [&>button:last-child]:hidden ${isLandscape ? 'flex-col' : 'flex-row'} max-w-[760px] w-[760px]`}
+      className={`flex gap-0 max-h-[90vh] overflow-hidden rounded-xl p-0 border-0 [&>button:last-child]:hidden ${isLandscape ? 'flex-col' : 'flex-row'} max-w-[760px] w-[760px]`}
     >
       {/* 文件名 — 整个 modal 左上角 */}
       <span
