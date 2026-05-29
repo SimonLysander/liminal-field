@@ -247,6 +247,9 @@ export default function BatchImportPage() {
   useEffect(() => {
     if (!incomingFiles || initialEntries.length === 0 || parseComplete) return;
 
+    // 取消标志：组件卸载或依赖变化时置 true，阻止 await 后的 setState 写入已卸载组件
+    let cancelled = false;
+
     const run = async () => {
       const zip = new JSZip();
 
@@ -266,6 +269,7 @@ export default function BatchImportPage() {
 
         // 更新进度（打包阶段占 40%）
         if (i % 20 === 0) {
+          if (cancelled) return;
           setParseProgress({
             done: Math.round((i / incomingFiles.length) * 0.4 * initialEntries.length),
             total: initialEntries.length,
@@ -274,6 +278,7 @@ export default function BatchImportPage() {
       }
 
       // 生成 zip blob
+      if (cancelled) return;
       setParseProgress({ done: Math.round(0.4 * initialEntries.length), total: initialEntries.length });
       const blob = await zip.generateAsync({ type: 'blob' });
 
@@ -282,10 +287,12 @@ export default function BatchImportPage() {
       formData.append('parentId', parentId);
       formData.append('archive', blob, 'import.zip');
 
+      if (cancelled) return;
       setParseProgress({ done: Math.round(0.5 * initialEntries.length), total: initialEntries.length });
 
       try {
         const result = await importApi.batchParse(formData);
+        if (cancelled) return;
         setBatchId(result.batchId);
 
         // 用服务端返回的 relativePath（= zip 内路径，含 rootName 前缀）建立 parsedMap，
@@ -320,12 +327,14 @@ export default function BatchImportPage() {
         url.searchParams.set('batchId', result.batchId);
         window.history.replaceState(null, '', url.toString());
       } catch (err) {
+        if (cancelled) return;
         banner.error(`解析失败: ${err instanceof Error ? err.message : String(err)}`);
       }
     };
 
     void run();
 
+    return () => { cancelled = true; };
   }, [incomingFiles, initialEntries, parentId, parseComplete, originalRootPrefix]);
 
   // 恢复已有会话（刷新或从 URL 进入）— 仅处理 API 恢复，sessionStorage 恢复在 state 初始化中完成

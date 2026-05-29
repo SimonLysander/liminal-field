@@ -138,6 +138,15 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
   useEffect(() => { locationRef.current = location; }, [location]);
   useEffect(() => { coverRef.current = coverPhotoFileName; }, [coverPhotoFileName]);
 
+  // 组件卸载时释放所有仍存活的 error 占位卡的 blob: URL，防内存泄漏。
+  // 上传成功后 blob: URL 已在 uploadPhotos/retryUpload 中即时 revoke；
+  // 这里兜底清理卸载时仍为 error 态（未重试、未删除）的卡片。
+  useEffect(() => () => {
+    for (const p of photosRef.current) {
+      if (p.url?.startsWith('blob:')) URL.revokeObjectURL(p.url);
+    }
+  }, []);
+
   // local-first 本地缓冲:与笔记/文集统一,每次改动即时镜像 localStorage,崩溃/刷新/关页不丢。
   // 解构出各方法(均 useCallback by storageKey,引用稳定),避免依赖整个 buffer 对象致 effect 抖动。
   const {
@@ -265,14 +274,15 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     }
   }, [buildSavePayload, beginLocalSync, endLocalSync]);
 
-  // saveStatus 变为 dirty 后 1500ms 触发自动保存
+  // saveStatus 变为 dirty 后 1500ms 触发自动保存。
+  // 依赖只需 saveStatus（触发条件）和 saveDraft（稳定 useCallback，内部通过 *Ref.current 读最新值），
+  // 不枚举各字段——否则 postId 切换时闭包会捕获旧 effectiveIdRef / storageKey，导致跨帖保存错位。
   useEffect(() => {
     const id = effectiveIdRef.current;
     if (!id || saveStatus !== 'dirty') return;
     const timer = window.setTimeout(() => void saveDraft(), 1500);
     return () => window.clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [saveStatus, postId, title, prose, photos, date, location, coverPhotoFileName]);
+  }, [saveStatus, saveDraft]);
 
   // ─── 文本更新（标记 dirty，触发 debounce） ───
 
@@ -435,10 +445,15 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     }
   }, []);
 
-  /** 删除照片：纯本地操作，从 photos 数组移除 + 标记 dirty。MinIO 清理在 commit/discard 时统一处理。 */
+  /** 删除照片：纯本地操作，从 photos 数组移除 + 标记 dirty。MinIO 清理在 commit/discard 时统一处理。
+   *  error 态占位卡持有 blob: URL（重试预览用）——删除时必须主动释放，防内存泄漏。 */
   const deletePhoto = useCallback((photoId: string) => {
     setPhotos((prev) => {
       const deleted = prev.find((p) => p.id === photoId);
+      // error 卡片删除时释放其 blob: URL（服务端真实 URL 不需要 revoke）
+      if (deleted?.url?.startsWith('blob:')) {
+        URL.revokeObjectURL(deleted.url);
+      }
       const next = prev.filter((p) => p.id !== photoId).map((p, i) => ({ ...p, order: i }));
       if (deleted && coverRef.current === deleted.fileName) {
         setCoverPhotoFileName(null);

@@ -121,7 +121,6 @@ const ContentAdmin = () => {
         breadcrumb={workspace.breadcrumb}
         currentParentId={workspace.currentParentId}
         onReload={workspace.reloadLevel}
-        onSelect={workspace.selectNode}
         onEnterFolder={workspace.enterFolder}
         onGoToBreadcrumb={workspace.goToBreadcrumb}
         onAddChild={workspace.openCreate}

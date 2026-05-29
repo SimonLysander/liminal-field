@@ -207,33 +207,29 @@ export function useAdminWorkspace() {
 
   const reorderNodes = useCallback(
     (nodeId: string, targetNodeId: string, position: 'before' | 'after') => {
-      // 乐观更新 UI，然后在外部发 API 请求（不在 setState updater 内做副作用）
-      let reorderedIds: string[] = [];
+      // 乐观更新 UI：在 setState updater 外用当前 nodes 快照计算新顺序，
+      // 避免在 updater 内修改外部变量（updater 必须纯函数，StrictMode 下会运行两次导致状态错误）。
+      const sourceIndex = nodes.findIndex((n) => n.id === nodeId);
+      const targetIndex = nodes.findIndex((n) => n.id === targetNodeId);
+      if (sourceIndex === -1 || targetIndex === -1) return;
 
-      setNodes((current) => {
-        const sourceIndex = current.findIndex((n) => n.id === nodeId);
-        const targetIndex = current.findIndex((n) => n.id === targetNodeId);
-        if (sourceIndex === -1 || targetIndex === -1) return current;
+      const copy = [...nodes];
+      const [moved] = copy.splice(sourceIndex, 1);
+      const insertIndex = position === 'before'
+        ? copy.findIndex((n) => n.id === targetNodeId)
+        : copy.findIndex((n) => n.id === targetNodeId) + 1;
+      copy.splice(insertIndex, 0, moved);
+      const reorderedIds = copy.map((n) => n.id);
 
-        const copy = [...current];
-        const [moved] = copy.splice(sourceIndex, 1);
-        const insertIndex = position === 'before'
-          ? copy.findIndex((n) => n.id === targetNodeId)
-          : copy.findIndex((n) => n.id === targetNodeId) + 1;
-        copy.splice(insertIndex, 0, moved);
-        reorderedIds = copy.map((n) => n.id);
-        return copy;
+      setNodes(copy);
+
+      void structureApi.reorderSiblings(urlFolderId ?? null, reorderedIds).catch((err) => {
+        console.error('[useAdminWorkspace] 排序保存失败:', err);
+        // 排序保存失败时回滚乐观更新
+        void loadLevel(urlFolderId);
       });
-
-      if (reorderedIds.length > 0) {
-        void structureApi.reorderSiblings(urlFolderId ?? null, reorderedIds).catch((err) => {
-          console.error('[useAdminWorkspace] 排序保存失败:', err);
-          // 排序保存失败时回滚乐观更新
-          void loadLevel(urlFolderId);
-        });
-      }
     },
-    [urlFolderId, loadLevel],
+    [nodes, urlFolderId, loadLevel],
   );
 
   /* ================================================================

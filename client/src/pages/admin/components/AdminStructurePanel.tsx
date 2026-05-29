@@ -35,7 +35,7 @@ type AdminStructurePanelProps = {
   /** URL 中的 topic param，直接作为新建操作的 parentId（不从 breadcrumb 推导，避免异步落后） */
   currentParentId: string | undefined;
   onReload: () => void;
-  onSelect: (node: StructureNode) => void;
+  // onSelect 已移除：节点同质化后点击统一走 onEnterFolder（Route A），onSelect 是废死接口
   onEnterFolder: (node: StructureNode) => void;
   onGoToBreadcrumb: (index: number | null) => void;
   onAddChild: (parentId?: string) => void;
@@ -62,7 +62,7 @@ function NodeItem({
   isSelected: boolean;
   isDragging: boolean;
   dropTarget: DropTarget | null;
-  onSelect: (node: StructureNode) => void;
+  // onSelect 已移除：节点同质化后点击统一走 onEnterFolder，不存在独立"选中不进入"路径
   onEnterFolder: (node: StructureNode) => void;
   onDragStart: (nodeId: string) => void;
   onDragOver: (e: React.DragEvent, nodeId: string) => void;
@@ -171,7 +171,6 @@ export function AdminStructurePanel({
   breadcrumb,
   currentParentId,
   onReload,
-  onSelect,
   onEnterFolder,
   onGoToBreadcrumb,
   onAddChild,
@@ -392,7 +391,6 @@ export function AdminStructurePanel({
                   isSelected={selectedNodeId === node.id}
                   isDragging={draggedNodeId === node.id}
                   dropTarget={dropTarget}
-                  onSelect={onSelect}
                   onEnterFolder={onEnterFolder}
                   onDragStart={handleDragStart}
                   onDragOver={handleDragOver}
