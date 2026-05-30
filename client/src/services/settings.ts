@@ -264,6 +264,10 @@ export const settingsApi = {
   getAgentConfigs: () =>
     request<AgentConfig[]>('/settings/agent-configs'),
 
+  /** 获取可用工具池(供 AgentTab UI 渲染 checkbox 列表) */
+  getAvailableTools: () =>
+    request<string[]>('/settings/agent-configs/available-tools'),
+
   /** 保存 agent 入口配置（upsert by key） */
   saveAgentConfig: (key: string, data: Partial<Omit<AgentConfig, 'key'>>) =>
     request<{ success: boolean }>(`/settings/agent-configs/${key}`, {

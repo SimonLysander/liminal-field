@@ -313,6 +313,12 @@ export class SettingsController {
     return this.systemConfigService.getAgentConfigs();
   }
 
+  /** 返回可用工具池(供 AgentTab UI 渲染 checkbox 列表) */
+  @Get('agent-configs/available-tools')
+  async getAvailableTools(): Promise<string[]> {
+    return this.systemConfigService.getAvailableTools();
+  }
+
   /**
    * 保存 agent 入口配置（upsert by key）。
    * key 匹配则更新，不存在则新增。

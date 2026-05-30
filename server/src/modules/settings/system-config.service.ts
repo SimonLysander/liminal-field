@@ -511,6 +511,19 @@ export class SystemConfigService implements OnModuleInit {
   }
 
   /**
+   * 返回所有可用工具池(供 AgentTab 在 UI 上用 checkbox 渲染),合并两个内置入口的
+   * 工具集去重。前端按此池子让用户勾选,不再允许自由 input 任意字符串
+   * (避免拼写错落库,agent 启动时静默忽略)。
+   */
+  getAvailableTools(): string[] {
+    const all = [
+      ...SystemConfigService.WRITING_ADVISOR_TOOLS,
+      ...SystemConfigService.GALLERY_CAPTION_TOOLS,
+    ];
+    return Array.from(new Set(all));
+  }
+
+  /**
    * 保存 agent 入口配置（upsert by key）。
    * key 已存在则合并更新，不存在则追加到数组末尾。
    */

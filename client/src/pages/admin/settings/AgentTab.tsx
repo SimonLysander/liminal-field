@@ -13,7 +13,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Trash2, X } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { banner } from '@/components/ui/banner-api';
 import { settingsApi } from '@/services/settings';
 import type { AgentConfig } from '@/services/settings';
@@ -43,141 +43,89 @@ const TIER_OPTIONS = [
  * 常用工具预设列表，供用户点击快速添加。
  * 实际可用工具以 agent 服务注册的为准，此处仅辅助录入。
  */
-const TOOL_PRESETS = [
-  'search_knowledge_base',
-  'read_document_content',
-  'get_current_draft',
-  'remember',
-  'forget',
-  'sub_agent',
-  'create_task',
-  'update_task',
-];
-
-// ── 子组件：工具列表编辑器 ────────────────────────────────────────
+// ── 子组件：工具列表编辑器(checkbox 池子勾选) ──────────────────────
 
 /**
- * ToolsEditor — 工具名 tag 列表编辑器。
+ * ToolsEditor — 从可用工具池(availableTools)勾选 checkbox。
  *
- * 支持：点击预设快速添加、手动输入（Enter 确认）、点击 tag 删除。
+ * #141 重构(2026-05-30):此前是自由 input + 添加按钮,允许用户输入任意字符串
+ * (拼错会成毒数据,agent 启动时静默忽略)。改成 checkbox 列表,工具池由后端
+ * GET /settings/agent-configs/available-tools 提供。老数据若有不在池中的
+ * 工具(已下线)→ 显示为红字"已下线"+ 移除按钮供清理。
  */
 function ToolsEditor({
   tools,
+  availableTools,
   onChange,
   disabled,
 }: {
   tools: string[];
+  availableTools: string[];
   onChange: (tools: string[]) => void;
   disabled: boolean;
 }) {
-  const [inputValue, setInputValue] = useState('');
-
-  // 添加工具（去重）
-  const addTool = (toolName: string) => {
-    const trimmed = toolName.trim();
-    if (!trimmed || tools.includes(trimmed)) return;
-    onChange([...tools, trimmed]);
-    setInputValue('');
-  };
-
-  // 删除工具
-  const removeTool = (toolName: string) => {
-    onChange(tools.filter((t) => t !== toolName));
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      addTool(inputValue);
+  const toggle = (tool: string) => {
+    if (tools.includes(tool)) {
+      onChange(tools.filter((t) => t !== tool));
+    } else {
+      onChange([...tools, tool]);
     }
   };
+  const orphanTools = tools.filter((t) => !availableTools.includes(t));
 
   return (
-    <div className="space-y-2">
-      {/* 已添加工具 tag 列表 */}
-      <div className="flex flex-wrap gap-1.5 min-h-[2rem]">
-        {tools.length === 0 && (
-          <span className="text-xs py-1" style={{ color: 'var(--ink-ghost)' }}>
-            暂无工具
-          </span>
-        )}
-        {tools.map((tool) => (
-          <span
+    <div className="space-y-1.5">
+      {/* 池中工具 checkbox */}
+      {availableTools.map((tool) => {
+        const checked = tools.includes(tool);
+        return (
+          <label
             key={tool}
-            className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-mono"
-            style={{
-              background: 'color-mix(in srgb, var(--accent) 8%, transparent)',
-              color: 'var(--ink-faded)',
-              border: '1px solid color-mix(in srgb, var(--accent) 20%, transparent)',
-            }}
+            className="flex items-center gap-2 cursor-pointer"
+            style={{ opacity: disabled ? 0.5 : 1 }}
           >
-            {tool}
-            {!disabled && (
-              <button
-                type="button"
-                onClick={() => removeTool(tool)}
-                className="rounded transition-opacity hover:opacity-60"
-                style={{ color: 'var(--ink-ghost)' }}
-                title={`移除 ${tool}`}
-              >
-                <X size={11} />
-              </button>
-            )}
-          </span>
-        ))}
-      </div>
+            <input
+              type="checkbox"
+              checked={checked}
+              disabled={disabled}
+              onChange={() => toggle(tool)}
+              className="h-3.5 w-3.5 cursor-pointer accent-current"
+              style={{ accentColor: 'var(--accent)' }}
+            />
+            <span
+              className="text-xs font-mono"
+              style={{ color: checked ? 'var(--ink)' : 'var(--ink-faded)' }}
+            >
+              {tool}
+            </span>
+          </label>
+        );
+      })}
 
-      {/* 预设工具快速添加 */}
-      <div className="flex flex-wrap gap-1">
-        {TOOL_PRESETS.filter((t) => !tools.includes(t)).map((preset) => (
-          <button
-            key={preset}
-            type="button"
-            disabled={disabled}
-            onClick={() => addTool(preset)}
-            className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs font-mono transition-opacity disabled:opacity-40"
-            style={{
-              color: 'var(--ink-ghost)',
-              border: '1px dashed var(--separator)',
-            }}
-            title={`添加 ${preset}`}
-          >
-            <Plus size={10} />
-            {preset}
-          </button>
-        ))}
-      </div>
-
-      {/* 手动输入 */}
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="输入工具名，按 Enter 添加"
-          disabled={disabled}
-          className="h-8 flex-1 rounded-lg px-3 text-xs outline-none disabled:opacity-50"
-          style={{
-            background: 'var(--shelf)',
-            color: 'var(--ink)',
-            border: '1px solid var(--separator)',
-          }}
-        />
-        <button
-          type="button"
-          disabled={disabled || !inputValue.trim()}
-          onClick={() => addTool(inputValue)}
-          className="h-8 rounded-lg px-3 text-xs font-medium transition-opacity disabled:opacity-40"
-          style={{
-            background: 'var(--shelf)',
-            color: 'var(--ink-faded)',
-            border: '1px solid var(--separator)',
-          }}
-        >
-          添加
-        </button>
-      </div>
+      {/* 老数据残留:不在池中的工具(已下线,标红供清理) */}
+      {orphanTools.length > 0 && (
+        <div className="mt-2 pt-2" style={{ borderTop: '0.5px solid var(--separator)' }}>
+          {orphanTools.map((tool) => (
+            <div
+              key={tool}
+              className="flex items-center gap-2 text-xs font-mono py-0.5"
+              style={{ color: 'var(--mark-red)' }}
+            >
+              <span>⚠ {tool}(已下线,建议移除)</span>
+              {!disabled && (
+                <button
+                  type="button"
+                  onClick={() => toggle(tool)}
+                  className="text-xs underline opacity-80 hover:opacity-100"
+                  style={{ color: 'var(--mark-red)' }}
+                >
+                  移除
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -193,11 +141,13 @@ function ToolsEditor({
 function AgentCard({
   agent,
   providers,
+  availableTools,
   onSave,
   onDelete,
 }: {
   agent: AgentConfig;
   providers: { id: string; name: string }[];
+  availableTools: string[];
   onSave: (updated: Partial<AgentConfig>) => Promise<void>;
   onDelete?: () => Promise<void>;
 }) {
@@ -419,6 +369,7 @@ function AgentCard({
             <div className="mt-1.5">
               <ToolsEditor
                 tools={draft.tools ?? []}
+                availableTools={availableTools}
                 onChange={(tools) => setDraft((d) => ({ ...d, tools }))}
                 disabled={saving}
               />
@@ -474,20 +425,23 @@ function AgentCard({
 export function AgentTab() {
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [providers, setProviders] = useState<{ id: string; name: string }[]>([]);
+  const [availableTools, setAvailableTools] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   // 加载数据：silent=true 时跳过 setLoading(true)，避免页面闪烁
-  // 并行拉 agents + providers(#5 重构:每个 agent 要从 providers 列表里选一个)
+  // 并行拉 agents + providers + availableTools(#5 + #141 重构)
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const [agentsData, configView] = await Promise.all([
+      const [agentsData, configView, toolsData] = await Promise.all([
         settingsApi.getAgentConfigs(),
         settingsApi.getConfig(),
+        settingsApi.getAvailableTools(),
       ]);
       setAgents(agentsData);
       setProviders(
         configView.ai.providers.map((p) => ({ id: p.id, name: p.name })),
       );
+      setAvailableTools(toolsData);
     } catch {
       banner.error('加载 Agent 配置失败');
     } finally {
@@ -540,6 +494,7 @@ export function AgentTab() {
                 key={agent.key}
                 agent={agent}
                 providers={providers}
+                availableTools={availableTools}
                 onSave={(updated) => handleSave(agent.key, updated)}
                 onDelete={undefined}
               />
