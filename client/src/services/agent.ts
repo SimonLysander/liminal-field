@@ -79,37 +79,34 @@ export function deleteSession(sessionKey: string): Promise<void> {
   });
 }
 
-// ── 记忆管理（管理端用） ────────────────────────────────
+// ── 记忆管理(2026-05-30 event log) ────────────────────────
 
-export interface MemoryItem {
+/**
+ * 单条观察(agent_memory_observations 表里一行)。
+ * append-only 岁月史书,前端只读、不可编辑/删除。
+ */
+export type ObservationTopic =
+  | 'identity'
+  | 'personality'
+  | 'aesthetic'
+  | 'method'
+  | 'other';
+
+export interface ObservationItem {
   _id: string;
-  // 后端 AgentMemoryType 实际是 'user' | 'session',但 session 是草稿级会话脉络
-  // (走 sessionMemory + read_conversation_history,不进 UI 管理面板)。
-  // UI 只展示 user 记忆。
-  type: 'user';
-  title: string;
-  content: string;
-  createdAt: string;
-  updatedAt: string;
+  observedAt: string;
+  topic: ObservationTopic;
+  observation: string;
+  context?: string;
+  sessionKey?: string;
 }
 
-/** 获取所有记忆 */
-export function listMemories(): Promise<MemoryItem[]> {
-  return request<MemoryItem[]>('/agent/memories');
+export interface ObservationsResponse {
+  observations: ObservationItem[];
+  currentView: { markdown: string; derivedAt: string } | null;
 }
 
-/** 更新记忆（by _id） */
-export function updateMemory(
-  id: string,
-  data: { type?: string; title?: string; content?: string },
-): Promise<MemoryItem> {
-  return request<MemoryItem>(`/agent/memories/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(data),
-  });
-}
-
-/** 删除记忆（by _id） */
-export function deleteMemory(id: string): Promise<void> {
-  return request(`/agent/memories/${id}`, { method: 'DELETE' });
+/** 取岁月史书 + 当前画像(管理端用) */
+export function listObservations(): Promise<ObservationsResponse> {
+  return request<ObservationsResponse>('/agent/observations');
 }

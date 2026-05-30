@@ -83,9 +83,9 @@ export class SystemConfigService implements OnModuleInit {
     'get_current_draft',
     // 文集条目场景:读同集其它条目当前内容(装配层按是否文集条目实际挂载)
     'read_collection_entry',
-    'remember',
-    'forget',
-    // 召回(#150):recall 配合 prompt user 标题索引读全文;search 按需找 project / 索引外
+    // 2026-05-30 起 remember / forget 已从主 agent 工具集移除(event log 架构):
+    // 记忆塑形由 MemoryObserverService 后台 LLM 自动跑,主 agent 不再显式调写记忆工具。
+    // 只保留读类 recall_memory / search_memories 让模型查岁月史书全量 observations。
     'recall_memory',
     'search_memories',
     'sub_agent',

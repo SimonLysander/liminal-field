@@ -13,8 +13,10 @@
  * - propose_document_rewrite：提议改稿（有 document 时挂）
  * - web_search：联网搜索（配了 TAVILY_API_KEY 等才挂；未配优雅降级）
  * - web_fetch：读 URL 全文（Jina Reader，免 key 总挂）
- * - remember：记住信息，走 MemoryAgentService 处理分类/去重/合并
- * - forget：忘记信息，走 MemoryAgentService 匹配删除
+ * 2026-05-30 起 remember / forget 已从主 agent 工具集移除(event log 架构):
+ * 记忆塑形改由 MemoryObserverService 在 onAfterChat 钩子后台自动跑,
+ * 主 agent 完全不感知;只保留读类 recall_memory / search_memories 让模型在
+ * 当前画像看不到细节时按需查岁月史书全量 observations。
  *
  * 注意：AI SDK v6 的 tool() 返回对象带 `parameters` 字段，
  * 但 streamText 内部读的是 `inputSchema`，需手动桥接。
@@ -24,14 +26,14 @@ import { ContentService } from '../../content/content.service';
 import { NoteViewService } from '../../workspace/note-view.service';
 import { AnthologyViewService } from '../../workspace/anthology-view.service';
 import { MemoryAgentService } from '../memory/memory-agent.service';
+import { AgentMemoryObservationRepository } from '../memory/agent-memory-observation.repository';
 import { SubAgentService } from '../sub-agent/sub-agent.service';
 import { createSearchKnowledgeBaseTool } from '../tools/search-content.tool';
 import { createListKnowledgeBaseTool } from '../tools/list-content.tool';
 import { createReadDocumentContentTool } from '../tools/read-content.tool';
 import { createGetCurrentDraftTool } from '../tools/get-current-document.tool';
 import { createReadCollectionEntryTool } from '../tools/read-collection-entry.tool';
-import { createRememberTool } from '../tools/remember.tool';
-import { createForgetTool } from '../tools/forget.tool';
+// remember / forget 工具文件保留备查(2026-05-30 event log 架构后从主 agent 拔出)
 import { createRecallMemoryTool } from '../tools/recall-memory.tool';
 import { createSearchMemoriesTool } from '../tools/search-memories.tool';
 import { createSubAgentTool } from '../tools/sub-agent.tool';
@@ -65,11 +67,14 @@ export class ToolAssembler {
     private readonly contentService: ContentService,
     private readonly noteViewService: NoteViewService,
     private readonly anthologyViewService: AnthologyViewService,
+    // memoryAgent 仍由 compaction 服务用(compact 走它),工具集已不依赖
     private readonly memoryAgent: MemoryAgentService,
     private readonly subAgentService: SubAgentService,
     private readonly sessionRepo: AgentSessionRepository,
     // tasks 落在 session 记忆(by agentKey),write_tasks 工具写这里,与 onBeforeChat 读回同源
     private readonly memoryRepo: AgentMemoryRepository,
+    // 2026-05-30 event log:recall/search 工具改读 observations
+    private readonly observationRepo: AgentMemoryObservationRepository,
   ) {}
 
   /**
@@ -120,13 +125,11 @@ export class ToolAssembler {
         : {
             get_current_draft: createGetCurrentDraftTool(getDocument),
           }),
-      // 记忆工具：走 Memory Agent 统一处理分类、去重、合并
-      remember: createRememberTool(this.memoryAgent),
-      forget: createForgetTool(this.memoryAgent),
-      // 召回工具(#150 2026-05-31):配合 prompt 顶部 user 标题索引 → recall_memory 读全文;
-      // project 记忆完全不塞 prompt(数量会随项目膨胀),只走 search_memories 按需找
-      recall_memory: createRecallMemoryTool(this.memoryRepo),
-      search_memories: createSearchMemoriesTool(this.memoryRepo),
+      // 召回工具(#150 + 2026-05-30 event log):配合 prompt 顶部 <memories_index> 当前画像,
+      // 想查岁月史书全量 observations 调这两条;
+      // remember/forget 已拔除,塑形由 MemoryObserverService 后台跑(主 agent 无感)。
+      recall_memory: createRecallMemoryTool(this.observationRepo),
+      search_memories: createSearchMemoriesTool(this.observationRepo),
       // 子 agent：主 agent 委派明确任务，独立 context + 只读工具
       sub_agent: createSubAgentTool(
         this.subAgentService,

@@ -28,6 +28,12 @@ import { AgentController } from './agent.controller';
 import { AgentService } from './agent.service';
 import { AgentMemory } from './memory/agent-memory.entity';
 import { AgentMemoryRepository } from './memory/agent-memory.repository';
+import {
+  AgentMemoryObservation,
+  AgentMemoryCurrentView,
+} from './memory/agent-memory-observation.entity';
+import { AgentMemoryObservationRepository } from './memory/agent-memory-observation.repository';
+import { MemoryObserverService } from './memory/memory-observer.service';
 import { AgentSession } from './session/agent-session.entity';
 import { AgentSessionRepository } from './session/agent-session.repository';
 import { CompactionService } from './session/compaction.service';
@@ -51,7 +57,12 @@ import { SettingsModule } from '../settings/settings.module';
     // 加 2 个 listener(step+done),多标签页/并发订阅 ≥5 个就会触发
     // MaxListenersExceededWarning。断开时 teardown 会正确移除,无真实泄漏。
     EventEmitterModule.forRoot({ maxListeners: 50 }),
-    TypegooseModule.forFeature([AgentMemory, AgentSession]),
+    TypegooseModule.forFeature([
+      AgentMemory,
+      AgentSession,
+      AgentMemoryObservation,
+      AgentMemoryCurrentView,
+    ]),
     ContentModule,
     WorkspaceModule,
     SettingsModule,
@@ -71,9 +82,11 @@ import { SettingsModule } from '../settings/settings.module';
     // 底层服务与仓储
     AgentService,
     AgentMemoryRepository,
+    AgentMemoryObservationRepository,
     AgentSessionRepository,
     CompactionService,
     MemoryAgentService,
+    MemoryObserverService,
     SubAgentService,
   ],
 })

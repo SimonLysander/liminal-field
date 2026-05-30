@@ -18,7 +18,6 @@ import {
   Param,
   Patch,
   Post,
-  Put,
   Query,
   Res,
   Sse,
@@ -30,7 +29,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AgentService } from './agent.service';
 import { AgentLifecycle } from './lifecycle/agent-lifecycle.service';
 import { AgentMemoryRepository } from './memory/agent-memory.repository';
-import type { AgentMemoryType } from './memory/agent-memory.entity';
+import { AgentMemoryObservationRepository } from './memory/agent-memory-observation.repository';
 import { AgentChatDto } from './dto/agent-chat.dto';
 
 @Controller()
@@ -39,6 +38,7 @@ export class AgentController {
     private readonly agentService: AgentService,
     private readonly lifecycle: AgentLifecycle,
     private readonly memoryRepo: AgentMemoryRepository,
+    private readonly observationRepo: AgentMemoryObservationRepository,
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
@@ -145,31 +145,34 @@ export class AgentController {
     return { ok: true };
   }
 
-  // ── 记忆管理（管理端用） ────────────────────────────────
+  // ── 记忆管理（管理端用,2026-05-30 改 readonly observations 时间序列） ──
 
-  /** 获取所有记忆 */
+  /**
+   * 列岁月史书全量 observations(按 observedAt 倒序)+ 当前画像 markdown。
+   * 2026-05-30 起前端 MemoriesSection 改读这个,不再走旧 /agent/memories。
+   * 不暴露删除/更新——event log 是 append-only 岁月史书。
+   */
+  @Get('agent/observations')
+  async listObservations() {
+    const [observations, currentView] = await Promise.all([
+      this.observationRepo.findAll(),
+      this.observationRepo.findCurrentView(),
+    ]);
+    return {
+      observations,
+      currentView: currentView
+        ? { markdown: currentView.markdown, derivedAt: currentView.derivedAt }
+        : null,
+    };
+  }
+
+  // ── 旧记忆接口(冻结) ────────────────────────────────
+  // 2026-05-30 event log 架构后,旧 user 记忆已迁移到 observations。
+  // 保留 list 接口让后续 settings 可以 readonly 翻阅历史快照,但 update/delete 已下线。
+
+  /** 获取所有旧记忆(冻结,仅历史查阅) */
   @Get('agent/memories')
   async listMemories() {
     return this.memoryRepo.findAll();
-  }
-
-  /** 更新记忆（by _id） */
-  @Put('agent/memories/:id')
-  async updateMemory(
-    @Param('id') id: string,
-    @Body() dto: { type?: AgentMemoryType; title?: string; content?: string },
-  ) {
-    const updated = await this.memoryRepo.updateById(id, dto);
-    if (!updated) {
-      throw new Error(`Memory not found: ${id}`);
-    }
-    return updated;
-  }
-
-  /** 删除记忆（by _id） */
-  @Delete('agent/memories/:id')
-  async deleteMemory(@Param('id') id: string) {
-    await this.memoryRepo.deleteById(id);
-    return { ok: true };
   }
 }

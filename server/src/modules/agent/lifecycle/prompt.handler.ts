@@ -35,8 +35,16 @@ export interface BuildSystemPromptParams {
     birthday: string;
     bio: string;
   };
-  /** type=user 的记忆（注入标题索引；全文走 recall_memory 按需读，#150 2026-05-31） */
+  /**
+   * 旧版 user 记忆(2026-05-30 起仅作降级路径,新架构走 memoriesView)。
+   * 迁移后此字段一般传空数组。
+   */
   coreMemories: AgentMemory[];
+  /**
+   * 2026-05-30(#150 event log 架构):observer 派生的当前画像 markdown。
+   * 有值优先注入 <memories_index>;无值时降级用 coreMemories 标题索引。
+   */
+  memoriesView?: string;
   /**
    * 本草稿 session 记忆的 content（compaction 把超窗口旧对话提炼出的会话脉络）。
    * 替代旧 sessionSummary——脉络的归宿是 session 记忆,不再有独立 summary 概念。
@@ -111,10 +119,15 @@ export class PromptHandler {
 - 发现值得长期记住的信息,随手 remember(context 会重置,没记的会丢)
 </tools>`);
 
-    // 4. ——— User 记忆：标题索引(2026-05-31 按需化,#150)———
-    // 此前全文注入,user 记忆增长后会膨胀 prompt;改成只塞标题索引,
-    // 要看任一条全文调 recall_memory(title);索引外想查调 search_memories(query)。
-    if (params.coreMemories.length > 0) {
+    // 4. ——— 当前画像(2026-05-30 event log 架构,#150 续)———
+    // 由 MemoryObserverService 在后台 LLM 派生(基于所有 observations),
+    // 按 topic 分段(身份/性格/审美/方法)。岁月史书全量可用 recall_memory / search_memories 查。
+    if (params.memoriesView && params.memoriesView.trim().length > 0) {
+      sections.push(
+        `<memories_index>\n你对所有者的当前画像(由后台观察者从全量 observations 派生,按四类整理):\n\n${params.memoriesView.trim()}\n\n想查任一时期的具体观察(岁月史书,append-only 全保留),调 search_memories(query) 模糊搜或 recall_memory(query) 精读最近相关条目。\n</memories_index>`,
+      );
+    } else if (params.coreMemories.length > 0) {
+      // 降级路径(迁移期 / view 未派生):用旧 user 记忆标题索引
       const titles = params.coreMemories.map((m) => `- ${m.title}`).join('\n');
       sections.push(
         `<memories_index>\n你对所有者有 ${params.coreMemories.length} 条长期认知。这里只列标题,要看任一条全文调 recall_memory(title);想模糊查内容调 search_memories(query):\n${titles}\n</memories_index>`,

@@ -1,30 +1,36 @@
 import { tool, jsonSchema } from 'ai';
-import type { AgentMemoryRepository } from '../memory/agent-memory.repository';
+import type { AgentMemoryObservationRepository } from '../memory/agent-memory-observation.repository';
+import {
+  OBSERVATION_TOPICS,
+  type ObservationTopic,
+} from '../memory/agent-memory-observation.entity';
 import { toolResult } from './tool-result';
 
 /**
- * search_memories(#150 2026-05-31):模糊搜 user 记忆。
+ * search_memories(2026-05-30 event log 重设,#150 续):跨主题关键词模糊搜 observations。
  *
- * 配合 prompt 顶部 <memories_index> 标题索引:索引外想找(模糊匹配标题/内容)走这条;
- * 查到候选标题后用 recall_memory(title) 读全文。契约见 docs/agent-tools-redesign.md §3.11。
+ * 配合 prompt 顶部 <memories_index> 当前画像 + recall_memory(按主题深读):
+ * 想找跟某个关键词相关的所有观察(可能跨身份/性格/审美/方法多类)时调这条。
  *
- * 契约要点(对照 §1 ToolResult + §2 边角铁律):
- * - summary = 一行 TL;DR("命中 N 条:A、B、C …")
- * - detail  = 本页候选列表,每条 "- 标题"
- * - meta    = { status, total, shown, offset, hasMore, nextOffset } —— 铁律 1"不静默丢"
- * - 不搜 session 类型:防内部会话脉络命中泄漏(与 recall 一致策略)
+ * 契约对照 docs/agent-tools-redesign.md §1 + §2:
+ * - summary = TL;DR(命中 N 条 + 头几条预览)
+ * - detail  = 命中列表,每条:YYYY-MM-DD [topic] observation
+ * - meta    = { status, total, shown, offset, hasMore, nextOffset, list }
  */
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
 
-export function createSearchMemoriesTool(memoryRepo: AgentMemoryRepository) {
+export function createSearchMemoriesTool(
+  observationRepo: AgentMemoryObservationRepository,
+) {
   return tool({
     description:
-      '模糊搜 user 记忆(匹配标题 + 内容,case-insensitive),返回候选标题列表(不返全文)。' +
-      '索引里看不到合适标题就来这搜;查到候选后用 recall_memory(title) 读全文。' +
-      '截断时 meta 会给 hasMore + nextOffset,可用 offset 续取。',
+      '关键词模糊搜跨主题的所有者观察(matches observation 字段 + context 字段)。' +
+      '想找跟具体话题/事物相关的观察轨迹时用这条;想看某个 topic 的所有最近观察用 recall_memory。' +
+      '可选 topic 过滤;截断时 meta 给 hasMore + nextOffset,可用 offset 续取。',
     inputSchema: jsonSchema<{
       query: string;
+      topic?: ObservationTopic;
       limit?: number;
       offset?: number;
     }>({
@@ -33,7 +39,13 @@ export function createSearchMemoriesTool(memoryRepo: AgentMemoryRepository) {
         query: {
           type: 'string',
           description:
-            '关键词(模糊匹配 title + content);空串则按更新时间倒序返全部',
+            '关键词(case-insensitive 模糊匹配 observation + context);空串则按时间倒序返全部',
+        },
+        topic: {
+          type: 'string',
+          enum: OBSERVATION_TOPICS as unknown as string[],
+          description:
+            '可选:限定在某个 topic 内搜(identity / personality / aesthetic / method / other)',
         },
         limit: {
           type: 'number',
@@ -48,31 +60,41 @@ export function createSearchMemoriesTool(memoryRepo: AgentMemoryRepository) {
     }),
     execute: async ({
       query,
+      topic,
       limit,
       offset,
     }: {
       query: string;
+      topic?: ObservationTopic;
       limit?: number;
       offset?: number;
     }) => {
+      if (topic && !OBSERVATION_TOPICS.includes(topic)) {
+        return toolResult(
+          `topic 不合法,可选:${OBSERVATION_TOPICS.join(' / ')}(留空表示跨主题搜)`,
+          undefined,
+          { status: 'invalid' },
+        );
+      }
       const effLimit = Math.min(
         Math.max(1, Math.floor(limit ?? DEFAULT_LIMIT)),
         MAX_LIMIT,
       );
       const effOffset = Math.max(0, Math.floor(offset ?? 0));
 
-      // 简单模糊匹配:取 user 全量 → 内存里 case-insensitive 过滤
-      // 个人 KB 规模(< 1000 条)直接全表过滤即可,无需上索引
-      // 不搜 session 类型——防 tasks/agentKey 等内部字段命中后泄给模型
-      const all = await memoryRepo.findByTypes(['user']);
+      // 小数据量(<10k)直接内存过滤;若超 10k 再上 mongo text index。
+      // 个人 KB 长期都不会到这量级,YAGNI。
+      const allObservations = topic
+        ? await observationRepo.findRecentByTopic(topic, 5000)
+        : await observationRepo.findRecent(5000);
       const q = query.trim().toLowerCase();
       const matched = q
-        ? all.filter(
-            (m) =>
-              m.title.toLowerCase().includes(q) ||
-              m.content.toLowerCase().includes(q),
+        ? allObservations.filter(
+            (o) =>
+              o.observation.toLowerCase().includes(q) ||
+              (o.context && o.context.toLowerCase().includes(q)),
           )
-        : all;
+        : allObservations;
       const total = matched.length;
       const page = matched.slice(effOffset, effOffset + effLimit);
       const shown = page.length;
@@ -81,23 +103,30 @@ export function createSearchMemoriesTool(memoryRepo: AgentMemoryRepository) {
 
       if (total === 0) {
         return toolResult(
-          q ? `没找到匹配「${query}」的记忆` : '当前没有 user 记忆',
+          q ? `没找到匹配「${query}」的观察` : '当前没有 observations',
           undefined,
           { status: 'not_found', total: 0 },
         );
       }
 
-      // summary:头 3 个标题 + 总数(对照 §3.1 search_knowledge_base 风格)
-      const previewTitles = page
+      const preview = page
         .slice(0, 3)
-        .map((m) => m.title)
+        .map((o) => o.observation.slice(0, 24))
         .join('、');
       const summary = q
-        ? `命中 ${total} 条:${previewTitles}${total > 3 ? ' …' : ''}`
-        : `共 ${total} 条:${previewTitles}${total > 3 ? ' …' : ''}`;
-
-      // detail:本页所有候选,每条一行
-      const detail = page.map((m) => `- ${m.title}`).join('\n');
+        ? `命中 ${total} 条:${preview}${total > 3 ? ' …' : ''}`
+        : `共 ${total} 条:${preview}${total > 3 ? ' …' : ''}`;
+      const detail = page
+        .map((o) => {
+          const date = new Date(o.observedAt).toISOString().slice(0, 10);
+          const ctx = o.context ? ` ⟨${o.context}⟩` : '';
+          return `${date} [${o.topic}] ${o.observation}${ctx}`;
+        })
+        .join('\n');
+      const list = page.map(
+        (o) =>
+          `${new Date(o.observedAt).toISOString().slice(0, 10)} · ${o.observation.slice(0, 40)}`,
+      );
 
       return toolResult(summary, detail, {
         status: 'ok',
@@ -106,9 +135,7 @@ export function createSearchMemoriesTool(memoryRepo: AgentMemoryRepository) {
         offset: effOffset,
         hasMore,
         nextOffset: hasMore ? nextOffset : undefined,
-        // list:候选标题数组,给前端 ToolCallCard 的 NestedList 渲染(⎿ 对齐)。
-        // 与 search_knowledge_base 同约定;contract §3.11 已注明。
-        list: page.map((m) => m.title),
+        list,
       });
     },
   });
