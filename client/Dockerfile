@@ -4,7 +4,7 @@ ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 COPY package.json pnpm-lock.yaml .npmrc* ./
-RUN pnpm install --frozen-lockfile --ignore-scripts --registry https://registry.npmmirror.com
+RUN pnpm install  --ignore-scripts --registry https://registry.npmmirror.com
 COPY . .
 RUN pnpm build
 
