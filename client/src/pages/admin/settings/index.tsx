@@ -57,9 +57,9 @@ const TAB_GROUPS: TabGroup[] = [
   {
     label: '工作区',
     items: [
-      { id: 'agent', label: 'Agent', icon: Bot },
-      { id: 'integration', label: '集成', icon: Puzzle },
       { id: 'sync', label: '同步', icon: RefreshCw },
+      { id: 'integration', label: '集成', icon: Puzzle },
+      { id: 'agent', label: 'Agent', icon: Bot },
     ],
   },
   {
