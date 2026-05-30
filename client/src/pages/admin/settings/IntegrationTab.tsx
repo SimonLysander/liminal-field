@@ -11,7 +11,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Trash2, Plus, CheckCircle2, Pencil } from 'lucide-react';
+import { Trash2, Plus, Pencil } from 'lucide-react';
 import { banner } from '@/components/ui/banner-api';
 import { settingsApi } from '@/services/settings';
 import type { SettingsConfigView } from '@/services/settings';
@@ -126,59 +126,37 @@ function VisionModelField({
 
 function ProviderRow({
   provider,
-  isActive,
-  onActivate,
   onDelete,
   onEdit,
-  activating,
   deleting,
 }: {
   provider: SettingsConfigView['ai']['providers'][number];
-  isActive: boolean;
-  onActivate: () => void;
   onDelete: () => void;
   onEdit: () => void;
-  activating: boolean;
   deleting: boolean;
 }) {
   const providerLabel = AI_PROVIDERS.find((p) => p.id === provider.provider)?.name ?? provider.provider;
+  // #5 重构(2026-05-30):去掉"激活某一个 provider"的概念。配过的都视为可用,
+  // 由各 agent 在 AgentTab 自选使用哪一个。所以这里不再有 isActive/onActivate,
+  // 行也不再 cursor-pointer。
   return (
     <div
-      className="rounded-lg px-3 py-2.5 transition-colors duration-100 cursor-pointer"
+      className="rounded-lg px-3 py-2.5"
       style={{
-        background: isActive
-          ? 'color-mix(in srgb, var(--accent) 8%, transparent)'
-          : 'var(--shelf)',
-        border: `1px solid ${isActive ? 'color-mix(in srgb, var(--accent) 25%, transparent)' : 'var(--separator)'}`,
+        background: 'var(--paper-white)',
+        border: '1px solid var(--separator)',
       }}
-      onClick={isActive || activating ? undefined : onActivate}
-      title={isActive ? '当前已启用' : '点击切换为启用'}
     >
-      {/* 顶行：状态点 + 提供商名 + 操作按钮 */}
+      {/* 顶行：提供商名 + 操作按钮 */}
       <div className="flex items-center gap-3">
-        <span
-          className="h-2 w-2 shrink-0 rounded-full"
-          style={{ background: isActive ? 'var(--mark-green)' : 'var(--separator)' }}
-        />
-
         <span className="flex-1 min-w-0 text-sm font-medium" style={{ color: 'var(--ink)' }}>
           {providerLabel}
         </span>
 
-        {isActive && (
-          <span
-            className="flex items-center gap-1 text-xs font-medium"
-            style={{ color: 'var(--mark-green)' }}
-          >
-            <CheckCircle2 size={12} />
-            启用中
-          </span>
-        )}
-
         {/* 编辑按钮 */}
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); onEdit(); }}
+          onClick={onEdit}
           className="rounded p-1 transition-opacity duration-100"
           style={{ color: 'var(--ink-ghost)' }}
           title="编辑 tier 绑定"
@@ -190,7 +168,7 @@ function ProviderRow({
         <button
           type="button"
           disabled={deleting}
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          onClick={onDelete}
           className="rounded p-1 transition-opacity duration-100 disabled:opacity-40"
           style={{ color: 'var(--ink-ghost)' }}
           title="删除此提供商"
@@ -563,10 +541,9 @@ export function IntegrationTab() {
   const [tavilyApiKey, setTavilyApiKey] = useState('');
   const [savingTavily, setSavingTavily] = useState(false);
 
-  // AI 提供商列表操作状态
+  // AI 提供商列表操作状态(#5 重构去掉"激活"概念,所有 provider 视可用,agent 自选)
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
-  const [activatingId, setActivatingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // System prompt 编辑状态
@@ -618,19 +595,6 @@ export function IntegrationTab() {
     }
   };
 
-  const handleActivate = async (id: string) => {
-    setActivatingId(id);
-    try {
-      await settingsApi.activateAiProvider(id);
-      banner.success('已切换启用提供商');
-      await loadData(true);
-    } catch {
-      banner.error('切换失败');
-    } finally {
-      setActivatingId(null);
-    }
-  };
-
   const handleDelete = async (id: string) => {
     setDeletingId(id);
     try {
@@ -669,7 +633,6 @@ export function IntegrationTab() {
   }
 
   const providers = aiConfig?.providers ?? [];
-  const activeProviderId = aiConfig?.activeProviderId ?? '';
   // 当前正在编辑的提供商对象
   const editingProvider = providers.find((p) => p.id === editingProviderId) ?? null;
 
@@ -765,11 +728,8 @@ export function IntegrationTab() {
               <div key={p.id}>
                 <ProviderRow
                   provider={p}
-                  isActive={p.id === activeProviderId}
-                  onActivate={() => void handleActivate(p.id)}
                   onDelete={() => void handleDelete(p.id)}
                   onEdit={() => setEditingProviderId(editingProviderId === p.id ? null : p.id)}
-                  activating={activatingId === p.id}
                   deleting={deletingId === p.id}
                 />
                 {/* 内联编辑表单（仅当前展开的提供商显示） */}
