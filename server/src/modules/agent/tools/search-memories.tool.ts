@@ -106,6 +106,9 @@ export function createSearchMemoriesTool(memoryRepo: AgentMemoryRepository) {
         offset: effOffset,
         hasMore,
         nextOffset: hasMore ? nextOffset : undefined,
+        // list:候选标题数组,给前端 ToolCallCard 的 NestedList 渲染(⎿ 对齐)。
+        // 与 search_knowledge_base 同约定;contract §3.11 已注明。
+        list: page.map((m) => m.title),
       });
     },
   });

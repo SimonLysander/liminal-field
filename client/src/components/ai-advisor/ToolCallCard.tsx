@@ -37,6 +37,9 @@ const DISPLAY_NAMES: Record<string, string> = {
   get_current_draft: 'Read Current Draft',
   remember: 'Write Memory',
   forget: 'Delete Memory',
+  // #150(2026-05-31):recall = 按标题精读单条;search = 模糊搜候选
+  recall_memory: 'Read Memory',
+  search_memories: 'Search Memory',
   sub_agent: 'Delegate',
   propose_edit: '提议修改',
   // v3 改稿工具:生成完整改稿方案,等待编辑器审批
@@ -51,6 +54,9 @@ const TOOL_ICON: Record<string, LucideIcon> = {
   get_current_draft: FileText,
   remember: Bookmark,
   forget: BookmarkMinus,
+  // #150:recall 按标题读 = 翻开书签那条(BookOpen 同 read 系);search 模糊搜 = Search
+  recall_memory: BookOpen,
+  search_memories: Search,
   sub_agent: Workflow,
   propose_edit: PencilLine,
   // v3 改稿工具:与 propose_edit 同图标规格(PencilLine size=13, strokeWidth=2)

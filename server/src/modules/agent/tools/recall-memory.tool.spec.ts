@@ -27,6 +27,7 @@ interface ParsedResult {
     nextOffset?: number;
     memoryTitle?: string;
     type?: string;
+    list?: string[];
   };
 }
 const parse = (s: unknown) => JSON.parse(s as string) as ParsedResult;
@@ -125,6 +126,8 @@ describe('search_memories tool (§3.11 契约)', () => {
     expect(r.meta?.shown).toBe(2);
     expect(r.meta?.offset).toBe(0);
     expect(r.meta?.hasMore).toBe(false);
+    // meta.list 给前端 NestedList 渲染(与 search_knowledge_base 同约定)
+    expect(r.meta?.list).toEqual(['写作偏好', '身份']);
   });
 
   it('模糊匹配 content:命中正文里的关键词,不只匹配标题', async () => {

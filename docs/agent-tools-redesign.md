@@ -119,6 +119,10 @@ interface ToolResult {
   - 找不到 / session 类型:`summary` `没找到标题为「X」的 user 记忆,回看 <memories_index> 核对标题`,`meta.status:'not_found'`
 - **边角**:user 记忆体量小(一般几百字内),**不分页**(对照 §3.3 read_document_content 是长文才需要 offset/limit);找不到给出"回看索引"的下一步,避免 agent 瞎试。
 
+> **隐式 meta 字段** `list?: string[]`(命中 / 候选项标题数组)给前端 `ToolCallCard` 的
+> NestedList(⎿ 对齐)用。`search_knowledge_base` / `list_knowledge_base` / `search_memories`
+> 都遵循该约定。
+
 ### 3.11 `search_memories`(模糊搜 user 记忆,#150 2026-05-31)
 
 > 索引外想查(模糊匹配 title + content),来这搜;查到候选标题后用 `recall_memory(title)` 读全文。
@@ -128,7 +132,7 @@ interface ToolResult {
 - **返回**
   - `summary`:`命中 23 条:身份、写作偏好、饮食 …`(头 3 个标题 + 总数);0 条 → `没找到匹配「query」的记忆`
   - `detail`:本页候选,每条 `- 标题`(不返 content;模型挑一个再调 recall)
-  - `meta`:`{status:'ok'|'not_found', total, shown, offset, hasMore, nextOffset}`
+  - `meta`:`{status:'ok'|'not_found', total, shown, offset, hasMore, nextOffset, list}`,`list = page.map(title)`(给前端 NestedList 渲染)
 - **边角**:
   - 截断 → 必给 `total + hasMore + nextOffset`,**铁律 1"不静默丢"**
   - 0 条 → `not_found`,不返空字符串
