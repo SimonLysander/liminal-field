@@ -13,7 +13,13 @@ function Calendar({
   className,
   classNames,
   showOutsideDays = true,
-  captionLayout = "label",
+  // 默认 "dropdown":月 + 年都给下拉,生日等"任意年份"场景能快速跳;
+  // 业务想要纯箭头模式可显式传 captionLayout="label" 覆盖
+  captionLayout = "dropdown",
+  // dropdown 模式需要 startMonth/endMonth 给年份下拉一个可选范围;
+  // 默认 1900-2099 覆盖生日 / 重要事件等所有现实场景
+  startMonth = new Date(1900, 0),
+  endMonth = new Date(2099, 11),
   buttonVariant = "ghost",
   formatters,
   components,
@@ -26,6 +32,8 @@ function Calendar({
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
+      startMonth={startMonth}
+      endMonth={endMonth}
       className={cn(
         "bg-background group/calendar p-3 [--cell-size:2rem] [[data-slot=card-content]_&]:bg-transparent [[data-slot=popover-content]_&]:bg-transparent",
         String.raw`rtl:**:[.rdp-button\_next>svg]:rotate-180`,
