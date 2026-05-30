@@ -7,7 +7,6 @@ export interface OwnerProfile {
   name: string;
   birthday: string;
   bio: string;
-  interests: string;
 }
 
 /** Agent 入口配置 */

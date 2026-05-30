@@ -57,7 +57,6 @@ export interface SettingsConfigView {
     name: string;
     birthday: string;
     bio: string;
-    interests: string;
   };
 }
 
@@ -248,7 +247,6 @@ export class SystemConfigService implements OnModuleInit {
         name: config?.ownerProfile?.name || '',
         birthday: config?.ownerProfile?.birthday || '',
         bio: config?.ownerProfile?.bio || '',
-        interests: config?.ownerProfile?.interests || '',
       },
     };
   }
@@ -473,14 +471,12 @@ export class SystemConfigService implements OnModuleInit {
     name: string;
     birthday: string;
     bio: string;
-    interests: string;
   }> {
     const config = await this.repo.get();
     return {
       name: config?.ownerProfile?.name || '',
       birthday: config?.ownerProfile?.birthday || '',
       bio: config?.ownerProfile?.bio || '',
-      interests: config?.ownerProfile?.interests || '',
     };
   }
 
@@ -489,21 +485,18 @@ export class SystemConfigService implements OnModuleInit {
     name?: string;
     birthday?: string;
     bio?: string;
-    interests?: string;
   }): Promise<void> {
     const config = await this.repo.get();
     const existing = config?.ownerProfile || {
       name: '',
       birthday: '',
       bio: '',
-      interests: '',
     };
     await this.repo.patch({
       ownerProfile: {
         name: input.name ?? existing.name,
         birthday: input.birthday ?? existing.birthday,
         bio: input.bio ?? existing.bio,
-        interests: input.interests ?? existing.interests,
       },
     });
     this.logger.log('Owner profile saved');

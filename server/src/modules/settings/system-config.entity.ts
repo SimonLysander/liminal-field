@@ -145,10 +145,6 @@ export class OwnerProfile {
   /** 个人简介（基础能力，如"前端开发、摄影、写作"） */
   @prop({ trim: true, default: '' })
   bio!: string;
-
-  /** 关注领域（如"计算机科学、文学、城市骑行"） */
-  @prop({ trim: true, default: '' })
-  interests!: string;
 }
 
 /**

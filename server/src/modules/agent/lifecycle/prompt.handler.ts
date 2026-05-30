@@ -34,7 +34,6 @@ export interface BuildSystemPromptParams {
     name: string;
     birthday: string;
     bio: string;
-    interests: string;
   };
   /** type=user 的记忆（始终全文注入） */
   coreMemories: AgentMemory[];
@@ -92,7 +91,6 @@ export class PromptHandler {
       const lines = [`你在陪伴 ${owner.name}。`];
       if (owner.birthday) lines.push(`生日：${owner.birthday}`);
       if (owner.bio) lines.push(`简介：${owner.bio}`);
-      if (owner.interests) lines.push(`在意的：${owner.interests}`);
       sections.push(`<owner>\n${lines.join('\n')}\n</owner>`);
     }
 

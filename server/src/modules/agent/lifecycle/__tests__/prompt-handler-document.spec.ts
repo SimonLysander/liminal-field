@@ -4,7 +4,7 @@ describe('PromptHandler <document> 注入硬化(v3)', () => {
   const handler = new PromptHandler();
   const base = {
     coreMemories: [],
-    ownerProfile: { name: '主人', birthday: '', bio: '', interests: '' },
+    ownerProfile: { name: '主人', birthday: '', bio: '' },
   };
 
   it('不再注入 <document> 节(整篇正文不进 prompt)', () => {

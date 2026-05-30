@@ -40,7 +40,7 @@ describe('PromptHandler.buildSystemPrompt', () => {
   it('有 ownerProfile.name → 注入 owner 分节并用真名;role 里也用真名', () => {
     const out = handler.buildSystemPrompt(
       baseParams({
-        ownerProfile: { name: '阿秋', birthday: '', bio: '', interests: '' },
+        ownerProfile: { name: '阿秋', birthday: '', bio: '' },
       }),
     );
     expect(out).toContain('<owner>');
@@ -61,13 +61,11 @@ describe('PromptHandler.buildSystemPrompt', () => {
           name: '阿秋',
           birthday: '1999-01-01',
           bio: '写作者',
-          interests: '哲学',
         },
       }),
     );
     expect(out).toContain('生日：1999-01-01');
     expect(out).toContain('简介：写作者');
-    expect(out).toContain('在意的：哲学');
   });
 
   describe('current_context —— 点名编辑文档;正文不进 prompt(v3.1 Read-before-Edit)', () => {
@@ -229,7 +227,7 @@ describe('PromptHandler.buildSystemPrompt', () => {
   it('分节顺序:owner→role→tools→core_memories→instructions→current_context→tasks', () => {
     const out = handler.buildSystemPrompt(
       baseParams({
-        ownerProfile: { name: '阿秋', birthday: '', bio: '', interests: '' },
+        ownerProfile: { name: '阿秋', birthday: '', bio: '' },
         coreMemories: [mem('核心', '核心记忆')],
         document: { contentItemId: 'ci_1', title: 'T', bodyMarkdown: 'x' },
         tasks: [{ title: 't', status: 'pending' }],
@@ -254,7 +252,7 @@ describe('PromptHandler.buildSystemPrompt', () => {
   it('不泄露产品名或模型名', () => {
     const out = handler.buildSystemPrompt(
       baseParams({
-        ownerProfile: { name: '阿秋', birthday: '', bio: '', interests: '' },
+        ownerProfile: { name: '阿秋', birthday: '', bio: '' },
         document: { contentItemId: 'ci_1', title: 'T', bodyMarkdown: 'x' },
       }),
     );

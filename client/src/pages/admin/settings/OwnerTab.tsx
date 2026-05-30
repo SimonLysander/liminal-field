@@ -1,7 +1,7 @@
 /*
  * OwnerTab — 所有者身份 tab。
  *
- * 只放"你是谁"——昵称 + 生日 + 个人简介 + 关注领域,存 system_config.ownerProfile。
+ * 只放"你是谁"——昵称 + 生日 + 个人简介,存 system_config.ownerProfile。
  * Agent 对你的认知(user/project 记忆)挪到 AgentTab(见 MemoriesSection.tsx)。
  */
 
@@ -35,10 +35,9 @@ interface ProfileData {
   name: string;
   birthday: string;
   bio: string;
-  interests: string;
 }
 
-const EMPTY_PROFILE: ProfileData = { name: '', birthday: '', bio: '', interests: '' };
+const EMPTY_PROFILE: ProfileData = { name: '', birthday: '', bio: '' };
 
 function ProfileSection() {
   const [loading, setLoading] = useState(true);
@@ -47,7 +46,7 @@ function ProfileSection() {
   const [profile, setProfile] = useState<ProfileData>(EMPTY_PROFILE);
   const [draft, setDraft] = useState<ProfileData>(EMPTY_PROFILE);
 
-  const isEmpty = !profile.name && !profile.birthday && !profile.bio && !profile.interests;
+  const isEmpty = !profile.name && !profile.birthday && !profile.bio;
 
   const load = useCallback(async () => {
     try {
@@ -55,7 +54,7 @@ function ProfileSection() {
       setProfile(data);
       setDraft(data);
       // 首次全空时自动进入编辑模式
-      if (!data.name && !data.birthday && !data.bio && !data.interests) {
+      if (!data.name && !data.birthday && !data.bio) {
         setEditing(true);
       }
     } finally {
@@ -96,7 +95,6 @@ function ProfileSection() {
           <ProfileField label="昵称" value={profile.name} />
           <ProfileField label="生日" value={profile.birthday} />
           <ProfileField label="个人简介" value={profile.bio} />
-          <ProfileField label="关注领域" value={profile.interests} />
         </div>
       }
       editContent={
@@ -129,14 +127,6 @@ function ProfileSection() {
                 color: 'var(--ink)',
                 border: '1px solid var(--separator)',
               }}
-            />
-          </div>
-          <div>
-            <FieldLabel>关注领域</FieldLabel>
-            <TextInput
-              value={draft.interests}
-              onChange={(v) => setDraft((d) => ({ ...d, interests: v }))}
-              placeholder="如：计算机科学、文学、城市骑行"
             />
           </div>
         </div>
