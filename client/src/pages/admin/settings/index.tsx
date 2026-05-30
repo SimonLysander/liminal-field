@@ -26,16 +26,49 @@ import { SecurityTab } from './SecurityTab';
 import { AgentTab } from './AgentTab';
 import { OwnerTab } from './OwnerTab';
 
-const TABS = [
-  { id: 'owner', label: '所有者', icon: User },
-  { id: 'sync', label: '同步', icon: RefreshCw },
-  { id: 'storage', label: '存储', icon: HardDrive },
-  { id: 'integration', label: '集成', icon: Puzzle },
-  { id: 'security', label: '安全', icon: Shield },
-  { id: 'agent', label: 'Agent', icon: Bot },
-] as const;
+type TabId =
+  | 'owner'
+  | 'security'
+  | 'agent'
+  | 'integration'
+  | 'sync'
+  | 'storage';
 
-type TabId = (typeof TABS)[number]['id'];
+interface TabItem {
+  id: TabId;
+  label: string;
+  icon: typeof User;
+}
+
+interface TabGroup {
+  label: string;
+  items: TabItem[];
+}
+
+// 业界惯例分三组(GitHub/Vercel/Linear settings):个人 / 工作区 / 系统
+const TAB_GROUPS: TabGroup[] = [
+  {
+    label: '个人',
+    items: [
+      { id: 'owner', label: '资料', icon: User },
+      { id: 'security', label: '安全', icon: Shield },
+    ],
+  },
+  {
+    label: '工作区',
+    items: [
+      { id: 'agent', label: 'Agent', icon: Bot },
+      { id: 'integration', label: '集成', icon: Puzzle },
+      { id: 'sync', label: '同步', icon: RefreshCw },
+    ],
+  },
+  {
+    label: '系统',
+    items: [{ id: 'storage', label: '存储', icon: HardDrive }],
+  },
+];
+
+const TABS: TabItem[] = TAB_GROUPS.flatMap((g) => g.items);
 
 export default function SettingsPage() {
   const { tab } = useParams<{ tab?: string }>();
@@ -54,40 +87,57 @@ export default function SettingsPage() {
     >
       <Topbar />
       <div className="flex flex-1 overflow-hidden">
-        {/* 左侧导航 */}
+        {/* 左侧导航 — 分组(个人 / 工作区 / 系统),业界惯例 GitHub/Vercel/Linear */}
         <nav
-          className="flex w-48 shrink-0 flex-col gap-1 overflow-y-auto px-4 py-9"
+          className="flex w-48 shrink-0 flex-col overflow-y-auto px-3 py-8"
           style={{ borderRight: '0.5px solid var(--separator)' }}
         >
-          {TABS.map((tab) => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className="relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium"
-                style={{
-                  color: active ? 'var(--ink)' : 'var(--ink-faded)',
-                }}
+          {TAB_GROUPS.map((group, gi) => (
+            <div key={group.label} className={gi > 0 ? 'mt-5' : ''}>
+              {/* 分组标签:12px ghost 大写字距,跟 Linear/Vercel 一致 */}
+              <div
+                className="mb-1 px-3 text-2xs font-medium uppercase tracking-wider"
+                style={{ color: 'var(--ink-ghost)' }}
               >
-                {/* 选中态背景 — spring 滑动指示器 */}
-                {active && (
-                  <motion.div
-                    layoutId="settings-tab-indicator"
-                    className="absolute inset-0 rounded-lg"
-                    style={{ background: 'var(--shelf)' }}
-                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                  />
-                )}
-                <span className="relative flex items-center gap-2.5">
-                  <Icon size={16} strokeWidth={1.75} />
-                  {tab.label}
-                </span>
-              </button>
-            );
-          })}
+                {group.label}
+              </div>
+              <div className="flex flex-col gap-0.5">
+                {group.items.map((tab) => {
+                  const Icon = tab.icon;
+                  const active = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setActiveTab(tab.id)}
+                      className="relative flex h-7 items-center gap-2 rounded-sm px-3 text-left text-md"
+                      style={{
+                        color: active ? 'var(--ink)' : 'var(--ink-faded)',
+                      }}
+                    >
+                      {/* 选中态背景 — spring 滑动指示器(28px 高、rounded-sm 紧凑) */}
+                      {active && (
+                        <motion.div
+                          layoutId="settings-tab-indicator"
+                          className="absolute inset-0 rounded-sm"
+                          style={{ background: 'var(--shelf)' }}
+                          transition={{
+                            type: 'spring',
+                            stiffness: 400,
+                            damping: 30,
+                          }}
+                        />
+                      )}
+                      <span className="relative flex items-center gap-2">
+                        <Icon size={14} strokeWidth={1.75} />
+                        {tab.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
 
         {/* 右侧内容区 — tab 切换 fade 过渡 */}
