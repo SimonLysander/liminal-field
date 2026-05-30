@@ -115,6 +115,10 @@ export class SystemConfigService implements OnModuleInit {
     tools: [...SystemConfigService.GALLERY_CAPTION_TOOLS],
     tier: 'vision',
     providerId: '',
+    flashProviderId: '',
+    standardProviderId: '',
+    thinkProviderId: '',
+    visionProviderId: '',
   };
 
   constructor(
@@ -148,6 +152,10 @@ export class SystemConfigService implements OnModuleInit {
             tools: [...SystemConfigService.WRITING_ADVISOR_TOOLS],
             tier: 'standard',
             providerId: '',
+            flashProviderId: '',
+            standardProviderId: '',
+            thinkProviderId: '',
+            visionProviderId: '',
           },
           { ...SystemConfigService.GALLERY_CAPTION_ENTRY },
         ] as AgentEntryConfig[],
@@ -428,8 +436,11 @@ export class SystemConfigService implements OnModuleInit {
     // tier 接受 string：来源含前端传入的运行时值，未知值在下方逻辑兜底为 standard
     tier: string = 'standard',
     /**
-     * 该 agent 自己绑的 providerId(2026-05-30 引入)。优先使用此 provider;
-     * 为空时回退到全局 activeAiProviderId(向后兼容老数据/未配的 agent)。
+     * 已解析的 providerId(2026-05-31 改造,#143)。调用方(AgentService)按 tier
+     * 从 agentConfig 取对应字段——
+     *   flashProviderId / standardProviderId / thinkProviderId / visionProviderId
+     * 任一为空回退到 agentConfig.providerId,再回退到全局 activeAiProviderId。
+     * 此函数只负责按已解析的 providerId 拼 baseUrl/apiKey/model;不做 fallback。
      */
     providerId?: string,
   ): Promise<{
@@ -549,6 +560,10 @@ export class SystemConfigService implements OnModuleInit {
         tools: input.tools ?? [],
         tier: input.tier ?? 'standard',
         providerId: input.providerId ?? '',
+        flashProviderId: input.flashProviderId ?? '',
+        standardProviderId: input.standardProviderId ?? '',
+        thinkProviderId: input.thinkProviderId ?? '',
+        visionProviderId: input.visionProviderId ?? '',
       });
     }
 

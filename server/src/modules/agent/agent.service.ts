@@ -64,11 +64,20 @@ export class AgentService {
       agentConfig?.tier === 'vision'
         ? 'vision'
         : (dto.tier ?? agentConfig?.tier ?? 'standard');
-    // 优先用该 agent 自己绑的 providerId(2026-05-30,#5 重构);
-    // 未绑时 getAiConfig 内部回退 activeAiProviderId,向后兼容
+    // 按 tier 取该 agent 对应 slot 的 providerId(2026-05-31,#143 重构):
+    // flash/standard/think/vision 4 个 slot 各自独立绑,任一空 → 回退到
+    // agentConfig.providerId(全 tier 共用)→ 再回退到全局 activeAiProviderId。
+    const tierProviderId =
+      tier === 'flash'
+        ? agentConfig?.flashProviderId
+        : tier === 'think'
+          ? agentConfig?.thinkProviderId
+          : tier === 'vision'
+            ? agentConfig?.visionProviderId
+            : agentConfig?.standardProviderId;
     const aiConfig = await this.systemConfigService.getAiConfig(
       tier,
-      agentConfig?.providerId,
+      tierProviderId || agentConfig?.providerId,
     );
     if (!aiConfig.baseUrl || !aiConfig.apiKey || !aiConfig.model) {
       throw new BadRequestException(

@@ -168,15 +168,31 @@ function AgentCard({
       tools: [...agent.tools],
       tier: agent.tier,
       providerId: agent.providerId,
+      flashProviderId: agent.flashProviderId,
+      standardProviderId: agent.standardProviderId,
+      thinkProviderId: agent.thinkProviderId,
+      visionProviderId: agent.visionProviderId,
     });
     setEditing(true);
   };
 
-  // #5 重构守卫:必须选了有效 provider 才能启用 agent。
-  // 当前 draft 的 providerId 未选 / 不在 providers 列表中 → 启用开关 disabled。
-  const currentProviderId = draft.providerId ?? agent.providerId;
+  // 启用守卫(#143 改造):当前 agent 默认 tier 对应的 slot 至少有一个有效 provider
+  // (slot 自身 → providerId 全 tier 共用兜底 → 全局 activeAiProviderId 内核兜底)。
+  // 这里只校验前两层(slot + 共用 providerId),因为前端不知 activeAiProviderId。
+  const currentTier = draft.tier ?? agent.tier ?? 'standard';
+  const tierProviderId =
+    currentTier === 'flash'
+      ? (draft.flashProviderId ?? agent.flashProviderId)
+      : currentTier === 'think'
+        ? (draft.thinkProviderId ?? agent.thinkProviderId)
+        : currentTier === 'vision'
+          ? (draft.visionProviderId ?? agent.visionProviderId)
+          : (draft.standardProviderId ?? agent.standardProviderId);
+  const fallbackProviderId = draft.providerId ?? agent.providerId;
+  const effectiveProviderId = tierProviderId || fallbackProviderId;
   const providerValid =
-    currentProviderId !== '' && providers.some((p) => p.id === currentProviderId);
+    effectiveProviderId !== '' &&
+    providers.some((p) => p.id === effectiveProviderId);
   const enableSwitchDisabled = saving || !providerValid;
 
   const cancelEdit = () => {
@@ -325,13 +341,16 @@ function AgentCard({
             />
           </div>
 
-          {/* Provider 选择(#5 重构:每个 agent 自选,启用前必填) */}
+          {/* 模型绑定(#143 改造:4 个 tier 独立选 Provider,留空回退到通用 fallback) */}
           <div>
             <FieldLabel>
-              Provider
+              模型绑定
               {!providerValid && (
-                <span className="ml-1.5 font-normal text-xs" style={{ color: 'var(--mark-red)' }}>
-                  必选,未选时启用被禁用
+                <span
+                  className="ml-1.5 font-normal text-xs"
+                  style={{ color: 'var(--mark-red)' }}
+                >
+                  默认 tier 至少要有一个 Provider 才能启用
                 </span>
               )}
             </FieldLabel>
@@ -340,15 +359,71 @@ function AgentCard({
                 还没有 Provider,请先到「集成」tab 添加。
               </p>
             ) : (
-              <SelectInput
-                value={draft.providerId ?? agent.providerId ?? ''}
-                onChange={(v) => setDraft((d) => ({ ...d, providerId: v }))}
-                options={[
-                  { value: '', label: '— 未选 —' },
-                  ...providers.map((p) => ({ value: p.id, label: p.name })),
-                ]}
-                disabled={saving}
-              />
+              <div className="mt-1 space-y-2">
+                {/* 通用 fallback */}
+                <div className="flex items-center gap-2">
+                  <span
+                    className="w-12 shrink-0 text-xs"
+                    style={{ color: 'var(--ink-ghost)' }}
+                  >
+                    通用
+                  </span>
+                  <div className="flex-1">
+                    <SelectInput
+                      value={draft.providerId ?? agent.providerId ?? ''}
+                      onChange={(v) =>
+                        setDraft((d) => ({ ...d, providerId: v }))
+                      }
+                      options={[
+                        { value: '', label: '— 不指定(用全局默认)—' },
+                        ...providers.map((p) => ({
+                          value: p.id,
+                          label: p.name,
+                        })),
+                      ]}
+                      disabled={saving}
+                    />
+                  </div>
+                </div>
+                {/* 4 个 tier slot — 任意一个为空回退到上方"通用" */}
+                {(
+                  [
+                    { key: 'flashProviderId', label: '快速' },
+                    { key: 'standardProviderId', label: '标准' },
+                    { key: 'thinkProviderId', label: '深思' },
+                    { key: 'visionProviderId', label: '视觉' },
+                  ] as const
+                ).map(({ key, label }) => (
+                  <div key={key} className="flex items-center gap-2">
+                    <span
+                      className="w-12 shrink-0 text-xs"
+                      style={{ color: 'var(--ink-ghost)' }}
+                    >
+                      {label}
+                    </span>
+                    <div className="flex-1">
+                      <SelectInput
+                        value={
+                          (draft[key] as string | undefined) ??
+                          (agent[key] as string) ??
+                          ''
+                        }
+                        onChange={(v) =>
+                          setDraft((d) => ({ ...d, [key]: v }))
+                        }
+                        options={[
+                          { value: '', label: '— 回退到「通用」—' },
+                          ...providers.map((p) => ({
+                            value: p.id,
+                            label: p.name,
+                          })),
+                        ]}
+                        disabled={saving}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 

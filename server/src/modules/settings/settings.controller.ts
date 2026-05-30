@@ -335,6 +335,10 @@ export class SettingsController {
       tools?: string[];
       tier?: string;
       providerId?: string;
+      flashProviderId?: string;
+      standardProviderId?: string;
+      thinkProviderId?: string;
+      visionProviderId?: string;
     },
   ): Promise<{ success: boolean }> {
     await this.systemConfigService.saveAgentConfig(key, dto);

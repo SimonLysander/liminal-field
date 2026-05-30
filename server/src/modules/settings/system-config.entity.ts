@@ -37,13 +37,29 @@ export class AgentEntryConfig {
   tier!: string;
 
   /**
-   * 该 agent 使用的 AI provider id(2026-05-30 引入)。
-   * 概念:provider 配置是「生产侧」(所有配过的都可用),agent 是「消费侧」(自己挑用谁)。
-   * 可选——为空时回退到全局 activeAiProviderId(向后兼容老数据)。
-   * 未来 agent 启用守卫要求必须配此字段才能启用(前端 AgentTab 已加 disabled tooltip)。
+   * 该 agent 使用的 AI provider id(2026-05-30 引入)。fallback 兜底:
+   * 当 4 个 tier 独立 providerId(下方)为空时回退到这个,这个为空时再回退到
+   * 全局 activeAiProviderId。
    */
   @prop({ trim: true, default: '' })
   providerId!: string;
+
+  /**
+   * 4 个 tier 独立 provider 绑定(2026-05-31 引入,#143 用户需求"自由度"):
+   * 每个 tier 调用时优先用对应字段的 provider —— 让用户 mix-and-match。
+   * 任一为空 → 回退到 providerId(上方)→ 回退到全局 activeAiProviderId。
+   */
+  @prop({ trim: true, default: '' })
+  flashProviderId!: string;
+
+  @prop({ trim: true, default: '' })
+  standardProviderId!: string;
+
+  @prop({ trim: true, default: '' })
+  thinkProviderId!: string;
+
+  @prop({ trim: true, default: '' })
+  visionProviderId!: string;
 }
 
 /**
