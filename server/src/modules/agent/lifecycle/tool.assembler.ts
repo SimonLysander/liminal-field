@@ -33,7 +33,8 @@ import { createListKnowledgeBaseTool } from '../tools/list-content.tool';
 import { createReadDocumentContentTool } from '../tools/read-content.tool';
 import { createGetCurrentDraftTool } from '../tools/get-current-document.tool';
 import { createReadCollectionEntryTool } from '../tools/read-collection-entry.tool';
-// remember / forget 工具文件保留备查(2026-05-30 event log 架构后从主 agent 拔出)
+// 2026-05-30 event log:remember 重做成"主 agent 批量觉察",forget 文件保留备查
+import { createRememberTool } from '../tools/remember.tool';
 import { createRecallMemoryTool } from '../tools/recall-memory.tool';
 import { createSearchMemoriesTool } from '../tools/search-memories.tool';
 import { createSubAgentTool } from '../tools/sub-agent.tool';
@@ -125,9 +126,12 @@ export class ToolAssembler {
         : {
             get_current_draft: createGetCurrentDraftTool(getDocument),
           }),
-      // 召回工具(#150 + 2026-05-30 event log):配合 prompt 顶部 <memories_index> 当前画像,
-      // 想查岁月史书全量 observations 调这两条;
-      // remember/forget 已拔除,塑形由 MemoryObserverService 后台跑(主 agent 无感)。
+      // 2026-05-30 event log:主 agent 主动 remember 批量觉察(替代旧 upsert 版),
+      // recall_memory / search_memories 仍是只读;forget 不存在(岁月史书)。
+      remember: createRememberTool(
+        this.observationRepo,
+        entryContext.sessionKey,
+      ),
       recall_memory: createRecallMemoryTool(this.observationRepo),
       search_memories: createSearchMemoriesTool(this.observationRepo),
       // 子 agent：主 agent 委派明确任务，独立 context + 只读工具

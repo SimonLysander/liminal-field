@@ -19,13 +19,17 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SessionHandler } from './session.handler';
 import { MemoryHandler } from './memory.handler';
-import { PromptHandler, type BuildSystemPromptParams } from './prompt.handler';
+import {
+  PromptHandler,
+  RECENT_OBSERVATIONS_LIMIT,
+  type BuildSystemPromptParams,
+} from './prompt.handler';
 import { ToolAssembler } from './tool.assembler';
 import { SystemConfigService } from '../../settings/system-config.service';
 import { AgentMemoryRepository } from '../memory/agent-memory.repository';
 import { AgentSessionRepository } from '../session/agent-session.repository';
 import { AnthologyViewService } from '../../workspace/anthology-view.service';
-import { MemoryObserverService } from '../memory/memory-observer.service';
+import { MemoryViewService } from '../memory/memory-view.service';
 import { AgentMemoryObservationRepository } from '../memory/agent-memory-observation.repository';
 import { sliceSessionPage } from './session-pagination';
 import type { AgentChatDto } from '../dto/agent-chat.dto';
@@ -51,8 +55,8 @@ export class AgentLifecycle {
     private readonly sessionRepo: AgentSessionRepository,
     // #150 续:文集场景在 onBeforeChat 里按需查整集脉络,前端不再透传 collectionContext
     private readonly anthology: AnthologyViewService,
-    // 2026-05-30 续:潜意识观察者,onAfterChat 主路径同步跑(让下一轮 prompt 看到新塑形)
-    private readonly observer: MemoryObserverService,
+    // 2026-05-30 event log:画像渲染器(主 agent 主动 remember,view 异步派生)
+    private readonly viewService: MemoryViewService,
     // 2026-05-30 续:onBeforeChat 读 current_view 注入 <memories_index>
     private readonly observationRepo: AgentMemoryObservationRepository,
   ) {}
@@ -134,8 +138,8 @@ export class AgentLifecycle {
     // agentKey = 草稿级 agent 实例标识；sessionKey 只表示当前业务聊天。
     const agentKey =
       dto.entryContext.agentInstanceKey ?? dto.entryContext.sessionKey;
-    // 并行加载:user 记忆全文(降级) + 所有者身份 + 本草稿 session 记忆 + 当前画像(新主路径)
-    const [coreMemories, ownerProfile, sessionMem, currentView] =
+    // 并行加载:user 记忆全文(降级) + ownerProfile + sessionMem + 当前画像 + 最近 N 条原始
+    const [coreMemories, ownerProfile, sessionMem, currentView, recentObs] =
       await Promise.all([
         this.memory.loadCore(),
         this.systemConfigService.getOwnerProfile(),
@@ -143,6 +147,7 @@ export class AgentLifecycle {
           ? this.memoryRepo.findSession(agentKey)
           : Promise.resolve(null),
         this.observationRepo.findCurrentView(),
+        this.observationRepo.findRecent(RECENT_OBSERVATIONS_LIMIT),
       ]);
 
     // tasks 从 session 记忆记录取(替代旧 AgentSession.tasks);content 注入对话脉络
@@ -167,8 +172,9 @@ export class AgentLifecycle {
     const systemPrompt = this.prompt.buildSystemPrompt({
       ownerProfile: ownerProfile.name ? ownerProfile : undefined,
       coreMemories,
-      // 2026-05-30 主路径:observer 派生的 markdown(无值时降级用 coreMemories 标题索引)
+      // 2026-05-30 主路径:画像 markdown(无值时降级用 coreMemories 标题索引)
       memoriesView: currentView?.markdown,
+      recentObservations: recentObs,
       // session 记忆 content = 旧对话提炼出的会话脉络
       sessionMemory: sessionMem?.content || undefined,
       document,
@@ -213,15 +219,17 @@ export class AgentLifecycle {
       );
       return; // 未成功持久化则不触发 compaction(无新内容可压缩)
     }
-    // 潜意识观察(2026-05-30, #150 续):同步 await 让下一轮 prompt 看到新塑形。
-    // observer 内部 catch 所有错误返 {observationsAdded:0},绝不阻塞用户。
-    // 但仍包一层 try 防御:意外抛出时只 log,不影响 compaction 事件。
-    try {
-      await this.observer.observe(newMessages, sessionKey);
-    } catch (err) {
-      this.logger.error(
-        `onAfterChat observer 异常(理论上 observer 已 catch,这里是兜底): ${err instanceof Error ? err.message : String(err)}`,
-      );
+    // 2026-05-30 event log:本轮如果有 remember 工具调用 → 异步触发 view refresh。
+    // viewService 内部按"7 天 OR 累积 15 条"双触发条件判断是否真的刷新。
+    // setImmediate 让响应先返回给前端,view 在背景跑;失败 catch 不阻塞下一轮。
+    if (this.hasRememberToolCall(newMessages)) {
+      setImmediate(() => {
+        this.viewService.refreshIfNeeded().catch((err) => {
+          this.logger.error(
+            `view refresh 异常(理论上 service 已 catch,这里兜底): ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+      });
     }
 
     this.eventEmitter.emit('agent.afterChat', {
@@ -229,6 +237,33 @@ export class AgentLifecycle {
       sessionKey,
       window,
     });
+  }
+
+  /**
+   * 扫本轮 newMessages 找 remember 工具调用。
+   *
+   * AI SDK v6 的 assistant message.parts 包含 type='tool-call' / 'tool-result' 等;
+   * 我们只关心 tool-call 阶段(remember 真的被模型决定调用即触发 refresh)。
+   */
+  private hasRememberToolCall(newMessages: Record<string, unknown>[]): boolean {
+    for (const msg of newMessages) {
+      if (msg.role !== 'assistant') continue;
+      const parts = msg.parts as Array<Record<string, unknown>> | undefined;
+      if (!Array.isArray(parts)) continue;
+      for (const p of parts) {
+        const type = p.type as string | undefined;
+        const toolName = (p.toolName ?? p.name) as string | undefined;
+        if (
+          (type === 'tool-call' ||
+            type === 'tool-invocation' ||
+            type?.startsWith('tool-')) &&
+          toolName === 'remember'
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /** 获取草稿 session 记忆中的 tasks(保存后返回给前端刷新 TaskBar) */

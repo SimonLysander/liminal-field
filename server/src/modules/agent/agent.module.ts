@@ -33,7 +33,7 @@ import {
   AgentMemoryCurrentView,
 } from './memory/agent-memory-observation.entity';
 import { AgentMemoryObservationRepository } from './memory/agent-memory-observation.repository';
-import { MemoryObserverService } from './memory/memory-observer.service';
+import { MemoryViewService } from './memory/memory-view.service';
 import { AgentSession } from './session/agent-session.entity';
 import { AgentSessionRepository } from './session/agent-session.repository';
 import { CompactionService } from './session/compaction.service';
@@ -86,7 +86,7 @@ import { SettingsModule } from '../settings/settings.module';
     AgentSessionRepository,
     CompactionService,
     MemoryAgentService,
-    MemoryObserverService,
+    MemoryViewService,
     SubAgentService,
   ],
 })

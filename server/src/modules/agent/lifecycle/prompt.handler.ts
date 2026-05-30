@@ -26,7 +26,14 @@
  */
 import { Injectable } from '@nestjs/common';
 import type { AgentMemory } from '../memory/agent-memory.entity';
+import type { AgentMemoryObservation } from '../memory/agent-memory-observation.entity';
 import { extractHeadings } from '../tools/markdown.utils';
+
+/**
+ * <memories_index> 注入的"最近 N 条原始 observations" 默认条数(2026-05-30 event log)。
+ * 常量起步,等真要调再考虑放 SystemConfig。
+ */
+export const RECENT_OBSERVATIONS_LIMIT = 7;
 
 export interface BuildSystemPromptParams {
   /** 所有者身份信息（从 SystemConfig.ownerProfile 读取） */
@@ -41,10 +48,15 @@ export interface BuildSystemPromptParams {
    */
   coreMemories: AgentMemory[];
   /**
-   * 2026-05-30(#150 event log 架构):observer 派生的当前画像 markdown。
+   * 2026-05-30(#150 event log 架构):MemoryViewService 派生的当前画像 markdown。
    * 有值优先注入 <memories_index>;无值时降级用 coreMemories 标题索引。
    */
   memoriesView?: string;
+  /**
+   * 2026-05-30 event log:最近 N 条原始 observations(by observedAt 倒序)。
+   * 主 agent 看画像 + 看最近原始,知道"长期是这样 + 近期发生了啥"。远古细节调读工具。
+   */
+  recentObservations?: AgentMemoryObservation[];
   /**
    * 本草稿 session 记忆的 content（compaction 把超窗口旧对话提炼出的会话脉络）。
    * 替代旧 sessionSummary——脉络的归宿是 session 记忆,不再有独立 summary 概念。
@@ -119,18 +131,35 @@ export class PromptHandler {
 - 发现值得长期记住的信息,随手 remember(context 会重置,没记的会丢)
 </tools>`);
 
-    // 4. ——— 当前画像(2026-05-30 event log 架构,#150 续)———
-    // 由 MemoryObserverService 在后台 LLM 派生(基于所有 observations),
-    // 按 topic 分段(身份/性格/审美/方法)。岁月史书全量可用 recall_memory / search_memories 查。
+    // 4. ——— 记忆索引(2026-05-30 event log 架构,#150 续)———
+    // 双层:① 派生画像(综合全量 observations,LLM 写)+ ② 最近 N 条原始(史书格式)
+    // 远古细节调 recall_memory / search_memories
+    const indexSegments: string[] = [];
+
     if (params.memoriesView && params.memoriesView.trim().length > 0) {
-      sections.push(
-        `<memories_index>\n你对所有者的当前画像(由后台观察者从全量 observations 派生,按四类整理):\n\n${params.memoriesView.trim()}\n\n想查任一时期的具体观察(岁月史书,append-only 全保留),调 search_memories(query) 模糊搜或 recall_memory(query) 精读最近相关条目。\n</memories_index>`,
+      indexSegments.push(
+        `### 当前画像(后台从全量观察派生,按四类整理)\n\n${params.memoriesView.trim()}`,
       );
     } else if (params.coreMemories.length > 0) {
-      // 降级路径(迁移期 / view 未派生):用旧 user 记忆标题索引
+      // 降级路径:view 还没派生(迁移期 / 冷启动)→ 用旧 user 记忆标题
       const titles = params.coreMemories.map((m) => `- ${m.title}`).join('\n');
+      indexSegments.push(
+        `### 当前画像(降级:旧 user 记忆标题索引,view 派生后会替换)\n\n${titles}`,
+      );
+    }
+
+    if (params.recentObservations && params.recentObservations.length > 0) {
+      const formatted = params.recentObservations
+        .map((o) => formatObservationAsHistory(o))
+        .join('\n\n');
+      indexSegments.push(
+        `### 最近 ${params.recentObservations.length} 条观察(史书原文,新→旧)\n\n${formatted}`,
+      );
+    }
+
+    if (indexSegments.length > 0) {
       sections.push(
-        `<memories_index>\n你对所有者有 ${params.coreMemories.length} 条长期认知。这里只列标题,要看任一条全文调 recall_memory(title);想模糊查内容调 search_memories(query):\n${titles}\n</memories_index>`,
+        `<memories_index>\n你对所有者的认知:画像是长期综合,最近观察是近期细节。远古具体细节调 recall_memory(topic) 或 search_memories(query)。\n\n${indexSegments.join('\n\n---\n\n')}\n</memories_index>`,
       );
     }
 
@@ -241,4 +270,24 @@ ${lines}
 
     return sections.join('\n\n');
   }
+}
+
+/**
+ * 把一条 observation 渲染成"史书一条"格式(2026-05-30 event log):
+ *
+ *   [2026-05-30 · aesthetic]
+ *   ⟨context 背景史: ...⟩
+ *   ——observation 判断: ...
+ *
+ * 长 context + 短 observation,读起来像太史公笔法(背景详写 + 一句点评)。
+ * 没 context 就略 ⟨⟩ 行,直接写判断。
+ */
+function formatObservationAsHistory(o: AgentMemoryObservation): string {
+  const date = new Date(o.observedAt).toISOString().slice(0, 10);
+  const ctx = o.context?.trim();
+  const obs = o.observation.trim();
+  if (ctx) {
+    return `[${date} · ${o.topic}]\n⟨${ctx}⟩\n——${obs}`;
+  }
+  return `[${date} · ${o.topic}]\n——${obs}`;
 }

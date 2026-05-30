@@ -35,7 +35,8 @@ const DISPLAY_NAMES: Record<string, string> = {
   list_knowledge_base: 'List',
   read_document_content: 'Read',
   get_current_draft: 'Read Current Draft',
-  remember: 'Write Memory',
+  // 2026-05-30 event log 架构:remember 批量 append 岁月史书;forget 已拔
+  remember: 'Note Memory',
   forget: 'Delete Memory',
   // #150(2026-05-31):recall = 按标题精读单条;search = 模糊搜候选
   recall_memory: 'Read Memory',

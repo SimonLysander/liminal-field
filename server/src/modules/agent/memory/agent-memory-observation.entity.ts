@@ -63,14 +63,18 @@ export class AgentMemoryObservation {
   })
   topic!: ObservationTopic;
 
-  /** 本次观察的实质(自然语言一句话/一段话,LLM 写) */
-  @prop({ required: true, trim: true, maxlength: 500 })
+  /**
+   * 观察的判断/总结(≤ 120 字,主 agent 写)。
+   * 类似"太史公曰"——简短的判断/取向,不是事实复述。
+   * 例:"代码注释偏极简——删解释留警示" / "学新概念偏造最小例子再看定义"。
+   */
+  @prop({ required: true, trim: true, maxlength: 120 })
   observation!: string;
 
   /**
-   * 当时聊到什么时观察到的(可空)。
-   * 让"投入"信息天然沉淀:`聊到学微分方程时` / `改散文草稿时`——
-   * Aurora 派生 current_view 时从所有 observations 的 context 自然归纳出"最近在做什么"。
+   * 当时的背景史(≤ 300 字,主 agent 写)。
+   * 真正的"史书一条"——那段对话聊什么、TA 做了什么动作/选择、TA 怎么解释自己的选择、张力反差。
+   * 长 context + 短 observation = 史书格式;读完 context 就能复原现场,理解 observation 的判断从何而来。
    */
   @prop({ trim: true, maxlength: 300 })
   context?: string;

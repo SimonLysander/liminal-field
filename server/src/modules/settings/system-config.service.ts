@@ -83,9 +83,10 @@ export class SystemConfigService implements OnModuleInit {
     'get_current_draft',
     // 文集条目场景:读同集其它条目当前内容(装配层按是否文集条目实际挂载)
     'read_collection_entry',
-    // 2026-05-30 起 remember / forget 已从主 agent 工具集移除(event log 架构):
-    // 记忆塑形由 MemoryObserverService 后台 LLM 自动跑,主 agent 不再显式调写记忆工具。
-    // 只保留读类 recall_memory / search_memories 让模型查岁月史书全量 observations。
+    // 2026-05-30 event log 架构:
+    // - remember 重做成"主 agent 批量觉察"(append-only,不再 upsert by title)
+    // - forget 已彻底拔掉(岁月史书无 forget,只有时间推移与重派生画像)
+    'remember',
     'recall_memory',
     'search_memories',
     'sub_agent',
