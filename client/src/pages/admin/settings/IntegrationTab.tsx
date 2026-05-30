@@ -11,19 +11,18 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Trash2, Plus, Pencil } from 'lucide-react';
+import { Trash2, Plus, Pencil, Eye, EyeOff } from 'lucide-react';
 import { banner } from '@/components/ui/banner-api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Separator } from '@/components/ui/separator';
 import { settingsApi } from '@/services/settings';
 import type { SettingsConfigView } from '@/services/settings';
+// nested EditProviderForm / AddProviderForm 等仍用 SettingsUI 原子,下一轮 #145 收编
 import {
-  PageHeader,
-  EditableSection,
-  Section,
-  SectionSkeleton,
   FieldLabel,
   TextInput,
   SelectInput,
-  StatusRow,
   ValidationBanner,
   PrimaryButton,
   SecondaryButton,
@@ -511,7 +510,6 @@ function AddProviderForm({ onSuccess, onCancel }: {
 
 export function IntegrationTab() {
   // ─── 内部数据状态 ───
-
   const [config, setConfig] = useState<SettingsConfigView['integration'] | null>(null);
   const [aiConfig, setAiConfig] = useState<SettingsConfigView['ai'] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -529,54 +527,42 @@ export function IntegrationTab() {
     void loadData();
   }, [loadData]);
 
-  // MinerU 配置状态
-  const [editing, setEditing] = useState(false);
+  // MinerU
   const [mineruToken, setMineruToken] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [mineruVisible, setMineruVisible] = useState(false);
+  const [savingMineru, setSavingMineru] = useState(false);
+  const mineruDirty = mineruToken.trim().length > 0;
 
-  // Tavily(Aurora 联网搜索)配置状态
-  const [editingTavily, setEditingTavily] = useState(false);
+  // Tavily
   const [tavilyApiKey, setTavilyApiKey] = useState('');
+  const [tavilyVisible, setTavilyVisible] = useState(false);
   const [savingTavily, setSavingTavily] = useState(false);
+  const tavilyDirty = tavilyApiKey.trim().length > 0;
 
-  // AI 提供商列表操作状态(#5 重构去掉"激活"概念,所有 provider 视可用,agent 自选)
+  // AI 提供商列表(#5 重构:配过的都可用,agent 自选)
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // System prompt 编辑状态
-  const [promptEditing, setPromptEditing] = useState(false);
-  const [systemPrompt, setSystemPrompt] = useState('');
-  const [promptSaving, setPromptSaving] = useState(false);
-
-  const resetForm = useCallback(() => {
-    setMineruToken('');
-    setEditing(false);
-  }, []);
-
-  const resetTavilyForm = useCallback(() => {
-    setTavilyApiKey('');
-    setEditingTavily(false);
-  }, []);
-
-  const handleSave = async () => {
-    setSaving(true);
+  const handleSaveMineru = async () => {
+    if (!mineruDirty) return;
+    setSavingMineru(true);
     try {
       await settingsApi.saveIntegrationConfig({
         mineruToken: mineruToken.trim() || undefined,
       });
-      banner.success('集成配置已保存');
+      banner.success('MinerU Token 已保存');
       setMineruToken('');
-      setEditing(false);
       await loadData(true);
     } catch {
       banner.error('保存失败');
     } finally {
-      setSaving(false);
+      setSavingMineru(false);
     }
   };
 
   const handleSaveTavily = async () => {
+    if (!tavilyDirty) return;
     setSavingTavily(true);
     try {
       await settingsApi.saveIntegrationConfig({
@@ -584,7 +570,6 @@ export function IntegrationTab() {
       });
       banner.success('Tavily API key 已保存');
       setTavilyApiKey('');
-      setEditingTavily(false);
       await loadData(true);
     } catch {
       banner.error('保存失败');
@@ -606,122 +591,157 @@ export function IntegrationTab() {
     }
   };
 
-  const handleSavePrompt = async () => {
-    setPromptSaving(true);
-    try {
-      await settingsApi.saveAiSystemPrompt(systemPrompt);
-      banner.success('自定义指令已保存');
-      setPromptEditing(false);
-      await loadData(true);
-    } catch {
-      banner.error('保存失败');
-    } finally {
-      setPromptSaving(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <PageHeader>集成</PageHeader>
-        <SectionSkeleton title="MinerU" />
-        <SectionSkeleton title="AI 提供商" />
-      </div>
-    );
-  }
-
   const providers = aiConfig?.providers ?? [];
-  // 当前正在编辑的提供商对象
   const editingProvider = providers.find((p) => p.id === editingProviderId) ?? null;
 
   return (
     <div className="space-y-6">
-      <PageHeader>集成</PageHeader>
+      {/* 页面标题 */}
+      <div>
+        <h1 className="text-base font-semibold" style={{ color: 'var(--ink)' }}>
+          集成
+        </h1>
+        <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+          第三方服务集成:文档解析、联网搜索、AI 提供商
+        </p>
+      </div>
+      <Separator />
 
       {/* ── MinerU ── */}
-      <EditableSection
-        title="MinerU"
-        description="PDF 文档解析服务，用于导入功能"
-        editing={editing}
-        onEdit={() => {
-          setMineruToken('');
-          setEditing(true);
-        }}
-        onSave={() => void handleSave()}
-        onReset={resetForm}
-        saving={saving}
-        viewContent={
-          <StatusRow
-            label="API Token"
-            value={config?.hasMineruToken ? '••••••••' : '未配置'}
-          />
-        }
-        editContent={
-          <div>
-            <FieldLabel>
-              API Token
-              {config?.hasMineruToken && !mineruToken && (
-                <span className="ml-2 font-normal" style={{ color: 'var(--ink-ghost)' }}>
-                  已配置，留空则不修改
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>
+            MinerU
+          </h2>
+          <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            PDF 文档解析服务,用于导入功能
+          </p>
+        </div>
+        {loading ? (
+          <div className="h-7 max-w-md rounded-sm animate-pulse" style={{ background: 'var(--shelf)' }} />
+        ) : (
+          <>
+            <div className="space-y-1.5">
+              <div className="text-xs font-medium" style={{ color: 'var(--ink-faded)' }}>
+                API Token
+              </div>
+              <div className="relative max-w-md">
+                <Input
+                  type={mineruVisible ? 'text' : 'password'}
+                  value={mineruToken}
+                  onChange={(e) => setMineruToken(e.target.value)}
+                  placeholder={config?.hasMineruToken ? '已配置,留空则不修改' : 'eyJ0eXBlIjoi...'}
+                  className="pr-8"
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => setMineruVisible((v) => !v)}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-sm p-1"
+                  style={{ color: 'var(--ink-ghost)' }}
+                >
+                  {mineruVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => void handleSaveMineru()}
+                disabled={savingMineru || !mineruDirty}
+              >
+                {savingMineru ? '保存中…' : '保存'}
+              </Button>
+              {config?.hasMineruToken && (
+                <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--success)' }}>
+                  <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: 'var(--success)' }} />
+                  已配置
                 </span>
               )}
-            </FieldLabel>
-            <TextInput
-              value={mineruToken}
-              onChange={setMineruToken}
-              placeholder="eyJ0eXBlIjoi..."
-              type="password"
-            />
-          </div>
-        }
-      />
+            </div>
+          </>
+        )}
+      </section>
 
-      {/* ── Tavily(Aurora 联网搜索)── */}
-      <EditableSection
-        title="Tavily 联网搜索"
-        description="Aurora web_search 工具的 API Key，免费层 1000 次/月"
-        editing={editingTavily}
-        onEdit={() => {
-          setTavilyApiKey('');
-          setEditingTavily(true);
-        }}
-        onSave={() => void handleSaveTavily()}
-        onReset={resetTavilyForm}
-        saving={savingTavily}
-        viewContent={
-          <StatusRow
-            label="API Key"
-            value={config?.hasTavilyApiKey ? '••••••••' : '未配置（web_search 工具不挂载）'}
-          />
-        }
-        editContent={
-          <div>
-            <FieldLabel>
-              API Key
-              {config?.hasTavilyApiKey && !tavilyApiKey && (
-                <span className="ml-2 font-normal" style={{ color: 'var(--ink-ghost)' }}>
-                  已配置，留空则不修改
+      <Separator />
+
+      {/* ── Tavily ── */}
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>
+            Tavily 联网搜索
+          </h2>
+          <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            Aurora web_search 工具的 API Key,免费层 1000 次/月
+          </p>
+        </div>
+        {loading ? (
+          <div className="h-7 max-w-md rounded-sm animate-pulse" style={{ background: 'var(--shelf)' }} />
+        ) : (
+          <>
+            <div className="space-y-1.5">
+              <div className="text-xs font-medium" style={{ color: 'var(--ink-faded)' }}>
+                API Key
+              </div>
+              <div className="relative max-w-md">
+                <Input
+                  type={tavilyVisible ? 'text' : 'password'}
+                  value={tavilyApiKey}
+                  onChange={(e) => setTavilyApiKey(e.target.value)}
+                  placeholder={config?.hasTavilyApiKey ? '已配置,留空则不修改' : 'tvly-...'}
+                  className="pr-8"
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => setTavilyVisible((v) => !v)}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-sm p-1"
+                  style={{ color: 'var(--ink-ghost)' }}
+                >
+                  {tavilyVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => void handleSaveTavily()}
+                disabled={savingTavily || !tavilyDirty}
+              >
+                {savingTavily ? '保存中…' : '保存'}
+              </Button>
+              {config?.hasTavilyApiKey ? (
+                <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--success)' }}>
+                  <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: 'var(--success)' }} />
+                  已配置
+                </span>
+              ) : (
+                <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
+                  未配置 · web_search 工具不挂载
                 </span>
               )}
-            </FieldLabel>
-            <TextInput
-              value={tavilyApiKey}
-              onChange={setTavilyApiKey}
-              placeholder="tvly-..."
-              type="password"
-            />
-          </div>
-        }
-      />
+            </div>
+          </>
+        )}
+      </section>
 
-      {/* ── AI 提供商列表 ── */}
-      <Section
-        title="AI 提供商"
-        description="配置 API key 和模型 —— 每个提供商绑三档(快/中/深思) + 可选视觉模型。Agent 调用时按它的 tier 自动选用对应模型,换提供商时不用每个 agent 重选模型。配过的都可用,由各 agent 在「Agent」tab 自选用谁。"
-      >
-        {/* 提供商列表 */}
+      <Separator />
+
+      {/* ── AI 提供商 ── */}
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>
+            AI 提供商
+          </h2>
+          <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            每个提供商绑三档模型(快/中/深思) + 可选视觉。配过的都可用,由各 agent 在「Agent」tab 自选用谁。
+          </p>
+        </div>
+
         {providers.length > 0 ? (
-          <div className="space-y-2 mb-4">
+          <div className="space-y-2">
             {providers.map((p) => (
               <div key={p.id}>
                 <ProviderRow
@@ -730,7 +750,6 @@ export function IntegrationTab() {
                   onEdit={() => setEditingProviderId(editingProviderId === p.id ? null : p.id)}
                   deleting={deletingId === p.id}
                 />
-                {/* 内联编辑表单（仅当前展开的提供商显示） */}
                 {editingProviderId === p.id && editingProvider && (
                   <div className="mt-2">
                     <EditProviderForm
@@ -747,10 +766,9 @@ export function IntegrationTab() {
             ))}
           </div>
         ) : (
-          // 空状态
           !showAddForm && (
             <div
-              className="mb-4 rounded-lg px-4 py-6 text-center text-sm"
+              className="rounded-sm px-3 py-4 text-center text-xs"
               style={{ color: 'var(--ink-ghost)', border: '1px dashed var(--separator)' }}
             >
               尚未配置 AI 提供商
@@ -758,9 +776,8 @@ export function IntegrationTab() {
           )
         )}
 
-        {/* 添加提供商表单（内联展开） */}
         {showAddForm && (
-          <div className="mb-4">
+          <div>
             <AddProviderForm
               onSuccess={async () => {
                 setShowAddForm(false);
@@ -771,57 +788,17 @@ export function IntegrationTab() {
           </div>
         )}
 
-        {/* 添加按钮 */}
         {!showAddForm && (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => setShowAddForm(true)}
-            className="flex items-center gap-1.5 text-xs font-medium transition-opacity duration-100"
-            style={{ color: 'var(--ink-faded)' }}
           >
             <Plus size={14} />
             添加提供商
-          </button>
+          </Button>
         )}
-      </Section>
-
-      {/* ── AI 自定义指令（System Prompt） ── */}
-      <EditableSection
-        title="AI 自定义指令"
-        description="追加到 AI 默认角色定义之后，影响所有对话"
-        editing={promptEditing}
-        onEdit={() => {
-          setSystemPrompt(aiConfig?.aiSystemPrompt ?? '');
-          setPromptEditing(true);
-        }}
-        onSave={() => void handleSavePrompt()}
-        onReset={() => {
-          setSystemPrompt('');
-          setPromptEditing(false);
-        }}
-        saving={promptSaving}
-        viewContent={
-          <StatusRow
-            label="自定义指令"
-            value={aiConfig?.aiSystemPrompt ? '已配置' : '未配置（使用默认）'}
-          />
-        }
-        editContent={
-          <textarea
-            value={systemPrompt}
-            onChange={(e) => setSystemPrompt(e.target.value)}
-            placeholder="例如：我是一名软件工程师，主要写技术笔记，请用中文回复"
-            rows={4}
-            className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-            style={{
-              background: 'var(--shelf)',
-              color: 'var(--ink)',
-              border: '1px solid var(--separator)',
-              resize: 'vertical',
-            }}
-          />
-        }
-      />
+      </section>
     </div>
   );
 }

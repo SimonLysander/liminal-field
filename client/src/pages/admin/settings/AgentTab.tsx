@@ -15,12 +15,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Trash2 } from 'lucide-react';
 import { banner } from '@/components/ui/banner-api';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import { settingsApi } from '@/services/settings';
 import type { AgentConfig } from '@/services/settings';
+// AgentCard 内部仍用 SettingsUI 原子,下一轮 #145 收编时统一
 import {
-  PageHeader,
-  Section,
-  SectionSkeleton,
   FieldLabel,
   TextInput,
   SelectInput,
@@ -427,12 +427,16 @@ export function AgentTab() {
   const [providers, setProviders] = useState<{ id: string; name: string }[]>([]);
   const [availableTools, setAvailableTools] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  // 加载数据：silent=true 时跳过 setLoading(true)，避免页面闪烁
-  // 并行拉 agents + providers + availableTools(#5 + #141 重构)
+
+  // AI 自定义指令(system prompt)2026-05-31 从 IntegrationTab 挪到这里
+  // —— system prompt 影响 agent 行为,归 agent 不归"集成"
+  const [aiSystemPrompt, setAiSystemPrompt] = useState('');
+  const [originalPrompt, setOriginalPrompt] = useState('');
+  const [savingPrompt, setSavingPrompt] = useState(false);
+  const promptDirty = aiSystemPrompt !== originalPrompt;
+
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
-    // 用 allSettled 而非 all:任一端点失败(如新 endpoint 未生效)不应让整页报错,
-    // 各端点独立降级——agents 必须有(没有则报错),providers/tools 可空(空数组)
     const [agentsRes, configRes, toolsRes] = await Promise.allSettled([
       settingsApi.getAgentConfigs(),
       settingsApi.getConfig(),
@@ -447,6 +451,8 @@ export function AgentTab() {
       setProviders(
         configRes.value.ai.providers.map((p) => ({ id: p.id, name: p.name })),
       );
+      setAiSystemPrompt(configRes.value.ai.aiSystemPrompt ?? '');
+      setOriginalPrompt(configRes.value.ai.aiSystemPrompt ?? '');
     }
     if (toolsRes.status === 'fulfilled') {
       setAvailableTools(toolsRes.value);
@@ -459,41 +465,120 @@ export function AgentTab() {
     void loadData();
   }, [loadData]);
 
-  // 保存某个 agent 配置
   const handleSave = async (key: string, updated: Partial<AgentConfig>) => {
     try {
       await settingsApi.saveAgentConfig(key, updated);
       banner.success('Agent 配置已保存');
       await loadData(true);
     } catch {
-      banner.error('保存失败，请重试');
-      throw new Error('save failed'); // 让 AgentCard 知道出错
+      banner.error('保存失败,请重试');
+      throw new Error('save failed');
     }
   };
 
-  // 内置 agent 不允许删除，只能编辑配置
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <PageHeader>Agent 配置</PageHeader>
-        <SectionSkeleton title="Agent 入口" />
-      </div>
-    );
-  }
+  const handleSavePrompt = async () => {
+    if (!promptDirty || savingPrompt) return;
+    setSavingPrompt(true);
+    try {
+      await settingsApi.saveAiSystemPrompt(aiSystemPrompt);
+      setOriginalPrompt(aiSystemPrompt);
+      banner.success('自定义指令已保存');
+    } catch {
+      banner.error('保存失败');
+    } finally {
+      setSavingPrompt(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
-      <PageHeader>Agent 配置</PageHeader>
+      {/* 页面标题 */}
+      <div>
+        <h1
+          className="text-base font-semibold"
+          style={{ color: 'var(--ink)' }}
+        >
+          Agent
+        </h1>
+        <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+          自定义对话风格、入口工具集与对你的认知
+        </p>
+      </div>
+      <Separator />
+
+      {/* ── 全局自定义指令(system prompt) ── */}
+      <section className="space-y-4">
+        <div>
+          <h2
+            className="text-sm font-semibold"
+            style={{ color: 'var(--ink)' }}
+          >
+            全局自定义指令
+          </h2>
+          <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            追加到所有 agent 默认角色定义之后,影响所有对话
+          </p>
+        </div>
+        {loading ? (
+          <div
+            className="h-20 rounded-sm animate-pulse"
+            style={{ background: 'var(--shelf)' }}
+          />
+        ) : (
+          <>
+            <textarea
+              value={aiSystemPrompt}
+              onChange={(e) => setAiSystemPrompt(e.target.value)}
+              placeholder="例如:我是一名软件工程师,主要写技术笔记,请用中文回复。"
+              rows={5}
+              className="flex w-full resize-none rounded-sm border border-transparent bg-[var(--shelf)] px-2.5 py-1.5 text-md transition-colors placeholder:text-[var(--ink-ghost)] hover:bg-[var(--hover-overlay)] focus:bg-[var(--paper)] focus-visible:outline-none"
+              style={{ color: 'var(--ink)' }}
+            />
+            <div className="flex items-center gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => void handleSavePrompt()}
+                disabled={!promptDirty || savingPrompt}
+              >
+                {savingPrompt ? '保存中…' : '保存'}
+              </Button>
+              {promptDirty && !savingPrompt && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setAiSystemPrompt(originalPrompt)}
+                >
+                  放弃修改
+                </Button>
+              )}
+            </div>
+          </>
+        )}
+      </section>
+
+      <Separator />
 
       {/* ── Agent 入口列表 ── */}
-      <Section
-        title="Agent 入口"
-        description="每个入口对应一个对话场景，独立配置工具集、指令和模型层级"
-      >
-        {/* 卡片列表 */}
-        {agents.length > 0 ? (
-          <div className="space-y-3 mb-4">
+      <section className="space-y-4">
+        <div>
+          <h2
+            className="text-sm font-semibold"
+            style={{ color: 'var(--ink)' }}
+          >
+            Agent 入口
+          </h2>
+          <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            每个入口对应一个对话场景,独立配置 provider、工具集、指令和模型层级
+          </p>
+        </div>
+        {loading ? (
+          <div
+            className="h-24 rounded-sm animate-pulse"
+            style={{ background: 'var(--shelf)' }}
+          />
+        ) : agents.length > 0 ? (
+          <div className="space-y-3">
             {agents.map((agent) => (
               <AgentCard
                 key={agent.key}
@@ -507,15 +592,20 @@ export function AgentTab() {
           </div>
         ) : (
           <div
-            className="mb-4 rounded-lg px-4 py-6 text-center text-sm"
-            style={{ color: 'var(--ink-ghost)', border: '1px dashed var(--separator)' }}
+            className="rounded-sm px-3 py-4 text-center text-xs"
+            style={{
+              color: 'var(--ink-ghost)',
+              border: '1px dashed var(--separator)',
+            }}
           >
             暂无内置 Agent 入口
           </div>
         )}
-      </Section>
+      </section>
 
-      {/* ── Agent 对你 / 你项目的认知(记忆) ── 此前位于 OwnerTab,2026-05-30 挪到这里 */}
+      <Separator />
+
+      {/* ── Agent 对你 / 你项目的认知 ── */}
       <MemoriesSection />
     </div>
   );

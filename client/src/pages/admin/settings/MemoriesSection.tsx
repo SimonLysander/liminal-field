@@ -1,22 +1,25 @@
 /*
- * MemoriesSection — Agent 记忆管理（user 记忆 + project 记忆）。
+ * MemoriesSection — Agent 记忆管理(user 记忆 + project 记忆)。
  *
- * 此前位于 OwnerTab(个人资料)下,2026-05-30 挪到 AgentTab ——
- * "Agent 对你的认知"是 agent 的事,不是身份/个人资料的事。
+ * 2026-05-31 按宪法重做:抛弃 Section 卡片,heading + divider 模板,
+ * 每个 group 独立分页 10/页 + 搜索;ui/* 标准件。
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Pencil, Trash2, X, Check, Search } from 'lucide-react';
+import { Pencil, Trash2, X, Check, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { banner } from '@/components/ui/banner-api';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import {
   listMemories,
   updateMemory,
   deleteMemory,
   type MemoryItem,
 } from '@/services/agent';
-import { Section, SectionSkeleton } from './SettingsUI';
 
-/** 单条记忆：标题 + 内容预览 + hover 操作 */
+const PAGE_SIZE = 10;
+
+/** 单条记忆:标题 + 内容预览 + hover 操作 */
 function MemoryRow({
   memory,
   onUpdate,
@@ -44,56 +47,46 @@ function MemoryRow({
   };
 
   const handleDelete = async () => {
-    if (!confirm(`确定删除记忆「${memory.title}」？`)) return;
+    if (!confirm(`确定删除记忆「${memory.title}」?`)) return;
     await onDelete(memory._id);
   };
 
   if (editing) {
     return (
       <div
-        className="rounded-lg p-3"
-        style={{ background: 'var(--shelf)', border: '1px solid var(--separator)' }}
+        className="space-y-2 rounded-sm p-3"
+        style={{ background: 'var(--shelf)' }}
       >
-        <div className="space-y-2">
-          <input
-            value={draft.title}
-            onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
-            className="h-7 w-full rounded px-2 text-sm font-medium outline-none"
-            style={{
-              background: 'var(--paper-white)',
-              color: 'var(--ink)',
-              border: '1px solid var(--separator)',
-            }}
-          />
-          <textarea
-            value={draft.content}
-            onChange={(e) => setDraft((d) => ({ ...d, content: e.target.value }))}
-            rows={3}
-            className="w-full resize-none rounded px-2 py-1.5 text-sm outline-none"
-            style={{
-              background: 'var(--paper-white)',
-              color: 'var(--ink)',
-              border: '1px solid var(--separator)',
-            }}
-          />
-          <div className="flex gap-1.5">
-            <button
-              onClick={() => void handleSave()}
-              disabled={saving || !draft.title.trim()}
-              className="flex items-center gap-1 rounded px-2 py-1 text-xs transition-opacity disabled:opacity-40"
-              style={{ color: 'var(--ink)', background: 'var(--paper)' }}
-            >
-              <Check size={12} /> 保存
-            </button>
-            <button
-              onClick={() => setEditing(false)}
-              disabled={saving}
-              className="flex items-center gap-1 rounded px-2 py-1 text-xs transition-opacity disabled:opacity-40"
-              style={{ color: 'var(--ink-faded)' }}
-            >
-              <X size={12} /> 取消
-            </button>
-          </div>
+        <input
+          value={draft.title}
+          onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
+          className="flex h-7 w-full rounded-sm border border-transparent bg-[var(--paper-white)] px-2.5 text-md font-medium outline-none focus:bg-[var(--paper)]"
+          style={{ color: 'var(--ink)' }}
+        />
+        <textarea
+          value={draft.content}
+          onChange={(e) => setDraft((d) => ({ ...d, content: e.target.value }))}
+          rows={3}
+          className="flex w-full resize-none rounded-sm border border-transparent bg-[var(--paper-white)] px-2.5 py-1.5 text-md outline-none focus:bg-[var(--paper)]"
+          style={{ color: 'var(--ink)' }}
+        />
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => void handleSave()}
+            disabled={saving || !draft.title.trim()}
+          >
+            <Check size={12} /> 保存
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setEditing(false)}
+            disabled={saving}
+          >
+            <X size={12} /> 取消
+          </Button>
         </div>
       </div>
     );
@@ -105,7 +98,7 @@ function MemoryRow({
       style={{ borderBottom: '0.5px solid var(--separator)' }}
     >
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium" style={{ color: 'var(--ink)' }}>
+        <div className="text-md font-medium" style={{ color: 'var(--ink)' }}>
           {memory.title}
         </div>
         <p
@@ -118,14 +111,14 @@ function MemoryRow({
         </p>
       </div>
 
-      {/* 操作按钮（hover 显示） */}
+      {/* hover 显示操作 */}
       <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
         <button
           onClick={() => {
             setDraft({ title: memory.title, content: memory.content });
             setEditing(true);
           }}
-          className="rounded p-1 transition-colors"
+          className="rounded-sm p-1 transition-colors"
           style={{ color: 'var(--ink-ghost)' }}
           title="编辑"
         >
@@ -133,8 +126,8 @@ function MemoryRow({
         </button>
         <button
           onClick={() => void handleDelete()}
-          className="rounded p-1 transition-colors"
-          style={{ color: 'var(--mark-red)' }}
+          className="rounded-sm p-1 transition-colors"
+          style={{ color: 'var(--danger)' }}
           title="删除"
         >
           <Trash2 size={13} />
@@ -144,7 +137,48 @@ function MemoryRow({
   );
 }
 
-/** 按类型过滤的记忆分区 */
+/** 分页控件:左下"第 N/M 页·共 X 条" + 右下 prev/next */
+function Pagination({
+  page,
+  total,
+  pageSize,
+  onChange,
+}: {
+  page: number;
+  total: number;
+  pageSize: number;
+  onChange: (page: number) => void;
+}) {
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  if (pages <= 1) return null;
+  return (
+    <div className="flex items-center justify-between pt-2">
+      <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
+        第 {page}/{pages} 页 · 共 {total} 条
+      </span>
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={page === 1}
+          onClick={() => onChange(page - 1)}
+        >
+          <ChevronLeft size={14} />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={page >= pages}
+          onClick={() => onChange(page + 1)}
+        >
+          <ChevronRight size={14} />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** 一段记忆(分组):heading + 描述 + 列表 + 分页 */
 function MemoryGroup({
   title,
   description,
@@ -158,33 +192,59 @@ function MemoryGroup({
   onUpdate: (id: string, data: { type?: string; title?: string; content?: string }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
+  const [page, setPage] = useState(1);
+  // memories 变化时(搜索过滤)重置到第一页
+  useEffect(() => {
+    setPage(1);
+  }, [memories.length]);
+
+  const start = (page - 1) * PAGE_SIZE;
+  const displayed = memories.slice(start, start + PAGE_SIZE);
+
   return (
-    <Section title={title} description={description}>
+    <section className="space-y-3">
+      <div>
+        <h2
+          className="text-sm font-semibold"
+          style={{ color: 'var(--ink)' }}
+        >
+          {title}
+        </h2>
+        <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+          {description}
+        </p>
+      </div>
       {memories.length === 0 ? (
-        <p className="text-sm" style={{ color: 'var(--ink-ghost)' }}>
+        <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
           暂无记忆
         </p>
       ) : (
-        <div>
-          {memories.map((m) => (
-            <MemoryRow
-              key={m._id}
-              memory={m}
-              onUpdate={onUpdate}
-              onDelete={onDelete}
-            />
-          ))}
-        </div>
+        <>
+          <div>
+            {displayed.map((m) => (
+              <MemoryRow
+                key={m._id}
+                memory={m}
+                onUpdate={onUpdate}
+                onDelete={onDelete}
+              />
+            ))}
+          </div>
+          <Pagination
+            page={page}
+            total={memories.length}
+            pageSize={PAGE_SIZE}
+            onChange={setPage}
+          />
+        </>
       )}
-    </Section>
+    </section>
   );
 }
 
 export function MemoriesSection() {
   const [loading, setLoading] = useState(true);
   const [memories, setMemories] = useState<MemoryItem[]>([]);
-  // 搜索词:按 title + content 模糊过滤;两段记忆各自过滤后再渲染。
-  // 规模小(目前 11 条)不需要分页,只做搜索 + 实时过滤就足够。
   const [query, setQuery] = useState('');
 
   const load = useCallback(async () => {
@@ -198,7 +258,6 @@ export function MemoriesSection() {
     }
   }, []);
 
-  // 挂载时加载记忆列表：load 内的 setState 在 async 回调里执行（非渲染期同步），属合法用法
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
@@ -229,10 +288,17 @@ export function MemoriesSection() {
 
   if (loading) {
     return (
-      <>
-        <SectionSkeleton title="关于我" />
-        <SectionSkeleton title="项目记忆" />
-      </>
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>
+            认知
+          </h2>
+        </div>
+        <div
+          className="h-16 rounded-sm animate-pulse"
+          style={{ background: 'var(--shelf)' }}
+        />
+      </section>
     );
   }
 
@@ -241,45 +307,60 @@ export function MemoriesSection() {
     !q || m.title.toLowerCase().includes(q) || m.content.toLowerCase().includes(q);
 
   const userMemories = memories.filter((m) => m.type === 'user').filter(matches);
-  const projectMemories = memories.filter((m) => m.type === 'project').filter(matches);
+  const projectMemories = memories
+    .filter((m) => m.type === 'project')
+    .filter(matches);
 
   return (
-    <>
-      {/* 搜索框:按 title + content 实时过滤两段记忆 */}
-      <div className="relative">
-        <Search
-          size={14}
-          strokeWidth={1.5}
-          className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-          style={{ color: 'var(--ink-ghost)' }}
-        />
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="搜索记忆(标题或内容)..."
-          className="h-9 w-full rounded-lg pl-9 pr-3 text-sm outline-none"
-          style={{
-            background: 'var(--paper-white)',
-            color: 'var(--ink)',
-            border: '1px solid var(--separator)',
-          }}
-        />
+    <div className="space-y-6">
+      {/* heading + 搜索 */}
+      <div className="space-y-3">
+        <div>
+          <h2
+            className="text-sm font-semibold"
+            style={{ color: 'var(--ink)' }}
+          >
+            认知
+          </h2>
+          <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            Agent 在对话中积累的关于你和你项目的认知
+          </p>
+        </div>
+        <div className="relative">
+          <Search
+            size={14}
+            strokeWidth={1.5}
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+            style={{ color: 'var(--ink-ghost)' }}
+          />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="搜索记忆(标题或内容)..."
+            className="flex h-7 w-full max-w-md rounded-sm border border-transparent bg-[var(--shelf)] pl-8 pr-2.5 text-md transition-colors placeholder:text-[var(--ink-ghost)] hover:bg-[var(--hover-overlay)] focus:bg-[var(--paper)] focus-visible:outline-none"
+            style={{ color: 'var(--ink)' }}
+          />
+        </div>
       </div>
+
       <MemoryGroup
         title="关于我"
-        description={`Agent 对你的认知（${userMemories.length} 条${q ? ` · 搜索 "${query}"` : ''}）`}
+        description={`Agent 对你的认知 · ${userMemories.length} 条${q ? ` · 搜索 "${query}"` : ''}`}
         memories={userMemories}
         onUpdate={handleUpdate}
         onDelete={handleDelete}
       />
+
+      <Separator />
+
       <MemoryGroup
         title="项目记忆"
-        description={`Agent 对你的项目和内容的认知（${projectMemories.length} 条${q ? ` · 搜索 "${query}"` : ''}）`}
+        description={`Agent 对你项目和内容的认知 · ${projectMemories.length} 条${q ? ` · 搜索 "${query}"` : ''}`}
         memories={projectMemories}
         onUpdate={handleUpdate}
         onDelete={handleDelete}
       />
-    </>
+    </div>
   );
 }
