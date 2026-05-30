@@ -177,7 +177,7 @@ function ProviderRow({
         </button>
       </div>
 
-      {/* 三 tier 模型名展示 + 视觉模型(配了才显示) */}
+      {/* 三 tier 模型名展示 + 视觉模型(总是显示,无配则灰字"未配置"——让用户知道有此字段) */}
       <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 pl-5">
         {TIERS.map(({ key, label }) => (
           <span key={key} className="text-xs" style={{ color: 'var(--ink-faded)' }}>
@@ -185,12 +185,10 @@ function ProviderRow({
             {provider[key as keyof typeof provider] as string}
           </span>
         ))}
-        {provider.visionModel && (
-          <span className="text-xs" style={{ color: 'var(--ink-faded)' }}>
-            <span style={{ color: 'var(--ink-ghost)' }}>视觉：</span>
-            {provider.visionModel}
-          </span>
-        )}
+        <span className="text-xs" style={{ color: provider.visionModel ? 'var(--ink-faded)' : 'var(--ink-ghost)' }}>
+          <span style={{ color: 'var(--ink-ghost)' }}>视觉：</span>
+          {provider.visionModel || '未配置'}
+        </span>
       </div>
     </div>
   );
@@ -719,7 +717,7 @@ export function IntegrationTab() {
       {/* ── AI 提供商列表 ── */}
       <Section
         title="AI 提供商"
-        description="配置多个提供商，每个提供商绑定三个 tier 的模型；点击行可切换启用"
+        description="配置 API key 和模型 —— 每个提供商绑三档(快/中/深思) + 可选视觉模型。Agent 调用时按它的 tier 自动选用对应模型,换提供商时不用每个 agent 重选模型。配过的都可用,由各 agent 在「Agent」tab 自选用谁。"
       >
         {/* 提供商列表 */}
         {providers.length > 0 ? (
