@@ -431,22 +431,27 @@ export function AgentTab() {
   // 并行拉 agents + providers + availableTools(#5 + #141 重构)
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
-    try {
-      const [agentsData, configView, toolsData] = await Promise.all([
-        settingsApi.getAgentConfigs(),
-        settingsApi.getConfig(),
-        settingsApi.getAvailableTools(),
-      ]);
-      setAgents(agentsData);
-      setProviders(
-        configView.ai.providers.map((p) => ({ id: p.id, name: p.name })),
-      );
-      setAvailableTools(toolsData);
-    } catch {
+    // 用 allSettled 而非 all:任一端点失败(如新 endpoint 未生效)不应让整页报错,
+    // 各端点独立降级——agents 必须有(没有则报错),providers/tools 可空(空数组)
+    const [agentsRes, configRes, toolsRes] = await Promise.allSettled([
+      settingsApi.getAgentConfigs(),
+      settingsApi.getConfig(),
+      settingsApi.getAvailableTools(),
+    ]);
+    if (agentsRes.status === 'fulfilled') {
+      setAgents(agentsRes.value);
+    } else {
       banner.error('加载 Agent 配置失败');
-    } finally {
-      setLoading(false);
     }
+    if (configRes.status === 'fulfilled') {
+      setProviders(
+        configRes.value.ai.providers.map((p) => ({ id: p.id, name: p.name })),
+      );
+    }
+    if (toolsRes.status === 'fulfilled') {
+      setAvailableTools(toolsRes.value);
+    }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
