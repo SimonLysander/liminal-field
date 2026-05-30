@@ -119,7 +119,7 @@ export const NodeFormModal = ({
       e.target.value = '';
       return;
     }
-    // FileList 不支持 structured clone,存到模块变量(与原 FolderOverviewPanel 一致)
+    // FileList 不支持 structured clone,存到模块变量(由 batch-import 页面 Array.from 取出)
     setPendingImportFiles(files);
     onClose();
     const params = new URLSearchParams();

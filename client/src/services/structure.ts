@@ -36,34 +36,6 @@ export interface DeleteStats {
   docCount: number;
 }
 
-export type ChildPublishStatus = 'published' | 'updated' | 'unpublished';
-
-export interface FolderOverviewStats {
-  folderCount: number;
-  docCount: number;
-  published: number;
-  updated: number;
-  unpublished: number;
-}
-
-export interface FolderOverviewChild {
-  id: string;
-  name: string;
-  type: 'FOLDER' | 'DOC';
-  contentItemId?: string;
-  childDocCount?: number;
-  childPublishedCount?: number;
-  publishStatus?: ChildPublishStatus;
-  summary?: string;
-  updatedAt?: string;
-}
-
-export interface FolderOverview {
-  folder: { id: string; name: string };
-  stats: FolderOverviewStats;
-  children: FolderOverviewChild[];
-}
-
 export const structureApi = {
   /**
    * 列出导航节点。scope 可选，传入后作为查询参数过滤特定 workspace 的节点。
@@ -115,9 +87,6 @@ export const structureApi = {
       method: 'POST',
       body: JSON.stringify({ parentId, nodeIds }),
     }),
-
-  getFolderOverview: (folderId: string) =>
-    request<FolderOverview>(`/structure-nodes/${folderId}/overview`),
 
   batchPublish: (folderId: string) =>
     request<{ successCount: number; skippedCount: number }>('/spaces/notes/batch/publish', {

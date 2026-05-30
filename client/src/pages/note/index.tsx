@@ -39,9 +39,8 @@ import { useScrollFade } from '@/hooks/use-scroll-fade';
  *   /note              → NoteListView 未选态邀请
  *
  * 节点同质化(2026-05-29)：每个导航节点都有自己的 ContentItem，
- * 文件夹/主题节点也可能携带正文。与管理端 FolderOverviewPanel 对齐——
- * 进入文件夹时渲染其自身正文（若有），空正文则回退到邀请空态。
- * doc 优先于 topic：同时存在时展示具体文档。
+ * 文件夹/主题节点也可能携带正文——进入文件夹时渲染其自身正文（若有），
+ * 空正文则回退到邀请空态。doc 优先于 topic：同时存在时展示具体文档。
  * ================================================================ */
 
 export default function NotePage() {
@@ -70,9 +69,11 @@ function NoteListView() {
 /**
  * FolderReader — 主题（文件夹节点）着陆页。
  *
- * 节点同质化后文件夹也有自己的 ContentItem，这里渲染其已发布正文。
- * 与管理端 FolderOverviewPanel 对齐（取正文 → MarkdownBody 渲染 → 空正文不渲染），
- * 但展示端的子项列表由 Sidebar 抽屉下钻承载，故主面板只负责呈现主题自身正文。
+
+
+ * 节点同质化后文件夹也有自己的 ContentItem，这里渲染其已发布正文
+ * （取正文 → MarkdownBody 渲染 → 空正文不渲染）。展示端子项列表由 Sidebar
+ * 抽屉下钻承载，故主面板只负责呈现主题自身正文。
  *
  * 数据流：topicId →（公开的 /structure-nodes/:id/path）取末节点拿 contentItemId
  *        → notesApi.getById（不传 visibility=all，仅取已发布正文）。

@@ -161,7 +161,7 @@ export default function BatchImportPage() {
   const parentId = searchParams.get('parentId') ?? '';
   const parentName = searchParams.get('parentName') ?? '';
 
-  // 从模块 store 获取文件数组（FolderOverviewPanel 选择文件夹后存入，Array.from 复制避免 input 重置后引用失效）
+  // 从模块 store 获取文件数组（NodeFormModal 选择文件夹后存入，Array.from 复制避免 input 重置后引用失效）
   const [incomingFiles] = useState<File[] | null>(() => getPendingImportFiles());
 
   // 选中文件夹的原始根名（来自 webkitRelativePath 的第一段，全程不变，用于 JSZip 路径替换）
