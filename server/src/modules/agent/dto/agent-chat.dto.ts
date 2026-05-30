@@ -27,10 +27,8 @@ class DocumentContextDto {
   @IsString()
   bodyMarkdown!: string;
 
-  /** 文集场景:前端拼好的整集脉络(标题/描述+条目列表+当前位置)。笔记无此字段。 */
-  @IsString()
-  @IsOptional()
-  collectionContext?: string;
+  // #150 续(2026-05-31):collectionContext 已从前端 push 改为后端 pull
+  // (AgentLifecycle.onBeforeChat 按 contentItemId 自己查),不再走 DTO。
 }
 
 /** 画廊单张照片的文字信息(不含图像字节;图由后端 prepareStep 按需注入)。 */

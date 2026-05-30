@@ -49,12 +49,11 @@ const TIER_NEXT: Record<Tier, Tier> = {
  * 新场景 = 这里加一个字段 + 后端 entryContext 加对应字段;通用件代码不动。
  */
 export type AdvisorContext = {
-  /** 富文本场景(笔记/文集):正文 + 文集脉络 */
+  /** 富文本场景(笔记/文集):正文。文集脉络后端自查,不再前端传。 */
   document?: {
     contentItemId?: string;
     title?: string;
     bodyMarkdown?: string;
-    collectionContext?: string;
   };
   /** 画廊场景:照片清单 + 随笔 */
   gallery?: {
@@ -505,7 +504,6 @@ function buildAgentRequestBody({
             contentItemId: document.contentItemId,
             title: document.title,
             bodyMarkdown: document.bodyMarkdown,
-            collectionContext: document.collectionContext,
           }
         : undefined,
       // 画廊场景:照片清单+随笔。后端 get_current_draft(画廊版) 从这里 read,prompt 不塞内容。

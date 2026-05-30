@@ -36,8 +36,7 @@ export interface AdvisorMount {
   sessionKey: string;
   /** 文档标识(笔记=contentItemId;文集条目=`anthologyId:entryKey`);用于记忆绑定/document context */
   contentItemId: string;
-  /** 文集场景的整集脉络(标题/描述+条目列表+当前位置),注入给 Aurora;笔记不传。 */
-  collectionContext?: string;
+  // 文集脉络已挪到后端按 contentItemId 自查(#150 续,2026-05-31),前端不再传
 }
 
 export interface ProseDraftEditorProps<TState extends BaseDraftState> {
@@ -384,7 +383,6 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
                 contentItemId: advisor.contentItemId,
                 title: editor.state.title,
                 bodyMarkdown: editor.state.bodyMarkdown,
-                collectionContext: advisor.collectionContext,
               },
             }}
             editorBridge={{

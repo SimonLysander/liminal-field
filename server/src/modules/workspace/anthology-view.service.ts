@@ -576,6 +576,43 @@ export class AnthologyViewService {
     };
   }
 
+  /**
+   * 为 Aurora 拼"整集脉络"字符串(2026-05-31 #150 续):
+   * 输入文集条目的合成 contentItemId(形如 `${anthologyId}:${entryKey}`),
+   * 返回该条目所属文集的 标题/描述/条目列表/当前位置 的一段文本。
+   *
+   * 设计:把前端 anthology/edit.tsx 里那段拼装搬到后端——避免前端每轮 chat 都重发同一份脉络
+   * (#150 按需化原则:工具能提供的不要一直注入 + 后端 pull 替代前端 push)。
+   * 非文集条目格式(无 `:`)或文集已删 → 返回 null,prompt.handler 自然不会注入 <collection>。
+   */
+  async buildCollectionContextForEntry(
+    entryContentItemId: string,
+  ): Promise<string | null> {
+    const sep = entryContentItemId.indexOf(':');
+    if (sep < 0) return null;
+    const anthologyId = entryContentItemId.slice(0, sep);
+    const currentEntryKey = entryContentItemId.slice(sep + 1);
+    try {
+      const detail = await this.toAdminDetail(anthologyId);
+      const list = detail.entries
+        .map(
+          (e, i) =>
+            `${i + 1}. ${e.title || '(无标题)'} (key: ${e.key})${e.key === currentEntryKey ? ' ← 当前正在编辑' : ''}`,
+        )
+        .join('\n');
+      const desc = detail.description?.trim()
+        ? `\n集简介:${detail.description.trim()}`
+        : '';
+      return `本条目属于文集《${detail.title}》,共 ${detail.entries.length} 篇。${desc}\n条目顺序:\n${list}`;
+    } catch (err) {
+      // 文集已删 / 节点查不到 → 不阻塞 chat,返回 null(prompt 不注入 <collection>)
+      this.logger.warn(
+        `[buildCollectionContextForEntry] 取整集脉络失败 anthologyId=${anthologyId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+  }
+
   // ── 发布 ──────────────────────────────────────────────────────────────────
 
   /**

@@ -19,11 +19,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SessionHandler } from './session.handler';
 import { MemoryHandler } from './memory.handler';
-import { PromptHandler } from './prompt.handler';
+import { PromptHandler, type BuildSystemPromptParams } from './prompt.handler';
 import { ToolAssembler } from './tool.assembler';
 import { SystemConfigService } from '../../settings/system-config.service';
 import { AgentMemoryRepository } from '../memory/agent-memory.repository';
 import { AgentSessionRepository } from '../session/agent-session.repository';
+import { AnthologyViewService } from '../../workspace/anthology-view.service';
 import { sliceSessionPage } from './session-pagination';
 import type { AgentChatDto } from '../dto/agent-chat.dto';
 
@@ -46,6 +47,8 @@ export class AgentLifecycle {
     private readonly memoryRepo: AgentMemoryRepository,
     // 跨段聚合分页：getAllMessages 跨段全量后内存 slice（对话量可控，YAGNI）
     private readonly sessionRepo: AgentSessionRepository,
+    // #150 续:文集场景在 onBeforeChat 里按需查整集脉络,前端不再透传 collectionContext
+    private readonly anthology: AnthologyViewService,
   ) {}
 
   /**
@@ -135,12 +138,28 @@ export class AgentLifecycle {
     // tasks 从 session 记忆记录取(替代旧 AgentSession.tasks);content 注入对话脉络
     const tasks = (sessionMem?.tasks as Array<Record<string, unknown>>) ?? [];
 
+    // 文集条目场景 → 后端按需查整集脉络(#150 续,2026-05-31):
+    // 前端不再每轮重发 collectionContext,后端拿到 contentItemId(含 `:`) 自己拼。
+    // 笔记场景 contentItemId 无 `:`,buildCollectionContextForEntry 返 null。
+    // 显式声明成 prompt 期望的 document 类型(含 collectionContext),DTO 已不带这字段
+    let document: BuildSystemPromptParams['document'] =
+      dto.entryContext.document;
+    if (document?.contentItemId.includes(':')) {
+      const collectionContext =
+        await this.anthology.buildCollectionContextForEntry(
+          document.contentItemId,
+        );
+      if (collectionContext) {
+        document = { ...document, collectionContext };
+      }
+    }
+
     const systemPrompt = this.prompt.buildSystemPrompt({
       ownerProfile: ownerProfile.name ? ownerProfile : undefined,
       coreMemories,
       // session 记忆 content = 旧对话提炼出的会话脉络
       sessionMemory: sessionMem?.content || undefined,
-      document: dto.entryContext.document,
+      document,
       gallery: dto.entryContext.gallery,
       customSystemPrompt: aiConfig.aiSystemPrompt,
       entrySystemPrompt: aiConfig.entrySystemPrompt,

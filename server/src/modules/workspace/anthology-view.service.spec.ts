@@ -75,3 +75,59 @@ describe('AnthologyViewService 发布顺序(文集先发)', () => {
     expect(publishVersion).toHaveBeenCalledWith('ci_x');
   });
 });
+
+describe('AnthologyViewService.buildCollectionContextForEntry (#150 续 2026-05-31)', () => {
+  it('contentItemId 无 `:`(笔记/非文集条目)→ 返 null,不查 anthology', async () => {
+    const svc = makeService();
+    // toAdminDetail spy(永远不该被调)
+    const spy = jest.spyOn(svc, 'toAdminDetail');
+    expect(await svc.buildCollectionContextForEntry('ci_note_xxx')).toBeNull();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('文集条目命中:返回标题/共 N 篇/条目列表 + 标当前位置', async () => {
+    const svc = makeService();
+    jest.spyOn(svc, 'toAdminDetail').mockResolvedValue({
+      title: '行走南京',
+      description: '记我在南京的一年',
+      entries: [
+        { key: 'entry-a', title: '初到', date: '', updatedAt: '' },
+        { key: 'entry-b', title: '夜走玄武湖', date: '', updatedAt: '' },
+        { key: 'entry-c', title: '回望', date: '', updatedAt: '' },
+      ],
+    } as never);
+
+    const out = await svc.buildCollectionContextForEntry('ci_anth:entry-b');
+    expect(out).not.toBeNull();
+    expect(out).toContain('本条目属于文集《行走南京》');
+    expect(out).toContain('共 3 篇');
+    expect(out).toContain('集简介:记我在南京的一年');
+    // 当前条目带标记,其他条目不带
+    expect(out).toMatch(/夜走玄武湖.*← 当前正在编辑/);
+    expect(out).not.toMatch(/初到.*← 当前正在编辑/);
+    // entryKey 必须暴露(给 read_collection_entry 用)
+    expect(out).toContain('key: entry-a');
+    expect(out).toContain('key: entry-b');
+  });
+
+  it('无描述:不出现"集简介"行', async () => {
+    const svc = makeService();
+    jest.spyOn(svc, 'toAdminDetail').mockResolvedValue({
+      title: '随笔集',
+      description: '',
+      entries: [{ key: 'e1', title: 'A', date: '', updatedAt: '' }],
+    } as never);
+    const out = await svc.buildCollectionContextForEntry('ci_anth:e1');
+    expect(out).not.toContain('集简介');
+  });
+
+  it('toAdminDetail 抛错(文集已删等)→ 返 null 不阻塞 chat', async () => {
+    const svc = makeService();
+    jest
+      .spyOn(svc, 'toAdminDetail')
+      .mockRejectedValue(new Error('Anthology not found'));
+    expect(
+      await svc.buildCollectionContextForEntry('ci_anth:entry-x'),
+    ).toBeNull();
+  });
+});
