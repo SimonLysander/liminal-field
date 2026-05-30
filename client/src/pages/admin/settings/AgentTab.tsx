@@ -27,6 +27,7 @@ import {
   PrimaryButton,
   SecondaryButton,
 } from './SettingsUI';
+import { MemoriesSection } from './MemoriesSection';
 
 // ── 常量 ─────────────────────────────────────────────────────────
 
@@ -519,6 +520,9 @@ export function AgentTab() {
           </div>
         )}
       </Section>
+
+      {/* ── Agent 对你 / 你项目的认知(记忆) ── 此前位于 OwnerTab,2026-05-30 挪到这里 */}
+      <MemoriesSection />
     </div>
   );
 }
