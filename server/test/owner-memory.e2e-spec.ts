@@ -41,7 +41,6 @@ describe('Owner Profile & Memory Management (E2E)', () => {
         name: '',
         birthday: '',
         bio: '',
-        interests: '',
       });
     });
   });
@@ -55,7 +54,6 @@ describe('Owner Profile & Memory Management (E2E)', () => {
           name: 'lux-stirring',
           birthday: '2000-01-15',
           bio: '前端开发、摄影',
-          interests: '计算机科学、文学、城市骑行',
         })
         .expect(200);
 
@@ -67,14 +65,13 @@ describe('Owner Profile & Memory Management (E2E)', () => {
       expect(res.body.data.name).toBe('lux-stirring');
       expect(res.body.data.birthday).toBe('2000-01-15');
       expect(res.body.data.bio).toBe('前端开发、摄影');
-      expect(res.body.data.interests).toBe('计算机科学、文学、城市骑行');
     });
 
     it('应支持部分更新', async () => {
       await supertest(ctx.app.getHttpServer())
         .put('/api/v1/settings/owner-profile')
         .set('Cookie', cookie)
-        .send({ interests: '计算机网络、摄影' })
+        .send({ bio: '摄影、写作' })
         .expect(200);
 
       const res = await supertest(ctx.app.getHttpServer())
@@ -82,10 +79,10 @@ describe('Owner Profile & Memory Management (E2E)', () => {
         .set('Cookie', cookie)
         .expect(200);
 
-      // interests 更新了，其他字段保持不变
+      // bio 更新了，其他字段保持不变
       expect(res.body.data.name).toBe('lux-stirring');
       expect(res.body.data.birthday).toBe('2000-01-15');
-      expect(res.body.data.interests).toBe('计算机网络、摄影');
+      expect(res.body.data.bio).toBe('摄影、写作');
     });
 
     it('所有者信息应出现在 config view 中', async () => {

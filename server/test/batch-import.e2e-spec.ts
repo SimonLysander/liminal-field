@@ -209,13 +209,14 @@ describe('Batch Import (e2e)', () => {
       // 等待后台任务完成（需要 cookie 认证）
       await waitForBatchJobDone(ctx.app, jobId, cookie);
 
-      // 找到创建的文档：通过文件夹 overview 获取子项的 contentItemId
-      const overviewRes = await supertest(ctx.app.getHttpServer())
-        .get(`/api/v1/structure-nodes/${parentId}/overview`)
+      // 找到创建的文档：通过 listStructureNodes 拿父节点下的子项
+      // (此前用 GET /structure-nodes/:id/overview,该 endpoint 已随 FolderOverviewPanel 退役)
+      const listRes = await supertest(ctx.app.getHttpServer())
+        .get(`/api/v1/structure-nodes?parentId=${parentId}&visibility=all&scope=notes`)
         .set('Cookie', cookie)
         .expect(200);
 
-      const docChildren = overviewRes.body.data.children.filter(
+      const docChildren = listRes.body.data.children.filter(
         (c: any) => c.type === 'DOC',
       );
       expect(docChildren.length).toBeGreaterThanOrEqual(1);
