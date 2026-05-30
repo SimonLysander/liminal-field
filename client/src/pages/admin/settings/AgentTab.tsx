@@ -26,6 +26,7 @@ import {
   SelectInput,
   PrimaryButton,
   SecondaryButton,
+  Toggle,
 } from './SettingsUI';
 import { MemoriesSection } from './MemoriesSection';
 
@@ -339,39 +340,17 @@ function AgentCard({
       {/* ── 编辑表单区域 ── */}
       {editing && (
         <div className="space-y-4">
-          {/* 启用开关:必须先选 provider 才能启用(#5 重构守卫) */}
-          <div className="flex items-center justify-between">
+          {/* 启用开关:必须先选 provider 才能启用(#5 重构守卫);复用 SettingsUI.Toggle */}
+          <div
+            className="flex items-center justify-between"
+            title={!providerValid ? '先选 Provider 才能启用' : undefined}
+          >
             <FieldLabel>启用</FieldLabel>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={(draft.enabled ?? agent.enabled) && providerValid}
-              onClick={() => {
-                // providerId 未选时禁止开启,避免落库 enabled=true 但调用必报"配置不完整"
-                if (enableSwitchDisabled) return;
-                setDraft((d) => ({ ...d, enabled: !(d.enabled ?? agent.enabled) }));
-              }}
+            <Toggle
+              checked={(draft.enabled ?? agent.enabled) && providerValid}
+              onChange={(v) => setDraft((d) => ({ ...d, enabled: v }))}
               disabled={enableSwitchDisabled}
-              title={
-                !providerValid
-                  ? '先选 Provider 才能启用'
-                  : undefined
-              }
-              className="relative h-5 w-9 rounded-full transition-colors duration-200 disabled:opacity-40"
-              style={{
-                background: (draft.enabled ?? agent.enabled) && providerValid
-                  ? 'var(--mark-green)'
-                  : 'var(--separator)',
-              }}
-            >
-              <span
-                className="absolute top-0.5 h-4 w-4 rounded-full shadow transition-transform duration-200"
-                style={{
-                  background: 'white',
-                  transform: (draft.enabled ?? agent.enabled) && providerValid ? 'translateX(1.25rem)' : 'translateX(0.125rem)',
-                }}
-              />
-            </button>
+            />
           </div>
 
           {/* 显示名称 */}
