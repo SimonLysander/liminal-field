@@ -41,16 +41,16 @@ export function MetadataFields({ date, location, onDateChange, onLocationChange 
   };
 
   return (
-    <div className="flex items-end gap-8">
+    <div className="flex flex-wrap items-end gap-3">
       {/* 日期：Popover + Calendar */}
       <FieldGroup label="日期" className="w-[180px]">
         <Popover open={calOpen} onOpenChange={setCalOpen}>
           <PopoverTrigger asChild>
             <button
-              className="metadata-input flex w-full items-center gap-1.5 text-left text-sm"
+              className={`${FIELD_CONTROL} ${calOpen ? FIELD_FOCUS : FIELD_HOVER}`}
               style={{ color: date ? 'var(--ink)' : 'var(--ink-ghost)' }}
             >
-              <CalendarDays size={13} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)', flexShrink: 0 }} />
+              <CalendarDays size={14} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)', flexShrink: 0 }} />
               {date ?? '选择日期'}
             </button>
           </PopoverTrigger>
@@ -72,12 +72,21 @@ export function MetadataFields({ date, location, onDateChange, onLocationChange 
           value={location ?? ''}
           onChange={(e) => onLocationChange(e.target.value || null)}
           placeholder="北京"
-          className="metadata-input"
+          className={`${FIELD_CONTROL} ${FIELD_HOVER}`}
         />
       </FieldGroup>
     </div>
   );
 }
+
+/* ─── 统一控件外观:Notion 属性行风格,清晰边界(设计 token,非 inline 魔法值) ───
+ * 高 32(h-8)· rounded-md · 1px separator 边 · shelf 底 · hover/focus 边变 accent。
+ * 覆盖 <Input> 默认(h-7/rounded-sm/border-transparent),twMerge 后我方生效。 */
+const FIELD_CONTROL =
+  'flex h-8 w-full items-center gap-1.5 rounded-md border border-[var(--separator)] bg-[var(--shelf)] px-2.5 text-sm text-left transition-colors outline-none';
+const FIELD_HOVER =
+  'hover:border-[var(--box-border)] focus:border-[var(--accent)] focus-visible:border-[var(--accent)]';
+const FIELD_FOCUS = 'border-[var(--accent)]';
 
 /* ─── 照片级：EXIF 拍摄参数 ─── */
 
@@ -198,21 +207,26 @@ export function PhotoMetadataFields({ tags, fileSize, dimensions, onChange }: Ph
         const rawValue = tags[key] ? parse(tags[key]) : '';
         return (
           <FieldGroup key={key} label={label}>
-            <div className="flex items-center gap-0">
+            {/* 带边界的小框:前缀 + 透明输入 + 后缀,与页面字段同一套外观 */}
+            <div
+              className="flex h-8 items-center rounded-md border bg-[var(--shelf)] px-2 transition-colors focus-within:border-[var(--accent)]"
+              style={{ borderColor: errors[key] ? 'var(--mark-red)' : 'var(--separator)' }}
+            >
               {prefix && (
-                <span className="text-xs" style={{ color: 'var(--ink-ghost)', flexShrink: 0 }}>{prefix}</span>
+                <span className="shrink-0 text-xs" style={{ color: 'var(--ink-ghost)' }}>{prefix}</span>
               )}
-              <Input
+              {/* 裸 input,无自身边框/底色——外层盒子才是唯一的「框」,避免框中框 */}
+              <input
                 type="text"
                 value={rawValue}
                 onChange={(e) => handleFieldChange(key, e.target.value, format)}
                 onBlur={(e) => handleFieldBlur(key, e.target.value, pattern)}
                 placeholder={placeholder}
-                className="metadata-input"
-                style={errors[key] ? { borderColor: 'var(--mark-red)', borderWidth: 1, borderStyle: 'solid' } : undefined}
+                className="min-w-0 flex-1 bg-transparent px-1 text-sm outline-none placeholder:text-[var(--ink-ghost)]"
+                style={{ color: 'var(--ink)' }}
               />
               {suffix && (
-                <span className="text-xs" style={{ color: 'var(--ink-ghost)', flexShrink: 0 }}>{suffix}</span>
+                <span className="shrink-0 text-xs" style={{ color: 'var(--ink-ghost)' }}>{suffix}</span>
               )}
             </div>
             {errors[key] && (
@@ -229,10 +243,10 @@ export function PhotoMetadataFields({ tags, fileSize, dimensions, onChange }: Ph
         <Popover open={shotAtCalOpen} onOpenChange={setShotAtCalOpen}>
           <PopoverTrigger asChild>
             <button
-              className="metadata-input flex w-full items-center gap-1.5 text-left text-sm"
+              className={`${FIELD_CONTROL} ${shotAtCalOpen ? FIELD_FOCUS : FIELD_HOVER}`}
               style={{ color: tags.shotAt ? 'var(--ink)' : 'var(--ink-ghost)' }}
             >
-              <CalendarDays size={12} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)', flexShrink: 0 }} />
+              <CalendarDays size={14} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)', flexShrink: 0 }} />
               {tags.shotAt ?? '选择'}
             </button>
           </PopoverTrigger>
@@ -265,7 +279,7 @@ export function PhotoMetadataFields({ tags, fileSize, dimensions, onChange }: Ph
 function FieldGroup({ label, className, children }: { label: string; className?: string; children: React.ReactNode }) {
   return (
     <div className={className}>
-      <div className="mb-0.5 text-2xs" style={{ color: 'var(--ink-ghost)' }}>
+      <div className="mb-1 text-xs font-medium" style={{ color: 'var(--ink-faded)' }}>
         {label}
       </div>
       {children}

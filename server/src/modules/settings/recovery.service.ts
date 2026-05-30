@@ -17,10 +17,9 @@ import { ContentRepository } from '../content/content.repository';
 import { ContentSnapshotRepository } from '../content/content-snapshot.repository';
 import { ContentRepoService } from '../content/content-repo.service';
 import { NavigationRepository } from '../navigation/navigation.repository';
-import { NavigationNodeType } from '../navigation/navigation.entity';
+import { ContentService } from '../content/content.service';
 import { OssService } from '../oss/oss.service';
 import { Manifest, ManifestNode, ManifestService } from './manifest.service';
-import { parseAnthologyIndex } from '../workspace/anthology-view.service';
 
 export interface ScanResult {
   /** Git 仓库 content/ 目录下发现的 contentId 列表 */
@@ -53,6 +52,7 @@ export class RecoveryService {
     private readonly contentRepoService: ContentRepoService,
     private readonly ossService: OssService,
     private readonly manifestService: ManifestService,
+    private readonly contentService: ContentService,
   ) {
     this.repoRoot = this.contentRepoService.repoRoot;
     this.contentRoot = join(this.repoRoot, 'content');
@@ -155,9 +155,11 @@ export class RecoveryService {
   }
 
   /**
-   * 恢复单条内容，按清单 scope 决定策略：
-   * - notes/gallery：读 main.md，创建一条 snapshot（fileName=null）
-   * - anthology：读 main.md（索引）+ entries/*.md（条目），索引和每篇条目各创建一条 snapshot
+   * 恢复单条内容：读 main.md，创建一条 snapshot（fileName=null）。
+   *
+   * 统一页面树后（2026-05-29）所有 scope 同质——文集条目各自是独立的 ContentItem
+   * （独立 content/<ci> 目录），同样走本方法逐条恢复；父子结构由清单导航树还原
+   * （restoreNavigation → createNodesFromManifest），不再有 anthology 专属的 entries 扫描。
    */
   private async recoverSingleItem(
     contentId: string,
@@ -222,11 +224,6 @@ export class RecoveryService {
       source: 'system',
     });
 
-    // anthology scope：额外恢复 entries/ 下的条目文件
-    if (scope === 'anthology') {
-      await this.recoverAnthologyEntries(contentId, bodyMarkdown, now);
-    }
-
     // 上传最新版本资产到 OSS
     await this.uploadAssetsToOss(contentId, latestVersionId, contentDir);
 
@@ -235,45 +232,38 @@ export class RecoveryService {
   }
 
   /**
-   * 恢复 anthology 的条目文件：
-   * 从索引 frontmatter 读取条目列表，逐个读取 entries/{key}.md 并创建 snapshot。
-   * 以索引为权威——索引里有但磁盘上没有的条目跳过（warn），磁盘上多余的文件忽略。
+   * 为「清单记了 contentItemId、但 Git 无其 content/ 目录」的空壳文件夹补建一个空 ContentItem
+   * (+ 一条空正文 snapshot),用原 id,使导航节点能解析、详情可读(空正文),不留悬挂死节点。
+   * 幂等:该 id 已存在(理论上不会,防御)则直接返回。
    */
-  private async recoverAnthologyEntries(
+  private async ensureEmptyContentItem(
     contentId: string,
-    indexMarkdown: string,
-    now: Date,
+    title: string,
   ): Promise<void> {
-    const indexData = parseAnthologyIndex(indexMarkdown);
-    if (indexData.entries.length === 0) return;
+    if (await this.contentRepository.findById(contentId)) return;
 
-    const contentDir = join(this.contentRoot, contentId);
-
-    for (const entry of indexData.entries) {
-      const filePath = join(contentDir, `entries/${entry.key}.md`);
-      let entryMarkdown = '';
-      try {
-        entryMarkdown = await readFile(filePath, 'utf8');
-      } catch {
-        this.logger.warn(`${contentId}: entries/${entry.key}.md 不存在，跳过`);
-        continue;
-      }
-
-      await this.contentSnapshotRepository.create({
-        versionId: nanoid(16),
-        contentItemId: contentId,
-        title: entry.title,
-        summary: '',
-        bodyMarkdown: entryMarkdown,
-        assetRefs: [],
-        createdAt: now,
-        changeNote: '从远端恢复',
-        source: 'system',
-        fileName: `entries/${entry.key}.md`,
-      });
-    }
-
-    this.logger.log(`${contentId}: 恢复 ${indexData.entries.length} 篇条目`);
+    const versionId = nanoid(16);
+    const now = new Date();
+    await this.contentRepository.create({
+      id: contentId,
+      latestVersion: { versionId, commitHash: '', title, summary: '' },
+      publishedVersion: null,
+      changeLogs: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    await this.contentSnapshotRepository.create({
+      versionId,
+      contentItemId: contentId,
+      title,
+      summary: '',
+      bodyMarkdown: '',
+      assetRefs: [],
+      createdAt: now,
+      changeNote: '恢复:补建空壳文件夹内容',
+      source: 'system',
+    });
+    this.logger.log(`补建空壳文件夹内容: ${contentId} (${title})`);
   }
 
   /**
@@ -355,16 +345,18 @@ export class RecoveryService {
     recoveredIds: Set<string>,
   ): Promise<void> {
     if (!manifest) {
-      // 无清单：平铺恢复，所有内容放到 notes 根节点
+      // 无清单：平铺恢复，所有内容放到 notes 根节点。
+      // order 必须递增 —— 否则同 order=0 多节点的列表顺序退化为 Mongo 内部 _id 序，
+      // 与恢复前不一致（虽无清单已无法还原真实顺序，至少保证稳定确定的排列）。
+      let order = 0;
       for (const contentId of recoveredIds) {
         const item = await this.contentRepository.findById(contentId);
         if (!item) continue;
         await this.navigationRepository.create({
           name: item.latestVersion?.title ?? contentId,
           scope: 'notes',
-          nodeType: NavigationNodeType.content,
           contentItemId: contentId,
-          order: 0,
+          order: order++,
         });
       }
       return;
@@ -400,14 +392,26 @@ export class RecoveryService {
         continue;
       }
 
+      // 节点同质化:每个节点都要指向【真实存在】的 ContentItem。两种情况要补空壳:
+      // ① 清单根本没记 contentItemId(老式文件夹节点)→ mint 一个新 id 的空 ContentItem;
+      // ② 记了 contentItemId 但它【没被恢复】(git 无其 content/ 目录——空壳文件夹从未提交
+      //    正文,recoverSingleItem 不会扫到它)。若直接拿原 id 建导航节点,会得到指向不存在
+      //    ContentItem 的悬挂死节点(点开 404)。用【原 id】补建空 ContentItem:既消除悬挂,
+      //    又保持与清单一致、跨多次恢复 id 稳定。
+      let contentItemId = node.contentItemId;
+      if (!contentItemId) {
+        const content = await this.contentService.createContent({
+          title: node.name,
+        });
+        contentItemId = content.id;
+      } else if (!recoveredIds.has(contentItemId)) {
+        await this.ensureEmptyContentItem(contentItemId, node.name);
+        recoveredIds.add(contentItemId);
+      }
       const created = await this.navigationRepository.create({
         name: node.name,
         scope,
-        nodeType:
-          node.type === 'FOLDER'
-            ? NavigationNodeType.subject
-            : NavigationNodeType.content,
-        contentItemId: node.contentItemId,
+        contentItemId,
         // parentId 存的是 ObjectId，NavigationRepository.create 接受字符串
         parentId: parentId ?? undefined,
         order: node.order,

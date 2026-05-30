@@ -33,6 +33,7 @@ export default defineConfig([
             'buttonVariants',
             'DEFAULT_COLORS',
             'mediaResizeHandleVariants',
+            'readComposerPayload',
           ],
         },
       ],

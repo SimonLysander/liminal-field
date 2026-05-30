@@ -155,7 +155,7 @@ export function GalleryPostPreview({
             <span
               className="inline-flex items-center gap-[5px] rounded-full px-2.5 py-[3px] text-2xs font-medium"
               style={{
-                background: isViewingPublished ? 'rgba(52,199,89,0.1)' : 'var(--accent-soft)',
+                background: isViewingPublished ? 'var(--success-soft)' : 'var(--accent-soft)',
                 color: isViewingPublished ? 'var(--mark-green)' : 'var(--ink-faded)',
               }}
             >

@@ -3,8 +3,8 @@
  *
  * 验证 POST /settings/publish-all 按 scope 把所有内容的最新版上线:
  * - notes:publishedVersion 指向最新
- * - anthology:所有有内容条目进 entryPublishStates + 整集 publishedVersion 上线
- * 这是发布状态迁出 Git 后,灾后/恢复后一键重新上线的手段(替代逐条手动发布)。
+ * - anthology:整集 publishedVersion 上线 + 每个条目子 ContentItem 各自 publishedVersion 上线
+ * 这是灾后/恢复后一键重新上线的手段(替代逐条手动发布)。
  */
 import supertest from 'supertest';
 import {
@@ -43,7 +43,7 @@ describe('一键发布全部最新版 publish-all (e2e)', () => {
       cookie,
       '待发布文集',
     );
-    await addAnthologyEntry(ctx.app, cookie, anthologyId, {
+    const { entryKey } = await addAnthologyEntry(ctx.app, cookie, anthologyId, {
       title: '条目一',
       bodyMarkdown: '条目正文',
     });
@@ -68,9 +68,11 @@ describe('一键发布全部最新版 publish-all (e2e)', () => {
     const note = await contentRepo.findById(noteId);
     expect(note?.publishedVersion).toBeTruthy();
 
-    // 文集已上线 + 条目进了发布状态
+    // 文集已上线 + 条目子 ContentItem 各自上线
     const anthology = await contentRepo.findById(anthologyId);
     expect(anthology?.publishedVersion).toBeTruthy();
-    expect(anthology?.entryPublishStates?.length).toBe(1);
+    // entryKey 即条目子 ContentItem id;它的 publishedVersion 已被一键发布上线
+    const entryItem = await contentRepo.findById(entryKey);
+    expect(entryItem?.publishedVersion).toBeTruthy();
   });
 });

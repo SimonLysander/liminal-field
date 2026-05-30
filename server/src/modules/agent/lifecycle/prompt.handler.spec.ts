@@ -40,7 +40,7 @@ describe('PromptHandler.buildSystemPrompt', () => {
   it('有 ownerProfile.name → 注入 owner 分节并用真名;role 里也用真名', () => {
     const out = handler.buildSystemPrompt(
       baseParams({
-        ownerProfile: { name: '阿秋', birthday: '', bio: '', interests: '' },
+        ownerProfile: { name: '阿秋', birthday: '', bio: '' },
       }),
     );
     expect(out).toContain('<owner>');
@@ -61,18 +61,16 @@ describe('PromptHandler.buildSystemPrompt', () => {
           name: '阿秋',
           birthday: '1999-01-01',
           bio: '写作者',
-          interests: '哲学',
         },
       }),
     );
     expect(out).toContain('生日：1999-01-01');
     expect(out).toContain('简介：写作者');
-    expect(out).toContain('在意的：哲学');
   });
 
-  describe('current_context —— 只点名,不灌正文', () => {
-    it('有 document → 点名标题与字数,但绝不包含正文内容', () => {
-      const body = '这是一段绝对不应该出现在系统提示词里的正文内容';
+  describe('current_context —— 点名编辑文档;正文不进 prompt(v3.1 Read-before-Edit)', () => {
+    it('有 document → 点名标题与字数,但正文不出现在 prompt(走 get_current_draft 按需读)', () => {
+      const body = '这是不应该出现在 prompt 里的正文内容';
       const out = handler.buildSystemPrompt(
         baseParams({
           document: {
@@ -86,13 +84,41 @@ describe('PromptHandler.buildSystemPrompt', () => {
       expect(out).toContain('《我的随笔》');
       expect(out).toContain(`约 ${body.length} 字`);
       expect(out).toContain('get_current_draft');
-      // 关键契约:正文不进 prompt
+      // v3.1 关键契约:不再注入 <document> 节,正文不进 prompt;
+      // 模型要看正文必须走 get_current_draft(同时拿到 bodyHash 走 Read-before-Edit)。
+      expect(out).not.toContain('<document>');
       expect(out).not.toContain(body);
     });
 
     it('无 document → 不注入 current_context', () => {
       const out = handler.buildSystemPrompt(baseParams());
       expect(out).not.toContain('<current_context>');
+    });
+
+    it('document.collectionContext 有 → 注入 <collection> 块(文集场景的整集脉络)', () => {
+      const out = handler.buildSystemPrompt(
+        baseParams({
+          document: {
+            contentItemId: 'ci_x:e002',
+            title: '第二篇',
+            bodyMarkdown: 'x',
+            collectionContext:
+              '本条目属于文集《四季》,共 3 篇:\n1. 春\n2. 夏 ← 当前\n3. 秋',
+          },
+        }),
+      );
+      expect(out).toContain('<collection>');
+      expect(out).toContain('文集《四季》');
+      expect(out).toContain('2. 夏 ← 当前');
+    });
+
+    it('document 无 collectionContext(笔记场景) → 不注入 <collection>', () => {
+      const out = handler.buildSystemPrompt(
+        baseParams({
+          document: { contentItemId: 'ci_1', title: '随笔', bodyMarkdown: 'x' },
+        }),
+      );
+      expect(out).not.toContain('<collection>');
     });
 
     it('document 无标题 → 用"未命名"占位', () => {
@@ -146,29 +172,27 @@ describe('PromptHandler.buildSystemPrompt', () => {
   });
 
   describe('记忆分节按需注入', () => {
-    it('coreMemories 注入全文', () => {
+    it('coreMemories 改注入标题索引(#150 2026-05-31:全文按需 recall)', () => {
       const out = handler.buildSystemPrompt(
         baseParams({ coreMemories: [mem('身份', '我是写作者')] }),
       );
-      expect(out).toContain('<core_memories>');
-      expect(out).toContain('[身份]');
-      expect(out).toContain('我是写作者');
+      expect(out).toContain('<memories_index>');
+      expect(out).toContain('- 身份');
+      expect(out).toContain('recall_memory');
+      // 全文不再注入,需调工具
+      expect(out).not.toContain('我是写作者');
     });
 
-    it('relatedMemories / sessionMemory 有才注入', () => {
+    it('sessionMemory 有才注入(relatedMemories 已删,#150 走 recall_memory)', () => {
       const without = handler.buildSystemPrompt(baseParams());
-      expect(without).not.toContain('<related_memories>');
       expect(without).not.toContain('<conversation_summary>');
 
       const out = handler.buildSystemPrompt(
         baseParams({
-          relatedMemories: [{ title: '召回', content: '相关内容' }],
           // session 记忆 content(脉络),替代旧 sessionSummary
           sessionMemory: '之前会话的脉络',
         }),
       );
-      expect(out).toContain('<related_memories>');
-      expect(out).toContain('相关内容');
       expect(out).toContain('<conversation_summary>');
       expect(out).toContain('之前会话的脉络');
     });
@@ -198,10 +222,10 @@ describe('PromptHandler.buildSystemPrompt', () => {
     });
   });
 
-  it('分节顺序:owner→role→tools→core_memories→instructions→current_context→tasks', () => {
+  it('分节顺序:owner→role→tools→memories_index→instructions→current_context→tasks', () => {
     const out = handler.buildSystemPrompt(
       baseParams({
-        ownerProfile: { name: '阿秋', birthday: '', bio: '', interests: '' },
+        ownerProfile: { name: '阿秋', birthday: '', bio: '' },
         coreMemories: [mem('核心', '核心记忆')],
         document: { contentItemId: 'ci_1', title: 'T', bodyMarkdown: 'x' },
         tasks: [{ title: 't', status: 'pending' }],
@@ -211,7 +235,7 @@ describe('PromptHandler.buildSystemPrompt', () => {
       '<owner>',
       '<role>',
       '<tools>',
-      '<core_memories>',
+      '<memories_index>',
       '<instructions>',
       '<current_context>',
       '<tasks>',
@@ -226,7 +250,7 @@ describe('PromptHandler.buildSystemPrompt', () => {
   it('不泄露产品名或模型名', () => {
     const out = handler.buildSystemPrompt(
       baseParams({
-        ownerProfile: { name: '阿秋', birthday: '', bio: '', interests: '' },
+        ownerProfile: { name: '阿秋', birthday: '', bio: '' },
         document: { contentItemId: 'ci_1', title: 'T', bodyMarkdown: 'x' },
       }),
     );

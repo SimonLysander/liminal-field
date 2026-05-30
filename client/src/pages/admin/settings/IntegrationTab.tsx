@@ -11,19 +11,18 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Trash2, Plus, CheckCircle2, Pencil } from 'lucide-react';
+import { Trash2, Plus, Pencil, Eye, EyeOff } from 'lucide-react';
 import { banner } from '@/components/ui/banner-api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Separator } from '@/components/ui/separator';
 import { settingsApi } from '@/services/settings';
 import type { SettingsConfigView } from '@/services/settings';
+// nested EditProviderForm / AddProviderForm 等仍用 SettingsUI 原子,下一轮 #145 收编
 import {
-  PageHeader,
-  EditableSection,
-  Section,
-  SectionSkeleton,
   FieldLabel,
   TextInput,
   SelectInput,
-  StatusRow,
   ValidationBanner,
   PrimaryButton,
   SecondaryButton,
@@ -94,63 +93,69 @@ function TierModelSelects({
   );
 }
 
+// ── 子组件：视觉模型字段(可选、自由输入,与三档并排在同一区) ──────────
+function VisionModelField({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div>
+      <FieldLabel>
+        视觉 模型
+        <span className="ml-1.5 font-normal text-xs" style={{ color: 'var(--ink-ghost)' }}>
+          可选 · 画廊看图写图说;留空则画廊无 AI
+        </span>
+      </FieldLabel>
+      <TextInput
+        value={value}
+        onChange={onChange}
+        placeholder="如 qwen-vl-max / glm-4v;无则留空"
+        disabled={disabled}
+      />
+    </div>
+  );
+}
+
 // ── 子组件：模型行 ────────────────────────────────────────────────
 
 function ProviderRow({
   provider,
-  isActive,
-  onActivate,
   onDelete,
   onEdit,
-  activating,
   deleting,
 }: {
   provider: SettingsConfigView['ai']['providers'][number];
-  isActive: boolean;
-  onActivate: () => void;
   onDelete: () => void;
   onEdit: () => void;
-  activating: boolean;
   deleting: boolean;
 }) {
   const providerLabel = AI_PROVIDERS.find((p) => p.id === provider.provider)?.name ?? provider.provider;
+  // #5 重构(2026-05-30):去掉"激活某一个 provider"的概念。配过的都视为可用,
+  // 由各 agent 在 AgentTab 自选使用哪一个。所以这里不再有 isActive/onActivate,
+  // 行也不再 cursor-pointer。
   return (
     <div
-      className="rounded-lg px-3 py-2.5 transition-colors duration-100 cursor-pointer"
+      className="rounded-lg px-3 py-2.5"
       style={{
-        background: isActive
-          ? 'color-mix(in srgb, var(--accent) 8%, transparent)'
-          : 'var(--shelf)',
-        border: `1px solid ${isActive ? 'color-mix(in srgb, var(--accent) 25%, transparent)' : 'var(--separator)'}`,
+        background: 'var(--paper-white)',
+        border: '1px solid var(--separator)',
       }}
-      onClick={isActive || activating ? undefined : onActivate}
-      title={isActive ? '当前已启用' : '点击切换为启用'}
     >
-      {/* 顶行：状态点 + 提供商名 + 操作按钮 */}
+      {/* 顶行：提供商名 + 操作按钮 */}
       <div className="flex items-center gap-3">
-        <span
-          className="h-2 w-2 shrink-0 rounded-full"
-          style={{ background: isActive ? 'var(--mark-green)' : 'var(--separator)' }}
-        />
-
         <span className="flex-1 min-w-0 text-sm font-medium" style={{ color: 'var(--ink)' }}>
           {providerLabel}
         </span>
 
-        {isActive && (
-          <span
-            className="flex items-center gap-1 text-xs font-medium"
-            style={{ color: 'var(--mark-green)' }}
-          >
-            <CheckCircle2 size={12} />
-            启用中
-          </span>
-        )}
-
         {/* 编辑按钮 */}
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); onEdit(); }}
+          onClick={onEdit}
           className="rounded p-1 transition-opacity duration-100"
           style={{ color: 'var(--ink-ghost)' }}
           title="编辑 tier 绑定"
@@ -162,7 +167,7 @@ function ProviderRow({
         <button
           type="button"
           disabled={deleting}
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          onClick={onDelete}
           className="rounded p-1 transition-opacity duration-100 disabled:opacity-40"
           style={{ color: 'var(--ink-ghost)' }}
           title="删除此提供商"
@@ -171,7 +176,7 @@ function ProviderRow({
         </button>
       </div>
 
-      {/* 三 tier 模型名展示 */}
+      {/* 三 tier 模型名展示 + 视觉模型(总是显示,无配则灰字"未配置"——让用户知道有此字段) */}
       <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 pl-5">
         {TIERS.map(({ key, label }) => (
           <span key={key} className="text-xs" style={{ color: 'var(--ink-faded)' }}>
@@ -179,6 +184,10 @@ function ProviderRow({
             {provider[key as keyof typeof provider] as string}
           </span>
         ))}
+        <span className="text-xs" style={{ color: provider.visionModel ? 'var(--ink-faded)' : 'var(--ink-ghost)' }}>
+          <span style={{ color: 'var(--ink-ghost)' }}>视觉：</span>
+          {provider.visionModel || '未配置'}
+        </span>
       </div>
     </div>
   );
@@ -201,6 +210,8 @@ function EditProviderForm({
     standardModel: provider.standardModel,
     thinkModel: provider.thinkModel,
   });
+  // 视觉模型:可选、独立 state(不进必填三档),自由输入——视觉模型常不在 /models 列表里
+  const [visionModel, setVisionModel] = useState(provider.visionModel ?? '');
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -234,6 +245,7 @@ function EditProviderForm({
         flashModel: tierValues.flashModel,
         standardModel: tierValues.standardModel,
         thinkModel: tierValues.thinkModel,
+        visionModel: visionModel.trim(),
       };
       if (apiKey.trim()) updates.apiKey = apiKey.trim();
       await settingsApi.updateAiProvider(provider.id, updates);
@@ -298,6 +310,9 @@ function EditProviderForm({
         </div>
       )}
 
+      {/* 视觉模型(可选):跟三档并排在同一区,但自由输入、不必填 */}
+      <VisionModelField value={visionModel} onChange={setVisionModel} disabled={saving} />
+
       <div className="flex gap-2">
         <PrimaryButton onClick={() => void handleSave()} disabled={saving}>
           {saving ? '保存中...' : '保存'}
@@ -323,6 +338,8 @@ function AddProviderForm({ onSuccess, onCancel }: {
     standardModel: '',
     thinkModel: '',
   });
+  // 视觉模型:可选、自由输入,不参与三档必填校验
+  const [visionModel, setVisionModel] = useState('');
   const [saving, setSaving] = useState(false);
   const [validateResult, setValidateResult] = useState<{ valid: boolean; message: string } | null>(null);
 
@@ -357,6 +374,7 @@ function AddProviderForm({ onSuccess, onCancel }: {
     setValidateResult(null);
     setAvailableModels([]);
     setTierValues({ flashModel: '', standardModel: '', thinkModel: '' });
+    setVisionModel('');
     if (apiKey.trim()) void fetchModels(id, apiKey);
   }, [apiKey, fetchModels]);
 
@@ -401,6 +419,7 @@ function AddProviderForm({ onSuccess, onCancel }: {
         flashModel: tierValues.flashModel,
         standardModel: tierValues.standardModel,
         thinkModel: tierValues.thinkModel,
+        visionModel: visionModel.trim() || undefined,
       });
       banner.success('AI 提供商已添加');
       await onSuccess();
@@ -463,6 +482,9 @@ function AddProviderForm({ onSuccess, onCancel }: {
         </div>
       )}
 
+      {/* 视觉模型(可选):跟三档并排在同一区,但自由输入、不必填 */}
+      <VisionModelField value={visionModel} onChange={setVisionModel} disabled={saving} />
+
       {/* 验证结果 */}
       {validateResult && <ValidationBanner result={validateResult} />}
 
@@ -488,7 +510,6 @@ function AddProviderForm({ onSuccess, onCancel }: {
 
 export function IntegrationTab() {
   // ─── 内部数据状态 ───
-
   const [config, setConfig] = useState<SettingsConfigView['integration'] | null>(null);
   const [aiConfig, setAiConfig] = useState<SettingsConfigView['ai'] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -506,54 +527,54 @@ export function IntegrationTab() {
     void loadData();
   }, [loadData]);
 
-  // MinerU 配置状态
-  const [editing, setEditing] = useState(false);
+  // MinerU
   const [mineruToken, setMineruToken] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [mineruVisible, setMineruVisible] = useState(false);
+  const [savingMineru, setSavingMineru] = useState(false);
+  const mineruDirty = mineruToken.trim().length > 0;
 
-  // AI 提供商列表操作状态
+  // Tavily
+  const [tavilyApiKey, setTavilyApiKey] = useState('');
+  const [tavilyVisible, setTavilyVisible] = useState(false);
+  const [savingTavily, setSavingTavily] = useState(false);
+  const tavilyDirty = tavilyApiKey.trim().length > 0;
+
+  // AI 提供商列表(#5 重构:配过的都可用,agent 自选)
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
-  const [activatingId, setActivatingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // System prompt 编辑状态
-  const [promptEditing, setPromptEditing] = useState(false);
-  const [systemPrompt, setSystemPrompt] = useState('');
-  const [promptSaving, setPromptSaving] = useState(false);
-
-  const resetForm = useCallback(() => {
-    setMineruToken('');
-    setEditing(false);
-  }, []);
-
-  const handleSave = async () => {
-    setSaving(true);
+  const handleSaveMineru = async () => {
+    if (!mineruDirty) return;
+    setSavingMineru(true);
     try {
       await settingsApi.saveIntegrationConfig({
         mineruToken: mineruToken.trim() || undefined,
       });
-      banner.success('集成配置已保存');
+      banner.success('MinerU Token 已保存');
       setMineruToken('');
-      setEditing(false);
       await loadData(true);
     } catch {
       banner.error('保存失败');
     } finally {
-      setSaving(false);
+      setSavingMineru(false);
     }
   };
 
-  const handleActivate = async (id: string) => {
-    setActivatingId(id);
+  const handleSaveTavily = async () => {
+    if (!tavilyDirty) return;
+    setSavingTavily(true);
     try {
-      await settingsApi.activateAiProvider(id);
-      banner.success('已切换启用提供商');
+      await settingsApi.saveIntegrationConfig({
+        tavilyApiKey: tavilyApiKey.trim() || undefined,
+      });
+      banner.success('Tavily API key 已保存');
+      setTavilyApiKey('');
       await loadData(true);
     } catch {
-      banner.error('切换失败');
+      banner.error('保存失败');
     } finally {
-      setActivatingId(null);
+      setSavingTavily(false);
     }
   };
 
@@ -570,97 +591,165 @@ export function IntegrationTab() {
     }
   };
 
-  const handleSavePrompt = async () => {
-    setPromptSaving(true);
-    try {
-      await settingsApi.saveAiSystemPrompt(systemPrompt);
-      banner.success('自定义指令已保存');
-      setPromptEditing(false);
-      await loadData(true);
-    } catch {
-      banner.error('保存失败');
-    } finally {
-      setPromptSaving(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <PageHeader>集成</PageHeader>
-        <SectionSkeleton title="MinerU" />
-        <SectionSkeleton title="AI 提供商" />
-      </div>
-    );
-  }
-
   const providers = aiConfig?.providers ?? [];
-  const activeProviderId = aiConfig?.activeProviderId ?? '';
-  // 当前正在编辑的提供商对象
   const editingProvider = providers.find((p) => p.id === editingProviderId) ?? null;
 
   return (
     <div className="space-y-6">
-      <PageHeader>集成</PageHeader>
+      {/* 页面标题 */}
+      <div>
+        <h1 className="text-base font-semibold" style={{ color: 'var(--ink)' }}>
+          集成
+        </h1>
+        <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+          第三方服务集成:文档解析、联网搜索、AI 提供商
+        </p>
+      </div>
+      <Separator />
 
       {/* ── MinerU ── */}
-      <EditableSection
-        title="MinerU"
-        description="PDF 文档解析服务，用于导入功能"
-        editing={editing}
-        onEdit={() => {
-          setMineruToken('');
-          setEditing(true);
-        }}
-        onSave={() => void handleSave()}
-        onReset={resetForm}
-        saving={saving}
-        viewContent={
-          <StatusRow
-            label="API Token"
-            value={config?.hasMineruToken ? '••••••••' : '未配置'}
-          />
-        }
-        editContent={
-          <div>
-            <FieldLabel>
-              API Token
-              {config?.hasMineruToken && !mineruToken && (
-                <span className="ml-2 font-normal" style={{ color: 'var(--ink-ghost)' }}>
-                  已配置，留空则不修改
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>
+            MinerU
+          </h2>
+          <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            PDF 文档解析服务,用于导入功能
+          </p>
+        </div>
+        {loading ? (
+          <div className="h-7 max-w-md rounded-sm animate-pulse" style={{ background: 'var(--shelf)' }} />
+        ) : (
+          <>
+            <div className="space-y-1.5">
+              <div className="text-xs font-medium" style={{ color: 'var(--ink-faded)' }}>
+                API Token
+              </div>
+              <div className="relative max-w-md">
+                <Input
+                  type={mineruVisible ? 'text' : 'password'}
+                  value={mineruToken}
+                  onChange={(e) => setMineruToken(e.target.value)}
+                  placeholder={config?.hasMineruToken ? '已配置,留空则不修改' : 'eyJ0eXBlIjoi...'}
+                  className="pr-8"
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => setMineruVisible((v) => !v)}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-sm p-1"
+                  style={{ color: 'var(--ink-ghost)' }}
+                >
+                  {mineruVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => void handleSaveMineru()}
+                disabled={savingMineru || !mineruDirty}
+              >
+                {savingMineru ? '保存中…' : '保存'}
+              </Button>
+              {config?.hasMineruToken && (
+                <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--success)' }}>
+                  <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: 'var(--success)' }} />
+                  已配置
                 </span>
               )}
-            </FieldLabel>
-            <TextInput
-              value={mineruToken}
-              onChange={setMineruToken}
-              placeholder="eyJ0eXBlIjoi..."
-              type="password"
-            />
-          </div>
-        }
-      />
+            </div>
+          </>
+        )}
+      </section>
 
-      {/* ── AI 提供商列表 ── */}
-      <Section
-        title="AI 提供商"
-        description="配置多个提供商，每个提供商绑定三个 tier 的模型；点击行可切换启用"
-      >
-        {/* 提供商列表 */}
+      <Separator />
+
+      {/* ── Tavily ── */}
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>
+            Tavily 联网搜索
+          </h2>
+          <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            Aurora web_search 工具的 API Key,免费层 1000 次/月
+          </p>
+        </div>
+        {loading ? (
+          <div className="h-7 max-w-md rounded-sm animate-pulse" style={{ background: 'var(--shelf)' }} />
+        ) : (
+          <>
+            <div className="space-y-1.5">
+              <div className="text-xs font-medium" style={{ color: 'var(--ink-faded)' }}>
+                API Key
+              </div>
+              <div className="relative max-w-md">
+                <Input
+                  type={tavilyVisible ? 'text' : 'password'}
+                  value={tavilyApiKey}
+                  onChange={(e) => setTavilyApiKey(e.target.value)}
+                  placeholder={config?.hasTavilyApiKey ? '已配置,留空则不修改' : 'tvly-...'}
+                  className="pr-8"
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => setTavilyVisible((v) => !v)}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-sm p-1"
+                  style={{ color: 'var(--ink-ghost)' }}
+                >
+                  {tavilyVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => void handleSaveTavily()}
+                disabled={savingTavily || !tavilyDirty}
+              >
+                {savingTavily ? '保存中…' : '保存'}
+              </Button>
+              {config?.hasTavilyApiKey ? (
+                <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--success)' }}>
+                  <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: 'var(--success)' }} />
+                  已配置
+                </span>
+              ) : (
+                <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
+                  未配置 · web_search 工具不挂载
+                </span>
+              )}
+            </div>
+          </>
+        )}
+      </section>
+
+      <Separator />
+
+      {/* ── AI 提供商 ── */}
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>
+            AI 提供商
+          </h2>
+          <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            每个提供商绑三档模型(快/中/深思) + 可选视觉。配过的都可用,由各 agent 在「Agent」tab 自选用谁。
+          </p>
+        </div>
+
         {providers.length > 0 ? (
-          <div className="space-y-2 mb-4">
+          <div className="space-y-2">
             {providers.map((p) => (
               <div key={p.id}>
                 <ProviderRow
                   provider={p}
-                  isActive={p.id === activeProviderId}
-                  onActivate={() => void handleActivate(p.id)}
                   onDelete={() => void handleDelete(p.id)}
                   onEdit={() => setEditingProviderId(editingProviderId === p.id ? null : p.id)}
-                  activating={activatingId === p.id}
                   deleting={deletingId === p.id}
                 />
-                {/* 内联编辑表单（仅当前展开的提供商显示） */}
                 {editingProviderId === p.id && editingProvider && (
                   <div className="mt-2">
                     <EditProviderForm
@@ -677,10 +766,9 @@ export function IntegrationTab() {
             ))}
           </div>
         ) : (
-          // 空状态
           !showAddForm && (
             <div
-              className="mb-4 rounded-lg px-4 py-6 text-center text-sm"
+              className="rounded-sm px-3 py-4 text-center text-xs"
               style={{ color: 'var(--ink-ghost)', border: '1px dashed var(--separator)' }}
             >
               尚未配置 AI 提供商
@@ -688,9 +776,8 @@ export function IntegrationTab() {
           )
         )}
 
-        {/* 添加提供商表单（内联展开） */}
         {showAddForm && (
-          <div className="mb-4">
+          <div>
             <AddProviderForm
               onSuccess={async () => {
                 setShowAddForm(false);
@@ -701,57 +788,17 @@ export function IntegrationTab() {
           </div>
         )}
 
-        {/* 添加按钮 */}
         {!showAddForm && (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => setShowAddForm(true)}
-            className="flex items-center gap-1.5 text-xs font-medium transition-opacity duration-100"
-            style={{ color: 'var(--ink-faded)' }}
           >
             <Plus size={14} />
             添加提供商
-          </button>
+          </Button>
         )}
-      </Section>
-
-      {/* ── AI 自定义指令（System Prompt） ── */}
-      <EditableSection
-        title="AI 自定义指令"
-        description="追加到 AI 默认角色定义之后，影响所有对话"
-        editing={promptEditing}
-        onEdit={() => {
-          setSystemPrompt(aiConfig?.aiSystemPrompt ?? '');
-          setPromptEditing(true);
-        }}
-        onSave={() => void handleSavePrompt()}
-        onReset={() => {
-          setSystemPrompt('');
-          setPromptEditing(false);
-        }}
-        saving={promptSaving}
-        viewContent={
-          <StatusRow
-            label="自定义指令"
-            value={aiConfig?.aiSystemPrompt ? '已配置' : '未配置（使用默认）'}
-          />
-        }
-        editContent={
-          <textarea
-            value={systemPrompt}
-            onChange={(e) => setSystemPrompt(e.target.value)}
-            placeholder="例如：我是一名软件工程师，主要写技术笔记，请用中文回复"
-            rows={4}
-            className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-            style={{
-              background: 'var(--shelf)',
-              color: 'var(--ink)',
-              border: '1px solid var(--separator)',
-              resize: 'vertical',
-            }}
-          />
-        }
-      />
+      </section>
     </div>
   );
 }

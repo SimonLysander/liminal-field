@@ -14,7 +14,7 @@
 import { ContentFade, LoadingState } from '@/components/LoadingState';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import type { StructureNode } from '@/services/structure';
-import { ChevronLeft, ChevronRight, Folder, Plus, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileStack, Folder, Plus, RefreshCw } from 'lucide-react';
 import { useCallback, useState } from 'react';
 
 /* ---------- Types ---------- */
@@ -35,7 +35,7 @@ type AdminStructurePanelProps = {
   /** URL 中的 topic param，直接作为新建操作的 parentId（不从 breadcrumb 推导，避免异步落后） */
   currentParentId: string | undefined;
   onReload: () => void;
-  onSelect: (node: StructureNode) => void;
+  // onSelect 已移除：节点同质化后点击统一走 onEnterFolder（Route A），onSelect 是废死接口
   onEnterFolder: (node: StructureNode) => void;
   onGoToBreadcrumb: (index: number | null) => void;
   onAddChild: (parentId?: string) => void;
@@ -50,7 +50,6 @@ function NodeItem({
   isSelected,
   isDragging,
   dropTarget,
-  onSelect,
   onEnterFolder,
   onDragStart,
   onDragOver,
@@ -63,14 +62,17 @@ function NodeItem({
   isSelected: boolean;
   isDragging: boolean;
   dropTarget: DropTarget | null;
-  onSelect: (node: StructureNode) => void;
+  // onSelect 已移除：节点同质化后点击统一走 onEnterFolder，不存在独立"选中不进入"路径
   onEnterFolder: (node: StructureNode) => void;
   onDragStart: (nodeId: string) => void;
   onDragOver: (e: React.DragEvent, nodeId: string) => void;
   onDragEnd: () => void;
   onDrop: (e: React.DragEvent) => void;
 }) {
-  const isFolder = node.type === 'FOLDER';
+  // 节点同质化:点任意节点都进入它(看正文 + 在它下新建子页面)。
+  // node.type==='FOLDER' 仅表示"有子节点"(后端按子节点数算),只用于图标/箭头的"有子"提示,
+  // 不再是文件夹 vs 文稿的交互之分。
+  const hasChildren = node.type === 'FOLDER';
   const isDropTarget = dropTarget?.nodeId === node.id;
 
   return (
@@ -103,17 +105,11 @@ function NodeItem({
         onDragOver={(e) => onDragOver(e, node.id)}
         onDragEnd={onDragEnd}
         onDrop={onDrop}
-        onClick={() => {
-          if (isFolder) {
-            onEnterFolder(node);
-          } else {
-            onSelect(node);
-          }
-        }}
+        onClick={() => onEnterFolder(node)}
       >
-        {/* Icon / 序号 */}
-        {isFolder ? (
-          <Folder
+        {/* 有子节点 = 带层级页面图标;叶子 = 序号 */}
+        {hasChildren ? (
+          <FileStack
             size={14}
             strokeWidth={1.5}
             className="shrink-0"
@@ -138,8 +134,8 @@ function NodeItem({
           {node.name}
         </span>
 
-        {/* 文件夹用 chevron 提示可展开 */}
-        {isFolder && (
+        {/* 有子节点用 chevron 提示可钻入 */}
+        {hasChildren && (
           <ChevronRight
             size={12}
             strokeWidth={1.5}
@@ -175,7 +171,6 @@ export function AdminStructurePanel({
   breadcrumb,
   currentParentId,
   onReload,
-  onSelect,
   onEnterFolder,
   onGoToBreadcrumb,
   onAddChild,
@@ -280,7 +275,9 @@ export function AdminStructurePanel({
                   className="max-w-[120px] cursor-pointer truncate rounded px-1 py-0.5 text-xs transition-colors duration-150"
                   style={{ color: 'var(--ink-light)' }}
                   title={breadcrumb[0].name}
-                  onClick={() => onGoToBreadcrumb(null)}
+                  // 点父级页面名 → 进入该页(它自己也是一篇笔记),不是回根目录。
+                  // (回根用左侧 < 箭头;面包屑名代表"这个页面",点它应打开它的正文。)
+                  onClick={() => onGoToBreadcrumb(0)}
                 >
                   {breadcrumb[0].name}
                 </span>
@@ -366,7 +363,7 @@ export function AdminStructurePanel({
           {loading ? (
             <LoadingState />
           ) : error ? (
-            <div className="rounded-xl p-3" style={{ background: 'rgba(255,59,48,0.06)' }}>
+            <div className="rounded-xl p-3" style={{ background: 'var(--danger-soft)' }}>
               <p className="text-xs" style={{ color: 'var(--mark-red)' }}>
                 {error}
               </p>
@@ -394,7 +391,6 @@ export function AdminStructurePanel({
                   isSelected={selectedNodeId === node.id}
                   isDragging={draggedNodeId === node.id}
                   dropTarget={dropTarget}
-                  onSelect={onSelect}
                   onEnterFolder={onEnterFolder}
                   onDragStart={handleDragStart}
                   onDragOver={handleDragOver}

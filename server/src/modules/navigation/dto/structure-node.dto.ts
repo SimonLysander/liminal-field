@@ -1,4 +1,4 @@
-import { NavigationNode, NavigationNodeType } from '../navigation.entity';
+import { NavigationNode } from '../navigation.entity';
 
 export type StructureNodeType = 'FOLDER' | 'DOC';
 
@@ -23,8 +23,8 @@ export class StructureNodeDto {
     dto.id = entity._id.toString();
     dto.name = entity.name;
     dto.scope = entity.scope ?? 'notes';
-    dto.type =
-      entity.nodeType === NavigationNodeType.subject ? 'FOLDER' : 'DOC';
+    // 节点同质化:无 nodeType,"容器" 由是否有子节点判定(过渡期沿用 FOLDER/DOC 标签喂前端)
+    dto.type = hasChildren ? 'FOLDER' : 'DOC';
     dto.parentId = entity.parentId?.toString();
     dto.contentItemId = entity.contentItemId?.toString();
     dto.sortOrder = entity.order ?? 0;

@@ -13,18 +13,35 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import rehypeHighlight from 'rehype-highlight';
 import 'katex/dist/katex.min.css';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, Paperclip } from 'lucide-react';
 import type { UIMessagePart, UIDataTypes, UITools } from 'ai';
+import type {
+  ChatReferenceSnapshot,
+  ChatReferencesMetadata,
+  AnchorPayload,
+} from '@/pages/admin/lib/live-chat-selection';
+import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
 import { ToolCallCard } from './ToolCallCard';
+import { AiEditProposalCard } from './AiEditProposalCard';
 
 interface ChatMessageProps {
   role: 'user' | 'assistant';
   content: string;
+  metadata?: unknown;
   parts?: UIMessagePart<UIDataTypes, UITools>[];
   /** sub_agent 执行中实时步骤需要 sessionKey */
   sessionKey?: string;
   /** 舒适密度(全页 agent 用大字距;侧栏默认紧凑) */
   comfortable?: boolean;
+  /**
+   * v3 改稿 proposals 索引:key = toolCallId,value = Proposal。
+   * tool-propose_document_rewrite 落稳后按 callId 查 Proposal 渲染 AiEditProposalCard。
+   */
+  proposalsByCallId?: Record<string, Proposal>;
+  /** v3 改稿：点击 AiEditProposalCard 跳转到编辑器审批 */
+  onJumpToEditor?: () => void;
+  /** 内联工具卡片渲染器(场景注入):为工具 part 在原位渲染卡片,返回 null 用默认 ToolCallCard。 */
+  renderToolCard?: (part: unknown) => ReactNode | null;
 }
 
 /** 将 DynamicToolUIPart 的 state 映射到 ToolCallCard 的 state 类型 */
@@ -36,8 +53,19 @@ function mapToolState(state: string): 'call' | 'result' | 'error' {
   }
 }
 
-export function ChatMessage({ role, content, parts, sessionKey, comfortable }: ChatMessageProps) {
+export function ChatMessage({
+  role,
+  content,
+  metadata,
+  parts,
+  sessionKey,
+  comfortable,
+  proposalsByCallId,
+  onJumpToEditor,
+  renderToolCard,
+}: ChatMessageProps) {
   if (role === 'user') {
+    const references = getMessageReferences(metadata);
     return (
       /* 用户消息：右对齐，轻量 shelf 背景，不喧宾夺主 */
       <div className="flex justify-end">
@@ -50,7 +78,24 @@ export function ChatMessage({ role, content, parts, sessionKey, comfortable }: C
             fontFamily: 'var(--font-reading)',
           }}
         >
-          {content}
+          <UserContentWithReferenceChips content={content} references={references} />
+          {references.length > 0 && (
+            <div className="mt-2 flex flex-col gap-1 border-t pt-1.5" style={{ borderColor: 'var(--separator)' }}>
+              {references.map((reference, index) => (
+                <div
+                  key={reference.id || index}
+                  className="flex items-start gap-1.5 text-xs leading-snug"
+                  style={{ color: 'var(--ink-faded)' }}
+                >
+                  <Paperclip size={12} strokeWidth={1.5} className="mt-0.5 shrink-0" />
+                  <span className="min-w-0">
+                    {formatParagraphRange(reference.anchor)}
+                    ：“{shortenReferencePreview(reference.preview || reference.text)}”
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -73,8 +118,40 @@ export function ChatMessage({ role, content, parts, sessionKey, comfortable }: C
           if (part.type.startsWith('tool-')) {
             const toolName = part.type.slice(5); // 去掉 "tool-" 前缀
             if (toolName === 'write_tasks') return null; // 清单统一渲染在消息末尾
+
+            // 场景注入的内联卡片优先(如画廊 propose_caption):返回非 null 即原位渲染
+            const scenarioCard = renderToolCard?.(part);
+            if (scenarioCard != null) return <div key={i}>{scenarioCard}</div>;
+
             const p = part as Record<string, unknown>;
             const state = typeof p.state === 'string' ? mapToolState(p.state) : 'call';
+
+            // v3 改稿工具：流式中走通用进行态；落稳后按 callId 查 Proposal 渲染卡片。
+            if (toolName === 'propose_document_rewrite') {
+              if (state !== 'result' && state !== 'error') {
+                return (
+                  <ToolCallCard
+                    key={i}
+                    toolName={toolName}
+                    state="call"
+                    sessionKey={sessionKey}
+                  />
+                );
+              }
+              const callId = typeof p.toolCallId === 'string' ? p.toolCallId : undefined;
+              const proposal = callId ? proposalsByCallId?.[callId] : undefined;
+              if (!proposal) {
+                return <ToolCallCard key={i} toolName={toolName} state="result" />;
+              }
+              return (
+                <AiEditProposalCard
+                  key={i}
+                  proposal={proposal}
+                  onJumpToEditor={onJumpToEditor}
+                />
+              );
+            }
+
             const resultStr =
               'output' in p && p.output != null
                 ? typeof p.output === 'string'
@@ -109,6 +186,139 @@ export function ChatMessage({ role, content, parts, sessionKey, comfortable }: C
       <MessageActions text={content} />
     </div>
   );
+}
+
+/**
+ * v3 协议:chips 在发送时被拼成 markdown `>` 引用块进 user message text:
+ *   {用户原话}
+ *
+ *   > 第 N 段:「完整文本」
+ *   > 第 M 段:「完整文本」
+ *
+ * 渲染时反解析:提取尾部连续的 `> 段号:「文本」` 行作为 chips,主文本不含引用。
+ * 返回 { mainText, chips };若 content 无该模式,chips 为空,mainText = content。
+ */
+interface ParsedChip {
+  label: string;
+  text: string;
+}
+function parseInlineChips(content: string): { mainText: string; chips: ParsedChip[] } {
+  // 匹配尾部 1 行或多行的 `> 第 N 段：「...」` 或 `> 引用：「...」`
+  // 冒号兼容中文全角(formatReferencesAsMd 实际拼的)和英文半角(防御性)
+  const chipLine = /^> (第\s*\d+(?:-\d+)?\s*段|引用)\s*[:：]\s*「([\s\S]+?)」\s*$/;
+  const lines = content.split('\n');
+  const chips: ParsedChip[] = [];
+  // 从尾向前剥引用行(跳过空行)
+  let cutIdx = lines.length;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim();
+    if (line === '') {
+      // 允许空行做分隔,继续向前
+      continue;
+    }
+    const match = line.match(chipLine);
+    if (!match) break;
+    chips.unshift({ label: match[1].replace(/\s+/g, ''), text: match[2] });
+    cutIdx = i;
+  }
+  if (chips.length === 0) return { mainText: content, chips: [] };
+  const mainText = lines.slice(0, cutIdx).join('\n').trimEnd();
+  return { mainText, chips };
+}
+
+function UserContentWithReferenceChips({
+  content,
+  references,
+}: {
+  content: string;
+  references: ChatReferenceSnapshot[];
+}) {
+  // 路径 1(老格式 `[已选内容 N]` token + metadata.references):保留兼容
+  if (references.length > 0) {
+    const parts = content.split(/(\[(?:已选内容|片段)\s+\d+\])/g).filter(Boolean);
+    return (
+      <>
+        {parts.map((part, index) => {
+          const match = part.match(/^\[(?:已选内容|片段)\s+(\d+)\]$/);
+          if (!match) return <span key={index}>{part}</span>;
+          const order = Number(match[1]);
+          const reference = references.find((ref) => ref.order === order);
+          const label = reference ? formatParagraphRange(reference.anchor) : '片段';
+          return (
+            <span
+              key={index}
+              className="mx-0.5 inline-flex max-w-[12rem] items-center rounded-md px-1.5 py-0.5 align-baseline text-xs"
+              style={{
+                background: 'color-mix(in srgb, var(--accent) 13%, var(--shelf))',
+                color: 'var(--accent)',
+              }}
+              title={reference?.preview || reference?.text || label}
+            >
+              {label}
+            </span>
+          );
+        })}
+      </>
+    );
+  }
+
+  // 路径 2(v3 协议 `> 段号:「文本」` markdown 引用块):从 content 解析
+  const { mainText, chips } = parseInlineChips(content);
+  if (chips.length === 0) return <>{content}</>;
+  return (
+    <>
+      {mainText}
+      {mainText && '\n'}
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {chips.map((chip, i) => (
+          <span
+            key={i}
+            className="inline-flex max-w-[14rem] items-center gap-1 rounded-md px-1.5 py-0.5 align-baseline text-xs"
+            style={{
+              background: 'color-mix(in srgb, var(--accent) 13%, var(--shelf))',
+              color: 'var(--accent)',
+            }}
+            title={chip.text}
+          >
+            <Paperclip size={10} strokeWidth={1.8} className="shrink-0" />
+            <span className="truncate">{chip.label}</span>
+          </span>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function getMessageReferences(metadata: unknown): ChatReferenceSnapshot[] {
+  const refs = (metadata as ChatReferencesMetadata | undefined)?.references;
+  if (!Array.isArray(refs)) return [];
+  return refs.filter((ref): ref is ChatReferenceSnapshot => {
+    return (
+      typeof ref === 'object' &&
+      ref !== null &&
+      typeof ref.id === 'string' &&
+      typeof ref.order === 'number' &&
+      typeof ref.text === 'string' &&
+      typeof ref.preview === 'string' &&
+      typeof ref.anchor === 'object' &&
+      ref.anchor !== null &&
+      'type' in ref.anchor
+    );
+  });
+}
+
+function shortenReferencePreview(text: string): string {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  return normalized.length > 42 ? `${normalized.slice(0, 42)}...` : normalized;
+}
+
+function formatParagraphRange(anchor: AnchorPayload): string {
+  if (anchor.type !== 'range') return '片段';
+  const start = anchor.startPath?.[0] ?? anchor.blockIndex;
+  const end = anchor.endPath?.[0] ?? start;
+  const from = Math.min(start, end) + 1;
+  const to = Math.max(start, end) + 1;
+  return from === to ? `第 ${from} 段` : `第 ${from}-${to} 段`;
 }
 
 /** 助手消息 hover 操作条:目前只有复制(纯墨幽，hover 才现)。 */

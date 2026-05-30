@@ -189,6 +189,10 @@
   --mark-green: #3F9D57;  /* 纸墨化成功绿(原 #34C759) */
   --danger: var(--mark-red);
   --success: var(--mark-green);
+  /* 危险/成功 的淡底(状态 pill、错误框)。统一散落各处的硬编码 iOS rgba,
+   * 跟 --accent-soft 同套写法,随主题自动适配明暗。 */
+  --danger-soft: color-mix(in srgb, var(--danger) 7%, transparent);
+  --success-soft: color-mix(in srgb, var(--success) 12%, transparent);
 
   /* Structure */
   --spine: rgba(60,60,67,0.06);
@@ -300,6 +304,9 @@
   --mark-green: #4FBE6E;  /* 纸墨化成功绿(midnight) */
   --danger: var(--mark-red);
   --success: var(--mark-green);
+  /* 暗底下淡底略提不透明度以保可见(同 --accent-soft 的明暗差异处理) */
+  --danger-soft: color-mix(in srgb, var(--danger) 14%, transparent);
+  --success-soft: color-mix(in srgb, var(--success) 18%, transparent);
 
   --spine: rgba(84,84,88,0.18);
   --spine-strong: rgba(84,84,88,0.36);
@@ -388,15 +395,16 @@
 /* ========== Global Resets & Typography ========== */
 
 :root {
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+  /* 全站统一霞鹜文楷(2026-05-29):品牌字体,UI/标题/阅读体一律 LXGW WenKai 打头,
+   * 系统字体仅作缺字/emoji 兜底。webfont 见 index.html(ZeoSeven 292 动态子集,按需下字)。
+   * 西文/数字用该字族原生,不另配西文(见 design-language §4.2)。Logo 走 Alex Brush 不受影响。 */
+  --font-sans: "LXGW WenKai", -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
     "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
-  --font-serif: "New York", "Iowan Old Style", "Apple Garamond", Baskerville,
+  --font-serif: "LXGW WenKai", "New York", "Iowan Old Style", "Apple Garamond", Baskerville,
     Georgia, ui-serif, serif;
-  /* 阅读体:霞鹜文楷(子集 webfont,见 index.html 注入 ZeoSeven 292)+ 系统宋兜底。
-   * 西文/数字用该字族原生,不另配西文(实测配对反而割裂,见 design-language §4.2)。 */
   --font-reading: "LXGW WenKai", "Songti SC", "Songti TC", var(--font-serif);
   --font-mono: "SF Mono", SFMono-Regular, ui-monospace, Menlo, Consolas, monospace;
-  --font-title: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+  --font-title: "LXGW WenKai", -apple-system, BlinkMacSystemFont, "SF Pro Display",
     "Segoe UI", Helvetica, Arial, sans-serif;
   /*
    * Border radius — tiered system, px values scale with element size.
@@ -479,8 +487,25 @@ html { font-size: 16px; }
 @media (max-width: 768px)  { html { font-size: 15px; } }
 @media (max-width: 480px)  { html { font-size: 14px; } }
 
+/* 选区高亮:用 var(--accent) 35% 不透明度。
+   原先用 var(--accent-soft)(daylight 仅 10% 不透明度)→ 视觉几乎完全透明,
+   selection 在 DOM 层面工作但用户看不到自己选了什么。 */
 ::selection {
-  background: var(--accent-soft);
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--ink);
+}
+
+/* Aurora add-to-chat 引用回指：hover/click 左侧 chip 时临时高亮编辑区原文。
+   使用 CSS Custom Highlight API，不改 Plate 节点树、不污染 markdown。 */
+::highlight(chat-selection) {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: var(--ink);
+}
+
+/* Aurora proposal review:中间内容区审查时高亮模型建议对应的原文范围。
+   只使用浏览器 highlight overlay，不写入 Plate 节点树。 */
+::highlight(ai-edit-proposal-target) {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--ink);
 }
 
@@ -528,11 +553,16 @@ body:not(.gallery-immersive)::after {
 }
 
 /* Radix 浮层(菜单/对话框)打开时会获得焦点,但它们自带 highlighted 高亮,
- * 不需要外层 focus 环——否则整张菜单卡片外圈一道"大边框"。 */
+ * 不需要外层 focus 环——否则整张菜单卡片外圈一道"大边框"。
+ * 同理浮层【触发按钮】(aria-haspopup="menu",如 ··· 下拉):菜单关闭后 Radix 把焦点交回
+ * 触发器,会残留一圈长春花紫环看着像 bug;菜单本身就是它的反馈,触发器不需要 focus 环。
+ * 注:此规则必须放在这条全局未分层 :focus-visible 里——Tailwind v4 的 focus-visible:shadow-none
+ * 工具类在 @layer utilities 内,永远压不过未分层的全局规则,只能在源头收。 */
 [role="menu"]:focus-visible,
 [role="menuitem"]:focus-visible,
 [role="dialog"]:focus-visible,
-[role="alertdialog"]:focus-visible {
+[role="alertdialog"]:focus-visible,
+[aria-haspopup="menu"]:focus-visible {
   box-shadow: none;
 }
 
@@ -601,10 +631,11 @@ pre code {
   font-style: italic;
 }
 
-/* Outline heading hover */
+/* Outline heading hover —— 只改背景,不动文字色:
+ * 否则 color !important 会盖掉当前标题的 accent 高亮(点击=悬停时高亮消失)。
+ * 与展示端阅读大纲一致(hover 仅背景)。 */
 .outline-heading-btn:hover {
   background: var(--shelf);
-  color: var(--ink) !important;
 }
 
 @layer base {
@@ -751,6 +782,27 @@ body.theme-transitioning [data-slate-leaf] {
 .enter-delay-4 { animation-delay: 240ms; }
 .enter-delay-5 { animation-delay: 320ms; }
 
+/* 弹窗(Modal/Dialog)入场/退场 — 复用 §7.2 enter-rise 语义:淡入 + 自下凝聚 + 雾散(blur→清晰),
+ * 退场反向轻沉。替换 shadcn 默认的「左上斜飞 + zoom 弹跳 + duration-200 魔法值」(设计漂移)。
+ * 关键:居中由 Tailwind v4 的独立 `translate: -50% -50%` 属性负责(DialogContent 上的 translate-x/y-[-50%]);
+ * 这里只用 `transform: translateY()` 做「上升」增量——translate 属性与 transform 属性各管一层、自动合成,
+ * 不可在此再写 translate(-50%) 否则与居中叠加致弹窗飞出屏(踩过)。同 .enter-rise 用裸 translateY。
+ * data-state 由 Radix Dialog 驱动;Radix 监听 animationend 决定退场动画跑完再卸载。 */
+@keyframes dialog-rise-in {
+  from { opacity: 0; transform: translateY(8px); filter: blur(4px); }
+  to   { opacity: 1; transform: translateY(0);   filter: blur(0); }
+}
+@keyframes dialog-sink-out {
+  from { opacity: 1; transform: translateY(0);   filter: blur(0); }
+  to   { opacity: 0; transform: translateY(6px); filter: blur(3px); }
+}
+.dialog-motion[data-state='open'] {
+  animation: dialog-rise-in var(--duration-slow) var(--ease-spring) both;
+}
+.dialog-motion[data-state='closed'] {
+  animation: dialog-sink-out var(--duration-fast) var(--ease-out) both;
+}
+
 /* Agent 消息「凝聚」入场(design-language §7.2):模糊→清晰 + 微升,呼应箴言"云雾凝为现实"。
  * 仅元素 mount 时跑一次(消息按 msg.id 稳定 key,流式 token 更新不重放)。比 enter-rise 更克制。 */
 @keyframes agent-msg-rise {
@@ -779,6 +831,15 @@ textarea:focus {
  * 内层 textarea 退出上面那条单层边,避免"框中框"。 */
 textarea.composer-input:focus {
   box-shadow: none;
+}
+
+.composer-input[contenteditable="true"]:focus {
+  box-shadow: none;
+}
+
+.composer-input:empty::before {
+  color: var(--ink-ghost);
+  pointer-events: none;
 }
 
 /* 写作顾问侧栏输入框:focus 环作用在整个容器(输入框真正的边界),
@@ -1129,3 +1190,4 @@ body.gallery-immersive aside {
   .grow-loop img,
   .grow-loop .gs-seed, .grow-loop .gs-bud, .grow-loop .gs-half, .grow-loop .gs-bloom { animation: none; }
 }
+

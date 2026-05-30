@@ -30,6 +30,10 @@ export class AgentSession {
   @prop({ required: true, trim: true })
   agentKey!: string;
 
+  /** 用户给这个业务会话起的名字；同一 session 的所有段保持一致。 */
+  @prop({ trim: true })
+  title?: string;
+
   /**
    * 段序号:同 agentKey 内从 0 递增。
    * 接近 16MB 硬上限时(软上限 14MB)自动开下一段,用户无感。

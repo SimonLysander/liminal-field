@@ -54,7 +54,6 @@ import { EditorDraftRepository } from './editor-draft.repository';
 import { SaveGalleryPostDto } from './dto/save-gallery-post.dto';
 import { OssService } from '../oss/oss.service';
 import { NavigationRepository } from '../navigation/navigation.repository';
-import { NavigationNodeType } from '../navigation/navigation.entity';
 
 /** main.md frontmatter 中单张照片的结构。 */
 interface FrontmatterPhoto {
@@ -320,7 +319,21 @@ export class GalleryViewService {
   }
 
   /** 构建草稿照片的 MinIO 代理 URL。 */
-  private buildDraftPhotoUrl(contentItemId: string, fileName: string): string {
+  /**
+   * 草稿照片 URL：OSS 就绪时用直连 URL + 图片处理(缩放),避免编辑器拉原图(实测 9~10MB);
+   * 未就绪降级为代理(原图)。与 buildPhotoUrl 同策略,差别只在草稿 OSS key 无 assets/ 前缀。
+   */
+  private buildDraftPhotoUrl(
+    contentItemId: string,
+    fileName: string,
+    process?: string,
+  ): string {
+    if (this.minioService.isDraftStorageReady()) {
+      return this.minioService.getPublicUrl(
+        `${contentItemId}/${fileName}`,
+        process,
+      );
+    }
     return `/api/v1/spaces/gallery/items/${contentItemId}/draft-assets/${fileName}`;
   }
 
@@ -629,7 +642,11 @@ export class GalleryViewService {
                 p.file,
                 OssService.IMAGE_PRESETS.detail,
               )
-            : this.buildDraftPhotoUrl(contentItemId, p.file);
+            : this.buildDraftPhotoUrl(
+                contentItemId,
+                p.file,
+                OssService.IMAGE_PRESETS.detail,
+              );
         return {
           file: p.file,
           url,
@@ -749,7 +766,37 @@ export class GalleryViewService {
   }
 
   /**
-   * V2: 读取照片文件，优先磁盘，磁盘未命中时回退 OSS draft/ 路径。
+   * 读取照片的「视觉版」——给 agent 注入模型用。
+   *
+   * 严格只走 OSS + 服务端缩放(IMAGE_PRESETS.vision, ~1280px webp),**不读磁盘、不取原图**:
+   * - 对齐「agent 工具不碰磁盘」原则 + V2 OSS 热服务;
+   * - 模型不需要高清,缩放后每张几十~一两百 KB,多图注入才扛得住。
+   *
+   * key 约定:committed 在 `assets/{id}/{fileName}`,draft 在 `{id}/{fileName}`(无前缀)。先 assets 后 draft。
+   */
+  async readPhotoForVision(
+    contentItemId: string,
+    fileName: string,
+  ): Promise<{ buffer: Buffer; mediaType: string }> {
+    const preset = OssService.IMAGE_PRESETS.vision;
+    try {
+      const buffer = await this.minioService.getObjectProcessed(
+        `assets/${contentItemId}/${fileName}`,
+        preset,
+      );
+      return { buffer, mediaType: 'image/webp' };
+    } catch {
+      // 未提交(或异步归档前):草稿对象在无前缀 key 下
+      const buffer = await this.minioService.getObjectProcessed(
+        `${contentItemId}/${fileName}`,
+        preset,
+      );
+      return { buffer, mediaType: 'image/webp' };
+    }
+  }
+
+  /**
+   * V2: 读取照片文件，优先磁盘，磁盘未命中时回退 OSS 草稿对象。
    * 草稿照片提交后异步下载到磁盘，在此期间从 OSS 直接读取避免 404。
    */
   async readPhotoBuffer(
@@ -762,8 +809,10 @@ export class GalleryViewService {
         fileName,
       );
     } catch {
-      // 磁盘未命中（异步归档尚未完成），回退 OSS draft 路径
-      const ossKey = `draft/${contentItemId}/${fileName}`;
+      // 磁盘未命中（异步归档尚未完成），回退 OSS 草稿对象。
+      // key 必须与 uploadDraftAsset 写入格式一致 = `{contentItemId}/{fileName}`（无 draft/ 前缀），
+      // 否则必然 404（曾因带 draft/ 前缀导致归档完成前代理读图全挂）。
+      const ossKey = `${contentItemId}/${fileName}`;
       const buffer = await this.minioService.getObject(ossKey);
       const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
       const mimeMap: Record<string, string> = {
@@ -937,20 +986,16 @@ export class GalleryViewService {
   ): Promise<GalleryPublicListItemDto[]> {
     // 取 gallery scope 所有导航节点，过滤出有 contentItemId 的条目
     const nodes = await this.navigationRepository.findRootNodes('gallery');
-    const contentNodes = nodes.filter(
-      (n) => n.nodeType === NavigationNodeType.content && n.contentItemId,
-    );
+    const contentNodes = nodes.filter((n) => n.contentItemId != null);
 
     const dtos: GalleryPublicListItemDto[] = [];
     for (const node of contentNodes) {
       // 只处理已发布的内容
-      const content = await this.contentRepository.findById(
-        node.contentItemId!,
-      );
+      const content = await this.contentRepository.findById(node.contentItemId);
       if (!content?.publishedVersion) continue;
 
       try {
-        const dto = await this.toPublicListItemDto(node.contentItemId!);
+        const dto = await this.toPublicListItemDto(node.contentItemId);
         dtos.push(dto);
       } catch (error) {
         // 个别条目加载失败不阻断整体列表（如 git 资源缺失等边缘情况）

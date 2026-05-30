@@ -24,6 +24,9 @@ const AnthologyEntryEditPage = () => {
   /* AI 顾问:按 writing-advisor 入口配置的 enabled 决定是否渲染 */
   const agentEnabled = useWritingAdvisorEnabled();
 
+  // 整集脉络由后端按 contentItemId(`anthologyId:entryKey`)自查注入(#150 续,2026-05-31)
+  // 前端不再 fetch + 拼字符串 + 每轮重发——见 AgentLifecycle.onBeforeChat。
+
   /* 文集条目场景适配器:条目草稿字段就是 BaseDraftState(无 summary/changeType) */
   const adapter = useMemo<DraftEditorAdapter<BaseDraftState>>(
     () => ({
@@ -79,7 +82,11 @@ const AnthologyEntryEditPage = () => {
       titlePlaceholder="条目标题"
       advisor={
         agentEnabled && id && entryKey
-          ? { enabled: true, sessionKey: `anthology-${id}-${entryKey}`, contentItemId: `${id}:${entryKey}` }
+          ? {
+              enabled: true,
+              sessionKey: `anthology-${id}-${entryKey}`,
+              contentItemId: `${id}:${entryKey}`,
+            }
           : undefined
       }
     />

@@ -23,10 +23,8 @@ import { ContentSnapshotRepository } from '../content/content-snapshot.repositor
 import { ContentStatus } from '../content/content-item.entity';
 import { ContentSaveAction } from '../content/dto/save-content.dto';
 import { NavigationRepository } from '../navigation/navigation.repository';
-import {
-  NavigationNodeType,
-  NavigationScope,
-} from '../navigation/navigation.entity';
+import { NavigationScope } from '../navigation/navigation.entity';
+import { AnthologyViewService } from './anthology-view.service';
 import { CreateWorkspaceItemDto } from './dto/create-workspace-item.dto';
 import { UpdateWorkspaceItemDto } from './dto/update-workspace-item.dto';
 import {
@@ -51,6 +49,7 @@ export class WorkspaceService {
     private readonly contentRepoService: ContentRepoService,
     private readonly snapshotRepository: ContentSnapshotRepository,
     private readonly navigationRepository: NavigationRepository,
+    private readonly anthologyViewService: AnthologyViewService,
   ) {}
 
   /**
@@ -93,10 +92,15 @@ export class WorkspaceService {
     await this.navigationRepository.create({
       name: dto.title,
       scope,
-      nodeType: NavigationNodeType.content,
       contentItemId: detail.id,
       order: siblings.length,
     });
+
+    // 协议 A:文集容器创建时立即提交其 main.md(title/description),确保归档进 Git、
+    // 清库后可从 Git 恢复容器。放在 create 而非 addEntry,避免与条目归档并发争用 git。
+    if (scope === 'anthology') {
+      await this.anthologyViewService.commitContainerIndex(detail.id);
+    }
 
     return this.getById(scope, detail.id);
   }
@@ -109,14 +113,12 @@ export class WorkspaceService {
     status?: 'draft' | 'published',
   ): Promise<WorkspaceItemDto[]> {
     const nodes = await this.navigationRepository.findRootNodes(scope);
-    const contentNodes = nodes.filter(
-      (n) => n.nodeType === NavigationNodeType.content && n.contentItemId,
-    );
+    const contentNodes = nodes.filter((n) => n.contentItemId != null);
 
     const items: WorkspaceItemDto[] = [];
     for (const node of contentNodes) {
       try {
-        const item = await this.toListDto(node.contentItemId!);
+        const item = await this.toListDto(node.contentItemId);
         if (!status || item.status === status) {
           items.push(item);
         }
@@ -276,9 +278,7 @@ export class WorkspaceService {
   ): Promise<{ successCount: number; skippedCount: number }> {
     const descendants =
       await this.navigationRepository.findAllDescendants(folderId);
-    const docNodes = descendants.filter(
-      (n) => n.nodeType === NavigationNodeType.content && n.contentItemId,
-    );
+    const docNodes = descendants.filter((n) => n.contentItemId != null);
 
     let successCount = 0;
     let skippedCount = 0;
@@ -286,7 +286,7 @@ export class WorkspaceService {
     const results = await Promise.allSettled(
       docNodes.map(async (node) => {
         try {
-          await this.contentService.publishVersion(node.contentItemId!);
+          await this.contentService.publishVersion(node.contentItemId);
           successCount++;
         } catch {
           // publishVersion 对已发布且无变更的项抛异常，视为跳过
@@ -313,9 +313,7 @@ export class WorkspaceService {
   ): Promise<{ successCount: number; skippedCount: number }> {
     const descendants =
       await this.navigationRepository.findAllDescendants(folderId);
-    const docNodes = descendants.filter(
-      (n) => n.nodeType === NavigationNodeType.content && n.contentItemId,
-    );
+    const docNodes = descendants.filter((n) => n.contentItemId != null);
 
     let successCount = 0;
     let skippedCount = 0;
@@ -323,7 +321,7 @@ export class WorkspaceService {
     await Promise.allSettled(
       docNodes.map(async (node) => {
         try {
-          await this.contentService.unpublishVersion(node.contentItemId!);
+          await this.contentService.unpublishVersion(node.contentItemId);
           successCount++;
         } catch {
           skippedCount++;

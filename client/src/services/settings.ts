@@ -7,7 +7,6 @@ export interface OwnerProfile {
   name: string;
   birthday: string;
   bio: string;
-  interests: string;
 }
 
 /** Agent 入口配置 */
@@ -20,6 +19,18 @@ export interface AgentConfig {
   tools: string[];
   /** 默认模型层级：flash / standard / think */
   tier: string;
+  /**
+   * 该 agent 使用的 AI provider id(2026-05-30,#5 重构)。fallback 兜底:
+   * 4 个 tier 独立字段(下方)为空时回退到 providerId,providerId 为空再回退
+   * 到全局 activeAiProviderId。
+   */
+  providerId: string;
+
+  /** 4 个 tier 独立 provider 绑定(2026-05-31,#143):每 tier 调用时优先用对应字段 */
+  flashProviderId: string;
+  standardProviderId: string;
+  thinkProviderId: string;
+  visionProviderId: string;
 }
 
 /** 全量配置（脱敏，只含用户通过 UI 管理的字段） */
@@ -35,6 +46,7 @@ export interface SettingsConfigView {
   };
   integration: {
     hasMineruToken: boolean;
+    hasTavilyApiKey: boolean;
   };
   ai: {
     /** 已配置的 AI 提供商列表（API Key 脱敏，不含原文） */
@@ -45,6 +57,8 @@ export interface SettingsConfigView {
       flashModel: string;
       standardModel: string;
       thinkModel: string;
+      /** 视觉模型,可选;空串表示该 provider 不支持视觉 */
+      visionModel: string;
       hasApiKey: boolean;
     }[];
     /** 当前启用的提供商 id */
@@ -114,7 +128,10 @@ export const settingsApi = {
       body: JSON.stringify(data),
     }),
 
-  saveIntegrationConfig: (data: { mineruToken?: string }) =>
+  saveIntegrationConfig: (data: {
+    mineruToken?: string;
+    tavilyApiKey?: string;
+  }) =>
     request<{ success: boolean }>('/settings/integration-config', {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -127,6 +144,7 @@ export const settingsApi = {
     flashModel: string;
     standardModel: string;
     thinkModel: string;
+    visionModel?: string;
   }) =>
     request<{ success: boolean; id: string }>('/settings/ai-providers', {
       method: 'POST',
@@ -150,6 +168,7 @@ export const settingsApi = {
       flashModel?: string;
       standardModel?: string;
       thinkModel?: string;
+      visionModel?: string;
       apiKey?: string;
     },
   ) =>
@@ -250,6 +269,10 @@ export const settingsApi = {
   /** 获取所有 agent 入口配置 */
   getAgentConfigs: () =>
     request<AgentConfig[]>('/settings/agent-configs'),
+
+  /** 获取可用工具池(供 AgentTab UI 渲染 checkbox 列表) */
+  getAvailableTools: () =>
+    request<string[]>('/settings/agent-configs/available-tools'),
 
   /** 保存 agent 入口配置（upsert by key） */
   saveAgentConfig: (key: string, data: Partial<Omit<AgentConfig, 'key'>>) =>

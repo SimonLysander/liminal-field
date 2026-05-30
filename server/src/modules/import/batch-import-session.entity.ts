@@ -17,7 +17,8 @@ export class BatchImportItem {
 })
 export class BatchImportSession {
   @prop({ required: true }) _id!: string; // batchId (nanoid)
-  @prop({ required: true }) parentId!: string;
+  // parentId 可选：undefined 表示导入到 scope 根目录（顶层节点直接建在根下）
+  @prop() parentId?: string;
   @prop({ required: true, type: () => [BatchImportItem], default: [] })
   items!: BatchImportItem[];
   @prop({ required: true, type: () => Date }) createdAt!: Date;

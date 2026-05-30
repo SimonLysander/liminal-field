@@ -1,10 +1,9 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Folder, FileText } from 'lucide-react';
-import type { StructureNodeType } from '@/services/structure';
 import { parseError } from '../helpers';
 import { type ModalState, type NodeSubmitPayload } from '../types';
 import { importApi } from '@/services/import';
+import { setPendingImportFiles } from '../batch-import-store';
 import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
 import { Modal } from '@/components/shared/Modal';
 import { Input } from '@/components/ui/input';
@@ -14,8 +13,9 @@ import { FieldError } from '@/components/ui/field-error';
 /**
  * Modal dialog for creating or editing tree nodes.
  *
- * Create mode: user picks "主题"(FOLDER) or "文稿"(DOC), enters a name.
- * DOC creation uses node name as content title — no separate title/summary fields.
+ * 节点同质化(2026-05-29):不再区分主题/文稿,新建即"建一个页面"(都有正文、都能挂子节点)。
+ * Create mode: 只输名称 → 建页面 → 跳编辑器(沿用原 DOC 行为);可选「从文件导入」。
+ * 页面成为"容器"是因为它有了子节点,不在创建时选类型。
  * Edit mode: simple rename dialog.
  *
  * 外壳迁移：原 fixed inset-0 + blur + motion → 统一 <Modal> 标准组件（L3）。
@@ -33,11 +33,11 @@ export const NodeFormModal = ({
   onSubmit: (payload: NodeSubmitPayload) => Promise<void>;
 }) => {
   const [name, setName] = useState(modal.node?.name ?? '');
-  const [type, setType] = useState<StructureNodeType>(modal.node?.type ?? 'FOLDER');
   const [submitting, setSubmitting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
   const isCreate = modal.mode === 'create';
@@ -57,8 +57,9 @@ export const NodeFormModal = ({
       if (isCreate) {
         await onSubmit({
           node: {
+            // 节点同质化:新建即一个页面。type 仅为兼容 DTO,后端已忽略(由是否有子节点决定容器性)。
             name: name.trim(),
-            type,
+            type: 'DOC',
             parentId: modal.parentId,
           },
         });
@@ -100,10 +101,32 @@ export const NodeFormModal = ({
     }
   };
 
-  const typeOptions: { value: StructureNodeType; label: string; icon: React.ReactNode }[] = [
-    { value: 'FOLDER', label: '主题', icon: <Folder size={15} strokeWidth={1.5} /> },
-    { value: 'DOC', label: '文稿', icon: <FileText size={15} strokeWidth={1.5} /> },
-  ];
+  /* 导入文件夹:目录批量导入。从「新建」触发(导入是创建级动作,挂在节点上别扭),导进当前位置。 */
+  const handleFolderClick = () => folderInputRef.current?.click();
+
+  const handleFolderSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    let hasMd = false;
+    for (let i = 0; i < files.length; i++) {
+      if (files[i].webkitRelativePath.endsWith('.md')) {
+        hasMd = true;
+        break;
+      }
+    }
+    if (!hasMd) {
+      setError('文件夹中未找到 .md 文件');
+      e.target.value = '';
+      return;
+    }
+    // FileList 不支持 structured clone,存到模块变量(由 batch-import 页面 Array.from 取出)
+    setPendingImportFiles(files);
+    onClose();
+    const params = new URLSearchParams();
+    if (modal.parentId) params.set('parentId', modal.parentId);
+    navigate(`/admin/notes/batch-import?${params.toString()}`);
+    e.target.value = '';
+  };
 
   return (
     <>
@@ -136,35 +159,12 @@ export const NodeFormModal = ({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder={isCreate && type === 'DOC' ? '例如：世界观构建笔记' : '例如：世界观构建'}
+              placeholder="例如：世界观构建"
               autoFocus
             />
           </FieldLabel>
 
           {isCreate && (
-            <FieldLabel label="类型">
-              {/* 类型切换按钮组：自定义选中态（accent），原样保留逻辑与样式 */}
-              <div className="flex gap-1.5">
-                {typeOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setType(option.value)}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-colors duration-150"
-                    style={{
-                      background: type === option.value ? 'var(--accent)' : 'var(--shelf)',
-                      color: type === option.value ? 'var(--accent-contrast)' : 'var(--ink-faded)',
-                    }}
-                  >
-                    {option.icon}
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </FieldLabel>
-          )}
-
-          {isCreate && type === 'DOC' && (
             <>
               <input
                 ref={fileInputRef}
@@ -185,6 +185,26 @@ export const NodeFormModal = ({
                 }}
               >
                 {importing ? '解析中...' : '从文件导入'}
+              </button>
+              <input
+                ref={folderInputRef}
+                type="file"
+                className="hidden"
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- webkitdirectory 非标准属性
+                {...({ webkitdirectory: '', directory: '', multiple: true } as any)}
+                onChange={handleFolderSelected}
+              />
+              <button
+                type="button"
+                onClick={handleFolderClick}
+                className="w-full rounded-lg py-2 text-center text-sm font-medium transition-opacity duration-150"
+                style={{
+                  background: 'var(--shelf)',
+                  color: 'var(--ink-faded)',
+                  border: '1px dashed var(--separator)',
+                }}
+              >
+                导入文件夹
               </button>
             </>
           )}

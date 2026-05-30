@@ -128,7 +128,7 @@ export class SettingsController {
 
   @Put('integration-config')
   async saveIntegrationConfig(
-    @Body() dto: { mineruToken?: string },
+    @Body() dto: { mineruToken?: string; tavilyApiKey?: string },
   ): Promise<{ success: boolean }> {
     await this.systemConfigService.saveIntegrationConfig(dto);
     return { success: true };
@@ -149,6 +149,7 @@ export class SettingsController {
       flashModel: string;
       standardModel: string;
       thinkModel: string;
+      visionModel?: string;
     },
   ): Promise<{ success: boolean; id: string }> {
     const preset = AI_PROVIDER_PRESETS[dto.provider];
@@ -165,6 +166,7 @@ export class SettingsController {
       flashModel: dto.flashModel,
       standardModel: dto.standardModel,
       thinkModel: dto.thinkModel,
+      visionModel: dto.visionModel,
       contextWindow: preset.contextWindow,
     });
     return { success: true, id };
@@ -200,6 +202,7 @@ export class SettingsController {
       flashModel?: string;
       standardModel?: string;
       thinkModel?: string;
+      visionModel?: string;
       apiKey?: string;
     },
   ): Promise<{ success: boolean }> {
@@ -310,6 +313,12 @@ export class SettingsController {
     return this.systemConfigService.getAgentConfigs();
   }
 
+  /** 返回可用工具池(供 AgentTab UI 渲染 checkbox 列表) */
+  @Get('agent-configs/available-tools')
+  getAvailableTools(): string[] {
+    return this.systemConfigService.getAvailableTools();
+  }
+
   /**
    * 保存 agent 入口配置（upsert by key）。
    * key 匹配则更新，不存在则新增。
@@ -325,6 +334,11 @@ export class SettingsController {
       systemPrompt?: string;
       tools?: string[];
       tier?: string;
+      providerId?: string;
+      flashProviderId?: string;
+      standardProviderId?: string;
+      thinkProviderId?: string;
+      visionProviderId?: string;
     },
   ): Promise<{ success: boolean }> {
     await this.systemConfigService.saveAgentConfig(key, dto);

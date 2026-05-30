@@ -209,13 +209,16 @@ describe('Batch Import (e2e)', () => {
       // 等待后台任务完成（需要 cookie 认证）
       await waitForBatchJobDone(ctx.app, jobId, cookie);
 
-      // 找到创建的文档：通过文件夹 overview 获取子项的 contentItemId
-      const overviewRes = await supertest(ctx.app.getHttpServer())
-        .get(`/api/v1/structure-nodes/${parentId}/overview`)
+      // 找到创建的文档：通过 listStructureNodes 拿父节点下的子项
+      // (此前用 GET /structure-nodes/:id/overview,该 endpoint 已随 FolderOverviewPanel 退役)
+      const listRes = await supertest(ctx.app.getHttpServer())
+        .get(
+          `/api/v1/structure-nodes?parentId=${parentId}&visibility=all&scope=notes`,
+        )
         .set('Cookie', cookie)
         .expect(200);
 
-      const docChildren = overviewRes.body.data.children.filter(
+      const docChildren = listRes.body.data.children.filter(
         (c: any) => c.type === 'DOC',
       );
       expect(docChildren.length).toBeGreaterThanOrEqual(1);
@@ -233,6 +236,64 @@ describe('Batch Import (e2e)', () => {
       expect(detailRes.body.data.bodyMarkdown).toContain(
         '这是可读取测试的导入内容',
       );
+    });
+  });
+
+  describe('根目录导入（parentId 为空）', () => {
+    it('batch-parse 不传 parentId → 不再 400，返回 batchId', async () => {
+      const zip = new JSZip();
+      zip.file('root-doc.md', '# 根目录测试\n\n直接建在 notes 根下。');
+      const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+      // 不传 parentId field，模拟从根目录触发导入
+      const parseRes = await supertest(ctx.app.getHttpServer())
+        .post('/api/v1/spaces/notes/import/batch-parse')
+        .set('Cookie', cookie)
+        .attach('archive', zipBuffer, {
+          filename: 'import.zip',
+          contentType: 'application/zip',
+        })
+        .expect(201);
+
+      expect(parseRes.body.code).toBe(0);
+      const { batchId, items } = parseRes.body.data;
+      expect(batchId).toBeTruthy();
+      expect(items).toHaveLength(1);
+    });
+
+    it('batch-confirm 不传 parentId → 节点建在根下（type=DOC，无父节点）', async () => {
+      const zip = new JSZip();
+      zip.file('root-confirm.md', '# 根目录确认测试\n\n应建在 notes 根下。');
+      const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+      // batch-parse 不传 parentId
+      const parseRes = await supertest(ctx.app.getHttpServer())
+        .post('/api/v1/spaces/notes/import/batch-parse')
+        .set('Cookie', cookie)
+        .attach('archive', zipBuffer, {
+          filename: 'import.zip',
+          contentType: 'application/zip',
+        })
+        .expect(201);
+
+      const { batchId, items } = parseRes.body.data;
+      const selectedPaths = items.map((i: any) => i.relativePath);
+
+      // batch-confirm 不传 parentId
+      const confirmRes = await supertest(ctx.app.getHttpServer())
+        .post('/api/v1/spaces/notes/import/batch-confirm')
+        .set('Cookie', cookie)
+        .send({ batchId, selectedPaths })
+        .expect(201);
+
+      expect(confirmRes.body.code).toBe(0);
+      const { jobId, docsCreated } = confirmRes.body.data;
+      expect(jobId).toBeTruthy();
+      expect(docsCreated).toBe(1);
+
+      // 等待后台任务完成
+      const progress = await waitForBatchJobDone(ctx.app, jobId, cookie);
+      expect(progress.status).toBe('done');
     });
   });
 

@@ -86,7 +86,7 @@ const TreeNodeItem = ({
       )}
 
       <div
-        className="group flex cursor-pointer items-center gap-2 rounded-[10px] px-2.5 py-[7px] transition-all duration-150"
+        className="group flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-[7px] transition-all duration-150"
         style={{
           marginLeft: `${depth * 14}px`,
           background: isDropTarget && dropTarget.position === 'inside'
@@ -361,7 +361,7 @@ export const TreePanel = ({
             加载中...
           </div>
         ) : error ? (
-          <div className="rounded-xl p-3" style={{ background: 'rgba(255,59,48,0.06)' }}>
+          <div className="rounded-xl p-3" style={{ background: 'var(--danger-soft)' }}>
             <p className="text-xs" style={{ color: 'var(--mark-red)' }}>{error}</p>
             <button
               className="mt-2 text-xs font-medium transition-colors duration-150"

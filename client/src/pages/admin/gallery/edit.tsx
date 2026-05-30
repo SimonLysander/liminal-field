@@ -29,7 +29,10 @@ import { PhotoEditModal } from './components/PhotoEditModal';
 import { GalleryProseEditor } from './components/GalleryProseEditor';
 import { MetadataFields } from './components/LocationSelect';
 import { CommitPopover } from './components/CommitPopover';
+import { InlineCaptionCard } from './components/InlineCaptionCard';
+import { AdvisorSidebar } from '@/components/ai-advisor/AdvisorSidebar';
 import { useGalleryEditor } from './hooks/useGalleryEditor';
+import { settingsApi } from '@/services/settings';
 
 // ─── 保存状态展示 ───
 
@@ -79,6 +82,7 @@ export default function GalleryEditPage() {
     updateCaption,
     updatePhotoTags,
     uploadPhotos,
+    retryUpload,
     uploadProgress,
     deletePhoto,
     setCover,
@@ -86,6 +90,7 @@ export default function GalleryEditPage() {
     updateLocation,
     save,
     commit,
+    clearLocalDraft,
   } = useGalleryEditor(id);
 
   const uploading = uploadProgress !== null;
@@ -118,6 +123,18 @@ export default function GalleryEditPage() {
     navigate(to);
   };
 
+  // 图说写手 Aurora 浮层:仅当当前启用 provider 配了视觉模型时才挂(没视觉模型看不了图)
+  const [hasVision, setHasVision] = useState(false);
+  useEffect(() => {
+    void settingsApi
+      .getConfig()
+      .then((c) => {
+        const active = c.ai.providers.find((p) => p.id === c.ai.activeProviderId);
+        setHasVision(!!active?.visionModel);
+      })
+      .catch(() => setHasVision(false));
+  }, []);
+
   // 照片编辑弹窗状态
   const [modalOpen, setModalOpen] = useState(false);
   const [modalPhotoIndex, setModalPhotoIndex] = useState(0);
@@ -140,6 +157,7 @@ export default function GalleryEditPage() {
     const ok = await confirm({ title: '丢弃草稿', message: '确认丢弃当前草稿？', danger: true, confirmLabel: '丢弃' });
     if (!ok) return;
     await galleryApi.deleteDraft(id);
+    clearLocalDraft(); // 已丢弃,清本地草稿缓存,防下次打开被当未同步草稿恢复
     navigate(`/admin/gallery?post=${id}`);
   };
 
@@ -148,7 +166,10 @@ export default function GalleryEditPage() {
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden">
+    // 与笔记/文集编辑器一样的心智:左侧内容区 + 右侧 Aurora 整列(自管顶栏)
+    <div className="flex h-screen overflow-hidden">
+      {/* 左侧:画廊内容区(顶栏 + 滚动内容) */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       {/* 顶栏：扁平,与笔记/文集编辑器统一(返回图标 + 标题 + 保存/提交/主题切换)。
           散文工具栏已统一为浮动工具栏,不再 portal 到顶栏中央。 */}
       <header className="flex shrink-0 items-center justify-between px-4" style={{ height: 52 }}>
@@ -225,7 +246,7 @@ export default function GalleryEditPage() {
             className="h-full transition-all duration-300"
             style={{
               width: `${Math.round((uploadProgress.uploaded / uploadProgress.total) * 100)}%`,
-              background: 'var(--ink)',
+              background: 'var(--accent)',
             }}
           />
         </div>
@@ -242,6 +263,7 @@ export default function GalleryEditPage() {
             onPhotoClick={handlePhotoClick}
             onDelete={deletePhoto}
             onUpload={(files) => void uploadPhotos(files)}
+            onRetry={(photoId) => void retryUpload(photoId)}
           />
 
           {/* 日期 + 地点 */}
@@ -259,6 +281,67 @@ export default function GalleryEditPage() {
           />
         </div>
       </div>
+      </div>
+
+      {/* 右侧:图说写手整列(配了视觉模型才挂),与笔记/文集共用 AdvisorSidebar */}
+      {hasVision && id && (
+        <aside
+          className="shrink-0"
+          style={{
+            width: 'clamp(20rem, 26vw, 30rem)',
+            borderLeft: '1px solid var(--separator)',
+          }}
+        >
+          <AdvisorSidebar
+            sessionKey={`gallery:${id}`}
+            agentInstanceKey={`gallery:${id}`}
+            agentKey="gallery-caption-writer"
+            source="gallery-editor"
+            context={{
+              gallery: {
+                contentItemId: id,
+                title,
+                prose,
+                photos: photos.map((p, i) => ({
+                  index: i,
+                  fileName: p.fileName,
+                  caption: p.caption,
+                  tags: p.tags ?? {},
+                })),
+              },
+            }}
+            greeting="想聊聊这些照片，还是要我写图说？"
+            renderToolCard={(part, chat) => {
+              const p = part as {
+                type?: string;
+                state?: string;
+                toolCallId?: string;
+              };
+              if (p?.type !== 'tool-propose_caption' || p.state !== 'output-available')
+                return null;
+              // 非 ok(invalid/not_found)的不在 captionProposals 里 → 回退默认 ToolCallCard
+              const proposal = chat.captionProposals.find(
+                (c) => c.callId === p.toolCallId,
+              );
+              if (!proposal) return null;
+              // 对话后照片可能被增删:目标 fileName 不在当前集合 → 禁用应用,避免"已应用却没落"的误导
+              const photo = photos.find((ph) => ph.fileName === proposal.fileName);
+              // 已应用 = 数据派生(照片当前 caption 就是这条建议),刷新后/重提议后都自动正确
+              const applied = !!photo && photo.caption === proposal.caption;
+              return (
+                <InlineCaptionCard
+                  caption={proposal.caption}
+                  reason={proposal.reason}
+                  photoUrl={photo?.url}
+                  available={!!photo}
+                  applied={applied}
+                  onApply={() => updateCaption(proposal.fileName, proposal.caption)}
+                />
+              );
+            }}
+          />
+        </aside>
+      )}
 
       {/* 照片编辑弹窗 */}
       <PhotoEditModal
@@ -271,7 +354,6 @@ export default function GalleryEditPage() {
         onSetCover={setCover}
         onDelete={deletePhoto}
       />
-
     </div>
   );
 }

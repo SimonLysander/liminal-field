@@ -83,6 +83,9 @@ export class TestContext {
     // ─── 3. 设置必要的环境变量 ───
     process.env.JWT_SECRET = 'test-secret-for-e2e';
     process.env.ADMIN_PASSWORD = 'test-password';
+    // 关掉 commit 后去抖自动 push:让 e2e 完全掌控 push 时机(显式调 push-to-remote),
+    // 避免后台定时器在测试中途/teardown 时触发,污染推送断言。
+    process.env.GIT_PUSH_DEBOUNCE_MS = '0';
 
     // ─── 4. 初始化 OSS 内存存储（每个 TestContext 独立，互不干扰） ───
     this.ossStore = new Map<string, Buffer>();
@@ -217,9 +220,7 @@ export class TestContext {
     );
     this.app.useGlobalFilters(new AllExceptionsFilter());
 
-    // @ts-expect-error @fastify/cookie 11.x 与 fastify 5.x 核心类型版本漂移，运行时兼容
     await this.app.register(cookie);
-    // @ts-expect-error @fastify/multipart 10.x 与 fastify 5.x 核心类型版本漂移，运行时兼容
     await this.app.register(multipart, {
       limits: { fileSize: 200 * 1024 * 1024 },
     });
@@ -234,7 +235,14 @@ export class TestContext {
     if (this.app) await this.app.close();
     if (this.mongod) await this.mongod.stop();
     if (this.tmpGitDir)
-      await rm(this.tmpGitDir, { recursive: true, force: true });
+      // maxRetries/retryDelay 兜底:fire-and-forget 的 git archive 可能在 app.close() 后仍
+      // 往 .git/objects 写对象,与递归删除竞态致 ENOTEMPTY。重试几次等异步写完即可清干净。
+      await rm(this.tmpGitDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
   }
 }
 

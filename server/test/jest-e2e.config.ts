@@ -27,6 +27,10 @@ const config: Config = {
   testTimeout: 600_000,
   // 每个测试文件独立进程，避免 MongoDB 连接/Git 目录相互污染
   maxWorkers: 1,
+  // forceExit:所有断言通过后强制退出。e2e 起真实 Nest 应用 + MongoMemoryServer +
+  // fire-and-forget Git 归档,收尾时常有未排空的句柄(Mongo 连接/异步归档),
+  // 否则 jest 会在测试全绿后挂住等事件循环排空。断言已全部完成,强制退出安全。
+  forceExit: true,
 };
 
 export default config;

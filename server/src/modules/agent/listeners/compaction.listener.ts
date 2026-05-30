@@ -19,11 +19,13 @@ export class CompactionListener {
   @OnEvent('agent.afterChat', { async: true })
   async handleAfterChat(payload: {
     agentKey: string;
+    sessionKey?: string;
     window: number;
   }): Promise<void> {
     await this.compactionService.compactIfNeeded(
       payload.agentKey,
       payload.window,
+      payload.sessionKey,
     );
   }
 }

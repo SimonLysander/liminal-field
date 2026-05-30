@@ -6,7 +6,7 @@ import { toolResult } from './tool-result';
 const DEFAULT_CHUNK = 6000;
 
 /**
- * read_document_content — 读取一篇已发布内容的正文(cat)。
+ * read_document_content — 读取知识库一篇内容的正文(cat,最新已提交版本,不限发布)。
  *
  * 长文不静默丢:从 offset 起返回一段(默认 ~6000 字),outline 永远给全,
  * 超长则 hasMore + nextOffset 让模型自己续读。id 无效 → status:not_found。
@@ -16,7 +16,7 @@ export function createReadDocumentContentTool(
 ) {
   return tool({
     description:
-      '读取一篇已发布内容的正文。返回大纲(全)+ 从 offset 起的一段正文(默认约 6000 字)。文档很长时返回会带"还有更多",用 offset 续读。只读已发布内容,当前草稿用 get_current_draft。',
+      '读取知识库里一篇内容的正文(最新已提交版本,不论是否发布)。返回大纲(全)+ 从 offset 起的一段正文(默认约 6000 字)。文档很长时返回会带"还有更多",用 offset 续读。当前正在编辑的这篇用 get_current_draft。',
     inputSchema: jsonSchema<{
       contentItemId: string;
       offset?: number;
@@ -47,7 +47,8 @@ export function createReadDocumentContentTool(
       limit?: number;
     }) => {
       try {
-        const doc = await noteViewService.getById(contentItemId);
+        // visibility='all':读最新已提交内容(发布只是对外状态,后台/Aurora 看最新已提交)
+        const doc = await noteViewService.getById(contentItemId, 'all');
         const full = doc.bodyMarkdown ?? '';
         const total = full.length;
         const chunk = full.slice(offset, offset + limit);

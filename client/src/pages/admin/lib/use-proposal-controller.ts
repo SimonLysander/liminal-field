@@ -1,0 +1,344 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Hunk } from './compute-doc-diff';
+import { applyProposalToEditor } from './apply-proposal-to-editor';
+import { markResolved } from './resolved-store';
+import { PROPOSAL_OLD, PROPOSAL_NEW } from '@/components/editor/proposal-plugin';
+
+/**
+ * useProposalController —— v3.1 改稿状态机(diff 进节点树版)。
+ *
+ * 与 v3 的关键差异:
+ * - setProposal(p):除 setState 外,**立刻调 applyProposalToEditor** 把 hunks 展开成
+ *   proposal-old/proposal-new 节点对。
+ * - acceptOne/rejectOne:直接遍历 editor.children 找 hunkId 对应节点,setNodes 改回 'p'
+ *   或 removeNodes 删除。不再用 onApply 回调。
+ * - finalize:节点树裁决完已干净 → serializeMd 直接安全。
+ *
+ * 沿用 v3 useState + ref 模式避开 effect-setState lint;hasPending=true 时编辑器 readOnly。
+ */
+
+export interface Proposal {
+  callId: string;
+  newMarkdown: string;
+  reason: string;
+  hunks: Hunk[];
+}
+
+export type Decision = 'accepted' | 'rejected';
+
+export interface UseProposalControllerOptions {
+  /** 全裁决完拿到干净 markdown 的回调(让上层 setBody)。仅当有 accepted hunks 时触发 */
+  onResolved?: (cleanMarkdown: string) => void;
+  /** 序列化 editor 为 markdown:() => serializeMd(editor) */
+  serializeMd?: () => string;
+}
+
+interface PlateEditorLike {
+  children: Array<{ type?: string; hunkId?: string } & Record<string, unknown>>;
+  tf: {
+    setNodes: (props: unknown, opts: { at: number[]; match?: (n: unknown) => boolean }) => void;
+    removeNodes: (opts: { at: number[]; match?: (n: unknown) => boolean }) => void;
+  };
+}
+
+/** 找到所有 `type=targetType` 且 `hunkId=hunkId` 的顶层节点 path */
+function findHunkNodePaths(editor: PlateEditorLike, hunkId: string, targetType: string): number[][] {
+  const paths: number[][] = [];
+  editor.children.forEach((n, i) => {
+    if (n.type === targetType && n.hunkId === hunkId) paths.push([i]);
+  });
+  return paths;
+}
+
+export function useProposalController(
+  editor: unknown,
+  options: UseProposalControllerOptions = {},
+) {
+  const ed = editor as PlateEditorLike;
+  const [proposal, setProposalState] = useState<Proposal | undefined>(undefined);
+  const [decisions, setDecisions] = useState<Map<string, Decision>>(new Map());
+
+  const proposalRef = useRef<Proposal | undefined>(undefined);
+  const decisionsRef = useRef<Map<string, Decision>>(new Map());
+  const optsRef = useRef(options);
+  useEffect(() => {
+    optsRef.current = options;
+  });
+
+  /**
+   * hunks:稳定引用 —— proposal 变更时才新建数组,避免每次 render 触发下游
+   * useMemo/useEffect 依赖震荡(react-hooks/exhaustive-deps 也会因此抱怨)。
+   */
+  const hunks = useMemo(() => proposal?.hunks ?? [], [proposal]);
+  const hasPending = hunks.length > 0 && hunks.some((h) => !decisions.has(h.id));
+
+  /**
+   * activeHunkId:当前被"聚焦"的 hunk,供:
+   *   - 视觉高亮(element renderer 读 context 判断当前 hunk 是不是它)
+   *   - 快捷键操作目标(Y/N 接受拒绝、scrollIntoView 自动滚动)
+   *
+   * 派生策略:**全部由 setter 主动推进**,不在 useEffect 里同步——避免 effect
+   * 内 setState 触发 cascading renders(react-hooks/set-state-in-effect 也禁这个)。
+   *   - setProposal(p): active = 第一个 hunk
+   *   - acceptOne/rejectOne: 若裁决目标就是 active,promote 到顺序里下一个 pending
+   *   - acceptAll/rejectAll: 走 commitDecisions → finalize → setProposal(undefined)
+   *     active 在 setProposal(undefined) 路径被清空
+   *   - setActiveHunkId(id): 用户点击切焦点
+   *
+   * 顺序前进:active 裁决后选**排在 active 之后**的第一个 pending(环绕),
+   * 不跳回首个,以免视觉乱跳。
+   */
+  const [activeHunkId, setActiveHunkIdState] = useState<string | undefined>(
+    undefined,
+  );
+
+  /** 算 active 被裁决后该 promote 到哪个 hunk(顺序前进 + 环绕) */
+  const pickNextActive = useCallback(
+    (
+      hunkList: Hunk[],
+      currentActive: string | undefined,
+      nextDecisions: Map<string, Decision>,
+    ): string | undefined => {
+      if (hunkList.length === 0) return undefined;
+      const pending = hunkList.filter((h) => !nextDecisions.has(h.id));
+      if (pending.length === 0) return undefined;
+      if (!currentActive) return pending[0].id;
+      const oldIdx = hunkList.findIndex((h) => h.id === currentActive);
+      if (oldIdx < 0) return pending[0].id;
+      // 从 oldIdx+1 开始环绕扫
+      for (let i = 1; i <= hunkList.length; i++) {
+        const candidate = hunkList[(oldIdx + i) % hunkList.length];
+        if (!nextDecisions.has(candidate.id)) return candidate.id;
+      }
+      return undefined;
+    },
+    [],
+  );
+
+  const setActiveHunkId = useCallback((id: string | undefined) => {
+    setActiveHunkIdState(id);
+  }, []);
+  /**
+   * 跳到下一个 / 上一个 pending hunk(基于 hunks 数组顺序循环)。
+   * 实时读 hunks + decisions(useCallback 闭包稳定,但 hunks/decisions 引用变化时会重新创建)。
+   */
+  const navigateNext = useCallback(() => {
+    const pending = hunks.filter((h) => !decisions.has(h.id));
+    if (pending.length === 0) return;
+    setActiveHunkIdState((current) => {
+      if (!current) return pending[0].id;
+      const idx = pending.findIndex((h) => h.id === current);
+      if (idx < 0) return pending[0].id;
+      return pending[(idx + 1) % pending.length].id;
+    });
+  }, [hunks, decisions]);
+
+  const navigatePrev = useCallback(() => {
+    const pending = hunks.filter((h) => !decisions.has(h.id));
+    if (pending.length === 0) return;
+    setActiveHunkIdState((current) => {
+      if (!current) return pending[pending.length - 1].id;
+      const idx = pending.findIndex((h) => h.id === current);
+      if (idx < 0) return pending[0].id;
+      return pending[(idx - 1 + pending.length) % pending.length].id;
+    });
+  }, [hunks, decisions]);
+
+  /**
+   * 全裁决后:节点树此刻已只剩正常 'p' 节点,serializeMd 安全。
+   * 仅当有 accepted hunks 时触发 onResolved(全拒绝时不写回 bodyMarkdown)。
+   * 无论 accept 还是 reject,都把 callId 标记为 resolved —— 防刷新后又拉起审批。
+   */
+  const finalize = useCallback(
+    (currentProposal: Proposal, currentDecisions: Map<string, Decision>) => {
+      const hasAccepted = currentProposal.hunks.some(
+        (h) => currentDecisions.get(h.id) === 'accepted',
+      );
+      if (hasAccepted) {
+        const md = optsRef.current.serializeMd?.();
+        if (md !== undefined) optsRef.current.onResolved?.(md);
+      }
+      // 标记 resolved 防刷新后又被 v3ProposalsByCallId 算出 hunks 重新拉起审批
+      markResolved(currentProposal.callId);
+      proposalRef.current = undefined;
+      setProposalState(undefined);
+    },
+    [],
+  );
+
+  /**
+   * 接收新 proposal:setState + 立刻 applyProposalToEditor 展开节点树。
+   * 传 undefined 时清空 — 撤回所有未决节点(防御性,正常流程裁决完已无节点)。
+   */
+  const setProposal = useCallback(
+    (p: Proposal | undefined) => {
+      if (p) {
+        proposalRef.current = p;
+        decisionsRef.current = new Map();
+        setProposalState(p);
+        setDecisions(new Map());
+        // active 推进:新 proposal 进来,active = 第一个 hunk
+        setActiveHunkIdState(p.hunks[0]?.id);
+        // 关键:立刻展开节点树
+        applyProposalToEditor(editor, p.hunks);
+      } else {
+        // 撤回:把残留 proposal-old 改回 'p',删除 proposal-new
+        const oldPaths: number[][] = [];
+        const newPaths: number[][] = [];
+        ed.children.forEach((n, i) => {
+          if (n.type === PROPOSAL_OLD) oldPaths.push([i]);
+          else if (n.type === PROPOSAL_NEW) newPaths.push([i]);
+        });
+        // 倒序避免漂移
+        newPaths.sort((a, b) => b[0] - a[0]).forEach((p2) => ed.tf.removeNodes({ at: p2 }));
+        oldPaths.sort((a, b) => b[0] - a[0]).forEach((p2) =>
+          ed.tf.setNodes({ type: 'p', hunkId: undefined }, { at: p2 }),
+        );
+        proposalRef.current = undefined;
+        decisionsRef.current = new Map();
+        setProposalState(undefined);
+        setDecisions(new Map());
+        setActiveHunkIdState(undefined);
+      }
+    },
+    [editor, ed],
+  );
+
+  const commitDecisions = useCallback(
+    (nextDecisions: Map<string, Decision>) => {
+      decisionsRef.current = nextDecisions;
+      setDecisions(nextDecisions);
+      const currentProposal = proposalRef.current;
+      if (!currentProposal || currentProposal.hunks.length === 0) return;
+      const allDecided = currentProposal.hunks.every((h) => nextDecisions.has(h.id));
+      if (allDecided) {
+        finalize(currentProposal, nextDecisions);
+        // finalize 已 setProposalState(undefined),active 在 setProposal 撤回路径或下一个
+        // proposal 进入时被推进
+        setActiveHunkIdState(undefined);
+        return;
+      }
+      // 推进 active:若当前 active 已被裁决,顺序前进到下一个 pending
+      // 用 setActiveHunkIdState 的函数式更新避免依赖 stale state
+      setActiveHunkIdState((current) => {
+        if (current && !nextDecisions.has(current)) return current;
+        return pickNextActive(currentProposal.hunks, current, nextDecisions);
+      });
+    },
+    [finalize, pickNextActive],
+  );
+
+  /**
+   * 接受单个 hunk:
+   * - 找节点树里 hunkId 对应的 proposal-old 节点 → removeNodes
+   * - 找 proposal-new 节点 → setNodes({type:'p', hunkId:undefined}) 转为正常段
+   * 倒序 + decisions 更新 + commitDecisions 检测全裁决。
+   */
+  const acceptOne = useCallback(
+    (hunkId: string) => {
+      const oldPaths = findHunkNodePaths(ed, hunkId, PROPOSAL_OLD);
+      const newPaths = findHunkNodePaths(ed, hunkId, PROPOSAL_NEW);
+      // 倒序处理:大 path 先
+      const all = [
+        ...oldPaths.map((p) => ({ kind: 'remove' as const, path: p })),
+        ...newPaths.map((p) => ({ kind: 'promote' as const, path: p })),
+      ].sort((a, b) => b.path[0] - a.path[0]);
+      for (const op of all) {
+        if (op.kind === 'remove') ed.tf.removeNodes({ at: op.path });
+        else ed.tf.setNodes({ type: 'p', hunkId: undefined }, { at: op.path });
+      }
+      commitDecisions(new Map(decisionsRef.current).set(hunkId, 'accepted'));
+    },
+    [ed, commitDecisions],
+  );
+
+  /**
+   * 拒绝单个 hunk:
+   * - 找 proposal-new 节点 → removeNodes(放弃 AI 提议)
+   * - 找 proposal-old 节点 → setNodes({type:'p', hunkId:undefined}) 恢复原段
+   */
+  const rejectOne = useCallback(
+    (hunkId: string) => {
+      const oldPaths = findHunkNodePaths(ed, hunkId, PROPOSAL_OLD);
+      const newPaths = findHunkNodePaths(ed, hunkId, PROPOSAL_NEW);
+      const all = [
+        ...newPaths.map((p) => ({ kind: 'remove' as const, path: p })),
+        ...oldPaths.map((p) => ({ kind: 'restore' as const, path: p })),
+      ].sort((a, b) => b.path[0] - a.path[0]);
+      for (const op of all) {
+        if (op.kind === 'remove') ed.tf.removeNodes({ at: op.path });
+        else ed.tf.setNodes({ type: 'p', hunkId: undefined }, { at: op.path });
+      }
+      commitDecisions(new Map(decisionsRef.current).set(hunkId, 'rejected'));
+    },
+    [ed, commitDecisions],
+  );
+
+  const acceptAll = useCallback(() => {
+    const currentProposal = proposalRef.current;
+    if (!currentProposal) return;
+    // 关键:只处理"未裁决"的 hunks,**不覆盖**已 accept/reject 的 decisions。
+    // 否则用户先逐个接受 4 处再点"全部拒绝",会把已 accepted 也覆盖成 rejected,
+    // 导致 hasAccepted=false → 不触发 onResolved → 已接受的改动**不保存**(刷新丢失)。
+    const previousDecisions = decisionsRef.current;
+    currentProposal.hunks.forEach((h) => {
+      if (previousDecisions.has(h.id)) return; // 跳过已裁决
+      const oldPaths = findHunkNodePaths(ed, h.id, PROPOSAL_OLD);
+      const newPaths = findHunkNodePaths(ed, h.id, PROPOSAL_NEW);
+      const all = [
+        ...oldPaths.map((p) => ({ kind: 'remove' as const, path: p })),
+        ...newPaths.map((p) => ({ kind: 'promote' as const, path: p })),
+      ].sort((a, b) => b.path[0] - a.path[0]);
+      for (const op of all) {
+        if (op.kind === 'remove') ed.tf.removeNodes({ at: op.path });
+        else ed.tf.setNodes({ type: 'p', hunkId: undefined }, { at: op.path });
+      }
+    });
+    const next = new Map(previousDecisions);
+    currentProposal.hunks.forEach((h) => {
+      if (!next.has(h.id)) next.set(h.id, 'accepted'); // 仅给未裁决的设 accepted
+    });
+    commitDecisions(next);
+  }, [ed, commitDecisions]);
+
+  const rejectAll = useCallback(() => {
+    const currentProposal = proposalRef.current;
+    if (!currentProposal) return;
+    // 同 acceptAll:只处理未裁决,保留已有 decisions
+    const previousDecisions = decisionsRef.current;
+    currentProposal.hunks.forEach((h) => {
+      if (previousDecisions.has(h.id)) return;
+      const oldPaths = findHunkNodePaths(ed, h.id, PROPOSAL_OLD);
+      const newPaths = findHunkNodePaths(ed, h.id, PROPOSAL_NEW);
+      const all = [
+        ...newPaths.map((p) => ({ kind: 'remove' as const, path: p })),
+        ...oldPaths.map((p) => ({ kind: 'restore' as const, path: p })),
+      ].sort((a, b) => b.path[0] - a.path[0]);
+      for (const op of all) {
+        if (op.kind === 'remove') ed.tf.removeNodes({ at: op.path });
+        else ed.tf.setNodes({ type: 'p', hunkId: undefined }, { at: op.path });
+      }
+    });
+    const next = new Map(previousDecisions);
+    currentProposal.hunks.forEach((h) => {
+      if (!next.has(h.id)) next.set(h.id, 'rejected');
+    });
+    commitDecisions(next);
+  }, [ed, commitDecisions]);
+
+  return {
+    proposal,
+    hunks,
+    decisions,
+    hasPending,
+    setProposal,
+    acceptOne,
+    rejectOne,
+    acceptAll,
+    rejectAll,
+    activeHunkId,
+    setActiveHunkId,
+    navigateNext,
+    navigatePrev,
+  };
+}

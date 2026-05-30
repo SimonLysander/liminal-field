@@ -195,7 +195,8 @@ export function PhotoEditModal({
        */
       if (prevPhotoIdRef.current && prevPhotoIdRef.current !== photo.id) {
         const prevPhoto = photos.find((p) => p.id === prevPhotoIdRef.current);
-        if (prevPhoto) {
+        // 仅当用户真的改了才写回——否则会用本地草稿覆盖外部(如 Aurora)刚写的 caption
+        if (prevPhoto && captionDraft !== (prevPhoto.caption ?? '')) {
           onCaptionChange(prevPhoto.id, captionDraft);
         }
       }
@@ -206,6 +207,19 @@ export function PhotoEditModal({
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photo?.id]);
+
+  /*
+   * 打开弹窗时,用当前照片的最新 caption 重新同步草稿。
+   * 否则:外部(如 Aurora 图说写手)对同一张照片改了 caption(photo.id 没变),
+   * 上面那个仅依赖 photo.id 的 effect 不触发,弹窗会显示打开前的旧值(看似"没刷新")。
+   */
+  useEffect(() => {
+    if (!open || !photo) return;
+    // 推迟到微任务,避免 effect 同步体内 setState(与本文件其它 effect 一致)
+    void Promise.resolve().then(() => setCaptionDraft(photo.caption ?? ''));
+    // 仅在开合切换时同步;photo 切换由 [photo?.id] effect 负责
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   if (!photo) return null;
 
@@ -220,9 +234,9 @@ export function PhotoEditModal({
     if (hasNext) setCurrentIndex((i) => i + 1);
   };
 
-  /* 关闭前提交当前 caption */
+  /* 关闭前提交当前 caption（仅当用户真改了，避免覆盖外部刚写的 caption） */
   const handleClose = () => {
-    onCaptionChange(photo.id, captionDraft);
+    if (captionDraft !== (photo.caption ?? '')) onCaptionChange(photo.id, captionDraft);
     onClose();
   };
 
@@ -232,13 +246,15 @@ export function PhotoEditModal({
 
   return (
     // title 传入 sr-only span，满足 Radix Dialog 无障碍要求（不渲染可见标题）。
-    // className 覆盖 DialogContent 默认样式：p-0 去内边距，border-0 去边框，flex 覆盖 grid，
-    // [&>button:last-child]:hidden 隐藏 shadcn 内置关闭按钮，使用自定义绝对定位关闭按钮。
+    // className 覆盖 DialogContent 默认:p-0/border-0 去内边距与边框、flex 覆盖 grid、
+    //   gap-0 去默认 gap-4(否则 sr-only 标题作为首个 flex 子与图片间留 16px、顶部露出弹窗底色)、
+    //   max-h-[90vh]+overflow-hidden 防超屏、[&>button:last-child]:hidden 隐藏 shadcn 内置关闭按钮。
+    //   图片贴弹窗顶边,上方圆角由 rounded-xl 裁切。
     <Modal
       open={open}
       onClose={handleClose}
       title={<span className="sr-only">照片编辑</span>}
-      className={`flex overflow-hidden rounded-xl p-0 border-0 [&>button:last-child]:hidden ${isLandscape ? 'flex-col' : 'flex-row'} max-w-[760px] w-[760px]`}
+      className={`flex gap-0 max-h-[90vh] overflow-hidden rounded-xl p-0 border-0 [&>button:last-child]:hidden ${isLandscape ? 'flex-col' : 'flex-row'} max-w-[760px] w-[760px]`}
     >
       {/* 文件名 — 整个 modal 左上角 */}
       <span
@@ -264,20 +280,21 @@ export function PhotoEditModal({
         <X size={12} strokeWidth={2} />
       </button>
 
-      {/* ── 照片预览区：横幅在上方（全宽），竖幅在左侧（固定宽） ── */}
+      {/* ── 照片预览区：横幅按宽度铺满(不留两侧灰边),竖幅在左侧固定宽 ── */}
       <div
         className={`relative flex shrink-0 items-center justify-center ${isLandscape ? 'w-full' : 'w-[320px]'}`}
         style={{
           background: 'var(--shelf)',
-          ...(isLandscape ? { height: '340px' } : { minHeight: '480px' }),
+          ...(isLandscape ? {} : { minHeight: '480px' }),
         }}
       >
-        {/* 大图预览 */}
+        {/* 大图预览:横幅 w-full 铺满宽,高度封顶 48vh(留出信息区+操作栏不超屏);
+            object-cover 保证封顶时不变形、不留侧边灰条,只在屏幕过矮时轻微裁上下。竖幅 contain。 */}
         <img
           src={photo.url}
           alt={photo.fileName}
-          className="h-full w-full object-contain"
-          style={isLandscape ? { maxHeight: '320px' } : { maxHeight: '420px' }}
+          className={isLandscape ? 'block w-full object-cover' : 'h-full w-full object-contain'}
+          style={isLandscape ? { maxHeight: '48vh' } : { maxHeight: '420px' }}
           draggable={false}
         />
 
@@ -321,9 +338,12 @@ export function PhotoEditModal({
 
       {/* ── 信息区（横幅在下方，竖幅在右侧）── */}
       <div
-        className="flex flex-1 flex-col"
+        className="flex min-h-0 flex-1 flex-col"
         style={{ background: 'var(--paper)' }}
       >
+        {/* 可滚区:EXIF + 图说。内容超高(如展开拍摄参数)时此区内部滚动,
+            操作栏不被撑出屏外——配合 Modal 的 max-h-[90vh] 保证整窗不超屏。 */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
         {/* 信息条 — 收起态合并为一行（方案 D），展开态显示编辑网格 */}
         <div className="px-5 pt-4">
           {isEditingExif ? (
@@ -359,18 +379,16 @@ export function PhotoEditModal({
 
         <div style={{ height: '0.5px', background: 'var(--separator)', margin: '12px 20px 0' }} />
 
-        {/* Caption — 参数下方，保持原生 textarea 并用 token 写法 */}
-        <div className="flex-1 px-5 pt-3">
+        {/* Caption — 参数下方,带标签 + 清晰边界(与页面元数据字段同一套外观) */}
+        <div className="px-5 pb-4 pt-3">
+          <div className="mb-1.5 text-xs font-medium" style={{ color: 'var(--ink-faded)' }}>
+            图说
+          </div>
           <div className="relative">
             <textarea
-              className="w-full resize-none rounded-sm px-3 py-2.5 text-sm outline-none transition-colors duration-150"
-              style={{
-                background: 'var(--shelf)',
-                color: 'var(--ink)',
-                border: '1px solid var(--separator)',
-                minHeight: '72px',
-              }}
-              placeholder="添加说明..."
+              className="w-full resize-none rounded-md border border-[var(--separator)] bg-[var(--shelf)] px-3 py-2.5 text-sm outline-none transition-colors hover:border-[var(--box-border)] focus:border-[var(--accent)]"
+              style={{ color: 'var(--ink)', minHeight: '72px' }}
+              placeholder="给这张照片写一句说明…"
               maxLength={30}
               value={captionDraft}
               onChange={(e) => setCaptionDraft(e.target.value)}
@@ -388,9 +406,10 @@ export function PhotoEditModal({
             </div>
           </div>
         </div>
+        </div>
 
-        {/* 操作栏：左"设为封面"，右"完成" */}
-        <div className="flex items-center justify-between px-5 py-4">
+        {/* 操作栏：左"设为封面"，右"完成"——固定底部,可滚区内容滚动时始终可见 */}
+        <div className="flex shrink-0 items-center justify-between border-t border-[var(--separator)] px-5 py-4">
           <Button variant="ghost" size="sm" onClick={handleSetCover}>
             设为封面
           </Button>

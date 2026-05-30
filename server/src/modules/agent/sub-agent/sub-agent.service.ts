@@ -80,7 +80,7 @@ export class SubAgentService {
       read_document_content: createReadDocumentContentTool(
         this.noteViewService,
       ),
-      get_current_draft: createGetCurrentDraftTool(document),
+      get_current_draft: createGetCurrentDraftTool(() => document),
     };
 
     let stepsUsed = 0;

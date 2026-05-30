@@ -477,7 +477,14 @@ export class ContentService {
         const matched = snapshots.find(
           (s) => s.commitHash === dto.publishCommitHash,
         );
-        targetVersionId = matched?.versionId;
+        // 找不到对应快照必须抛错,不能把 undefined 写进 publishedVersion.versionId
+        // ——否则读取已发布内容 / hasUnpublishedChanges 会静默拿到错误数据。
+        if (!matched) {
+          throw new NotFoundException(
+            `发布失败：未找到 commitHash=${dto.publishCommitHash} 对应的版本快照`,
+          );
+        }
+        targetVersionId = matched.versionId;
       }
       nextPublishedVersion = this.buildVersionSnapshot(
         targetHash,

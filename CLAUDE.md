@@ -15,6 +15,24 @@
 - **禁止**：裸 `console.log` 散落；记敏感信息（token/password/正文全文 → 只记长度/摘要）；空 catch（catch 必 log）。
 - 颗粒度接近“关键步骤一步一个”，但分级可开关，不牺牲可读性。
 
+\# 配置归属准则（.env vs 管理页面/Mongo）
+
+**判断轴 = 谁管 + 何时变**（不是"是不是机密"——git token 是机密但归 UI）：
+
+- **`.env`**：部署/运维设定、机器级、换部署才变、应用没它起不来。
+  - 机密凭证：`JWT_SECRET`、`ADMIN_PASSWORD`、`MONGO_PASSWORD`、`OSS_ACCESS_KEY_*`
+  - 基础设施/连接：`MONGO_HOST/PORT/USER/DATABASE`、`OSS_REGION/BUCKET`、`CONTENT_REPO_ROOT`
+  - 运行环境：`NODE_ENV`、`PORT`、`COOKIE_SECURE`、`TZ`
+  - **系统内部容错定时**：`GIT_ARCHIVE_RETRY_CRON`（归档失败重试，管理员不该 care）
+- **管理页面 → Mongo**：管理员运行时通过 UI 自助配置/变更、非部署绑定、要在界面看状态。
+  - 同步：`remoteUrl`、`gitToken`、`gitAuthorName/Email`、`gitSyncEnabled`、**业务定时** `gitSyncCron`（多久推一次远端，管理员关心的节奏）
+  - 集成：`mineruToken`；AI：providers（key/baseUrl/models/`contextWindow`）、`aiSystemPrompt`
+  - 身份与 agent：`ownerProfile`、`agentConfigs`
+
+**定时任务的区分**：管理员可调的业务节奏（`gitSyncCron`）→ UI；系统内部容错机制（`GIT_ARCHIVE_RETRY_CRON`）→ .env。看的是"管理员会不会去调它"，不是"它是不是 cron"。
+
+**消费侧统一**：UI/Mongo 类配置启动时由 `SystemConfigService.applyAllToEnv` 投影进 `process.env`、UI 改时同步——消费方一律读 `process.env`，不到处注入 `SystemConfigService`。机密在 config view 里**必须脱敏**（只回 `hasXxx` / 长度，不回原文）。
+
 \# 设计系统
 
 核心原则：**展示端和管理端相同语义角色的组件，视觉规格完全一致。**
@@ -72,3 +90,11 @@
 2. subagent prompt 必须包含显式的禁止列表（不改值、不改逻辑、不新建文件、不超出指定文件范围）
 3. subagent 完成后必须 `git diff` 逐文件验收，确认只有预期的变更类型
 4. 涉及设计系统（token 值、间距、字号、动画）的文件不交给 subagent，手动处理
+
+## Plate diffToSuggestions 退化成块级 diff（NodeId 的 id 没忽略）
+
+**现象：** AI 改稿用 `diffToSuggestions` 把"旧块 vs 新块"做 diff，期望段内**行内**增删痕迹（红删除线/绿新增），实际渲染成"整段旧文 + 整段新文两段并排、纯黑字无样式"。
+
+**根因：** `usePlateEditor` 默认装 NodeIdPlugin，编辑器里每个块都带稳定 `id`。`diffToSuggestions`→`computeDiff` 的 `childrenOnlyStrategy` 判"是否只改了 children（→递归走行内 diff）"要求两块**除 children 外所有属性 isEqual**；而 `deserializeMd` 产出的新块没有 `id` → id 不等 → 退化成"整块删除 + 整块插入"（块级 suggestion，数据挂 element 上），leaf 渲染器（`SuggestionLeaf`）读不到 → 无视觉。
+
+**规则：** 对带 id 的块做 `diffToSuggestions`，必须传 `{ ignoreProps: ['id'] }`（或项目实际 idKey），忽略 id 差异、判为同块更新、产出行内 leaf 痕迹。见 `client/src/pages/admin/lib/apply-proposed-edits.ts`。

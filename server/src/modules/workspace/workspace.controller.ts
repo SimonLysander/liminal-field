@@ -297,7 +297,7 @@ export class WorkspaceController {
   }
 
   /**
-   * 条目版本历史（按 fileName=entries/eXXX.md 筛选 snapshot 列表）。
+   * 条目版本历史（entryKey=子 ContentItem id，取其 main.md 快照列表）。
    * 必须在 GET entries/:entryKey 之前注册，避免 "history" 被当成 entryKey 匹配。
    * 与 notes/gallery 的 /history 路由对称，供管理端版本时间线组件使用。
    */
@@ -546,8 +546,8 @@ export class WorkspaceController {
   // 必须在通用 ":scope/items/:id/publish" 之前注册，否则会匹配到通用路由。
 
   /**
-   * 发布单篇条目：把该条目的发布状态写入 ContentItem.entryPublishStates(Mongo,不进 Git)。
-   * 文集已上线时同步刷新冻结结构。
+   * 发布单篇条目：发布该条目子 ContentItem 的最新版本（per-node publishedVersion）。
+   * 要求文集已上线（publishEntry 内部校验）。
    */
   @Put('anthology/items/:id/entries/:entryKey/publish')
   async publishAnthologyEntry(
@@ -559,7 +559,7 @@ export class WorkspaceController {
   }
 
   /**
-   * 取消发布单篇条目：从 ContentItem.entryPublishStates 移除该条目(Mongo,不进 Git)。
+   * 取消发布单篇条目：清除该条目子 ContentItem 的 publishedVersion。
    */
   @Put('anthology/items/:id/entries/:entryKey/unpublish')
   async unpublishAnthologyEntry(
@@ -571,8 +571,7 @@ export class WorkspaceController {
   }
 
   /**
-   * 批量发布所有条目：把所有有内容的条目写入 entryPublishStates(各指向其最新 snapshot,Mongo)。
-   * 文集已上线时同步刷新冻结结构。
+   * 批量发布所有条目：逐个发布每个有内容条目子 ContentItem 的最新版本。
    */
   @Post('anthology/items/:id/entries/publish-all')
   async publishAllAnthologyEntries(

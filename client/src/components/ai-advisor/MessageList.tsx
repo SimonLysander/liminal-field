@@ -9,8 +9,9 @@
  * - 加载期间显示 spinner 防止重复触发（isLoadingMore 由父控制）
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import type { UIMessage } from 'ai';
+import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
 import { ChatMessage } from './ChatMessage';
 
 interface MessageListProps {
@@ -28,6 +29,15 @@ interface MessageListProps {
   isLoadingMore?: boolean;
   /** 触发加载更早历史（滚到顶时调用） */
   onLoadMore?: () => void;
+  /**
+   * v3 改稿 proposals 索引：key = toolCallId，value = Proposal。
+   * 透传给 ChatMessage，tool-propose_document_rewrite 落稳后按 callId 查渲染卡片。
+   */
+  proposalsByCallId?: Record<string, Proposal>;
+  /** v3 改稿：点击 AiEditProposalCard 跳转编辑器审批 */
+  onJumpToEditor?: () => void;
+  /** 内联工具卡片渲染器(场景注入):为某个工具 part 在原位渲染卡片,返回 null 用默认 ToolCallCard。 */
+  renderToolCard?: (part: unknown) => ReactNode | null;
 }
 
 export function MessageList({
@@ -39,12 +49,19 @@ export function MessageList({
   hasMore,
   isLoadingMore,
   onLoadMore,
+  proposalsByCallId,
+  onJumpToEditor,
+  renderToolCard,
 }: MessageListProps) {
+  const edgeFadeMask =
+    'linear-gradient(to bottom, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%)';
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   // 顶部哨兵：IntersectionObserver 检测用户是否滚到顶，触发懒加载
   const topSentinelRef = useRef<HTMLDivElement>(null);
   const prevLenRef = useRef(0);
+  const autoStickRef = useRef(true);
+  const lastScrollTopRef = useRef(0);
 
   // 智能贴底:新消息(含初次加载)直接到底;流式增量仅当用户已在底部附近时才平滑跟随,
   // 用户主动上滚回看时不强行拉回。
@@ -55,10 +72,27 @@ export function MessageList({
     const isNewMessage = messages.length > prevLenRef.current;
     prevLenRef.current = messages.length;
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-    if (isNewMessage || nearBottom) {
+    if (isNewMessage) autoStickRef.current = true;
+    if (isNewMessage || (nearBottom && autoStickRef.current)) {
       bottomRef.current?.scrollIntoView({ behavior: isNewMessage ? 'auto' : 'smooth' });
     }
   }, [messages, status]);
+
+  const handleScroll = () => {
+    const el = containerRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    const scrollingUp = el.scrollTop < lastScrollTopRef.current;
+    lastScrollTopRef.current = el.scrollTop;
+
+    if (scrollingUp && !nearBottom) {
+      autoStickRef.current = false;
+      return;
+    }
+    if (nearBottom) {
+      autoStickRef.current = true;
+    }
+  };
 
   // 顶部哨兵：用户滚到顶时触发懒加载，IntersectionObserver 避免轮询
   useEffect(() => {
@@ -85,13 +119,12 @@ export function MessageList({
   return (
     <div
       ref={containerRef}
+      onScroll={handleScroll}
       className={`flex flex-1 flex-col overflow-y-auto py-6 ${comfortable ? 'gap-6 px-1' : 'gap-5 px-4'}`}
       style={{
         // 上下边缘渐隐:内容滚到顶/底时柔和淡出,不硬切
-        maskImage:
-          'linear-gradient(to bottom, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%)',
-        WebkitMaskImage:
-          'linear-gradient(to bottom, transparent 0, #000 calc(100% - 24px), transparent 100%)',
+        maskImage: edgeFadeMask,
+        WebkitMaskImage: edgeFadeMask,
       }}
     >
       {/* 顶部哨兵 + 加载指示器：有更早历史时渲染，IntersectionObserver 触发懒加载 */}
@@ -123,9 +156,13 @@ export function MessageList({
             <ChatMessage
               role={msg.role as 'user' | 'assistant'}
               content={textContent}
+              metadata={msg.metadata}
               parts={msg.role === 'assistant' ? msg.parts : undefined}
               sessionKey={sessionKey}
               comfortable={comfortable}
+              proposalsByCallId={proposalsByCallId}
+              onJumpToEditor={onJumpToEditor}
+              renderToolCard={renderToolCard}
             />
           </div>
         );

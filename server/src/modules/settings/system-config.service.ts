@@ -21,6 +21,7 @@ export interface SettingsConfigView {
   };
   integration: {
     hasMineruToken: boolean;
+    hasTavilyApiKey: boolean;
   };
   ai: {
     /** 已配置的 AI 提供商列表（API Key 脱敏，不含原文） */
@@ -31,6 +32,8 @@ export interface SettingsConfigView {
       flashModel: string;
       standardModel: string;
       thinkModel: string;
+      /** 视觉模型,可选;空串表示该 provider 不支持视觉 */
+      visionModel: string;
       hasApiKey: boolean;
     }[];
     /** 当前启用的提供商 id */
@@ -54,7 +57,6 @@ export interface SettingsConfigView {
     name: string;
     birthday: string;
     bio: string;
-    interests: string;
   };
 }
 
@@ -79,12 +81,49 @@ export class SystemConfigService implements OnModuleInit {
     'list_knowledge_base',
     'read_document_content',
     'get_current_draft',
+    // 文集条目场景:读同集其它条目当前内容(装配层按是否文集条目实际挂载)
+    'read_collection_entry',
+    // 2026-05-30 event log 架构:
+    // - remember 重做成"主 agent 批量觉察"(append-only,不再 upsert by title)
+    // - forget 已彻底拔掉(岁月史书无 forget,只有时间推移与重派生画像)
     'remember',
-    'forget',
+    'recall_memory',
+    'search_memories',
     'sub_agent',
     'write_tasks',
     'read_conversation_history',
+    // v3:单工具纯管道,前端做 diff 与 hunk 审批(替代 v2 rewrite_* 工具)
+    'propose_document_rewrite',
+    // 联网能力:web_search(Tavily/Serper/...)+ web_fetch(Jina Reader/...)
+    // 装配层会按 .env 是否配 key 实际挂载(没 key 时 web_search 自动不挂)
+    'web_search',
+    'web_fetch',
   ];
+
+  /** gallery-caption-writer 入口的工具集(画廊图说场景)。 */
+  private static readonly GALLERY_CAPTION_TOOLS = [
+    'get_current_draft', // 画廊版:读清单+随笔(装配层按 gallery 场景换实现)
+    'view_photos', // 申请看图(后端 prepareStep 注图)
+    'propose_caption', // 写/改单张图说
+  ];
+
+  /** gallery-caption-writer 的预置入口(预置与补齐共用一份,避免两处手抄)。 */
+  private static readonly GALLERY_CAPTION_ENTRY = {
+    key: 'gallery-caption-writer',
+    name: '图说写手',
+    description: '为画廊照片写/改图说(caption)',
+    enabled: true,
+    systemPrompt:
+      '写图说(caption)的手感:短、具体、贴着画面本身和那篇随笔的气口;别堆形容词、别说正确的废话——有时一句平实的话就够。' +
+      '你用 propose_caption 给的图说只是**提议**,要用户在卡片上点「应用」才生效——所以别说「已更新/已改好」,要说「我提议了…,满意就点应用」。',
+    tools: [...SystemConfigService.GALLERY_CAPTION_TOOLS],
+    tier: 'vision',
+    providerId: '',
+    flashProviderId: '',
+    standardProviderId: '',
+    thinkProviderId: '',
+    visionProviderId: '',
+  };
 
   constructor(
     private readonly repo: SystemConfigRepository,
@@ -116,21 +155,59 @@ export class SystemConfigService implements OnModuleInit {
             systemPrompt: '',
             tools: [...SystemConfigService.WRITING_ADVISOR_TOOLS],
             tier: 'standard',
+            providerId: '',
+            flashProviderId: '',
+            standardProviderId: '',
+            thinkProviderId: '',
+            visionProviderId: '',
           },
+          { ...SystemConfigService.GALLERY_CAPTION_ENTRY },
         ] as AgentEntryConfig[],
       });
-      this.logger.log('预置 writing-advisor agent 配置已写入');
+      this.logger.log(
+        '预置 writing-advisor + gallery-caption-writer agent 配置已写入',
+      );
     } else {
       // 补齐新增工具：已有配置可能缺少后来新加的工具
       const allTools = SystemConfigService.WRITING_ADVISOR_TOOLS;
       const wa = config?.agentConfigs?.find((c) => c.key === 'writing-advisor');
       if (wa) {
+        // 退役的 v2 工具名：rewrite_selection(Task 8 前已删)、rewrite_reference/rewrite_document(Task 9 退役)
+        const v2ToolsToRemove = [
+          'rewrite_selection',
+          'rewrite_reference',
+          'rewrite_document',
+        ];
+        const beforeTools = wa.tools;
+        wa.tools = wa.tools.filter((t) => !v2ToolsToRemove.includes(t));
+        const removedOldTools = beforeTools.filter((t) =>
+          v2ToolsToRemove.includes(t),
+        );
+        const removedOldTool = removedOldTools.length > 0;
         const missing = allTools.filter((t) => !wa.tools.includes(t));
-        if (missing.length > 0) {
+        if (missing.length > 0 || removedOldTool) {
           wa.tools.push(...missing);
           await this.repo.patch({ agentConfigs: config.agentConfigs });
-          this.logger.log(`writing-advisor 补齐工具: ${missing.join(', ')}`);
+          if (missing.length > 0) {
+            this.logger.log(`writing-advisor 补齐工具: ${missing.join(', ')}`);
+          }
+          if (removedOldTool) {
+            this.logger.log(
+              `writing-advisor 移除旧工具: ${removedOldTools.join(', ')}`,
+            );
+          }
         }
+      }
+
+      // 补齐 gallery-caption-writer:老库只有 writing-advisor,需补这个新入口
+      if (
+        !config.agentConfigs.some((c) => c.key === 'gallery-caption-writer')
+      ) {
+        config.agentConfigs.push({
+          ...SystemConfigService.GALLERY_CAPTION_ENTRY,
+        });
+        await this.repo.patch({ agentConfigs: config.agentConfigs });
+        this.logger.log('补齐 gallery-caption-writer agent 配置');
       }
     }
   }
@@ -149,6 +226,7 @@ export class SystemConfigService implements OnModuleInit {
       },
       integration: {
         hasMineruToken: !!config?.mineruToken,
+        hasTavilyApiKey: !!config?.tavilyApiKey,
       },
       ai: {
         providers: (config?.aiProviders ?? []).map((p) => ({
@@ -158,6 +236,7 @@ export class SystemConfigService implements OnModuleInit {
           flashModel: p.flashModel,
           standardModel: p.standardModel,
           thinkModel: p.thinkModel,
+          visionModel: p.visionModel ?? '',
           hasApiKey: !!p.apiKey,
         })),
         activeProviderId: config?.activeAiProviderId || '',
@@ -180,7 +259,6 @@ export class SystemConfigService implements OnModuleInit {
         name: config?.ownerProfile?.name || '',
         birthday: config?.ownerProfile?.birthday || '',
         bio: config?.ownerProfile?.bio || '',
-        interests: config?.ownerProfile?.interests || '',
       },
     };
   }
@@ -232,11 +310,18 @@ export class SystemConfigService implements OnModuleInit {
     );
   }
 
-  async saveIntegrationConfig(input: { mineruToken?: string }): Promise<void> {
+  async saveIntegrationConfig(input: {
+    mineruToken?: string;
+    tavilyApiKey?: string;
+  }): Promise<void> {
     const fields: Record<string, string> = {};
     if (input.mineruToken !== undefined) {
       fields.mineruToken = input.mineruToken;
       process.env.MINERU_TOKEN = input.mineruToken;
+    }
+    if (input.tavilyApiKey !== undefined) {
+      fields.tavilyApiKey = input.tavilyApiKey;
+      process.env.TAVILY_API_KEY = input.tavilyApiKey;
     }
 
     await this.repo.patch(fields);
@@ -253,6 +338,8 @@ export class SystemConfigService implements OnModuleInit {
     flashModel: string;
     standardModel: string;
     thinkModel: string;
+    /** 视觉模型,可选(创建时一般不填,后续在 UI 补) */
+    visionModel?: string;
     /** 模型上下文窗口(token)，来自提供商预设，用于 compaction 占比计算的分母 */
     contextWindow: number;
   }): Promise<void> {
@@ -267,6 +354,7 @@ export class SystemConfigService implements OnModuleInit {
       flashModel: input.flashModel,
       standardModel: input.standardModel,
       thinkModel: input.thinkModel,
+      visionModel: input.visionModel ?? '',
       contextWindow: input.contextWindow,
     });
     await this.repo.patch({ aiProviders: providers });
@@ -309,6 +397,7 @@ export class SystemConfigService implements OnModuleInit {
       flashModel?: string;
       standardModel?: string;
       thinkModel?: string;
+      visionModel?: string;
       apiKey?: string;
     },
   ): Promise<void> {
@@ -325,6 +414,10 @@ export class SystemConfigService implements OnModuleInit {
           : {}),
         ...(fields.thinkModel !== undefined
           ? { thinkModel: fields.thinkModel }
+          : {}),
+        // 视觉可选:undefined 不动,'' 表示显式清空
+        ...(fields.visionModel !== undefined
+          ? { visionModel: fields.visionModel }
           : {}),
         ...(fields.apiKey !== undefined ? { apiKey: fields.apiKey } : {}),
       };
@@ -346,6 +439,14 @@ export class SystemConfigService implements OnModuleInit {
   async getAiConfig(
     // tier 接受 string：来源含前端传入的运行时值，未知值在下方逻辑兜底为 standard
     tier: string = 'standard',
+    /**
+     * 已解析的 providerId(2026-05-31 改造,#143)。调用方(AgentService)按 tier
+     * 从 agentConfig 取对应字段——
+     *   flashProviderId / standardProviderId / thinkProviderId / visionProviderId
+     * 任一为空回退到 agentConfig.providerId,再回退到全局 activeAiProviderId。
+     * 此函数只负责按已解析的 providerId 拼 baseUrl/apiKey/model;不做 fallback。
+     */
+    providerId?: string,
   ): Promise<{
     baseUrl: string;
     apiKey: string;
@@ -355,14 +456,16 @@ export class SystemConfigService implements OnModuleInit {
     contextWindow: number;
   }> {
     const config = await this.repo.get();
-    const activeId = config?.activeAiProviderId || '';
-    const active = (config?.aiProviders ?? []).find((p) => p.id === activeId);
+    const resolvedId = providerId || config?.activeAiProviderId || '';
+    const active = (config?.aiProviders ?? []).find((p) => p.id === resolvedId);
 
     // 根据 tier 选择对应的模型名
     let model = '';
     if (active) {
       if (tier === 'flash') model = active.flashModel;
       else if (tier === 'think') model = active.thinkModel;
+      else if (tier === 'vision')
+        model = active.visionModel ?? ''; // 画廊用;未配则空,调用方自行处理"无视觉"
       else model = active.standardModel; // 默认 standard
     }
 
@@ -383,14 +486,12 @@ export class SystemConfigService implements OnModuleInit {
     name: string;
     birthday: string;
     bio: string;
-    interests: string;
   }> {
     const config = await this.repo.get();
     return {
       name: config?.ownerProfile?.name || '',
       birthday: config?.ownerProfile?.birthday || '',
       bio: config?.ownerProfile?.bio || '',
-      interests: config?.ownerProfile?.interests || '',
     };
   }
 
@@ -399,21 +500,18 @@ export class SystemConfigService implements OnModuleInit {
     name?: string;
     birthday?: string;
     bio?: string;
-    interests?: string;
   }): Promise<void> {
     const config = await this.repo.get();
     const existing = config?.ownerProfile || {
       name: '',
       birthday: '',
       bio: '',
-      interests: '',
     };
     await this.repo.patch({
       ownerProfile: {
         name: input.name ?? existing.name,
         birthday: input.birthday ?? existing.birthday,
         bio: input.bio ?? existing.bio,
-        interests: input.interests ?? existing.interests,
       },
     });
     this.logger.log('Owner profile saved');
@@ -425,6 +523,19 @@ export class SystemConfigService implements OnModuleInit {
   async getAgentConfigs(): Promise<AgentEntryConfig[]> {
     const config = await this.repo.get();
     return config?.agentConfigs ?? [];
+  }
+
+  /**
+   * 返回所有可用工具池(供 AgentTab 在 UI 上用 checkbox 渲染),合并两个内置入口的
+   * 工具集去重。前端按此池子让用户勾选,不再允许自由 input 任意字符串
+   * (避免拼写错落库,agent 启动时静默忽略)。
+   */
+  getAvailableTools(): string[] {
+    const all = [
+      ...SystemConfigService.WRITING_ADVISOR_TOOLS,
+      ...SystemConfigService.GALLERY_CAPTION_TOOLS,
+    ];
+    return Array.from(new Set(all));
   }
 
   /**
@@ -452,6 +563,11 @@ export class SystemConfigService implements OnModuleInit {
         systemPrompt: input.systemPrompt ?? '',
         tools: input.tools ?? [],
         tier: input.tier ?? 'standard',
+        providerId: input.providerId ?? '',
+        flashProviderId: input.flashProviderId ?? '',
+        standardProviderId: input.standardProviderId ?? '',
+        thinkProviderId: input.thinkProviderId ?? '',
+        visionProviderId: input.visionProviderId ?? '',
       });
     }
 
@@ -498,6 +614,7 @@ export class SystemConfigService implements OnModuleInit {
     gitSyncCron?: string;
     gitSyncEnabled?: boolean;
     mineruToken?: string;
+    tavilyApiKey?: string;
   }): void {
     if (config.remoteUrl) process.env.KB_REMOTE_URL = config.remoteUrl;
     if (config.gitToken) process.env.KB_GIT_TOKEN = config.gitToken;
@@ -510,6 +627,7 @@ export class SystemConfigService implements OnModuleInit {
     process.env.GIT_SYNC_ENABLED =
       config.gitSyncEnabled === false ? 'false' : 'true';
     if (config.mineruToken) process.env.MINERU_TOKEN = config.mineruToken;
+    if (config.tavilyApiKey) process.env.TAVILY_API_KEY = config.tavilyApiKey;
   }
 
   /**

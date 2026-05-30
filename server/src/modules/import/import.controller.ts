@@ -144,7 +144,7 @@ export class ImportController {
       }
     }
 
-    if (!parentId) throw new BadRequestException('parentId 不能为空');
+    // parentId 为空表示导入到根目录，此时顶层节点建在 notes scope 根下，合法
     if (!archiveBuffer) throw new BadRequestException('未收到 zip 文件');
 
     // 解压 zip，按相对路径建立文件索引
@@ -208,7 +208,8 @@ export class ImportController {
       return { relativePath, buffer, assets: matchedAssets };
     });
 
-    return this.importService.batchParse(parentId, files);
+    // 空串归一成 undefined，让 service 层统一用 undefined 表示"根目录"
+    return this.importService.batchParse(parentId || undefined, files);
   }
 
   /** 批量确认导入 */

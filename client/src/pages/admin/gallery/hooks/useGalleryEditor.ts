@@ -26,6 +26,7 @@ import {
   galleryApi,
   type UpdateGalleryPostDto,
 } from '@/services/workspace';
+import { useLocalDraftBuffer } from '../../lib/use-local-draft-buffer';
 
 // ─── 状态类型 ───
 
@@ -38,6 +39,10 @@ export interface LocalEditorPhoto {
   fileName: string;
   /** 上传中标记，网格显示加载遮罩 */
   uploading?: boolean;
+  /** 上传失败标记：true 时显示错误态 + 重试按钮，占位卡保留不删除 */
+  error?: boolean;
+  /** 原始 File 对象，重试时用于重新上传；成功后的真实照片无此字段 */
+  file?: File;
   size: number;
   caption: string;
   tags: Record<string, string>;
@@ -46,6 +51,19 @@ export interface LocalEditorPhoto {
 export interface UploadProgress {
   uploaded: number;
   total: number;
+}
+
+/**
+ * 本地草稿快照(local-first):画廊的完整可恢复编辑态,即时镜像到 localStorage。
+ * 与笔记/文集统一走 useLocalDraftBuffer——崩溃/刷新/关页不丢改动。
+ */
+interface LocalGalleryDraft {
+  title: string;
+  prose: string;
+  date: string | null;
+  location: string | null;
+  cover: string | null;
+  photos: LocalEditorPhoto[];
 }
 
 export interface GalleryEditorState {
@@ -74,12 +92,16 @@ export interface GalleryEditorActions {
   updateCaption: (photoId: string, caption: string) => void;
   updatePhotoTags: (photoId: string, tags: Record<string, string>) => void;
   uploadPhotos: (files: File[]) => Promise<void>;
+  /** 重试单张失败照片：用卡片保存的原始 File 重新走上传逻辑，再失败继续保持 error 态 */
+  retryUpload: (photoId: string) => Promise<void>;
   deletePhoto: (photoId: string) => void;
   setCover: (photoId: string) => void;
   updateDate: (date: string | null) => void;
   updateLocation: (location: string | null) => void;
   save: () => Promise<void>;
   commit: (changeNote?: string) => Promise<void>;
+  /** 清本地草稿缓存(丢弃草稿后调,防失效内容被当未同步草稿恢复) */
+  clearLocalDraft: () => void;
 }
 
 // ─── Hook ───
@@ -116,6 +138,50 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
   useEffect(() => { locationRef.current = location; }, [location]);
   useEffect(() => { coverRef.current = coverPhotoFileName; }, [coverPhotoFileName]);
 
+  // 组件卸载时释放所有仍存活的 error 占位卡的 blob: URL，防内存泄漏。
+  // 上传成功后 blob: URL 已在 uploadPhotos/retryUpload 中即时 revoke；
+  // 这里兜底清理卸载时仍为 error 态（未重试、未删除）的卡片。
+  useEffect(() => () => {
+    for (const p of photosRef.current) {
+      if (p.url?.startsWith('blob:')) URL.revokeObjectURL(p.url);
+    }
+  }, []);
+
+  // local-first 本地缓冲:与笔记/文集统一,每次改动即时镜像 localStorage,崩溃/刷新/关页不丢。
+  // 解构出各方法(均 useCallback by storageKey,引用稳定),避免依赖整个 buffer 对象致 effect 抖动。
+  const {
+    loadPending: loadLocalPending,
+    onChange: writeLocalDraft,
+    beginSync: beginLocalSync,
+    endSync: endLocalSync,
+    clear: clearLocalDraft,
+  } = useLocalDraftBuffer<LocalGalleryDraft>(
+    postId ? `gallery:${postId}` : null,
+  );
+
+  // 有未保存改动时,任一字段变化即时写本地(零延迟);服务器草稿仍走下面 1.5s 防抖。
+  useEffect(() => {
+    if (loading || saveStatus === 'saved') return;
+    writeLocalDraft({
+      title,
+      prose,
+      date,
+      location,
+      cover: coverPhotoFileName,
+      photos,
+    });
+  }, [
+    saveStatus,
+    title,
+    prose,
+    photos,
+    date,
+    location,
+    coverPhotoFileName,
+    loading,
+    writeLocalDraft,
+  ]);
+
   // ─── 初始化加载 ───
   // 使用 /editor 端点：后端已合并草稿+正式版，前端直接消费，无需手动 photoMap 合并
 
@@ -146,13 +212,27 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
           tags: p.tags,
         })));
         setSaveStatus('saved');
+
+        // local-first reconcile:本地缓存"存在即未同步"(成功同步会清空)。
+        // 上次没存完就崩了/刷新了 → 用本地未同步内容覆盖服务器版并标脏重传。
+        const localPending = loadLocalPending();
+        if (localPending) {
+          setTitle(localPending.title);
+          setProse(localPending.prose);
+          setDate(localPending.date);
+          setLocation(localPending.location);
+          setCoverPhotoFileName(localPending.cover);
+          setPhotos(localPending.photos);
+          setSaveStatus('dirty');
+        }
       } catch {
         banner.error('加载画廊动态失败');
       } finally {
         setLoading(false);
       }
     })();
-  }, [postId]);
+    // loadLocalPending 引用稳定(随 storageKey 变),纳入依赖
+  }, [postId, loadLocalPending]);
 
   // ─── 构建结构化保存 payload（前端不再序列化 frontmatter，后端负责） ───
 
@@ -177,28 +257,32 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
 
     setSaveStatus('saving');
     const startedAt = Date.now();
+    // local-first:抓同步快照,成功后仅当期间无新改动时清本地(防竞态)
+    const syncToken = beginLocalSync();
     try {
       await galleryApi.saveDraft(id, buildSavePayload());
       setLastSavedAt(new Date().toISOString());
+      endLocalSync(syncToken);
       // 与笔记/文集编辑器一致:"保存中"至少停留 ~800ms,否则呼吸点一闪而过
       const remain = 800 - (Date.now() - startedAt);
       if (remain > 0) await new Promise((resolve) => setTimeout(resolve, remain));
       setSaveStatus('saved');
     } catch (err) {
       console.error('[useGalleryEditor] 自动保存失败:', err);
-      // 自动保存失败时不打断用户，还原为 dirty 以便下次重试
+      // 自动保存失败时不打断用户，还原为 dirty 以便下次重试(本地缓存保留,内容不丢)
       setSaveStatus('dirty');
     }
-  }, [buildSavePayload]);
+  }, [buildSavePayload, beginLocalSync, endLocalSync]);
 
-  // saveStatus 变为 dirty 后 1500ms 触发自动保存
+  // saveStatus 变为 dirty 后 1500ms 触发自动保存。
+  // 依赖只需 saveStatus（触发条件）和 saveDraft（稳定 useCallback，内部通过 *Ref.current 读最新值），
+  // 不枚举各字段——否则 postId 切换时闭包会捕获旧 effectiveIdRef / storageKey，导致跨帖保存错位。
   useEffect(() => {
     const id = effectiveIdRef.current;
     if (!id || saveStatus !== 'dirty') return;
     const timer = window.setTimeout(() => void saveDraft(), 1500);
     return () => window.clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [saveStatus, postId, title, prose, photos, date, location, coverPhotoFileName]);
+  }, [saveStatus, saveDraft]);
 
   // ─── 文本更新（标记 dirty，触发 debounce） ───
 
@@ -265,6 +349,7 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     if (!id) return;
 
     // 立即用本地预览插入占位卡片（uploading=true），用户马上看到缩略图+加载态
+    // file 字段保留原始 File 对象，供失败后重试使用
     const placeholders: LocalEditorPhoto[] = files.map((file) => ({
       id: `pending-${file.name}-${Date.now()}`,
       url: URL.createObjectURL(file),
@@ -273,15 +358,18 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
       caption: '',
       tags: {},
       uploading: true,
+      file,
     }));
     setPhotos((prev) => [...prev, ...placeholders]);
 
     // 逐张上传，完成后用真实数据替换对应占位
+    // 失败时改为 error:true 保留占位卡（不删除），用户可在卡片上点重试
     let failed = 0;
     setUploadProgress({ uploaded: 0, total: files.length });
     for (let i = 0; i < files.length; i++) {
       try {
         const r = await galleryApi.uploadPhoto(id, files[i]);
+        // 成功：用真实照片数据替换占位，释放本地预览 URL
         setPhotos((prev) =>
           prev.map((p) =>
             p.id === placeholders[i].id
@@ -289,22 +377,83 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
               : p,
           ),
         );
-      } catch {
-        setPhotos((prev) => prev.filter((p) => p.id !== placeholders[i].id));
+        URL.revokeObjectURL(placeholders[i].url);
+      } catch (err) {
+        // 失败：保留占位卡并标为 error 态，不删除、不释放 blob URL（重试时还要展示预览）
+        console.error(`[useGalleryEditor] 上传失败 ${files[i].name}:`, err);
+        setPhotos((prev) =>
+          prev.map((p) =>
+            p.id === placeholders[i].id
+              ? { ...p, uploading: false, error: true }
+              : p,
+          ),
+        );
         failed++;
       }
-      URL.revokeObjectURL(placeholders[i].url);
       setUploadProgress({ uploaded: i + 1, total: files.length });
     }
     setUploadProgress(null);
     setSaveStatus('dirty');
-    if (failed > 0) banner.error(`${failed} 张照片上传失败`);
+    if (failed > 0) banner.error(`${failed} 张照片上传失败，可在卡片上点「重试」`);
   }, []);
 
-  /** 删除照片：纯本地操作，从 photos 数组移除 + 标记 dirty。MinIO 清理在 commit/discard 时统一处理。 */
+  /**
+   * 重试单张失败照片：
+   *   1. 找到 error:true 的占位卡，取出保存的原始 File
+   *   2. 置回 uploading:true / error:false
+   *   3. 重新调 API，成功替换成真实照片，再失败继续保持 error:true
+   */
+  const retryUpload = useCallback(async (photoId: string) => {
+    const id = effectiveIdRef.current;
+    if (!id) return;
+
+    // 读出占位卡保存的原始 File
+    const targetPhoto = photosRef.current.find((p) => p.id === photoId);
+    if (!targetPhoto?.file) {
+      console.error('[useGalleryEditor] retryUpload: 未找到原始 File，无法重试', photoId);
+      return;
+    }
+    const file = targetPhoto.file;
+
+    // 置回上传中态
+    setPhotos((prev) =>
+      prev.map((p) => (p.id === photoId ? { ...p, uploading: true, error: false } : p)),
+    );
+
+    try {
+      const r = await galleryApi.uploadPhoto(id, file);
+      // 成功：替换为真实照片数据，释放 blob URL
+      setPhotos((prev) => {
+        const placeholder = prev.find((p) => p.id === photoId);
+        if (placeholder?.url.startsWith('blob:')) {
+          URL.revokeObjectURL(placeholder.url);
+        }
+        return prev.map((p) =>
+          p.id === photoId
+            ? { id: r.fileName, url: r.url, fileName: r.fileName, size: r.size, caption: '', tags: r.exif }
+            : p,
+        );
+      });
+      setSaveStatus('dirty');
+    } catch (err) {
+      // 再失败：回到 error 态，保留卡片供用户再次重试
+      console.error(`[useGalleryEditor] 重试上传失败 ${file.name}:`, err);
+      setPhotos((prev) =>
+        prev.map((p) => (p.id === photoId ? { ...p, uploading: false, error: true } : p)),
+      );
+      banner.error(`「${file.name}」重试失败，请稍后再试`);
+    }
+  }, []);
+
+  /** 删除照片：纯本地操作，从 photos 数组移除 + 标记 dirty。MinIO 清理在 commit/discard 时统一处理。
+   *  error 态占位卡持有 blob: URL（重试预览用）——删除时必须主动释放，防内存泄漏。 */
   const deletePhoto = useCallback((photoId: string) => {
     setPhotos((prev) => {
       const deleted = prev.find((p) => p.id === photoId);
+      // error 卡片删除时释放其 blob: URL（服务端真实 URL 不需要 revoke）
+      if (deleted?.url?.startsWith('blob:')) {
+        URL.revokeObjectURL(deleted.url);
+      }
       const next = prev.filter((p) => p.id !== photoId).map((p, i) => ({ ...p, order: i }));
       if (deleted && coverRef.current === deleted.fileName) {
         setCoverPhotoFileName(null);
@@ -320,15 +469,17 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     const id = effectiveIdRef.current;
     if (!id) return;
     setSaveStatus('saving');
+    const syncToken = beginLocalSync();
     try {
       await galleryApi.saveDraft(id, buildSavePayload());
+      endLocalSync(syncToken);
       setSaveStatus('saved');
       // SaveStatus badge 已提供 inline 反馈，无需弹窗
     } catch {
       setSaveStatus('dirty');
       banner.error('保存失败');
     }
-  }, [buildSavePayload]);
+  }, [buildSavePayload, beginLocalSync, endLocalSync]);
 
   // ─── 提交（Git commit + 删除草稿） ───
 
@@ -339,6 +490,7 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     try {
       await galleryApi.update(id, { ...buildSavePayload(), changeNote: changeNote || '提交' });
       await galleryApi.deleteDraft(id).catch(() => {});
+      clearLocalDraft(); // 已提交,本地草稿失效,清掉防下次打开被当未同步草稿恢复
       setSaveStatus('saved');
       // 提交成功，页面跳转即为反馈，无需弹窗
     } catch (err) {
@@ -347,7 +499,7 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
       setSaveStatus('dirty');
       banner.error('提交失败');
     }
-  }, [buildSavePayload]);
+  }, [buildSavePayload, clearLocalDraft]);
 
   return {
     loading,
@@ -366,11 +518,13 @@ export function useGalleryEditor(postId: string | undefined): GalleryEditorState
     updateCaption,
     updatePhotoTags,
     uploadPhotos,
+    retryUpload,
     deletePhoto,
     setCover,
     updateDate,
     updateLocation,
     save,
     commit,
+    clearLocalDraft: clearLocalDraft,
   };
 }

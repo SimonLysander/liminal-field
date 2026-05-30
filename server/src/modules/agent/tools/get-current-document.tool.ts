@@ -1,6 +1,10 @@
 import { tool, jsonSchema } from 'ai';
-import { extractHeadings } from './markdown.utils.js';
+// 注:这里去掉 `.js` 后缀以便 jest 默认 resolver 能解析(原来的 `.js` ESM 风格
+// 在 jest CJS 模式下找不到模块,导致单测无法 import 本文件)。runtime 上 SWC 输出
+// CJS,无后缀也能正确解析。read-content.tool.ts 仍是 `.js`,留待后续统一。
+import { extractHeadings } from './markdown.utils';
 import { toolResult } from './tool-result';
+import { computeBodyHash } from './body-hash.utils';
 
 const DEFAULT_CHUNK = 6000;
 
@@ -15,15 +19,23 @@ export interface DocumentContext {
 /**
  * get_current_draft — 读取当前正在编辑的草稿(与 read_document_content 同策略)。
  *
- * 大纲永远给全 + 从 offset 起一段正文(默认 ~6000 字),长草稿 hasMore 续读。
- * 无草稿 → status:not_found。
+ * 工厂收 lazy getter:与 propose_document_rewrite 工厂签名对齐(也吃同形 getter)。
+ * 当前 lifecycle 注入的 entryContext 在单次 chat 请求内 immutable,所以 getter
+ * 等价于传 snapshot;保留 getter 形态为未来"chat 期间文档热更替"留接口,
+ * 届时只需把 lifecycle 改为可变引用,工具层无需变更。
+ *
+ * 返回:
+ *   - bodyHash:sha256(bodyMarkdown) 前 16 字符,供 propose_document_rewrite 强校验
+ *   - 大纲全给 + 正文按 offset/limit chunk;body 用 cat -n 行号前缀(每行 "  N\t…")让模型有定位坐标
+ *   - hasMore + nextOffset 引导续读
+ *   - 无草稿 → status:not_found
  */
 export function createGetCurrentDraftTool(
-  document: DocumentContext | undefined,
+  getDocument: () => DocumentContext | undefined,
 ) {
   return tool({
     description:
-      '读取当前正在编辑的草稿。返回大纲(全)+ 从 offset 起的一段正文(默认约 6000 字),很长时带"还有更多"用 offset 续读。',
+      '读取当前正在编辑的草稿。返回大纲(全)+ 从 offset 起的一段正文(默认约 6000 字),很长时带"还有更多"用 offset 续读。返回 meta.bodyHash 必须在调用 propose_document_rewrite 时作为 bodyHash 参数传回。**调 propose_document_rewrite 之前必须先调本工具拿到 bodyHash。**',
     inputSchema: jsonSchema<{ offset?: number; limit?: number }>({
       type: 'object',
       properties: {
@@ -38,35 +50,54 @@ export function createGetCurrentDraftTool(
       offset?: number;
       limit?: number;
     }) => {
+      const document = getDocument();
       if (!document)
         return toolResult('当前没有打开的草稿', undefined, {
           status: 'not_found',
         });
 
-      const full = document.bodyMarkdown ?? '';
+      const full = document.bodyMarkdown;
       const total = full.length;
-      const chunk = full.slice(offset, offset + limit);
-      const hasMore = offset + limit < total;
+
+      // 把 offset 自动对齐到行首:模型续读时给的 offset 可能正好落在某行中间
+      // (比如上一次返回的 nextOffset = offset + limit 是按字符算的)。若不对齐,
+      // chunk 第一行渲染会是行尾片段,但行号显示为完整行号 → 模型按"第 N 行"
+      // 引用时错位。lastIndexOf('\n', offset-1)+1 找上一个 \n 之后的位置,即行首。
+      const alignedOffset =
+        offset > 0 ? full.lastIndexOf('\n', offset - 1) + 1 : 0;
+      const chunk = full.slice(alignedOffset, alignedOffset + limit);
+      const hasMore = alignedOffset + limit < total;
       const outline = document.outline ?? extractHeadings(full);
       const paragraphs = full
         .split(/\n\s*\n/)
         .filter((p) => p.trim().length > 0).length;
+      const bodyHash = computeBodyHash(full);
+
+      // body 加 cat -n 行号前缀:每行 "  N\t<text>",模型可引用"第 N 行"
+      const startLine = full.slice(0, alignedOffset).split('\n').length;
+      const chunkLines = chunk.split('\n');
+      const numberedBody = chunkLines
+        .map((line, i) => `${(startLine + i).toString().padStart(4)}\t${line}`)
+        .join('\n');
 
       const sizeStr =
         total >= 10000 ? `${(total / 10000).toFixed(1)} 万字` : `${total} 字`;
-      // 行内不放"章节"(整篇总数,挂 partial 读上误导);只留 标题 + 字数 + 读的行号范围。
-      const summaryBits = [`《${document.title || '当前草稿'}》`, sizeStr];
-      // 读了哪几行 —— 源文件行号范围(无歧义、可核,不说"开头"、不用模糊的"段")
-      const startLine = full.slice(0, offset).split('\n').length;
-      const endLine = full.slice(0, offset + chunk.length).split('\n').length;
-      summaryBits.push(`读了第 ${startLine}–${endLine} 行`);
+      const endLine = startLine + chunkLines.length - 1;
+      const summaryBits = [
+        `《${document.title || '当前草稿'}》`,
+        sizeStr,
+        `读了第 ${startLine}–${endLine} 行`,
+      ];
 
+      // 注意:**不要**把 `# ${title}` 作为正文第一行给 AI —— 标题是独立字段(顶栏 input),
+      // editor 正文 bodyMarkdown 不含它。若混进来,AI 会以为正文带标题,propose 的
+      // newMarkdown 也带上标题,前端 diff(正文 vs 含标题的 newMarkdown)就把标题算成
+      // "新增段落",审批界面冒出一个标题 hunk。标题信息已在 summary《${title}》点名。
       const detail = [
-        `# ${document.title}`,
         outline.length > 0
           ? `大纲:\n${outline.map((h) => `  ${h}`).join('\n')}`
           : '',
-        `正文(${offset}–${offset + chunk.length} / 共 ${total}):\n${chunk}`,
+        `正文(${alignedOffset}–${alignedOffset + chunk.length} / 共 ${total} 字,不含标题):\n${numberedBody}`,
       ]
         .filter(Boolean)
         .join('\n\n');
@@ -74,13 +105,15 @@ export function createGetCurrentDraftTool(
       return toolResult(summaryBits.join(' · '), detail, {
         status: 'ok',
         contentItemId: document.contentItemId,
+        bodyHash,
         wordCount: total,
         paragraphs,
         outlineCount: outline.length,
         offset,
+        alignedOffset, // 实际起点(行首对齐):API 层面 offset 保留传入值,这里告诉调用者真实读取起点
         shown: chunk.length,
         hasMore,
-        ...(hasMore ? { nextOffset: offset + limit } : {}),
+        ...(hasMore ? { nextOffset: alignedOffset + limit } : {}),
       });
     },
   });

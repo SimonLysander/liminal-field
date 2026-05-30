@@ -41,6 +41,7 @@ export const ContentVersionView = ({
   onEdit,
   onDelete,
   onMoveTo,
+  onPublishAll,
 }: ContentVersionViewProps) => {
   const confirm = useConfirm();
 
@@ -121,7 +122,7 @@ export const ContentVersionView = ({
       {loading ? (
         <LoadingState label="加载内容中" />
       ) : error ? (
-        <div className="rounded-xl p-4" style={{ background: 'rgba(255,59,48,0.06)' }}>
+        <div className="rounded-xl p-4" style={{ background: 'var(--danger-soft)' }}>
           <p className="text-sm" style={{ color: 'var(--mark-red)' }}>{error}</p>
         </div>
       ) : (
@@ -175,17 +176,28 @@ export const ContentVersionView = ({
           />
 
           {/* 低频管理操作 */}
-          {(onEdit || onDelete || onMoveTo) && (
+          {(onEdit || onDelete || onMoveTo || onPublishAll) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  className="flex h-6 w-6 items-center justify-center rounded-md transition-opacity hover:opacity-70"
+                  // focus 环的残留"框"在全局 index.css 收(aria-haspopup="menu":focus-visible 去环);
+                  // 这里只补 open 态淡底,表达"菜单已展开"的激活反馈。
+                  className="flex h-6 w-6 items-center justify-center rounded-md transition-opacity hover:opacity-70 focus:outline-none data-[state=open]:bg-[var(--hover-overlay)] data-[state=open]:opacity-100"
                   style={{ color: 'var(--ink-ghost)' }}
                 >
                   <MoreHorizontal size={14} strokeWidth={1.5} />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-[120px]">
+                {/* 发布全部:仅对有子节点的节点显示,发布其子树 */}
+                {onPublishAll && (
+                  <>
+                    <DropdownMenuItem onClick={() => void onPublishAll()}>
+                      发布全部
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 {onEdit && (
                   <DropdownMenuItem onClick={() => onEdit(node)}>
                     重命名
@@ -308,7 +320,7 @@ function VersionStatusPill({ isPublished, commitHash }: { isPublished: boolean; 
     <span
       className="inline-flex items-center gap-[5px] rounded-full px-2.5 py-[3px] text-2xs font-medium"
       style={{
-        background: isPublished ? 'rgba(52,199,89,0.1)' : 'var(--accent-soft)',
+        background: isPublished ? 'var(--success-soft)' : 'var(--accent-soft)',
         color: isPublished ? 'var(--mark-green)' : 'var(--ink-faded)',
       }}
     >

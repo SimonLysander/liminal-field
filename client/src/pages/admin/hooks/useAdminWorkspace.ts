@@ -70,9 +70,10 @@ export function useAdminWorkspace() {
         ? await structureApi.getChildren(parentId, { visibility: 'all', scope: 'notes' })
         : await structureApi.getRootNodes({ visibility: 'all', scope: 'notes' });
       setNodes(result.children);
-      const folderPath = result.path.filter((n) => n.type === 'FOLDER');
-      setPathNodes(folderPath);
-      setBreadcrumb(folderPath.map((n) => ({ id: n.id, name: n.name })));
+      // 节点同质化:路径含所有祖先(不再只留 type==='FOLDER'),这样进入任意节点(含叶子)
+      // 都能正确显示它自己的正文 + 面包屑,并在它下面新建子页面。
+      setPathNodes(result.path);
+      setBreadcrumb(result.path.map((n) => ({ id: n.id, name: n.name })));
     } catch (loadError) {
       // parentId 不存在（404）→ 清掉无效 topic，fallback 到根节点
       const { isApiError } = await import('@/services/request');
@@ -206,33 +207,29 @@ export function useAdminWorkspace() {
 
   const reorderNodes = useCallback(
     (nodeId: string, targetNodeId: string, position: 'before' | 'after') => {
-      // 乐观更新 UI，然后在外部发 API 请求（不在 setState updater 内做副作用）
-      let reorderedIds: string[] = [];
+      // 乐观更新 UI：在 setState updater 外用当前 nodes 快照计算新顺序，
+      // 避免在 updater 内修改外部变量（updater 必须纯函数，StrictMode 下会运行两次导致状态错误）。
+      const sourceIndex = nodes.findIndex((n) => n.id === nodeId);
+      const targetIndex = nodes.findIndex((n) => n.id === targetNodeId);
+      if (sourceIndex === -1 || targetIndex === -1) return;
 
-      setNodes((current) => {
-        const sourceIndex = current.findIndex((n) => n.id === nodeId);
-        const targetIndex = current.findIndex((n) => n.id === targetNodeId);
-        if (sourceIndex === -1 || targetIndex === -1) return current;
+      const copy = [...nodes];
+      const [moved] = copy.splice(sourceIndex, 1);
+      const insertIndex = position === 'before'
+        ? copy.findIndex((n) => n.id === targetNodeId)
+        : copy.findIndex((n) => n.id === targetNodeId) + 1;
+      copy.splice(insertIndex, 0, moved);
+      const reorderedIds = copy.map((n) => n.id);
 
-        const copy = [...current];
-        const [moved] = copy.splice(sourceIndex, 1);
-        const insertIndex = position === 'before'
-          ? copy.findIndex((n) => n.id === targetNodeId)
-          : copy.findIndex((n) => n.id === targetNodeId) + 1;
-        copy.splice(insertIndex, 0, moved);
-        reorderedIds = copy.map((n) => n.id);
-        return copy;
+      setNodes(copy);
+
+      void structureApi.reorderSiblings(urlFolderId ?? null, reorderedIds).catch((err) => {
+        console.error('[useAdminWorkspace] 排序保存失败:', err);
+        // 排序保存失败时回滚乐观更新
+        void loadLevel(urlFolderId);
       });
-
-      if (reorderedIds.length > 0) {
-        void structureApi.reorderSiblings(urlFolderId ?? null, reorderedIds).catch((err) => {
-          console.error('[useAdminWorkspace] 排序保存失败:', err);
-          // 排序保存失败时回滚乐观更新
-          void loadLevel(urlFolderId);
-        });
-      }
     },
-    [urlFolderId, loadLevel],
+    [nodes, urlFolderId, loadLevel],
   );
 
   /* ================================================================
@@ -273,8 +270,11 @@ export function useAdminWorkspace() {
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
-  /* 用 contentItemId 驱动内容加载（不依赖 selectedNode 引用） */
-  const activeContentItemId = selectedNode?.contentItemId ?? null;
+  /* 用 contentItemId 驱动内容加载（不依赖 selectedNode 引用）。
+   * 节点同质化:有子节点的"文件夹"也是一篇笔记——进入它(currentFolderNode)时也加载其自身正文,
+   * 右侧统一走 ContentVersionView,不再有文件夹专属视图。doc 优先于当前文件夹。 */
+  const activeNode = selectedNode ?? currentFolderNode;
+  const activeContentItemId = activeNode?.contentItemId ?? null;
   const prevContentItemIdRef = useRef<string | null>(null);
 
   const probeDraftPresence = useCallback(async (contentItemId: string) => {

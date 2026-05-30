@@ -108,6 +108,36 @@ interface ToolResult {
   - `meta`:`{status:'ok', taskId, blockedByMissing?: string[]}`
 - **边角**:`blockedBy` 引用了不存在的 ID → `meta.blockedByMissing` + summary 提示。
 
+### 3.10 `recall_memory`(按标题精确读全文,#150 2026-05-31)
+
+> 配合 prompt 顶部 `<memories_index>` 只塞 user 记忆**标题索引**(全文按需化,见 prompt.handler v3.2);agent 看到标题,要全文就调这条。
+
+- **参数**:`title: string`(必,与索引标题精确一致,前后空格 trim)
+- **行为**:精确按 `title` 查 user 记忆;命中即返全文。**`session` 类型(草稿级会话脉络)挡回**——summary 不复述其 content,防内部 tasks/agentKey 字段泄漏。
+- **返回**
+  - 命中:`summary` `已读取「X」· 312 字`,`detail` 全文,`meta:{status:'ok', memoryTitle, type:'user'}`
+  - 找不到 / session 类型:`summary` `没找到标题为「X」的 user 记忆,回看 <memories_index> 核对标题`,`meta.status:'not_found'`
+- **边角**:user 记忆体量小(一般几百字内),**不分页**(对照 §3.3 read_document_content 是长文才需要 offset/limit);找不到给出"回看索引"的下一步,避免 agent 瞎试。
+
+> **隐式 meta 字段** `list?: string[]`(命中 / 候选项标题数组)给前端 `ToolCallCard` 的
+> NestedList(⎿ 对齐)用。`search_knowledge_base` / `list_knowledge_base` / `search_memories`
+> 都遵循该约定。
+
+### 3.11 `search_memories`(模糊搜 user 记忆,#150 2026-05-31)
+
+> 索引外想查(模糊匹配 title + content),来这搜;查到候选标题后用 `recall_memory(title)` 读全文。
+
+- **参数**:`query: string`(必,空串 = 按更新时间倒序列全部) · `limit?`(默认 10) · `offset?`(默认 0)
+- **行为**:全表(只 user 类型;**session 不搜**)case-insensitive 模糊匹配 title + content,按更新时间倒序返一页。
+- **返回**
+  - `summary`:`命中 23 条:身份、写作偏好、饮食 …`(头 3 个标题 + 总数);0 条 → `没找到匹配「query」的记忆`
+  - `detail`:本页候选,每条 `- 标题`(不返 content;模型挑一个再调 recall)
+  - `meta`:`{status:'ok'|'not_found', total, shown, offset, hasMore, nextOffset, list}`,`list = page.map(title)`(给前端 NestedList 渲染)
+- **边角**:
+  - 截断 → 必给 `total + hasMore + nextOffset`,**铁律 1"不静默丢"**
+  - 0 条 → `not_found`,不返空字符串
+  - **不搜 session 类型**——防内部脉络命中泄漏(与 recall 一致策略)
+
 ### 3.9 `update_task`(改任务)
 - **参数**:`task_id`(必)· `status?` · `title?` · `description?`
 - **行为**:先查任务是否存在。

@@ -7,19 +7,23 @@
 
 'use client';
 
+import { SuggestionPlugin } from '@platejs/suggestion/react';
 import { ExitBreakPlugin, TrailingBlockPlugin } from 'platejs';
+
+import { SuggestionLeaf } from '@/components/ui/suggestion-node';
 
 import { BasicNodesKit } from './plugins/basic-nodes-kit';
 import { CodeBlockKit } from './plugins/code-block-kit';
 import { DateKit } from './plugins/date-kit';
+import { FontKit } from './plugins/font-kit';
 import { LinkKit } from './plugins/link-kit';
 import { ListKit } from './plugins/list-kit';
-import { TableKit } from './plugins/table-kit';
-import { MediaKit } from './plugins/media-kit';
-import { FontKit } from './plugins/font-kit';
-import { MathKit } from './plugins/math-kit';
 import { MarkdownKit } from './plugins/markdown-kit';
+import { MathKit } from './plugins/math-kit';
+import { MediaKit } from './plugins/media-kit';
 import { SlashKit } from './plugins/slash-kit';
+import { TableKit } from './plugins/table-kit';
+import { ProposalNewPlugin, ProposalOldPlugin } from './proposal-plugin';
 
 export const EditorKit = [
   ...BasicNodesKit,
@@ -47,4 +51,18 @@ export const EditorKit = [
 
   /* 文档末尾始终保留一个空段落，确保能在最后一个块后继续输入 */
   TrailingBlockPlugin,
+
+  /* Aurora 改稿:把"旧→新"渲染成行内增删痕迹,currentUserId 标记改动来源。
+     node.component = SuggestionLeaf 必须配,否则 diffToSuggestions 写到 leaf 上的
+     suggestion_<id> 数据没人渲染 → 痕迹视觉隐身(CLAUDE.md 已记此坑)。 */
+  SuggestionPlugin.configure({
+    node: { component: SuggestionLeaf },
+    options: { currentUserId: 'aurora' },
+  }),
+
+  /* v3.1 改稿审批节点(临时,裁决期间存在):
+     proposal-old = 红底删除线旧段落;proposal-new = 绿底 AI 新段落。
+     裁决后由 controller 改回 'p' 或 removeNodes。 */
+  ProposalOldPlugin,
+  ProposalNewPlugin,
 ];

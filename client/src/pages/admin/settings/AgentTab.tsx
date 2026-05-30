@@ -13,20 +13,22 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Trash2, X } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { banner } from '@/components/ui/banner-api';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import { settingsApi } from '@/services/settings';
 import type { AgentConfig } from '@/services/settings';
+// AgentCard 内部仍用 SettingsUI 原子,下一轮 #145 收编时统一
 import {
-  PageHeader,
-  Section,
-  SectionSkeleton,
   FieldLabel,
   TextInput,
   SelectInput,
   PrimaryButton,
   SecondaryButton,
+  Toggle,
 } from './SettingsUI';
+import { MemoriesSection } from './MemoriesSection';
 
 // ── 常量 ─────────────────────────────────────────────────────────
 
@@ -41,141 +43,95 @@ const TIER_OPTIONS = [
  * 常用工具预设列表，供用户点击快速添加。
  * 实际可用工具以 agent 服务注册的为准，此处仅辅助录入。
  */
-const TOOL_PRESETS = [
-  'search_knowledge_base',
-  'read_document_content',
-  'get_current_draft',
-  'remember',
-  'forget',
-  'sub_agent',
-  'create_task',
-  'update_task',
-];
-
-// ── 子组件：工具列表编辑器 ────────────────────────────────────────
+// ── 子组件：工具列表编辑器(checkbox 池子勾选) ──────────────────────
 
 /**
- * ToolsEditor — 工具名 tag 列表编辑器。
+ * ToolsEditor — 从可用工具池(availableTools)勾选 checkbox。
  *
- * 支持：点击预设快速添加、手动输入（Enter 确认）、点击 tag 删除。
+ * #141 重构(2026-05-30):此前是自由 input + 添加按钮,允许用户输入任意字符串
+ * (拼错会成毒数据,agent 启动时静默忽略)。改成 checkbox 列表,工具池由后端
+ * GET /settings/agent-configs/available-tools 提供。老数据若有不在池中的
+ * 工具(已下线)→ 显示为红字"已下线"+ 移除按钮供清理。
  */
 function ToolsEditor({
   tools,
+  availableTools,
   onChange,
   disabled,
 }: {
   tools: string[];
+  availableTools: string[];
   onChange: (tools: string[]) => void;
   disabled: boolean;
 }) {
-  const [inputValue, setInputValue] = useState('');
-
-  // 添加工具（去重）
-  const addTool = (toolName: string) => {
-    const trimmed = toolName.trim();
-    if (!trimmed || tools.includes(trimmed)) return;
-    onChange([...tools, trimmed]);
-    setInputValue('');
-  };
-
-  // 删除工具
-  const removeTool = (toolName: string) => {
-    onChange(tools.filter((t) => t !== toolName));
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      addTool(inputValue);
+  const toggle = (tool: string) => {
+    if (tools.includes(tool)) {
+      onChange(tools.filter((t) => t !== tool));
+    } else {
+      onChange([...tools, tool]);
     }
   };
+  // 池空时不标红"已下线"——空池=endpoint 加载失败/未生效,不是真下线,误报会把所有工具
+  // 都标成下线(实测 dev server stale 时全栈截图全红)。只有池**非空**且工具不在池中
+  // 才算真下线。
+  const orphanTools =
+    availableTools.length > 0
+      ? tools.filter((t) => !availableTools.includes(t))
+      : [];
 
   return (
-    <div className="space-y-2">
-      {/* 已添加工具 tag 列表 */}
-      <div className="flex flex-wrap gap-1.5 min-h-[2rem]">
-        {tools.length === 0 && (
-          <span className="text-xs py-1" style={{ color: 'var(--ink-ghost)' }}>
-            暂无工具
-          </span>
-        )}
-        {tools.map((tool) => (
-          <span
+    <div className="space-y-1.5">
+      {/* 池中工具 checkbox */}
+      {availableTools.map((tool) => {
+        const checked = tools.includes(tool);
+        return (
+          <label
             key={tool}
-            className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-mono"
-            style={{
-              background: 'color-mix(in srgb, var(--accent) 8%, transparent)',
-              color: 'var(--ink-faded)',
-              border: '1px solid color-mix(in srgb, var(--accent) 20%, transparent)',
-            }}
+            className="flex items-center gap-2 cursor-pointer"
+            style={{ opacity: disabled ? 0.5 : 1 }}
           >
-            {tool}
-            {!disabled && (
-              <button
-                type="button"
-                onClick={() => removeTool(tool)}
-                className="rounded transition-opacity hover:opacity-60"
-                style={{ color: 'var(--ink-ghost)' }}
-                title={`移除 ${tool}`}
-              >
-                <X size={11} />
-              </button>
-            )}
-          </span>
-        ))}
-      </div>
+            <input
+              type="checkbox"
+              checked={checked}
+              disabled={disabled}
+              onChange={() => toggle(tool)}
+              className="h-3.5 w-3.5 cursor-pointer accent-current"
+              style={{ accentColor: 'var(--accent)' }}
+            />
+            <span
+              className="text-xs font-mono"
+              style={{ color: checked ? 'var(--ink)' : 'var(--ink-faded)' }}
+            >
+              {tool}
+            </span>
+          </label>
+        );
+      })}
 
-      {/* 预设工具快速添加 */}
-      <div className="flex flex-wrap gap-1">
-        {TOOL_PRESETS.filter((t) => !tools.includes(t)).map((preset) => (
-          <button
-            key={preset}
-            type="button"
-            disabled={disabled}
-            onClick={() => addTool(preset)}
-            className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs font-mono transition-opacity disabled:opacity-40"
-            style={{
-              color: 'var(--ink-ghost)',
-              border: '1px dashed var(--separator)',
-            }}
-            title={`添加 ${preset}`}
-          >
-            <Plus size={10} />
-            {preset}
-          </button>
-        ))}
-      </div>
-
-      {/* 手动输入 */}
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="输入工具名，按 Enter 添加"
-          disabled={disabled}
-          className="h-8 flex-1 rounded-lg px-3 text-xs outline-none disabled:opacity-50"
-          style={{
-            background: 'var(--shelf)',
-            color: 'var(--ink)',
-            border: '1px solid var(--separator)',
-          }}
-        />
-        <button
-          type="button"
-          disabled={disabled || !inputValue.trim()}
-          onClick={() => addTool(inputValue)}
-          className="h-8 rounded-lg px-3 text-xs font-medium transition-opacity disabled:opacity-40"
-          style={{
-            background: 'var(--shelf)',
-            color: 'var(--ink-faded)',
-            border: '1px solid var(--separator)',
-          }}
-        >
-          添加
-        </button>
-      </div>
+      {/* 老数据残留:不在池中的工具(已下线,标红供清理) */}
+      {orphanTools.length > 0 && (
+        <div className="mt-2 pt-2" style={{ borderTop: '0.5px solid var(--separator)' }}>
+          {orphanTools.map((tool) => (
+            <div
+              key={tool}
+              className="flex items-center gap-2 text-xs font-mono py-0.5"
+              style={{ color: 'var(--mark-red)' }}
+            >
+              <span>⚠ {tool}(已下线,建议移除)</span>
+              {!disabled && (
+                <button
+                  type="button"
+                  onClick={() => toggle(tool)}
+                  className="text-xs underline opacity-80 hover:opacity-100"
+                  style={{ color: 'var(--mark-red)' }}
+                >
+                  移除
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -190,10 +146,14 @@ function ToolsEditor({
  */
 function AgentCard({
   agent,
+  providers,
+  availableTools,
   onSave,
   onDelete,
 }: {
   agent: AgentConfig;
+  providers: { id: string; name: string }[];
+  availableTools: string[];
   onSave: (updated: Partial<AgentConfig>) => Promise<void>;
   onDelete?: () => Promise<void>;
 }) {
@@ -213,9 +173,33 @@ function AgentCard({
       systemPrompt: agent.systemPrompt,
       tools: [...agent.tools],
       tier: agent.tier,
+      providerId: agent.providerId,
+      flashProviderId: agent.flashProviderId,
+      standardProviderId: agent.standardProviderId,
+      thinkProviderId: agent.thinkProviderId,
+      visionProviderId: agent.visionProviderId,
     });
     setEditing(true);
   };
+
+  // 启用守卫(#143 改造):当前 agent 默认 tier 对应的 slot 至少有一个有效 provider
+  // (slot 自身 → providerId 全 tier 共用兜底 → 全局 activeAiProviderId 内核兜底)。
+  // 这里只校验前两层(slot + 共用 providerId),因为前端不知 activeAiProviderId。
+  const currentTier = draft.tier ?? agent.tier ?? 'standard';
+  const tierProviderId =
+    currentTier === 'flash'
+      ? (draft.flashProviderId ?? agent.flashProviderId)
+      : currentTier === 'think'
+        ? (draft.thinkProviderId ?? agent.thinkProviderId)
+        : currentTier === 'vision'
+          ? (draft.visionProviderId ?? agent.visionProviderId)
+          : (draft.standardProviderId ?? agent.standardProviderId);
+  const fallbackProviderId = draft.providerId ?? agent.providerId;
+  const effectiveProviderId = tierProviderId || fallbackProviderId;
+  const providerValid =
+    effectiveProviderId !== '' &&
+    providers.some((p) => p.id === effectiveProviderId);
+  const enableSwitchDisabled = saving || !providerValid;
 
   const cancelEdit = () => {
     setDraft({});
@@ -253,7 +237,7 @@ function AgentCard({
 
   return (
     <div
-      className="rounded-xl p-5 space-y-4"
+      className="rounded-lg p-5 space-y-4"
       style={{
         background: 'var(--paper-dark)',
         border: '0.5px solid var(--separator)',
@@ -328,30 +312,17 @@ function AgentCard({
       {/* ── 编辑表单区域 ── */}
       {editing && (
         <div className="space-y-4">
-          {/* 启用开关 */}
-          <div className="flex items-center justify-between">
+          {/* 启用开关:必须先选 provider 才能启用(#5 重构守卫);复用 SettingsUI.Toggle */}
+          <div
+            className="flex items-center justify-between"
+            title={!providerValid ? '先选 Provider 才能启用' : undefined}
+          >
             <FieldLabel>启用</FieldLabel>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={draft.enabled ?? agent.enabled}
-              onClick={() => setDraft((d) => ({ ...d, enabled: !(d.enabled ?? agent.enabled) }))}
-              disabled={saving}
-              className="relative h-5 w-9 rounded-full transition-colors duration-200 disabled:opacity-40"
-              style={{
-                background: (draft.enabled ?? agent.enabled)
-                  ? 'var(--mark-green)'
-                  : 'var(--separator)',
-              }}
-            >
-              <span
-                className="absolute top-0.5 h-4 w-4 rounded-full shadow transition-transform duration-200"
-                style={{
-                  background: 'white',
-                  transform: (draft.enabled ?? agent.enabled) ? 'translateX(1.25rem)' : 'translateX(0.125rem)',
-                }}
-              />
-            </button>
+            <Toggle
+              checked={(draft.enabled ?? agent.enabled) && providerValid}
+              onChange={(v) => setDraft((d) => ({ ...d, enabled: v }))}
+              disabled={enableSwitchDisabled}
+            />
           </div>
 
           {/* 显示名称 */}
@@ -376,6 +347,92 @@ function AgentCard({
             />
           </div>
 
+          {/* 模型绑定(#143 改造:4 个 tier 独立选 Provider,留空回退到通用 fallback) */}
+          <div>
+            <FieldLabel>
+              模型绑定
+              {!providerValid && (
+                <span
+                  className="ml-1.5 font-normal text-xs"
+                  style={{ color: 'var(--mark-red)' }}
+                >
+                  默认 tier 至少要有一个 Provider 才能启用
+                </span>
+              )}
+            </FieldLabel>
+            {providers.length === 0 ? (
+              <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+                还没有 Provider,请先到「集成」tab 添加。
+              </p>
+            ) : (
+              <div className="mt-1 space-y-2">
+                {/* 通用 fallback */}
+                <div className="flex items-center gap-2">
+                  <span
+                    className="w-12 shrink-0 text-xs"
+                    style={{ color: 'var(--ink-ghost)' }}
+                  >
+                    通用
+                  </span>
+                  <div className="flex-1">
+                    <SelectInput
+                      value={draft.providerId ?? agent.providerId ?? ''}
+                      onChange={(v) =>
+                        setDraft((d) => ({ ...d, providerId: v }))
+                      }
+                      options={[
+                        { value: '', label: '— 不指定(用全局默认)—' },
+                        ...providers.map((p) => ({
+                          value: p.id,
+                          label: p.name,
+                        })),
+                      ]}
+                      disabled={saving}
+                    />
+                  </div>
+                </div>
+                {/* 4 个 tier slot — 任意一个为空回退到上方"通用" */}
+                {(
+                  [
+                    { key: 'flashProviderId', label: '快速' },
+                    { key: 'standardProviderId', label: '标准' },
+                    { key: 'thinkProviderId', label: '深思' },
+                    { key: 'visionProviderId', label: '视觉' },
+                  ] as const
+                ).map(({ key, label }) => (
+                  <div key={key} className="flex items-center gap-2">
+                    <span
+                      className="w-12 shrink-0 text-xs"
+                      style={{ color: 'var(--ink-ghost)' }}
+                    >
+                      {label}
+                    </span>
+                    <div className="flex-1">
+                      <SelectInput
+                        value={
+                          (draft[key] as string | undefined) ??
+                          (agent[key] as string) ??
+                          ''
+                        }
+                        onChange={(v) =>
+                          setDraft((d) => ({ ...d, [key]: v }))
+                        }
+                        options={[
+                          { value: '', label: '— 回退到「通用」—' },
+                          ...providers.map((p) => ({
+                            value: p.id,
+                            label: p.name,
+                          })),
+                        ]}
+                        disabled={saving}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* 默认层级 */}
           <div>
             <FieldLabel>默认模型层级</FieldLabel>
@@ -393,6 +450,7 @@ function AgentCard({
             <div className="mt-1.5">
               <ToolsEditor
                 tools={draft.tools ?? []}
+                availableTools={availableTools}
                 onChange={(tools) => setDraft((d) => ({ ...d, tools }))}
                 disabled={saving}
               />
@@ -415,7 +473,7 @@ function AgentCard({
               disabled={saving}
               className="mt-1 w-full rounded-lg px-3 py-2 text-sm outline-none disabled:opacity-50"
               style={{
-                background: 'var(--shelf)',
+                background: 'var(--paper-white)',
                 color: 'var(--ink)',
                 border: '1px solid var(--separator)',
                 resize: 'vertical',
@@ -447,18 +505,40 @@ function AgentCard({
  */
 export function AgentTab() {
   const [agents, setAgents] = useState<AgentConfig[]>([]);
+  const [providers, setProviders] = useState<{ id: string; name: string }[]>([]);
+  const [availableTools, setAvailableTools] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  // 加载数据：silent=true 时跳过 setLoading(true)，避免页面闪烁
+
+  // AI 自定义指令(system prompt)2026-05-31 从 IntegrationTab 挪到这里
+  // —— system prompt 影响 agent 行为,归 agent 不归"集成"
+  const [aiSystemPrompt, setAiSystemPrompt] = useState('');
+  const [originalPrompt, setOriginalPrompt] = useState('');
+  const [savingPrompt, setSavingPrompt] = useState(false);
+  const promptDirty = aiSystemPrompt !== originalPrompt;
+
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
-    try {
-      const data = await settingsApi.getAgentConfigs();
-      setAgents(data);
-    } catch {
+    const [agentsRes, configRes, toolsRes] = await Promise.allSettled([
+      settingsApi.getAgentConfigs(),
+      settingsApi.getConfig(),
+      settingsApi.getAvailableTools(),
+    ]);
+    if (agentsRes.status === 'fulfilled') {
+      setAgents(agentsRes.value);
+    } else {
       banner.error('加载 Agent 配置失败');
-    } finally {
-      setLoading(false);
     }
+    if (configRes.status === 'fulfilled') {
+      setProviders(
+        configRes.value.ai.providers.map((p) => ({ id: p.id, name: p.name })),
+      );
+      setAiSystemPrompt(configRes.value.ai.aiSystemPrompt ?? '');
+      setOriginalPrompt(configRes.value.ai.aiSystemPrompt ?? '');
+    }
+    if (toolsRes.status === 'fulfilled') {
+      setAvailableTools(toolsRes.value);
+    }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -466,45 +546,126 @@ export function AgentTab() {
     void loadData();
   }, [loadData]);
 
-  // 保存某个 agent 配置
   const handleSave = async (key: string, updated: Partial<AgentConfig>) => {
     try {
       await settingsApi.saveAgentConfig(key, updated);
       banner.success('Agent 配置已保存');
       await loadData(true);
     } catch {
-      banner.error('保存失败，请重试');
-      throw new Error('save failed'); // 让 AgentCard 知道出错
+      banner.error('保存失败,请重试');
+      throw new Error('save failed');
     }
   };
 
-  // 内置 agent 不允许删除，只能编辑配置
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <PageHeader>Agent 配置</PageHeader>
-        <SectionSkeleton title="Agent 入口" />
-      </div>
-    );
-  }
+  const handleSavePrompt = async () => {
+    if (!promptDirty || savingPrompt) return;
+    setSavingPrompt(true);
+    try {
+      await settingsApi.saveAiSystemPrompt(aiSystemPrompt);
+      setOriginalPrompt(aiSystemPrompt);
+      banner.success('自定义指令已保存');
+    } catch {
+      banner.error('保存失败');
+    } finally {
+      setSavingPrompt(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
-      <PageHeader>Agent 配置</PageHeader>
+      {/* 页面标题 */}
+      <div>
+        <h1
+          className="text-base font-semibold"
+          style={{ color: 'var(--ink)' }}
+        >
+          Agent
+        </h1>
+        <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+          自定义对话风格、入口工具集与对你的认知
+        </p>
+      </div>
+      <Separator />
+
+      {/* ── 全局自定义指令(system prompt) ── */}
+      <section className="space-y-4">
+        <div>
+          <h2
+            className="text-sm font-semibold"
+            style={{ color: 'var(--ink)' }}
+          >
+            全局自定义指令
+          </h2>
+          <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            追加到所有 agent 默认角色定义之后,影响所有对话
+          </p>
+        </div>
+        {loading ? (
+          <div
+            className="h-20 rounded-sm animate-pulse"
+            style={{ background: 'var(--shelf)' }}
+          />
+        ) : (
+          <>
+            <textarea
+              value={aiSystemPrompt}
+              onChange={(e) => setAiSystemPrompt(e.target.value)}
+              placeholder="例如:我是一名软件工程师,主要写技术笔记,请用中文回复。"
+              rows={5}
+              className="flex w-full resize-none rounded-sm border border-transparent bg-[var(--shelf)] px-2.5 py-1.5 text-md transition-colors placeholder:text-[var(--ink-ghost)] hover:bg-[var(--hover-overlay)] focus:bg-[var(--paper)] focus-visible:outline-none"
+              style={{ color: 'var(--ink)' }}
+            />
+            <div className="flex items-center gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => void handleSavePrompt()}
+                disabled={!promptDirty || savingPrompt}
+              >
+                {savingPrompt ? '保存中…' : '保存'}
+              </Button>
+              {promptDirty && !savingPrompt && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setAiSystemPrompt(originalPrompt)}
+                >
+                  放弃修改
+                </Button>
+              )}
+            </div>
+          </>
+        )}
+      </section>
+
+      <Separator />
 
       {/* ── Agent 入口列表 ── */}
-      <Section
-        title="Agent 入口"
-        description="每个入口对应一个对话场景，独立配置工具集、指令和模型层级"
-      >
-        {/* 卡片列表 */}
-        {agents.length > 0 ? (
-          <div className="space-y-3 mb-4">
+      <section className="space-y-4">
+        <div>
+          <h2
+            className="text-sm font-semibold"
+            style={{ color: 'var(--ink)' }}
+          >
+            Agent 入口
+          </h2>
+          <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            每个入口对应一个对话场景,独立配置 provider、工具集、指令和模型层级
+          </p>
+        </div>
+        {loading ? (
+          <div
+            className="h-24 rounded-sm animate-pulse"
+            style={{ background: 'var(--shelf)' }}
+          />
+        ) : agents.length > 0 ? (
+          <div className="space-y-3">
             {agents.map((agent) => (
               <AgentCard
                 key={agent.key}
                 agent={agent}
+                providers={providers}
+                availableTools={availableTools}
                 onSave={(updated) => handleSave(agent.key, updated)}
                 onDelete={undefined}
               />
@@ -512,13 +673,21 @@ export function AgentTab() {
           </div>
         ) : (
           <div
-            className="mb-4 rounded-lg px-4 py-6 text-center text-sm"
-            style={{ color: 'var(--ink-ghost)', border: '1px dashed var(--separator)' }}
+            className="rounded-sm px-3 py-4 text-center text-xs"
+            style={{
+              color: 'var(--ink-ghost)',
+              border: '1px dashed var(--separator)',
+            }}
           >
             暂无内置 Agent 入口
           </div>
         )}
-      </Section>
+      </section>
+
+      <Separator />
+
+      {/* ── Agent 对你 / 你项目的认知 ── */}
+      <MemoriesSection />
     </div>
   );
 }

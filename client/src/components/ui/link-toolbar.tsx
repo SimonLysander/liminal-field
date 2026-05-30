@@ -45,10 +45,6 @@ export function LinkFloatingToolbar({
   state?: LinkFloatingToolbarState;
 }) {
   const activeCommentId = usePluginOption({ key: KEYS.comment }, 'activeId');
-  const activeSuggestionId = usePluginOption(
-    { key: KEYS.suggestion },
-    'activeId'
-  );
 
   const floatingOptions: UseVirtualFloatingOptions = React.useMemo(
     () => ({
@@ -59,10 +55,11 @@ export function LinkFloatingToolbar({
           padding: 12,
         }),
       ],
-      placement:
-        activeSuggestionId || activeCommentId ? 'top-start' : 'bottom-start',
+      // SuggestionPlugin 在当前编辑器里只提供改稿能力，不声明 activeId。
+      // 这里仅用 comment 的 activeId 决定浮层朝向，避免读取未定义 option 导致整棵编辑器崩溃。
+      placement: activeCommentId ? 'top-start' : 'bottom-start',
     }),
-    [activeCommentId, activeSuggestionId]
+    [activeCommentId]
   );
 
   const insertState = useFloatingLinkInsertState({

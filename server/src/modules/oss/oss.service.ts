@@ -115,20 +115,26 @@ export class OssService implements OnModuleInit, MinioDraftStorageStatus {
     };
   }
 
-  /** 模块初始化：探测 bucket 是否存在以确认连通性 */
+  /**
+   * 模块初始化：getBucketInfo 仅作连通性【自检/记录】,不作硬门控。
+   *
+   * 凭据由构造器 getOrThrow 保证已配置 → 默认就绪。getPublicUrl 只是本地拼签名 URL(不发网络),
+   * 真实可用性由实际请求暴露;且"未就绪"的代理回退本身也要读 OSS,并不提供额外韧性。
+   * 所以【单次启动探测超时/失败不该永久禁用缩放管线】——曾因一次 getBucketInfo 超时,整页图片
+   * 降级成代理原图(9~10MB)直到重启。改成:默认就绪 + 探测失败仅记录,不 flip false。
+   */
   async onModuleInit() {
     this.draftStorageInitError = null;
+    this.draftStorageReady = true;
     const cfg = this.getDraftStorageConfig();
     const target = `${cfg.endpoint}/${this.bucketName}`;
     try {
       await this.client.getBucketInfo(this.bucketName);
-      this.draftStorageReady = true;
     } catch (err: unknown) {
-      this.draftStorageReady = false;
       const cause = err instanceof Error ? err.message : String(err);
       this.draftStorageInitError = cause;
       this.logger.warn(
-        `OSS: unreachable at ${target} — draft uploads will fail. Cause: ${cause}`,
+        `OSS: getBucketInfo 自检失败(非致命,仍按已配置就绪处理) ${target} — ${cause}`,
       );
     }
   }
@@ -228,6 +234,20 @@ export class OssService implements OnModuleInit, MinioDraftStorageStatus {
       : Buffer.from(result.content as Uint8Array);
   }
 
+  /**
+   * 按 objectKey 下载并在 OSS 端应用图片处理(如 IMAGE_PRESETS.vision 缩放+webp),返回处理后 Buffer。
+   * 给 agent 视觉注入用:缩放在 OSS 端做,后端只搬小图,不读磁盘、不取原图。
+   */
+  async getObjectProcessed(
+    objectKey: string,
+    process: string,
+  ): Promise<Buffer> {
+    const result = await this.client.get(objectKey, { process });
+    return Buffer.isBuffer(result.content)
+      ? result.content
+      : Buffer.from(result.content as Uint8Array);
+  }
+
   /** 列出指定前缀下的全部对象 key（最多 1000 条，生产数据量足够） */
   async listByPrefix(prefix: string): Promise<string[]> {
     const result = await this.client.list({ prefix, 'max-keys': 1000 }, {});
@@ -245,6 +265,13 @@ export class OssService implements OnModuleInit, MinioDraftStorageStatus {
     cover: 'image/resize,w_400/format,webp',
     /** 详情轮播 ~1200px */
     detail: 'image/resize,w_1200/format,webp',
+    /**
+     * agent 视觉注入守卫:**最长边**封顶 896 + limit_1(只降不升)+ webp。
+     * - limit_1:原图小于阈值则原样返回——「发现超大才降到阈值下」,本就小的不动;
+     * - l_(最长边)而非 w_(宽):竖图也守得住,封住总分辨率 → 封住视觉 token(按切片算,与文件大小无关);
+     * - 视觉 token 大致随分辨率^2,896 比 1280 砍掉约一半,写图说够清晰、又快又省。
+     */
+    vision: 'image/resize,l_896,limit_1/format,webp',
     /** 笔记阅读宽度 ~800px */
     reading: 'image/resize,w_800/format,webp',
     /** Lightbox 全屏 ~2000px */

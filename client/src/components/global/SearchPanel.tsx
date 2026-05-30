@@ -293,7 +293,7 @@ export function SearchPanel({ open, onOpenChange, admin }: SearchPanelProps) {
                     {hasR && (
                       <>
                         <div style={{ height: 0.5, background: 'var(--separator)' }} />
-                        <div className="flex items-center justify-between px-4 text-[11px]" style={{ height: 32, color: 'var(--ink-ghost)' }}>
+                        <div className="flex items-center justify-between px-4 text-xs" style={{ height: 32, color: 'var(--ink-ghost)' }}>
                           <span className="flex items-center gap-1.5">
                             <kbd className="inline-flex h-[18px] items-center rounded px-1" style={{ background: 'var(--shelf)' }}>↑↓</kbd>
                             <span>导航</span>

@@ -15,13 +15,9 @@ import {
   StructureListResultDto,
   DeleteStatsDto,
 } from './dto/structure-node.dto';
-import {
-  FolderOverviewDto,
-  FolderOverviewChildDto,
-} from './dto/folder-overview.dto';
 import { UpdateNavigationNodeDto } from './dto/update-navigation-node.dto';
 import { UpdateStructureNodeDto } from './dto/update-structure-node.dto';
-import { NavigationNode, NavigationNodeType } from './navigation.entity';
+import { NavigationNode } from './navigation.entity';
 
 @Injectable()
 export class NavigationNodeService {
@@ -77,16 +73,17 @@ export class NavigationNodeService {
       return entities;
     }
 
+    // 节点同质化:展示一个节点 ⟺ 它自身内容可读 或 其子树中存在可读后代。
     const readableFlags = await Promise.all(
       entities.map(async (entity) => {
-        if (entity.nodeType === NavigationNodeType.content) {
-          return this.contentService.isContentItemReadable(
-            entity.contentItemId!,
+        if (
+          await this.contentService.isContentItemReadable(
+            entity.contentItemId,
             visibility,
-          );
+          )
+        ) {
+          return true;
         }
-
-        // FOLDER: 递归检查子树中是否存在可见的叶节点
         return this.hasVisibleDescendant(entity._id.toString(), visibility);
       }),
     );
@@ -105,40 +102,31 @@ export class NavigationNodeService {
     const children = await this.navigationRepository.listByParentId(nodeId);
 
     for (const child of children) {
-      if (child.nodeType === NavigationNodeType.content) {
-        if (
-          await this.contentService.isContentItemReadable(
-            child.contentItemId!,
-            visibility,
-          )
-        ) {
-          return true;
-        }
-      } else {
-        if (await this.hasVisibleDescendant(child._id.toString(), visibility)) {
-          return true;
-        }
+      if (
+        await this.contentService.isContentItemReadable(
+          child.contentItemId,
+          visibility,
+        )
+      ) {
+        return true;
+      }
+      if (await this.hasVisibleDescendant(child._id.toString(), visibility)) {
+        return true;
       }
     }
 
     return false;
   }
 
-  private toNavigationNodeType(type: 'FOLDER' | 'DOC'): NavigationNodeType {
-    return type === 'FOLDER'
-      ? NavigationNodeType.subject
-      : NavigationNodeType.content;
-  }
-
   private toCreateNavigationNodeDto(
     dto: CreateStructureNodeDto,
+    contentItemId: string,
   ): CreateNavigationNodeDto {
     return {
       name: dto.name,
       scope: dto.scope,
       parentId: dto.parentId,
-      nodeType: this.toNavigationNodeType(dto.type),
-      contentItemId: dto.contentItemId,
+      contentItemId,
       order: dto.sortOrder,
     };
   }
@@ -165,22 +153,14 @@ export class NavigationNodeService {
         `Parent navigation node ${parentId} not found`,
       );
     }
-    if (parent.nodeType !== NavigationNodeType.subject) {
-      throw new BadRequestException('Only subject nodes can have children');
-    }
+    // 节点同质化:任意节点都能挂子节点(Confluence 式),不再限制父必须是文件夹。
     return parent;
   }
 
-  private validateNodeSemantics(
-    nodeType: NavigationNodeType,
-    contentItemId?: string,
-  ): void {
-    // 节点类型和内容绑定关系必须在服务层收紧，否则树结构很容易退化成“什么都能挂”的脏模型。
-    if (nodeType === NavigationNodeType.content && !contentItemId) {
-      throw new BadRequestException('Content nodes require contentItemId');
-    }
-    if (nodeType === NavigationNodeType.subject && contentItemId) {
-      throw new BadRequestException('Subject nodes cannot have contentItemId');
+  // 节点同质化:每个节点都必须挂一个 ContentItem(正文可空)。
+  private requireContentItemId(contentItemId?: string): void {
+    if (!contentItemId) {
+      throw new BadRequestException('每个节点都必须有 contentItemId');
     }
   }
 
@@ -212,16 +192,14 @@ export class NavigationNodeService {
     dto: CreateNavigationNodeDto,
   ): Promise<NavigationNodeDto> {
     await this.getParentOrThrow(dto.parentId);
-    this.validateNodeSemantics(dto.nodeType, dto.contentItemId);
-    if (dto.contentItemId) {
-      await this.contentService.assertContentItemExists(dto.contentItemId);
-      // 一个 contentItemId 只能被一个导航节点引用，防止重复挂载
-      const existing = await this.navigationRepository.findByContentItemId(
-        dto.contentItemId,
-      );
-      if (existing) {
-        throw new BadRequestException('该内容项已被其他节点引用');
-      }
+    this.requireContentItemId(dto.contentItemId);
+    await this.contentService.assertContentItemExists(dto.contentItemId);
+    // 一个 contentItemId 只能被一个导航节点引用，防止重复挂载
+    const existing = await this.navigationRepository.findByContentItemId(
+      dto.contentItemId,
+    );
+    if (existing) {
+      throw new BadRequestException('该内容项已被其他节点引用');
     }
 
     // 同 parentId + scope 下不允许重名（FOLDER 和 DOC 共享命名空间）
@@ -255,7 +233,7 @@ export class NavigationNodeService {
       await this.assertNoCycle(id, dto.parentId);
       await this.getParentOrThrow(dto.parentId);
     }
-    this.validateNodeSemantics(current.nodeType, nextContentItemId);
+    this.requireContentItemId(nextContentItemId);
     if (nextContentItemId) {
       await this.contentService.assertContentItemExists(nextContentItemId);
       // contentItemId 变更时，检查新值是否已被其他节点引用
@@ -356,15 +334,18 @@ export class NavigationNodeService {
 
     const descendants = await this.navigationRepository.findAllDescendants(id);
 
-    // 统计自身 + 后代
+    // 统计自身 + 后代。节点同质化:"文件夹" = 子树内有子节点的节点,"文档" = 叶子。
     const allNodes = [node, ...descendants];
+    const parentIdsWithChildren = new Set(
+      allNodes
+        .map((n) => n.parentId?.toString())
+        .filter((p): p is string => !!p),
+    );
+    const hasKids = (n: NavigationNode) =>
+      parentIdsWithChildren.has(n._id.toString());
     const stats = new DeleteStatsDto();
-    stats.folderCount = allNodes.filter(
-      (n) => n.nodeType === NavigationNodeType.subject,
-    ).length;
-    stats.docCount = allNodes.filter(
-      (n) => n.nodeType === NavigationNodeType.content,
-    ).length;
+    stats.folderCount = allNodes.filter(hasKids).length;
+    stats.docCount = allNodes.filter((n) => !hasKids(n)).length;
     return stats;
   }
 
@@ -378,7 +359,7 @@ export class NavigationNodeService {
     const descendants = await this.navigationRepository.findAllDescendants(id);
     const allNodes = [node, ...descendants];
     for (const n of allNodes) {
-      if (n.nodeType === NavigationNodeType.content && n.contentItemId) {
+      if (n.contentItemId) {
         try {
           const item = await this.contentService.getContentListItem(
             n.contentItemId,
@@ -404,10 +385,9 @@ export class NavigationNodeService {
   ): Promise<StructureNodeDto> {
     let contentItemId = dto.contentItemId;
 
-    // DOC 节点且调用方未提供 contentItemId 时，后端自动建 content item。
-    // 这样前端只需发一个"新建 DOC 节点"请求，不再关心 content 的创建细节。
+    // 节点同质化:任何节点(原 FOLDER/DOC 皆然)未带 contentItemId 时,后端自动 mint 一个空 ContentItem。
     // createContent 只建 MongoDB 记录（无 Git commit），内容通过后续 draft/commit 写入。
-    if (dto.type === 'DOC' && !contentItemId) {
+    if (!contentItemId) {
       const content = await this.contentService.createContent({
         title: dto.name,
       });
@@ -415,13 +395,14 @@ export class NavigationNodeService {
     }
 
     const created = await this.createNavigationNode(
-      this.toCreateNavigationNodeDto({ ...dto, contentItemId }),
+      this.toCreateNavigationNodeDto(dto, contentItemId),
     );
     return {
       id: created.id,
       name: created.name,
       scope: (dto.scope as string) ?? 'notes',
-      type: created.nodeType === NavigationNodeType.subject ? 'FOLDER' : 'DOC',
+      // 刚创建的节点必无子节点 → DOC(过渡标签);成为容器要等它有了子节点。
+      type: created.hasChildren ? 'FOLDER' : 'DOC',
       parentId: created.parentId,
       contentItemId: created.contentItemId,
       sortOrder: created.order,
@@ -439,16 +420,8 @@ export class NavigationNodeService {
     if (!current) {
       throw new NotFoundException(`NavigationNode ${id} not found`);
     }
-    const nextType = dto.type
-      ? this.toNavigationNodeType(dto.type)
-      : current.nodeType;
+    // 节点同质化:不再有 type 切换(FOLDER/DOC 由是否有子节点决定),忽略 dto.type。
     const updateDto = this.toUpdateNavigationNodeDto(dto);
-
-    if (dto.type) {
-      (
-        updateDto as UpdateNavigationNodeDto & { nodeType?: NavigationNodeType }
-      ).nodeType = nextType;
-    }
 
     const nextContentItemId =
       updateDto.contentItemId ?? current.contentItemId?.toString();
@@ -479,7 +452,7 @@ export class NavigationNodeService {
       updateDto.order = maxOrder + 1;
     }
 
-    this.validateNodeSemantics(nextType, nextContentItemId);
+    this.requireContentItemId(nextContentItemId);
     if (nextContentItemId) {
       await this.contentService.assertContentItemExists(nextContentItemId);
       if (
@@ -602,129 +575,6 @@ export class NavigationNodeService {
     }));
 
     await this.navigationRepository.bulkUpdateOrder(updates);
-  }
-
-  /**
-   * 文件夹着陆页概览：返回子项列表（带发布状态/摘要）+ 聚合统计。
-   *
-   * 对 FOLDER 子项递归统计子树 DOC 数和已发布数；
-   * 对 DOC 子项查 ContentService 取发布状态和 summary。
-   * 个人 KB 规模下 N+1 查询可接受，无需提前优化。
-   */
-  async getFolderOverview(folderId: string): Promise<FolderOverviewDto> {
-    const folder = await this.navigationRepository.findById(folderId);
-    if (!folder || folder.nodeType !== NavigationNodeType.subject) {
-      throw new NotFoundException(`Folder ${folderId} not found`);
-    }
-
-    const children = await this.navigationRepository.findChildrenByParentId(
-      folderId,
-      folder.scope,
-    );
-
-    let totalPublished = 0;
-    let totalUpdated = 0;
-    let totalUnpublished = 0;
-    let totalDocCount = 0;
-    let directFolderCount = 0;
-
-    const childDtos: FolderOverviewChildDto[] = [];
-
-    for (const child of children) {
-      const dto = new FolderOverviewChildDto();
-      dto.id = child._id.toString();
-      dto.name = child.name;
-
-      if (child.nodeType === NavigationNodeType.subject) {
-        // FOLDER 子节点：递归统计子树
-        dto.type = 'FOLDER';
-        directFolderCount++;
-        const descendants = await this.navigationRepository.findAllDescendants(
-          dto.id,
-        );
-        const docDescendants = descendants.filter(
-          (d) => d.nodeType === NavigationNodeType.content,
-        );
-        dto.childDocCount = docDescendants.length;
-        // 统计子树中已发布的 DOC 数
-        let pubCount = 0;
-        for (const doc of docDescendants) {
-          if (doc.contentItemId) {
-            try {
-              const item = await this.contentService.getContentListItem(
-                doc.contentItemId,
-              );
-              if (item.publishedVersion) pubCount++;
-            } catch {
-              /* 内容不存在则跳过 */
-            }
-          }
-        }
-        dto.childPublishedCount = pubCount;
-        // 子树的 DOC 计入总统计
-        totalDocCount += docDescendants.length;
-        for (const doc of docDescendants) {
-          if (!doc.contentItemId) {
-            totalUnpublished++;
-            continue;
-          }
-          try {
-            const item = await this.contentService.getContentListItem(
-              doc.contentItemId,
-            );
-            if (!item.publishedVersion) totalUnpublished++;
-            else if (item.hasUnpublishedChanges) totalUpdated++;
-            else totalPublished++;
-          } catch {
-            totalUnpublished++;
-          }
-        }
-      } else {
-        // DOC 子节点：查发布状态和摘要
-        dto.type = 'DOC';
-        dto.contentItemId = child.contentItemId?.toString();
-        totalDocCount++;
-        if (dto.contentItemId) {
-          try {
-            const item = await this.contentService.getContentListItem(
-              dto.contentItemId,
-            );
-            dto.summary = item.summary;
-            dto.updatedAt = item.updatedAt;
-            if (!item.publishedVersion) {
-              dto.publishStatus = 'unpublished';
-              totalUnpublished++;
-            } else if (item.hasUnpublishedChanges) {
-              dto.publishStatus = 'updated';
-              totalUpdated++;
-            } else {
-              dto.publishStatus = 'published';
-              totalPublished++;
-            }
-          } catch {
-            dto.publishStatus = 'unpublished';
-            totalUnpublished++;
-          }
-        } else {
-          dto.publishStatus = 'unpublished';
-          totalUnpublished++;
-        }
-      }
-
-      childDtos.push(dto);
-    }
-
-    return {
-      folder: { id: folderId, name: folder.name },
-      stats: {
-        folderCount: directFolderCount,
-        docCount: totalDocCount,
-        published: totalPublished,
-        updated: totalUpdated,
-        unpublished: totalUnpublished,
-      },
-      children: childDtos,
-    };
   }
 
   async findStructurePathByContentItemId(

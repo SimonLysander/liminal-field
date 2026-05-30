@@ -84,6 +84,8 @@ export type ContentVersionViewProps = {
   onEdit?: (node: StructureNode) => void;
   onDelete?: (node: StructureNode) => void;
   onMoveTo?: (node: StructureNode) => void;
+  /** 发布全部:仅对有子节点的节点提供,发布其子树。 */
+  onPublishAll?: () => void | Promise<void>;
 };
 
 export type DraftWorkspaceProps = {

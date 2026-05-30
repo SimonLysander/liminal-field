@@ -25,20 +25,31 @@ import { banner } from '@/components/ui/banner-api';
 import { smoothBounce } from '@/lib/motion';
 import { notesApi as contentItemsApi } from '@/services/workspace';
 import type { ContentDetail } from '@/services/workspace';
+import { structureApi } from '@/services/structure';
 import MarkdownBody from '@/components/shared/MarkdownBody';
 import { LoadingState } from '@/components/LoadingState';
 import { X, Sparkles } from 'lucide-react';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { useScrollFade } from '@/hooks/use-scroll-fade';
 
 /* ================================================================
- * /note      → NoteListView  已发布文章列表
- * /note/:id  → NoteReader     文章阅读器
+ * 阅读端按 URL query 分发（与 Sidebar 同源：URL 是唯一真相）：
+ *   /note?doc=<id>     → NoteReader   文章阅读器（叶子文档正文）
+ *   /note?topic=<id>   → FolderReader 主题着陆页（节点同质化:文件夹也有自己的正文）
+ *   /note              → NoteListView 未选态邀请
+ *
+ * 节点同质化(2026-05-29)：每个导航节点都有自己的 ContentItem，
+ * 文件夹/主题节点也可能携带正文——进入文件夹时渲染其自身正文（若有），
+ * 空正文则回退到邀请空态。doc 优先于 topic：同时存在时展示具体文档。
  * ================================================================ */
 
 export default function NotePage() {
   const [searchParams] = useSearchParams();
   const noteId = searchParams.get('doc');
-  return noteId ? <NoteReader id={noteId} /> : <NoteListView />;
+  const topicId = searchParams.get('topic');
+  if (noteId) return <NoteReader id={noteId} />;
+  if (topicId) return <FolderReader nodeId={topicId} />;
+  return <NoteListView />;
 }
 
 /* ---------- Empty State ---------- */
@@ -50,6 +61,101 @@ function NoteListView() {
       image="/garden/reading-invite.webp"
       title="选择一篇笔记开始阅读"
     />
+  );
+}
+
+/* ---------- Folder / Topic Landing ---------- */
+
+/**
+ * FolderReader — 主题（文件夹节点）着陆页。
+ *
+
+
+ * 节点同质化后文件夹也有自己的 ContentItem，这里渲染其已发布正文
+ * （取正文 → MarkdownBody 渲染 → 空正文不渲染）。展示端子项列表由 Sidebar
+ * 抽屉下钻承载，故主面板只负责呈现主题自身正文。
+ *
+ * 数据流：topicId →（公开的 /structure-nodes/:id/path）取末节点拿 contentItemId
+ *        → notesApi.getById（不传 visibility=all，仅取已发布正文）。
+ * 任一步失败或正文为空 → 回退到 NoteListView 邀请空态，不打断阅读体验。
+ */
+function FolderReader({ nodeId }: { nodeId: string }) {
+  const [content, setContent] = useState<ContentDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      setLoading(true);
+      try {
+        // path 末节点即当前主题节点本身，从中取其 ContentItem id
+        const path = await structureApi.getPathByNodeId(nodeId);
+        const self = path[path.length - 1];
+        const contentItemId = self?.contentItemId;
+        if (!contentItemId) {
+          if (!cancelled) setContent(null);
+          return;
+        }
+        // 不传 visibility=all：展示端只读已发布正文，未发布则后端 404，按空正文处理
+        const data = await contentItemsApi.getById(contentItemId);
+        if (!cancelled) setContent(data);
+      } catch {
+        // 主题无正文 / 未发布 / 加载失败：静默降级为空态，沿用既有邀请页
+        if (!cancelled) setContent(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [nodeId]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <LoadingState />
+      </div>
+    );
+  }
+
+  // 主题自身无正文（空 body 或无 ContentItem）→ 回退到既有未选态邀请
+  if (!content || !content.bodyMarkdown) {
+    return <NoteListView />;
+  }
+
+  const title = content.publishedVersion?.title ?? content.latestVersion.title ?? '';
+
+  return (
+    <div className="relative flex w-full items-stretch overflow-hidden">
+      <div className="flex-1 overflow-y-auto py-12">
+        <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 max-[520px]:px-4">
+          {/* 主题标题 — 与 NoteReader 一致的衬线大标题入场 */}
+          <motion.div
+            className="relative mb-10 text-5xl font-bold leading-snug tracking-tight"
+            style={{ fontFamily: 'var(--font-serif)', color: 'var(--ink)' }}
+            initial={{ opacity: 0, y: 10, filter: 'blur(4px)' }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            transition={{ duration: 0.5, ease: smoothBounce }}
+          >
+            {title}
+          </motion.div>
+
+          {/* Markdown 正文 — 复用 NoteReader 同款 prose 容器与 MarkdownBody 渲染 */}
+          <motion.div
+            className="note-prose text-lg leading-[1.9]"
+            style={{ color: 'var(--ink-light)' }}
+            initial={{ opacity: 0, y: 8, filter: 'blur(4px)' }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            transition={{ duration: 0.5, delay: 0.15, ease: smoothBounce }}
+          >
+            <MarkdownBody markdown={content.bodyMarkdown} contentItemId={content.id} />
+          </motion.div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -102,6 +208,9 @@ function NoteReader({ id }: { id: string }) {
       id: `heading-${i}`,
     }));
   }, [content]);
+
+  // 大纲列表仅可滚动时才上下渐隐(短列表不被误淡)
+  const tocMask = useScrollFade(tocPanelRef, [toc.length]);
 
   /*
    * Scroll spy — 监听滚动确定当前 TOC 高亮位置。
@@ -199,7 +308,8 @@ function NoteReader({ id }: { id: string }) {
           <button
             className="text-md transition-colors duration-150 hover:text-[var(--ink-faded)]"
             style={{ color: 'var(--ink-ghost)' }}
-            onClick={() => navigate('/note')}
+            // 返回上一级(通常是父页),不再写死回根列表
+            onClick={() => navigate(-1)}
           >
             ← 返回
           </button>
@@ -277,44 +387,52 @@ function NoteReader({ id }: { id: string }) {
 
       {/* Right — TOC panel（始终预留宽度，避免内容加载后布局抖动） */}
       <div
-        ref={tocPanelRef}
-        className="hidden min-h-0 shrink-0 flex-col gap-7 self-start overflow-y-auto px-4 py-10 md:flex"
+        className="hidden shrink-0 flex-col self-start px-4 md:flex"
         style={{
           width: 'var(--layout-sidebar)',
-          // 离屏幕顶留距离(下移到主题按钮下方):目录是悬在中上部的容器,
-          // 渐隐发生在容器边缘而非屏幕边缘,滚动不再贴边硬切/划出屏幕
+          // 离屏幕顶留距离(下移到主题按钮下方)
           marginTop: '8vh',
-          maxHeight: '61.8vh',
-          // 滚动时上下边缘渐隐,内容柔和淡出而非硬切
-          maskImage: 'linear-gradient(to bottom, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%)',
-          WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%)',
         }}
       >
         {toc.length > 0 && (
-          <div>
+          <>
+            {/* 标题固定不滚 */}
             <div
-              className="mb-3 text-2xs font-semibold uppercase tracking-label"
+              className="mb-3 shrink-0 text-2xs font-semibold uppercase tracking-label"
               style={{ color: 'var(--ink-ghost)' }}
             >
-              目录
+              大纲
             </div>
-            {toc.map((item) => (
-              <div
-                key={item.id}
-                data-toc-id={item.id}
-                className="cursor-pointer truncate rounded-lg py-[5px] pr-2 text-sm transition-colors duration-200 hover:bg-[var(--shelf)]"
-                style={{
-                  // 当前阅读章节 = 长春花紫(进行中,符合 accent 纲领),其余墨灰
-                  color: activeToc === item.id ? 'var(--accent)' : 'var(--ink-faded)',
-                  fontWeight: activeToc === item.id ? 600 : 400,
-                  paddingLeft: `${(item.level - 1) * 10 + 8}px`,
-                }}
-                onClick={() => scrollToHeading(item.id)}
-              >
-                {item.text}
-              </div>
-            ))}
-          </div>
+            {/* 列表高度跟随内容、超上限才滚;左侧细线从标题下方开始、长度随内容(与编辑器大纲一致) */}
+            <div
+              ref={tocPanelRef}
+              className="overflow-y-auto"
+              style={{
+                maxHeight: '61.8vh',
+                borderLeft: '1px solid var(--separator)',
+                // 仅可滚动时上下边缘渐隐(useScrollFade),短列表不被误淡
+                maskImage: tocMask,
+                WebkitMaskImage: tocMask,
+              }}
+            >
+              {toc.map((item) => (
+                <div
+                  key={item.id}
+                  data-toc-id={item.id}
+                  className="cursor-pointer truncate rounded-lg py-[5px] pr-2 text-sm transition-colors duration-200 hover:bg-[var(--shelf)]"
+                  style={{
+                    // 当前阅读章节 = 长春花紫(进行中,符合 accent 纲领),其余墨灰
+                    color: activeToc === item.id ? 'var(--accent)' : 'var(--ink-faded)',
+                    fontWeight: activeToc === item.id ? 600 : 400,
+                    paddingLeft: `${(item.level - 1) * 10 + 8}px`,
+                  }}
+                  onClick={() => scrollToHeading(item.id)}
+                >
+                  {item.text}
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 

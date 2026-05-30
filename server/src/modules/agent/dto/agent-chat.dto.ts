@@ -11,6 +11,7 @@ import { Type } from 'class-transformer';
 import {
   Allow,
   IsIn,
+  IsNumber,
   IsOptional,
   IsString,
   ValidateNested,
@@ -25,17 +26,59 @@ class DocumentContextDto {
 
   @IsString()
   bodyMarkdown!: string;
+
+  // #150 续(2026-05-31):collectionContext 已从前端 push 改为后端 pull
+  // (AgentLifecycle.onBeforeChat 按 contentItemId 自己查),不再走 DTO。
+}
+
+/** 画廊单张照片的文字信息(不含图像字节;图由后端 prepareStep 按需注入)。 */
+class GalleryPhotoDto {
+  @IsNumber()
+  index!: number;
+
+  @IsString()
+  fileName!: string;
+
+  @IsString()
+  caption!: string;
+
+  // tags 是 Record<string,string>(EXIF 等),不深校验,直接透传
+  @Allow()
+  tags!: Record<string, string>;
+}
+
+/** 画廊场景上下文:随笔 + 照片清单。图说写手用,内容靠 get_current_draft read。 */
+class GalleryContextDto {
+  @IsString()
+  contentItemId!: string;
+
+  @IsString()
+  title!: string;
+
+  @IsString()
+  prose!: string;
+
+  // 照片清单必随 gallery 一同给(可空数组,但不缺字段)——下游 GalleryContext.photos 为必填
+  @ValidateNested({ each: true })
+  @Type(() => GalleryPhotoDto)
+  photos!: GalleryPhotoDto[];
 }
 
 class EntryContextDto {
-  // notes-editor = 编辑器侧栏写作顾问;agent-page = 全页总助手 Lux
-  @IsIn(['notes-editor', 'agent-page'])
+  // notes-editor = 编辑器侧栏写作顾问;agent-page = 全页总助手 Lux;gallery-editor = 画廊图说写手
+  @IsIn(['notes-editor', 'agent-page', 'gallery-editor'])
   source!: string;
 
   @ValidateNested()
   @Type(() => DocumentContextDto)
   @IsOptional()
   document?: DocumentContextDto;
+
+  /** 画廊场景:照片清单+随笔。传了即走图说写手链路。 */
+  @ValidateNested()
+  @Type(() => GalleryContextDto)
+  @IsOptional()
+  gallery?: GalleryContextDto;
 
   @IsString()
   @IsOptional()
@@ -45,12 +88,17 @@ class EntryContextDto {
   @IsString()
   @IsOptional()
   sessionKey?: string;
+
+  /** 草稿级 agent 实例标识：用于共享 agent 记忆/tasks；sessionKey 只表示当前业务聊天。 */
+  @IsString()
+  @IsOptional()
+  agentInstanceKey?: string;
 }
 
 export class AgentChatDto {
-  /** AI SDK 发送的 messages 数组，直接透传给 streamText，不做深层校验 */
+  /** prepareSendMessagesRequest 只发的最新一条 UIMessage;历史由后端从 agent_sessions 读。 */
   @Allow()
-  messages!: any[];
+  message?: any;
 
   @ValidateNested()
   @Type(() => EntryContextDto)
@@ -59,15 +107,6 @@ export class AgentChatDto {
   @IsIn(['flash', 'standard', 'think'])
   @IsOptional()
   tier?: 'flash' | 'standard' | 'think';
-
-  /** 前端传入的相关召回记忆，注入 system prompt */
-  @Allow()
-  relatedMemories?: Array<{
-    key: string;
-    type: string;
-    title: string;
-    content: string;
-  }>;
 
   /** agent 入口标识，如 "writing-advisor"，用于加载对应 AgentEntryConfig */
   @IsString()

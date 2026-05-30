@@ -14,7 +14,9 @@ export interface SessionTask {
  * - firstIndex：当前页第一条消息的绝对 index，下次懒加载传 before=firstIndex
  * - summary：session 记忆 content（由 compaction 提炼的对话脉络，后端注入 system prompt）
  * - tasks：session 记忆中的写作计划
- * - relatedMemories：U6 起恒为空数组，保留字段兼容前端结构，前端不使用
+ *
+ * 注:relatedMemories 字段已于 #150(2026-05-31) 彻底删除——自动召回已废,
+ * 模型主动调 recall_memory / search_memories 按需读
  */
 export interface SessionData {
   sessionKey: string;
@@ -23,7 +25,13 @@ export interface SessionData {
   firstIndex: number;
   summary: string;
   tasks: SessionTask[];
-  relatedMemories: never[];
+  lastActiveAt: string | null;
+}
+
+export interface BusinessSessionSummary {
+  sessionKey: string;
+  title: string;
+  messageCount: number;
   lastActiveAt: string | null;
 }
 
@@ -36,29 +44,31 @@ export interface SessionData {
  */
 export function loadSession(
   sessionKey: string,
-  opts?: { before?: number; limit?: number },
+  opts?: { agentInstanceKey?: string; before?: number; limit?: number },
 ): Promise<SessionData> {
   const params = new URLSearchParams();
+  if (opts?.agentInstanceKey) params.set('agentInstanceKey', opts.agentInstanceKey);
   if (opts?.before !== undefined) params.set('before', String(opts.before));
   if (opts?.limit !== undefined) params.set('limit', String(opts.limit));
   const qs = params.toString() ? `?${params.toString()}` : '';
   return request<SessionData>(`/agent/sessions/${encodeURIComponent(sessionKey)}${qs}`);
 }
 
-/**
- * 保存会话消息（每次 AI 回复完成后调用），返回最新 tasks。
- *
- * 后端 onAfterChat 是纯 append 语义（appendMessages），
- * 因此前端只发本轮新增消息（方案 A），避免全量重发导致重复追加。
- * 调用方需自行维护已保存的消息游标（savedCountRef），截取 messages.slice(savedCount)。
- */
-export function saveSession(
+export function listBusinessSessions(
+  agentInstanceKey: string,
+): Promise<BusinessSessionSummary[]> {
+  return request<BusinessSessionSummary[]>(
+    `/agent/session-groups/${encodeURIComponent(agentInstanceKey)}/sessions`,
+  );
+}
+
+export function renameBusinessSession(
   sessionKey: string,
-  newMessages: Record<string, unknown>[],
-): Promise<{ ok: boolean; tasks: SessionTask[] }> {
-  return request<{ ok: boolean; tasks: SessionTask[] }>(
-    `/agent/sessions/${encodeURIComponent(sessionKey)}`,
-    { method: 'PUT', body: JSON.stringify({ messages: newMessages }) },
+  title: string,
+): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(
+    `/agent/sessions/${encodeURIComponent(sessionKey)}/title`,
+    { method: 'PATCH', body: JSON.stringify({ title }) },
   );
 }
 
@@ -69,34 +79,34 @@ export function deleteSession(sessionKey: string): Promise<void> {
   });
 }
 
-// ── 记忆管理（管理端用） ────────────────────────────────
+// ── 记忆管理(2026-05-30 event log) ────────────────────────
 
-export interface MemoryItem {
+/**
+ * 单条观察(agent_memory_observations 表里一行)。
+ * append-only 岁月史书,前端只读、不可编辑/删除。
+ */
+export type ObservationTopic =
+  | 'identity'
+  | 'personality'
+  | 'aesthetic'
+  | 'method'
+  | 'other';
+
+export interface ObservationItem {
   _id: string;
-  type: 'user' | 'project';
-  title: string;
-  content: string;
-  createdAt: string;
-  updatedAt: string;
+  observedAt: string;
+  topic: ObservationTopic;
+  observation: string;
+  context?: string;
+  sessionKey?: string;
 }
 
-/** 获取所有记忆 */
-export function listMemories(): Promise<MemoryItem[]> {
-  return request<MemoryItem[]>('/agent/memories');
+export interface ObservationsResponse {
+  observations: ObservationItem[];
+  currentView: { markdown: string; derivedAt: string } | null;
 }
 
-/** 更新记忆（by _id） */
-export function updateMemory(
-  id: string,
-  data: { type?: string; title?: string; content?: string },
-): Promise<MemoryItem> {
-  return request<MemoryItem>(`/agent/memories/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(data),
-  });
-}
-
-/** 删除记忆（by _id） */
-export function deleteMemory(id: string): Promise<void> {
-  return request(`/agent/memories/${id}`, { method: 'DELETE' });
+/** 取岁月史书 + 当前画像(管理端用) */
+export function listObservations(): Promise<ObservationsResponse> {
+  return request<ObservationsResponse>('/agent/observations');
 }

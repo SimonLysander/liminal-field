@@ -15,7 +15,9 @@ export type ToolStatus =
   | 'not_found'
   | 'ambiguous'
   | 'error'
-  | 'timeout';
+  | 'timeout'
+  | 'invalid' // 输入结构校验失败(如空 edits)
+  | 'stale'; // bodyHash 与服务器当前 hash 不符,需要重新基于最新版生成
 
 export interface ToolResultMeta {
   status?: ToolStatus;

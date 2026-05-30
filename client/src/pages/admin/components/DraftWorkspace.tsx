@@ -69,7 +69,7 @@ export const DraftWorkspace = ({
       {loading ? (
         <LoadingState label="加载草稿中" />
       ) : error ? (
-        <div className="rounded-xl p-4" style={{ background: 'rgba(255,59,48,0.06)' }}>
+        <div className="rounded-xl p-4" style={{ background: 'var(--danger-soft)' }}>
           <p className="text-sm" style={{ color: 'var(--mark-red)' }}>{error}</p>
         </div>
       ) : (

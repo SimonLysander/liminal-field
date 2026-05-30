@@ -15,15 +15,22 @@
  * - agent.afterChat    → CompactionListener（触发 compaction 检查）
  * - agent.afterToolUse → ToolUseListener（记录工具调用日志）
  */
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SessionHandler } from './session.handler';
 import { MemoryHandler } from './memory.handler';
-import { PromptHandler } from './prompt.handler';
+import {
+  PromptHandler,
+  RECENT_OBSERVATIONS_LIMIT,
+  type BuildSystemPromptParams,
+} from './prompt.handler';
 import { ToolAssembler } from './tool.assembler';
 import { SystemConfigService } from '../../settings/system-config.service';
 import { AgentMemoryRepository } from '../memory/agent-memory.repository';
 import { AgentSessionRepository } from '../session/agent-session.repository';
+import { AnthologyViewService } from '../../workspace/anthology-view.service';
+import { MemoryViewService } from '../memory/memory-view.service';
+import { AgentMemoryObservationRepository } from '../memory/agent-memory-observation.repository';
 import { sliceSessionPage } from './session-pagination';
 import type { AgentChatDto } from '../dto/agent-chat.dto';
 
@@ -32,6 +39,8 @@ const SESSION_PAGE_LIMIT = 50;
 
 @Injectable()
 export class AgentLifecycle {
+  private readonly logger = new Logger(AgentLifecycle.name);
+
   constructor(
     private readonly session: SessionHandler,
     private readonly memory: MemoryHandler,
@@ -44,6 +53,12 @@ export class AgentLifecycle {
     private readonly memoryRepo: AgentMemoryRepository,
     // 跨段聚合分页：getAllMessages 跨段全量后内存 slice（对话量可控，YAGNI）
     private readonly sessionRepo: AgentSessionRepository,
+    // #150 续:文集场景在 onBeforeChat 里按需查整集脉络,前端不再透传 collectionContext
+    private readonly anthology: AnthologyViewService,
+    // 2026-05-30 event log:画像渲染器(主 agent 主动 remember,view 异步派生)
+    private readonly viewService: MemoryViewService,
+    // 2026-05-30 续:onBeforeChat 读 current_view 注入 <memories_index>
+    private readonly observationRepo: AgentMemoryObservationRepository,
   ) {}
 
   /**
@@ -56,16 +71,14 @@ export class AgentLifecycle {
    *
    * 返回的 summary = 本草稿 session 记忆 content(对话脉络);tasks = session 记忆的写作计划。
    * 不再有 totalRounds(轮数概念已废弃)。
-   *
-   * relatedMemories 恒为空数组:project 自动召回已随 project 记忆类型一并删除;
-   * 该字段为兼容前端响应结构暂留(前端契约清理留到 U7)。
    */
   async onSessionLoad(
-    agentKey: string,
+    sessionKey: string,
     /** 分页游标：返回此绝对 index 之前的消息；无则取最近 limit 条 */
     before?: number,
     /** 每页条数，默认 SESSION_PAGE_LIMIT */
     limit: number = SESSION_PAGE_LIMIT,
+    agentInstanceKey?: string,
   ): Promise<{
     sessionKey: string;
     messages: Record<string, unknown>[];
@@ -77,21 +90,20 @@ export class AgentLifecycle {
     summary: string;
     tasks: Array<Record<string, unknown>>;
     lastActiveAt: Date | null;
-    /** 兼容前端结构暂留，恒为空（project 召回已删，清理留到 U7） */
-    relatedMemories: never[];
   }> {
+    const memoryKey = agentInstanceKey ?? sessionKey;
     // 并行加载：全量消息（分页用）+ session 记忆（脉络/tasks）+ 最新段（lastActiveAt）
     const [allMessages, sessionMem, latestSeg] = await Promise.all([
-      this.sessionRepo.getAllMessages(agentKey),
-      this.memoryRepo.findSession(agentKey),
-      this.sessionRepo.findLatestSeg(agentKey),
+      this.sessionRepo.getAllMessages(sessionKey),
+      this.memoryRepo.findSession(memoryKey),
+      this.sessionRepo.findLatestSeg(sessionKey),
     ]);
 
     // 内存分页：before 是绝对 index（全量数组下标），纯函数 sliceSessionPage 算切片
     const page = sliceSessionPage(allMessages, before, limit);
 
     return {
-      sessionKey: agentKey,
+      sessionKey,
       messages: page.messages,
       hasMore: page.hasMore,
       firstIndex: page.firstIndex,
@@ -99,7 +111,6 @@ export class AgentLifecycle {
       summary: sessionMem?.content ?? '',
       tasks: (sessionMem?.tasks as Array<Record<string, unknown>>) ?? [],
       lastActiveAt: latestSeg?.lastActiveAt ?? null,
-      relatedMemories: [],
     };
   }
 
@@ -124,25 +135,50 @@ export class AgentLifecycle {
     systemPrompt: string;
     tools: Record<string, any>;
   }> {
-    // agentKey = 草稿级标识(现阶段即 entryContext.sessionKey 的值;前端字段改名留到 U7)
-    const agentKey = dto.entryContext.sessionKey;
-    // 并行加载:user 记忆全文 + 所有者身份 + 本草稿 session 记忆(content + tasks)
-    const [coreMemories, ownerProfile, sessionMem] = await Promise.all([
-      this.memory.loadCore(),
-      this.systemConfigService.getOwnerProfile(),
-      agentKey ? this.memoryRepo.findSession(agentKey) : Promise.resolve(null),
-    ]);
+    // agentKey = 草稿级 agent 实例标识；sessionKey 只表示当前业务聊天。
+    const agentKey =
+      dto.entryContext.agentInstanceKey ?? dto.entryContext.sessionKey;
+    // 并行加载:user 记忆全文(降级) + ownerProfile + sessionMem + 当前画像 + 最近 N 条原始
+    const [coreMemories, ownerProfile, sessionMem, currentView, recentObs] =
+      await Promise.all([
+        this.memory.loadCore(),
+        this.systemConfigService.getOwnerProfile(),
+        agentKey
+          ? this.memoryRepo.findSession(agentKey)
+          : Promise.resolve(null),
+        this.observationRepo.findCurrentView(),
+        this.observationRepo.findRecent(RECENT_OBSERVATIONS_LIMIT),
+      ]);
 
     // tasks 从 session 记忆记录取(替代旧 AgentSession.tasks);content 注入对话脉络
     const tasks = (sessionMem?.tasks as Array<Record<string, unknown>>) ?? [];
 
+    // 文集条目场景 → 后端按需查整集脉络(#150 续,2026-05-31):
+    // 前端不再每轮重发 collectionContext,后端拿到 contentItemId(含 `:`) 自己拼。
+    // 笔记场景 contentItemId 无 `:`,buildCollectionContextForEntry 返 null。
+    // 显式声明成 prompt 期望的 document 类型(含 collectionContext),DTO 已不带这字段
+    let document: BuildSystemPromptParams['document'] =
+      dto.entryContext.document;
+    if (document?.contentItemId.includes(':')) {
+      const collectionContext =
+        await this.anthology.buildCollectionContextForEntry(
+          document.contentItemId,
+        );
+      if (collectionContext) {
+        document = { ...document, collectionContext };
+      }
+    }
+
     const systemPrompt = this.prompt.buildSystemPrompt({
       ownerProfile: ownerProfile.name ? ownerProfile : undefined,
       coreMemories,
-      relatedMemories: dto.relatedMemories,
+      // 2026-05-30 主路径:画像 markdown(无值时降级用 coreMemories 标题索引)
+      memoriesView: currentView?.markdown,
+      recentObservations: recentObs,
       // session 记忆 content = 旧对话提炼出的会话脉络
       sessionMemory: sessionMem?.content || undefined,
-      document: dto.entryContext.document,
+      document,
+      gallery: dto.entryContext.gallery,
       customSystemPrompt: aiConfig.aiSystemPrompt,
       entrySystemPrompt: aiConfig.entrySystemPrompt,
       tasks,
@@ -165,12 +201,69 @@ export class AgentLifecycle {
    * window 随事件带出,供 compaction 按 token 占比判断是否触发(后台,不阻塞响应)。
    */
   async onAfterChat(
-    agentKey: string,
+    sessionKey: string,
     newMessages: Record<string, unknown>[],
     window: number,
+    agentInstanceKey?: string,
   ): Promise<void> {
-    await this.session.save(agentKey, newMessages);
-    this.eventEmitter.emit('agent.afterChat', { agentKey, window });
+    const memoryKey = agentInstanceKey ?? sessionKey;
+    // 持久化失败必须显式记录:本钩子在 streamText.onFinish 里被 void 调用,
+    // 若 session.save 抛错(Mongo 瞬时故障等)且不捕获,本轮对话会静默丢失
+    // (append-only 历史缺这一轮),还会产生进程级 unhandledRejection。
+    try {
+      await this.session.save(sessionKey, newMessages);
+    } catch (err) {
+      this.logger.error(
+        `onAfterChat 持久化失败 sessionKey=${sessionKey}: 本轮 ${newMessages.length} 条消息未入库`,
+        err instanceof Error ? err.stack : String(err),
+      );
+      return; // 未成功持久化则不触发 compaction(无新内容可压缩)
+    }
+    // 2026-05-30 event log:本轮如果有 remember 工具调用 → 异步触发 view refresh。
+    // viewService 内部按"7 天 OR 累积 15 条"双触发条件判断是否真的刷新。
+    // setImmediate 让响应先返回给前端,view 在背景跑;失败 catch 不阻塞下一轮。
+    if (this.hasRememberToolCall(newMessages)) {
+      setImmediate(() => {
+        this.viewService.refreshIfNeeded().catch((err) => {
+          this.logger.error(
+            `view refresh 异常(理论上 service 已 catch,这里兜底): ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+      });
+    }
+
+    this.eventEmitter.emit('agent.afterChat', {
+      agentKey: memoryKey,
+      sessionKey,
+      window,
+    });
+  }
+
+  /**
+   * 扫本轮 newMessages 找 remember 工具调用。
+   *
+   * AI SDK v6 的 assistant message.parts 包含 type='tool-call' / 'tool-result' 等;
+   * 我们只关心 tool-call 阶段(remember 真的被模型决定调用即触发 refresh)。
+   */
+  private hasRememberToolCall(newMessages: Record<string, unknown>[]): boolean {
+    for (const msg of newMessages) {
+      if (msg.role !== 'assistant') continue;
+      const parts = msg.parts as Array<Record<string, unknown>> | undefined;
+      if (!Array.isArray(parts)) continue;
+      for (const p of parts) {
+        const type = p.type as string | undefined;
+        const toolName = (p.toolName ?? p.name) as string | undefined;
+        if (
+          (type === 'tool-call' ||
+            type === 'tool-invocation' ||
+            type?.startsWith('tool-')) &&
+          toolName === 'remember'
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /** 获取草稿 session 记忆中的 tasks(保存后返回给前端刷新 TaskBar) */
@@ -178,6 +271,14 @@ export class AgentLifecycle {
     agentKey: string,
   ): Promise<Array<Record<string, unknown>>> {
     return this.memoryRepo.getTasks(agentKey);
+  }
+
+  async listBusinessSessions(agentInstanceKey: string) {
+    return this.sessionRepo.listBusinessSessions(agentInstanceKey);
+  }
+
+  async renameBusinessSession(sessionKey: string, title: string) {
+    await this.sessionRepo.renameBusinessSession(sessionKey, title);
   }
 
   /**

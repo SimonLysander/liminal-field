@@ -1,5 +1,6 @@
 import { tool, jsonSchema } from 'ai';
 import type { ContentService } from '../../content/content.service';
+import { ContentVisibility } from '../../content/dto/content-query.dto';
 import { toolResult } from './tool-result';
 
 const SCOPE_LABEL: Record<string, string> = {
@@ -17,7 +18,7 @@ const SCOPE_LABEL: Record<string, string> = {
 export function createListKnowledgeBaseTool(contentService: ContentService) {
   return tool({
     description:
-      '列出所有者知识库中已发布内容的目录(标题、范围、文件夹路径、id),不含正文。用于了解"库里到底有哪些内容"。要读全文用 contentItemId 调 read_document_content;要按关键词找用 search_knowledge_base。',
+      '列出所有者知识库内容的目录(标题、范围、文件夹路径、id;最新已提交,不论是否发布),不含正文。用于了解"库里到底有哪些内容"。要读全文用 contentItemId 调 read_document_content;要按关键词找用 search_knowledge_base。',
     inputSchema: jsonSchema<{
       scope?: string;
       limit?: number;
@@ -49,9 +50,16 @@ export function createListKnowledgeBaseTool(contentService: ContentService) {
     }) => {
       try {
         const page = Math.floor(offset / limit) + 1;
-        // 空 query = 列全部已发布;多取 1 条判断 hasMore。枚举不需片段 → withSnippet:false(省查询)
+        // 空 query = 列全部;visibility=all 列最新已提交(含未发布)——发布只是对外状态。
+        // 多取 1 条判断 hasMore。枚举不需片段 → withSnippet:false(省查询)
         const raw = await contentService.searchWithScope(
-          { q: '', scope, page, pageSize: limit + 1 },
+          {
+            q: '',
+            scope,
+            page,
+            pageSize: limit + 1,
+            visibility: ContentVisibility.all,
+          },
           { withSnippet: false },
         );
         const hasMore = raw.length > limit;

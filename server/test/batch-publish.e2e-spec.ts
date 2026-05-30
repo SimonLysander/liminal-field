@@ -111,56 +111,7 @@ describe('Batch Publish (e2e)', () => {
     expect(res.body.data.skippedCount).toBe(0);
   });
 
-  describe('文件夹概览（GET /structure-nodes/:id/overview）', () => {
-    // 先发布所有文档，再验证概览数据
-    beforeAll(async () => {
-      await supertest(ctx.app.getHttpServer())
-        .post('/api/v1/spaces/notes/batch/publish')
-        .set('Cookie', cookie)
-        .send({ folderId })
-        .expect(201);
-    });
-
-    it('概览统计数字正确（3 篇均已发布）', async () => {
-      const res = await supertest(ctx.app.getHttpServer())
-        .get(`/api/v1/structure-nodes/${folderId}/overview`)
-        .set('Cookie', cookie)
-        .expect(200);
-
-      expect(res.body.code).toBe(0);
-      const { stats } = res.body.data;
-      // 3 篇全部发布，没有未发布/待更新的文档
-      expect(stats.docCount).toBe(3);
-      expect(stats.published).toBe(3);
-      expect(stats.unpublished).toBe(0);
-    });
-
-    it('概览 children 数组包含 3 个子项，publishStatus 均为 published', async () => {
-      const res = await supertest(ctx.app.getHttpServer())
-        .get(`/api/v1/structure-nodes/${folderId}/overview`)
-        .set('Cookie', cookie)
-        .expect(200);
-
-      const { children } = res.body.data;
-      expect(children).toHaveLength(3);
-
-      // 每个子项应包含 type、publishStatus、contentItemId 等关键字段
-      for (const child of children) {
-        expect(child.type).toBe('DOC');
-        expect(child.publishStatus).toBe('published');
-        expect(contentItemIds).toContain(child.contentItemId);
-      }
-    });
-
-    it('概览 folder 字段包含文件夹 id 和 name', async () => {
-      const res = await supertest(ctx.app.getHttpServer())
-        .get(`/api/v1/structure-nodes/${folderId}/overview`)
-        .set('Cookie', cookie)
-        .expect(200);
-
-      const { folder } = res.body.data;
-      expect(folder.id).toBe(folderId);
-      expect(folder.name).toBe('批量发布测试文件夹');
-    });
-  });
+  // describe '文件夹概览（GET /structure-nodes/:id/overview）' 已删除 ——
+  // FolderOverviewPanel 组件 2026-05-29 退役后 endpoint 和 service 方法都已清理
+  // (见 commit 0e19c9e),该 endpoint 不再存在。
 });

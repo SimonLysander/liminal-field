@@ -35,6 +35,31 @@ export class AgentEntryConfig {
   /** 默认模型层级：flash / standard / think */
   @prop({ trim: true, default: 'standard' })
   tier!: string;
+
+  /**
+   * 该 agent 使用的 AI provider id(2026-05-30 引入)。fallback 兜底:
+   * 当 4 个 tier 独立 providerId(下方)为空时回退到这个,这个为空时再回退到
+   * 全局 activeAiProviderId。
+   */
+  @prop({ trim: true, default: '' })
+  providerId!: string;
+
+  /**
+   * 4 个 tier 独立 provider 绑定(2026-05-31 引入,#143 用户需求"自由度"):
+   * 每个 tier 调用时优先用对应字段的 provider —— 让用户 mix-and-match。
+   * 任一为空 → 回退到 providerId(上方)→ 回退到全局 activeAiProviderId。
+   */
+  @prop({ trim: true, default: '' })
+  flashProviderId!: string;
+
+  @prop({ trim: true, default: '' })
+  standardProviderId!: string;
+
+  @prop({ trim: true, default: '' })
+  thinkProviderId!: string;
+
+  @prop({ trim: true, default: '' })
+  visionProviderId!: string;
 }
 
 /**
@@ -83,6 +108,13 @@ export class AiProviderConfig {
   thinkModel!: string;
 
   /**
+   * 视觉(多模态)模型名,**可选**——配了画廊 agent 才能看图写图说。
+   * 不是每个 provider 都有视觉模型(如 DeepSeek 无),留空即该 provider 不支持视觉。
+   */
+  @prop({ trim: true, default: '' })
+  visionModel?: string;
+
+  /**
    * 模型上下文窗口(token)。
    * 算 compaction 占比的分母,预设默认、可在 UI 改。
    * deepseek-v3/r1 支持 64k,通义/智谱视具体模型而定,保守默认 32k。
@@ -129,10 +161,6 @@ export class OwnerProfile {
   /** 个人简介（基础能力，如"前端开发、摄影、写作"） */
   @prop({ trim: true, default: '' })
   bio!: string;
-
-  /** 关注领域（如"计算机科学、文学、城市骑行"） */
-  @prop({ trim: true, default: '' })
-  interests!: string;
 }
 
 /**
@@ -186,6 +214,10 @@ export class SystemConfig {
 
   @prop({ trim: true, default: '' })
   mineruToken!: string;
+
+  /** Tavily Web Search API key,空 → web_search 工具不挂载(模型看不到不会调) */
+  @prop({ trim: true, default: '' })
+  tavilyApiKey!: string;
 
   // ── AI ──
 

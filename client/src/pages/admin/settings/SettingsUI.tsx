@@ -4,7 +4,9 @@
  */
 
 import { useState } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, CalendarDays } from 'lucide-react';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 // ── 加载占位 ───────────────────────────────────────────
 
@@ -244,7 +246,7 @@ export function SelectInput({
       disabled={disabled}
       className="mt-1 h-9 w-full rounded-lg px-3 text-sm outline-none disabled:opacity-50"
       style={{
-        background: 'var(--shelf)',
+        background: 'var(--paper-white)',
         color: 'var(--ink)',
         border: '1px solid var(--separator)',
       }}
@@ -255,6 +257,67 @@ export function SelectInput({
         </option>
       ))}
     </select>
+  );
+}
+
+/**
+ * 日期选择器 — Popover + Calendar(shadcn),不用浏览器原生 <input type="date">。
+ * value/onChange 用 YYYY-MM-DD 字符串(空串表示未选)。
+ */
+export function DatePickerField({
+  value,
+  onChange,
+  placeholder = 'yyyy/mm/dd',
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  // 解析 YYYY-MM-DD 时强制本地 0 点,避免按 UTC 解析导致前一天
+  const dateValue = value ? new Date(value + 'T00:00:00') : undefined;
+
+  const handleSelect = (day: Date | undefined) => {
+    if (day) {
+      const yyyy = day.getFullYear();
+      const mm = String(day.getMonth() + 1).padStart(2, '0');
+      const dd = String(day.getDate()).padStart(2, '0');
+      onChange(`${yyyy}-${mm}-${dd}`);
+    } else {
+      onChange('');
+    }
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="mt-1 flex h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-sm outline-none"
+          style={{
+            background: 'var(--paper-white)',
+            color: value ? 'var(--ink)' : 'var(--ink-ghost)',
+            border: '1px solid var(--separator)',
+          }}
+        >
+          <CalendarDays
+            size={14}
+            strokeWidth={1.5}
+            style={{ color: 'var(--ink-ghost)', flexShrink: 0 }}
+          />
+          <span>{value || placeholder}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={dateValue}
+          onSelect={handleSelect}
+          defaultMonth={dateValue}
+        />
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -570,7 +633,7 @@ export function Toggle({
       <span
         className="inline-block h-4 w-4 rounded-full transition-transform duration-200"
         style={{
-          background: '#fff',
+          background: 'var(--paper-white)',
           boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
           transform: checked ? 'translateX(18px)' : 'translateX(2px)',
         }}

@@ -3,7 +3,7 @@ import { Dot, type DotVariant } from '@/components/ui/dot';
 /**
  * SaveStatus — 自动保存状态(L3)
  *
- * 四态一处定义,收编 anthology/edit、DraftWorkspace、FolderOverviewPanel 各自重复的 StatusDot:
+ * 四态一处定义,收编 anthology/edit、DraftWorkspace 各自重复的 StatusDot:
  *   saving 进行中 = 主题色脉动点 · saved 成功 = 绿点 · dirty 未保存 = 中性灰点 · error 失败 = 红点
  */
 export type SaveState = 'saving' | 'saved' | 'dirty' | 'error';

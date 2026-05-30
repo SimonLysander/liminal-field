@@ -1,5 +1,6 @@
 import { tool, jsonSchema } from 'ai';
 import type { ContentService } from '../../content/content.service';
+import { ContentVisibility } from '../../content/dto/content-query.dto';
 import { toolResult } from './tool-result';
 
 const SCOPE_LABEL: Record<string, string> = {
@@ -17,7 +18,7 @@ const SCOPE_LABEL: Record<string, string> = {
 export function createSearchKnowledgeBaseTool(contentService: ContentService) {
   return tool({
     description:
-      '按关键词搜索所有者知识库中已发布的内容(笔记、相册、文集),返回命中标题、范围、时间和片段。要读全文用返回的 contentItemId 调 read_document_content;要看"库里有哪些"用 list_knowledge_base。',
+      '按关键词搜索所有者知识库内容(笔记、相册、文集;最新已提交版本,不论是否发布),返回命中标题、范围、时间和片段。要读全文用返回的 contentItemId 调 read_document_content;要看"库里有哪些"用 list_knowledge_base。',
     inputSchema: jsonSchema<{ query: string; scope?: string; limit?: number }>({
       type: 'object',
       properties: {
@@ -49,11 +50,13 @@ export function createSearchKnowledgeBaseTool(contentService: ContentService) {
       limit?: number;
     }) => {
       try {
-        // 多取 1 条判断 hasMore,不静默丢
+        // 多取 1 条判断 hasMore,不静默丢。
+        // visibility=all:搜最新已提交内容(含未发布)——发布只是对外状态,后台/Aurora 不受限。
         const raw = await contentService.searchWithScope({
           q: query,
           scope,
           pageSize: limit + 1,
+          visibility: ContentVisibility.all,
         });
         const hasMore = raw.length > limit;
         const shown = raw.slice(0, limit);

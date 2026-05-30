@@ -41,7 +41,6 @@ describe('Owner Profile & Memory Management (E2E)', () => {
         name: '',
         birthday: '',
         bio: '',
-        interests: '',
       });
     });
   });
@@ -55,7 +54,6 @@ describe('Owner Profile & Memory Management (E2E)', () => {
           name: 'lux-stirring',
           birthday: '2000-01-15',
           bio: '前端开发、摄影',
-          interests: '计算机科学、文学、城市骑行',
         })
         .expect(200);
 
@@ -67,14 +65,13 @@ describe('Owner Profile & Memory Management (E2E)', () => {
       expect(res.body.data.name).toBe('lux-stirring');
       expect(res.body.data.birthday).toBe('2000-01-15');
       expect(res.body.data.bio).toBe('前端开发、摄影');
-      expect(res.body.data.interests).toBe('计算机科学、文学、城市骑行');
     });
 
     it('应支持部分更新', async () => {
       await supertest(ctx.app.getHttpServer())
         .put('/api/v1/settings/owner-profile')
         .set('Cookie', cookie)
-        .send({ interests: '计算机网络、摄影' })
+        .send({ bio: '摄影、写作' })
         .expect(200);
 
       const res = await supertest(ctx.app.getHttpServer())
@@ -82,10 +79,10 @@ describe('Owner Profile & Memory Management (E2E)', () => {
         .set('Cookie', cookie)
         .expect(200);
 
-      // interests 更新了，其他字段保持不变
+      // bio 更新了，其他字段保持不变
       expect(res.body.data.name).toBe('lux-stirring');
       expect(res.body.data.birthday).toBe('2000-01-15');
-      expect(res.body.data.interests).toBe('计算机网络、摄影');
+      expect(res.body.data.bio).toBe('摄影、写作');
     });
 
     it('所有者信息应出现在 config view 中', async () => {
@@ -177,9 +174,10 @@ describe('Owner Profile & Memory Management (E2E)', () => {
       expect(res.body.data.tasks).toEqual([]);
     });
 
-    it('PUT session 后应在 response 中返回最新 tasks', async () => {
-      // 新架构:tasks 落在 session 记忆记录(by agentKey=testSessionKey),不再在 AgentSession 上。
-      // 通过 memoryRepo.setTasks 注入,模拟 write_tasks 工具的写入路径。
+    it('GET session 加载时应包含 write_tasks 写入的 tasks', async () => {
+      // 后端权威对话上下文改造后,前端不再 PUT 整段会话;tasks 落在 session 记忆记录
+      // (by agentKey=testSessionKey),由 write_tasks 工具写入。这里用 memoryRepo.setTasks
+      // 模拟工具写入路径,然后通过 GET session 校验 tasks 被一并下发。
       const memoryRepo = ctx.app.get(AgentMemoryRepository);
       await memoryRepo.setTasks(testSessionKey, [
         {
@@ -192,27 +190,14 @@ describe('Owner Profile & Memory Management (E2E)', () => {
         },
       ]);
 
-      // PUT 保存消息，response 应包含 tasks
-      const res = await supertest(ctx.app.getHttpServer())
-        .put(`/api/v1/agent/sessions/${testSessionKey}`)
-        .set('Cookie', cookie)
-        .send({ messages: [{ role: 'user', content: 'hello' }] })
-        .expect(200);
-
-      expect(res.body.data.ok).toBe(true);
-      expect(res.body.data.tasks).toBeInstanceOf(Array);
-      expect(res.body.data.tasks.length).toBe(1);
-      expect(res.body.data.tasks[0].id).toBe('task_001');
-      expect(res.body.data.tasks[0].title).toBe('写第一章');
-    });
-
-    it('GET session 加载时也应包含 tasks', async () => {
       const res = await supertest(ctx.app.getHttpServer())
         .get(`/api/v1/agent/sessions/${testSessionKey}`)
         .set('Cookie', cookie)
         .expect(200);
 
+      expect(res.body.data.tasks).toBeInstanceOf(Array);
       expect(res.body.data.tasks.length).toBe(1);
+      expect(res.body.data.tasks[0].id).toBe('task_001');
       expect(res.body.data.tasks[0].title).toBe('写第一章');
     });
   });

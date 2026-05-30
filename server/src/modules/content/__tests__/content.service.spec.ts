@@ -23,6 +23,8 @@ describe('ContentService', () => {
       update: jest.fn(),
       list: jest.fn(),
       listAll: jest.fn(),
+      // V2: searchByKeyword 被 twoPhaseSearch 调用，必须 mock
+      searchByKeyword: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<ContentRepository>;
 
     contentRepoService = {
@@ -30,6 +32,8 @@ describe('ContentService', () => {
       readContentSource: jest.fn(),
       writeReadme: jest.fn(),
       ensureContentScaffold: jest.fn(),
+      // V2: saveContent 调用此方法提取资源引用，必须 mock
+      extractAssetRefs: jest.fn().mockReturnValue([]),
     } as unknown as jest.Mocked<ContentRepoService>;
 
     contentGitService = {
@@ -44,6 +48,8 @@ describe('ContentService', () => {
       listByContentItemId: jest.fn().mockResolvedValue([]),
       findPendingArchive: jest.fn().mockResolvedValue([]),
       backfillCommitHash: jest.fn().mockResolvedValue(undefined),
+      // V2 twoPhaseSearch 需要此方法搜索正文关键字
+      searchContentIdsByBodyKeyword: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<ContentSnapshotRepository>;
 
     ossService = {
@@ -66,14 +72,17 @@ describe('ContentService', () => {
 
   it('returns public content detail from the published version pointer', async () => {
     const now = new Date('2026-04-17T08:00:00.000Z');
+    // V2: latestVersion / publishedVersion 必须带 versionId（hasUnpublishedChanges 用 versionId 比较）
     contentRepository.findById.mockResolvedValue({
       id: 'ci_test',
       latestVersion: {
+        versionId: 'vid_latest',
         commitHash: 'latest123',
         title: 'Latest committed title',
         summary: 'Latest committed summary',
       },
       publishedVersion: {
+        versionId: 'vid_published',
         commitHash: 'published123',
         title: 'Published title',
         summary: 'Published summary',
@@ -91,41 +100,41 @@ describe('ContentService', () => {
       createdAt: now,
       updatedAt: now,
     } as never);
-    contentRepoService.readContentSource.mockResolvedValue({
+    // V2: getContentById 从 snapshotRepository 读正文，而非 readContentSource
+    snapshotRepository.findByVersionId.mockResolvedValue({
+      versionId: 'vid_published',
       bodyMarkdown: '# Published body',
-      plainText: 'Published body',
-      assetRefs: [{ path: './assets/cover.png', type: 'image' }],
-    });
+      title: 'Published title',
+      summary: 'Published summary',
+      createdAt: now,
+    } as never);
 
     const result = await service.getContentById('ci_test');
 
-    expect(contentRepoService.readContentSource.mock.calls).toEqual([
-      ['ci_test', { commitHash: 'published123' }],
-    ]);
+    // V2: 公开视图读 publishedVersion.versionId 对应的 snapshot
+    expect(snapshotRepository.findByVersionId).toHaveBeenCalledWith(
+      'vid_published',
+    );
     expect(result).toMatchObject({
       id: 'ci_test',
       title: 'Published title',
       summary: 'Published summary',
       status: 'published',
-      latestVersion: {
+      latestVersion: expect.objectContaining({
         commitHash: 'latest123',
         title: 'Latest committed title',
         summary: 'Latest committed summary',
-      },
-      publishedVersion: {
+      }),
+      publishedVersion: expect.objectContaining({
         commitHash: 'published123',
         title: 'Published title',
         summary: 'Published summary',
-      },
-      latestCommitHash: 'latest123',
-      publishedCommitHash: 'published123',
-      hasUnpublishedChanges: true,
+      }),
+      hasUnpublishedChanges: true, // versionId 不同 → 有未发布改动
       bodyMarkdown: '# Published body',
-      plainText: 'Published body',
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
     });
-    // assetRefs 已从 ContentDetailDto 移除（V2 snapshot 体系不再暴露此字段）
     expect(result.changeLogs).toEqual([
       {
         commitHash: 'latest123',
@@ -143,11 +152,13 @@ describe('ContentService', () => {
     contentRepository.findById.mockResolvedValue({
       id: 'ci_test',
       latestVersion: {
+        versionId: 'vid_latest',
         commitHash: 'latest123',
         title: 'Latest committed title',
         summary: 'Latest committed summary',
       },
       publishedVersion: {
+        versionId: 'vid_published',
         commitHash: 'published123',
         title: 'Published title',
         summary: 'Published summary',
@@ -156,25 +167,27 @@ describe('ContentService', () => {
       createdAt: now,
       updatedAt: now,
     } as never);
-    contentRepoService.readContentSource.mockResolvedValue({
+    // V2: admin 视图读 latestVersion.versionId 对应的 snapshot
+    snapshotRepository.findByVersionId.mockResolvedValue({
+      versionId: 'vid_latest',
       bodyMarkdown: '# Latest committed body',
-      plainText: 'Latest committed body',
-      assetRefs: [],
-    });
+      title: 'Latest committed title',
+      summary: 'Latest committed summary',
+      createdAt: now,
+    } as never);
 
     const result = await service.getContentById('ci_test', {
       visibility: ContentVisibility.all,
     });
 
-    expect(contentRepoService.readContentSource.mock.calls).toEqual([
-      ['ci_test', { commitHash: undefined }],
-    ]);
+    // admin 视图传 latestVersion.versionId
+    expect(snapshotRepository.findByVersionId).toHaveBeenCalledWith(
+      'vid_latest',
+    );
     expect(result).toMatchObject({
       title: 'Latest committed title',
       summary: 'Latest committed summary',
       status: 'published',
-      latestCommitHash: 'latest123',
-      publishedCommitHash: 'published123',
       hasUnpublishedChanges: true,
     });
   });
@@ -184,7 +197,8 @@ describe('ContentService', () => {
     contentRepository.create.mockResolvedValue({
       id: 'ci_test',
       latestVersion: {
-        commitHash: 'init123',
+        versionId: 'vid_init',
+        commitHash: '',
         title: 'React Hooks Intro',
         summary: 'Hooks summary',
       },
@@ -193,6 +207,9 @@ describe('ContentService', () => {
       createdAt: now,
       updatedAt: now,
     } as never);
+    // V2: createContent 先写初始 snapshot 再建 ContentItem，snapshot.create 须有合理返回
+    snapshotRepository.create.mockResolvedValue({} as never);
+
     await service.createContent({
       title: 'React Hooks Intro',
       summary: 'Hooks summary',
@@ -203,13 +220,15 @@ describe('ContentService', () => {
     expect(
       contentGitService.recordCommittedContentChange.mock.calls,
     ).toHaveLength(0);
+
+    // V2: create 载荷包含 versionId，commitHash 初始为空字符串
     expect(contentRepository.create.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({
-        latestVersion: {
+        latestVersion: expect.objectContaining({
           commitHash: '',
           title: 'React Hooks Intro',
           summary: 'Hooks summary',
-        },
+        }),
         publishedVersion: null,
         changeLogs: [],
       }),
@@ -221,6 +240,7 @@ describe('ContentService', () => {
     contentRepository.findById.mockResolvedValue({
       id: 'ci_test',
       latestVersion: {
+        versionId: 'vid_head',
         commitHash: 'head123',
         title: 'Committed article',
         summary: 'Committed summary',
@@ -240,6 +260,7 @@ describe('ContentService', () => {
     contentRepository.findById.mockResolvedValue({
       id: 'ci_test',
       latestVersion: {
+        versionId: 'vid_head',
         commitHash: 'head123',
         title: 'Committed article',
         summary: 'Committed summary',
@@ -248,11 +269,13 @@ describe('ContentService', () => {
       createdAt: now,
       updatedAt: now,
     } as never);
-    contentRepoService.readContentSource.mockResolvedValue({
+    snapshotRepository.findByVersionId.mockResolvedValue({
+      versionId: 'vid_head',
       bodyMarkdown: '# Committed',
-      plainText: 'Committed',
-      assetRefs: [],
-    });
+      title: 'Committed article',
+      summary: 'Committed summary',
+      createdAt: now,
+    } as never);
 
     const result = await service.getContentById('ci_test', {
       visibility: ContentVisibility.all,
@@ -260,37 +283,41 @@ describe('ContentService', () => {
 
     expect(result).toMatchObject({
       id: 'ci_test',
+      // publishedVersion 为 null → status = committed
       status: 'committed',
-      latestCommitHash: 'head123',
       hasUnpublishedChanges: false,
     });
   });
 
   it('searches plain text when title and summary do not match', async () => {
     const now = new Date('2026-04-17T08:00:00.000Z');
-    contentRepository.listAll.mockResolvedValue([
-      {
-        id: 'ci_test',
-        latestVersion: {
-          commitHash: 'latest123',
-          title: 'React Hooks Intro',
-          summary: 'Hooks summary',
-        },
-        publishedVersion: {
-          commitHash: 'published123',
-          title: 'Published hooks intro',
-          summary: 'Published hooks summary',
-        },
-        changeLogs: [],
-        createdAt: now,
-        updatedAt: now,
+    const item = {
+      id: 'ci_test',
+      latestVersion: {
+        versionId: 'vid_latest',
+        commitHash: 'latest123',
+        title: 'React Hooks Intro',
+        summary: 'Hooks summary',
       },
-    ] as never);
-    contentRepoService.readContentSource.mockResolvedValue({
-      bodyMarkdown: '# Title',
-      plainText: 'Detailed explanation of suspense boundaries',
-      assetRefs: [],
-    });
+      publishedVersion: {
+        versionId: 'vid_published',
+        commitHash: 'published123',
+        title: 'Published hooks intro',
+        summary: 'Published hooks summary',
+      },
+      changeLogs: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    // 阶段1：标题/摘要搜索无结果
+    contentRepository.searchByKeyword.mockResolvedValue([] as never);
+    // 阶段2：正文全文搜索命中 ci_test
+    snapshotRepository.searchContentIdsByBodyKeyword.mockResolvedValue([
+      'ci_test',
+    ]);
+    // 正文搜索后按 id 回查 ContentItem
+    contentRepository.findById.mockResolvedValue(item as never);
 
     const result = await service.searchContents({ q: 'suspense' });
 
@@ -316,36 +343,48 @@ describe('ContentService', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('returns content history through the git service', async () => {
+  it('returns content history through the snapshot repository', async () => {
     const now = new Date('2026-04-20T08:00:00.000Z');
     contentRepository.findById.mockResolvedValue({
       id: 'ci_test',
       latestVersion: {
+        versionId: 'vid_abc',
         commitHash: 'abc123',
         title: 'History article',
         summary: 'History summary',
       },
-      changeLogs: [],
+      // changeLogs 匹配 snapshot 的 changeNote 和 changeType
+      changeLogs: [
+        {
+          createdAt: now,
+          changeType: 'patch',
+          changeNote: 'content(ci_test): Commit history',
+        },
+      ],
       createdAt: now,
       updatedAt: now,
     } as never);
-    contentGitService.listContentHistory.mockResolvedValue([
+    // V2: getContentHistory 从 snapshotRepository.listByContentItemId 读取
+    snapshotRepository.listByContentItemId.mockResolvedValue([
       {
+        versionId: 'vid_abc',
         commitHash: 'abc123',
-        committedAt: now.toISOString(),
-        authorName: 'Liminal Field',
-        authorEmail: 'no-reply@liminal-field.local',
-        message: 'content(ci_test): Commit history',
-        action: 'commit',
+        createdAt: now,
+        changeNote: 'content(ci_test): Commit history',
+        source: 'user',
+        title: 'History article',
       },
     ] as never);
 
     const result = await service.getContentHistory('ci_test');
 
     expect(result).toHaveLength(1);
+    // V2: history entry 字段：versionId、commitHash、changeNote、source、title
     expect(result[0]).toMatchObject({
+      versionId: 'vid_abc',
       commitHash: 'abc123',
-      action: 'commit',
+      changeNote: 'content(ci_test): Commit history',
+      source: 'user',
     });
   });
 
@@ -355,6 +394,7 @@ describe('ContentService', () => {
       _id: 'ci_test',
       id: 'ci_test',
       latestVersion: {
+        versionId: 'vid_before',
         commitHash: 'before123',
         title: 'Before',
         summary: 'Before',
@@ -369,7 +409,8 @@ describe('ContentService', () => {
     contentRepository.update.mockResolvedValue({
       id: 'ci_test',
       latestVersion: {
-        commitHash: 'after123',
+        versionId: 'vid_after',
+        commitHash: '',
         title: 'After',
         summary: 'After',
       },
@@ -378,11 +419,8 @@ describe('ContentService', () => {
       createdAt: now,
       updatedAt: now,
     } as never);
-    contentRepoService.readContentSource.mockResolvedValue({
-      bodyMarkdown: '# After',
-      plainText: 'After',
-      assetRefs: [],
-    });
+    snapshotRepository.create.mockResolvedValue({} as never);
+    // archiveToGit 是 fire-and-forget，recordCommittedContentChange 在后台异步调用
     contentGitService.recordCommittedContentChange.mockResolvedValue(
       'after123',
     );
@@ -396,19 +434,19 @@ describe('ContentService', () => {
       action: ContentSaveAction.commit,
     });
 
-    expect(contentGitService.recordCommittedContentChange.mock.calls).toEqual([
-      ['ci_test', 'Commit committed content'],
-    ]);
+    // V2: saveContent commit 先写 MongoDB（update 被调用），Git 是后台 fire-and-forget
     expect(contentRepository.update.mock.calls[0]?.[1]).toEqual(
       expect.objectContaining({
-        latestVersion: {
-          commitHash: 'after123',
+        latestVersion: expect.objectContaining({
+          commitHash: '', // 异步回填前 commitHash 为空
           title: 'After',
           summary: 'After',
-        },
+        }),
         publishedVersion: null,
       }),
     );
+    // snapshotRepository.create 被调用（V2 commit 先写 snapshot）
+    expect(snapshotRepository.create).toHaveBeenCalled();
   });
 
   it('publishes a committed version by moving the public pointer without writing git', async () => {
@@ -417,6 +455,8 @@ describe('ContentService', () => {
       _id: 'ci_test',
       id: 'ci_test',
       latestVersion: {
+        // V2: publish 必须有 versionId，否则 enforceActionStateTransition 报错
+        versionId: 'vid_committed',
         commitHash: 'after123',
         title: 'Committed title',
         summary: 'Committed summary',
@@ -431,11 +471,13 @@ describe('ContentService', () => {
     contentRepository.update.mockResolvedValue({
       id: 'ci_test',
       latestVersion: {
+        versionId: 'vid_committed',
         commitHash: 'after123',
         title: 'Committed title',
         summary: 'Committed summary',
       },
       publishedVersion: {
+        versionId: 'vid_committed',
         commitHash: 'after123',
         title: 'Committed title',
         summary: 'Committed summary',
@@ -444,11 +486,14 @@ describe('ContentService', () => {
       createdAt: now,
       updatedAt: now,
     } as never);
-    contentRepoService.readContentSource.mockResolvedValue({
+    // publish 操作后读 latestVersion snapshot 构建响应
+    snapshotRepository.findByVersionId.mockResolvedValue({
+      versionId: 'vid_committed',
       bodyMarkdown: '# After',
-      plainText: 'After',
-      assetRefs: [],
-    });
+      title: 'Committed title',
+      summary: 'Committed summary',
+      createdAt: now,
+    } as never);
 
     await service.saveContent('ci_test', {
       title: 'stale title from formal page',
@@ -459,22 +504,25 @@ describe('ContentService', () => {
       action: ContentSaveAction.publish,
     });
 
+    // 发布只移动指针，不写 Git，不写 Markdown
     expect(contentGitService.recordCommittedContentChange.mock.calls).toEqual(
       [],
     );
     expect(contentRepoService.writeMainMarkdown.mock.calls).toEqual([]);
+    // update 被调用，publishedVersion 指向 latestVersion
     expect(contentRepository.update.mock.calls[0]?.[1]).toEqual(
       expect.objectContaining({
-        latestVersion: {
+        latestVersion: expect.objectContaining({
+          versionId: 'vid_committed',
           commitHash: 'after123',
           title: 'Committed title',
           summary: 'Committed summary',
-        },
-        publishedVersion: {
+        }),
+        publishedVersion: expect.objectContaining({
           commitHash: 'after123',
           title: 'Committed title',
           summary: 'Committed summary',
-        },
+        }),
       }),
     );
   });
@@ -484,11 +532,14 @@ describe('ContentService', () => {
     contentRepository.findById.mockResolvedValue({
       id: 'ci_test',
       latestVersion: {
+        // 同一 versionId → latest 与 published 完全一致 → 不能重复发布
+        versionId: 'vid_published',
         commitHash: 'published123',
         title: 'Published article',
         summary: 'Published summary',
       },
       publishedVersion: {
+        versionId: 'vid_published',
         commitHash: 'published123',
         title: 'Published article',
         summary: 'Published summary',
@@ -516,11 +567,13 @@ describe('ContentService', () => {
       _id: 'ci_test',
       id: 'ci_test',
       latestVersion: {
+        versionId: 'vid_published',
         commitHash: 'published123',
         title: 'Latest committed title',
         summary: 'Latest committed summary',
       },
       publishedVersion: {
+        versionId: 'vid_published',
         commitHash: 'published123',
         title: 'Published article',
         summary: 'Published summary',
@@ -535,11 +588,13 @@ describe('ContentService', () => {
     contentRepository.update.mockResolvedValue({
       id: 'ci_test',
       latestVersion: {
-        commitHash: 'new123',
+        versionId: 'vid_new',
+        commitHash: '',
         title: 'Latest committed title',
         summary: 'Latest committed summary',
       },
       publishedVersion: {
+        versionId: 'vid_published',
         commitHash: 'published123',
         title: 'Published article',
         summary: 'Published summary',
@@ -548,11 +603,7 @@ describe('ContentService', () => {
       createdAt: now,
       updatedAt: now,
     } as never);
-    contentRepoService.readContentSource.mockResolvedValue({
-      bodyMarkdown: '# Changed',
-      plainText: 'Changed',
-      assetRefs: [],
-    });
+    snapshotRepository.create.mockResolvedValue({} as never);
     contentGitService.recordCommittedContentChange.mockResolvedValue('new123');
 
     const result = await service.saveContent('ci_test', {
@@ -564,14 +615,12 @@ describe('ContentService', () => {
       action: ContentSaveAction.commit,
     });
 
-    expect(contentGitService.recordCommittedContentChange.mock.calls).toEqual([
-      ['ci_test', 'Commit from published'],
-    ]);
+    // 新版本 versionId 不同于 publishedVersion → 有未发布改动
     expect(result).toMatchObject({
       status: 'published',
-      latestCommitHash: 'new123',
-      publishedCommitHash: 'published123',
       hasUnpublishedChanges: true,
     });
+    // commit 创建了新 snapshot
+    expect(snapshotRepository.create).toHaveBeenCalled();
   });
 });
