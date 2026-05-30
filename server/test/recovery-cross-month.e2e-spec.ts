@@ -44,7 +44,12 @@ describe('跨月恢复 (e2e, 本地 bare 仓当远端)', () => {
   afterAll(async () => {
     await ctx.teardown();
     if (bareRemoteDir)
-      await rm(bareRemoteDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      await rm(bareRemoteDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
     if (prevRemoteUrl === undefined) delete process.env.KB_REMOTE_URL;
     else process.env.KB_REMOTE_URL = prevRemoteUrl;
     if (prevToken === undefined) delete process.env.KB_GIT_TOKEN;

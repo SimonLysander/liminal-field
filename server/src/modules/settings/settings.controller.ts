@@ -315,7 +315,7 @@ export class SettingsController {
 
   /** 返回可用工具池(供 AgentTab UI 渲染 checkbox 列表) */
   @Get('agent-configs/available-tools')
-  async getAvailableTools(): Promise<string[]> {
+  getAvailableTools(): string[] {
     return this.systemConfigService.getAvailableTools();
   }
 

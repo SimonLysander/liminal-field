@@ -195,6 +195,7 @@ function MemoryGroup({
   const [page, setPage] = useState(1);
   // memories 变化时(搜索过滤)重置到第一页
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 由外部 memories prop 变化驱动,非渲染期同步
     setPage(1);
   }, [memories.length]);
 

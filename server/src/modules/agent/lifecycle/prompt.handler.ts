@@ -159,8 +159,16 @@ ${ownerName} 当前正在编辑文档《${title || '未命名'}》(约 ${wordCou
       // <collection>:文集场景才有——本条目所属整集的脉络(集合标题/描述 + 同集条目列表 +
       // 当前位置),让 Aurora 编辑单条时知道它在整集里的位置与邻篇,改稿能顾及整体连贯。
       // 笔记场景无 collectionContext,不注入。
-      const collectionContext = params.document.collectionContext?.trim();
-      if (collectionContext) {
+      // 按需加载守卫(#143):脉络字符串 > 1500 字符时截断,详情让模型调 list_knowledge_base /
+      // read_collection_entry 按需取——避免长集合膨胀 prompt。
+      const collectionContextRaw = params.document.collectionContext?.trim();
+      if (collectionContextRaw) {
+        const LIMIT = 1500;
+        const collectionContext =
+          collectionContextRaw.length > LIMIT
+            ? collectionContextRaw.slice(0, LIMIT) +
+              '\n…(完整条目列表已截断,用 list_knowledge_base 看完整结构)'
+            : collectionContextRaw;
         sections.push(
           `<collection>\n${collectionContext}\n\n(需要看同集某篇的内容,用 read_collection_entry 传它的 entryKey;当前这篇用 get_current_draft)\n</collection>`,
         );

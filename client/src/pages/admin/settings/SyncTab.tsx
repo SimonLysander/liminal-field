@@ -240,9 +240,9 @@ export function SyncTab() {
 
   // config 加载后同步 form
   useEffect(() => {
-    if (config) {
-      setFormUrl(config.remoteUrl ?? '');
-    }
+    if (!config) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- config 从外部 fetch 拿到后填表
+    setFormUrl(config.remoteUrl ?? '');
   }, [config]);
 
   const remoteUrlDirty = formUrl.trim() !== (config?.remoteUrl ?? '').trim();
@@ -292,11 +292,13 @@ export function SyncTab() {
   const [savingGit, setSavingGit] = useState(false);
 
   useEffect(() => {
-    if (config) {
-      setGitName(config.gitAuthorName ?? '');
-      setGitEmail(config.gitAuthorEmail ?? '');
-      setGitCron(config.gitSyncCron ?? '');
-    }
+    if (!config) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- config 来自外部 fetch,非渲染期同步表单
+    setGitName(config.gitAuthorName ?? '');
+     
+    setGitEmail(config.gitAuthorEmail ?? '');
+     
+    setGitCron(config.gitSyncCron ?? '');
   }, [config]);
 
   const gitDirty =

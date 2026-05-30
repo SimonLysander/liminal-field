@@ -50,7 +50,12 @@ describe('统一页面树:同步 + 灾难恢复 (e2e, 本地 bare 仓当远端)'
   afterAll(async () => {
     await ctx.teardown();
     if (bareRemoteDir)
-      await rm(bareRemoteDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      await rm(bareRemoteDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
     if (prevRemoteUrl === undefined) delete process.env.KB_REMOTE_URL;
     else process.env.KB_REMOTE_URL = prevRemoteUrl;
     if (prevToken === undefined) delete process.env.KB_GIT_TOKEN;
@@ -188,7 +193,12 @@ describe('统一页面树:同步 + 灾难恢复 (e2e, 本地 bare 仓当远端)'
       | undefined;
     expect(fNode?.type).toBe('FOLDER');
     expect(fNode?.children?.some((c) => c.contentItemId === C.ci)).toBe(true);
-    await rm(clone.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    await rm(clone.dir, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
 
     // 灾难 → 恢复
     await wipeMongoAndSync();
@@ -276,7 +286,12 @@ describe('统一页面树:同步 + 灾难恢复 (e2e, 本地 bare 仓当远端)'
       (n) => n.name === 'C场景空壳文件夹',
     ) as { children?: Array<{ contentItemId: string }> } | undefined;
     expect(fNode?.children?.some((c) => c.contentItemId === C.ci)).toBe(true);
-    await rm(clone.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    await rm(clone.dir, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
 
     // 灾难 → 恢复
     await wipeMongoAndSync();
