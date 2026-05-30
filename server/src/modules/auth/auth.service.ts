@@ -2,7 +2,6 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { SystemConfigRepository } from '../settings/system-config.repository';
-import type { TrustedDevice } from '../settings/system-config.entity';
 
 /**
  * AuthService — 管理员认证。
@@ -51,16 +50,29 @@ export class AuthService implements OnModuleInit {
   /** 信任设备：存 token + 设备信息 */
   async trustDevice(userAgent: string): Promise<string> {
     const token = randomUUID();
-    const device: TrustedDevice = {
-      token,
-      name: this.parseDeviceName(userAgent),
-      userAgent,
-      trustedAt: new Date(),
-    };
+    const name = this.parseDeviceName(userAgent);
 
     const config = await this.configRepo.get();
     const devices = config?.trustedDevices ?? [];
-    devices.push(device);
+
+    // 同设备(按 parseDeviceName 指纹)已信任过 → 复用该条记录、轮换 token、
+    // 刷新 trustedAt; 避免每次登录无脑 push 新条目(过去同台 Mac + Chrome
+    // 反复登录会积累一堆同名 record,见 SecurityTab 列表)。
+    // lastUsedAt 不动:其语义是"此设备最近访问"、与 token 轮换无关。
+    const existing = devices.find((d) => d.name === name);
+    if (existing) {
+      existing.token = token;
+      existing.userAgent = userAgent;
+      existing.trustedAt = new Date();
+    } else {
+      devices.push({
+        token,
+        name,
+        userAgent,
+        trustedAt: new Date(),
+      });
+    }
+
     await this.configRepo.patch({ trustedDevices: devices });
     return token;
   }
