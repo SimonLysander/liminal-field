@@ -113,12 +113,16 @@ export class PromptHandler {
 - 发现值得长期记住的信息,随手 remember(context 会重置,没记的会丢)
 </tools>`);
 
-    // 4. ——— Core Memories：type=user 全文 ———
+    // 4. ——— User 记忆：标题索引(2026-05-31 按需化,#150)———
+    // 此前全文注入,user 记忆增长后会膨胀 prompt;改成只塞标题索引,
+    // 要看任一条全文调 recall_memory(title);索引外想查调 search_memories(query)。
     if (params.coreMemories.length > 0) {
-      const lines = params.coreMemories
-        .map((m) => `[${m.title}]\n${m.content}`)
-        .join('\n\n');
-      sections.push(`<core_memories>\n${lines}\n</core_memories>`);
+      const titles = params.coreMemories
+        .map((m) => `- ${m.title}`)
+        .join('\n');
+      sections.push(
+        `<memories_index>\n你对所有者有 ${params.coreMemories.length} 条长期认知。这里只列标题,要看任一条全文调 recall_memory(title);想模糊查内容调 search_memories(query):\n${titles}\n</memories_index>`,
+      );
     }
 
     // 5. ——— 本 session 的召回记忆 + 对话脉络 ———

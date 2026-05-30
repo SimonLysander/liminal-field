@@ -172,13 +172,15 @@ describe('PromptHandler.buildSystemPrompt', () => {
   });
 
   describe('记忆分节按需注入', () => {
-    it('coreMemories 注入全文', () => {
+    it('coreMemories 改注入标题索引(#150 2026-05-31:全文按需 recall)', () => {
       const out = handler.buildSystemPrompt(
         baseParams({ coreMemories: [mem('身份', '我是写作者')] }),
       );
-      expect(out).toContain('<core_memories>');
-      expect(out).toContain('[身份]');
-      expect(out).toContain('我是写作者');
+      expect(out).toContain('<memories_index>');
+      expect(out).toContain('- 身份');
+      expect(out).toContain('recall_memory');
+      // 全文不再注入,需调工具
+      expect(out).not.toContain('我是写作者');
     });
 
     it('relatedMemories / sessionMemory 有才注入', () => {
@@ -224,7 +226,7 @@ describe('PromptHandler.buildSystemPrompt', () => {
     });
   });
 
-  it('分节顺序:owner→role→tools→core_memories→instructions→current_context→tasks', () => {
+  it('分节顺序:owner→role→tools→memories_index→instructions→current_context→tasks', () => {
     const out = handler.buildSystemPrompt(
       baseParams({
         ownerProfile: { name: '阿秋', birthday: '', bio: '' },
@@ -237,7 +239,7 @@ describe('PromptHandler.buildSystemPrompt', () => {
       '<owner>',
       '<role>',
       '<tools>',
-      '<core_memories>',
+      '<memories_index>',
       '<instructions>',
       '<current_context>',
       '<tasks>',
