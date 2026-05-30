@@ -206,7 +206,7 @@ function App() {
           <Route path="notes" element={<Suspense fallback={<LoadingState variant="full" />}><ContentAdmin /></Suspense>} />
           <Route path="anthology" element={<Suspense fallback={<LoadingState variant="full" />}><AnthologyAdmin /></Suspense>} />
           <Route path="gallery" element={<Suspense fallback={<LoadingState variant="full" />}><GalleryAdmin /></Suspense>} />
-          <Route path="settings" element={<Navigate to="/admin/settings/sync" replace />} />
+          <Route path="settings" element={<Navigate to="/admin/settings/owner" replace />} />
           <Route path="settings/:tab" element={<Suspense fallback={<LoadingState variant="full" />}><SettingsPage /></Suspense>} />
         </Route>
         <Route
