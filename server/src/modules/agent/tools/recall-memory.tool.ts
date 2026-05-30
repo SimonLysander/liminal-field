@@ -37,11 +37,9 @@ export function createRecallMemoryTool(memoryRepo: AgentMemoryRepository) {
           { status: 'not_found' },
         );
       }
-      return toolResult(
-        `[${memory.title}]\n${memory.content}`,
-        undefined,
-        { status: 'ok' },
-      );
+      return toolResult(`[${memory.title}]\n${memory.content}`, undefined, {
+        status: 'ok',
+      });
     },
   });
 }

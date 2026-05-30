@@ -9,8 +9,8 @@
  * 1. <owner>     — 介绍所有者（在陪伴谁，有才注入）
  * 2. <role>      — Aurora 是谁（灵魂/人设：另一个自我、最懂你的朋友；固定）
  * 3. <tools>     — 工具能力 + Read-before-Edit 协议 + remember 记忆协议（固定）
- * 4. <core_memories>   — type=user 记忆全文（有才注入）
- * 5. <related_memories> + <conversation_summary> — 本 session 的召回记忆与脉络（有才注入）
+ * 4. <memories_index>  — type=user 记忆标题索引（有才注入；全文按需走 recall_memory）
+ * 5. <conversation_summary> — 本 session 的对话脉络（有才注入）
  * 6. <instructions>    — 行为约束（含 bodyHash 改稿纪律，固定）
  * 7. <current_context> — 当前业务场景：在写哪篇（只点名，正文不直接注入）
  * 8. <outline>         — 文档大纲（h1-h3 标题列表，有标题才注入）
@@ -35,10 +35,8 @@ export interface BuildSystemPromptParams {
     birthday: string;
     bio: string;
   };
-  /** type=user 的记忆（始终全文注入） */
+  /** type=user 的记忆（注入标题索引；全文走 recall_memory 按需读，#150 2026-05-31） */
   coreMemories: AgentMemory[];
-  /** 前端传入的相关召回记忆（全文注入，可选） */
-  relatedMemories?: Array<{ title: string; content: string }>;
   /**
    * 本草稿 session 记忆的 content（compaction 把超窗口旧对话提炼出的会话脉络）。
    * 替代旧 sessionSummary——脉络的归宿是 session 记忆,不再有独立 summary 概念。
@@ -117,23 +115,14 @@ export class PromptHandler {
     // 此前全文注入,user 记忆增长后会膨胀 prompt;改成只塞标题索引,
     // 要看任一条全文调 recall_memory(title);索引外想查调 search_memories(query)。
     if (params.coreMemories.length > 0) {
-      const titles = params.coreMemories
-        .map((m) => `- ${m.title}`)
-        .join('\n');
+      const titles = params.coreMemories.map((m) => `- ${m.title}`).join('\n');
       sections.push(
         `<memories_index>\n你对所有者有 ${params.coreMemories.length} 条长期认知。这里只列标题,要看任一条全文调 recall_memory(title);想模糊查内容调 search_memories(query):\n${titles}\n</memories_index>`,
       );
     }
 
-    // 5. ——— 本 session 的召回记忆 + 对话脉络 ———
-    if (params.relatedMemories && params.relatedMemories.length > 0) {
-      const lines = params.relatedMemories
-        .map((m) => `[${m.title}]\n${m.content}`)
-        .join('\n\n');
-      sections.push(
-        `<related_memories>\n与当前文档相关的记忆（已自动召回）：\n${lines}\n</related_memories>`,
-      );
-    }
+    // 5. ——— 本 session 的对话脉络（compaction 提炼）———
+    // 注:relatedMemories 自动召回已废,#150 改为模型主动调 recall_memory/search_memories 按需读
     if (params.sessionMemory) {
       sections.push(
         `<conversation_summary>\n以下是本次会话的脉络记忆（更早的对话已被提炼进记忆，原文仍可用 read_conversation_history 精确回溯）：\n${params.sessionMemory}\n</conversation_summary>`,

@@ -212,7 +212,9 @@ describe('Batch Import (e2e)', () => {
       // 找到创建的文档：通过 listStructureNodes 拿父节点下的子项
       // (此前用 GET /structure-nodes/:id/overview,该 endpoint 已随 FolderOverviewPanel 退役)
       const listRes = await supertest(ctx.app.getHttpServer())
-        .get(`/api/v1/structure-nodes?parentId=${parentId}&visibility=all&scope=notes`)
+        .get(
+          `/api/v1/structure-nodes?parentId=${parentId}&visibility=all&scope=notes`,
+        )
         .set('Cookie', cookie)
         .expect(200);
 

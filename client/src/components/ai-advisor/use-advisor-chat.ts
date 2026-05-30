@@ -19,8 +19,8 @@
  * - firstIndexRef 记录懒加载游标，onLoadMore 时传 before=firstIndex
  * - 懒加载拼接：把旧页消息 prepend 到当前 messages 头部，用户无感分段
  *
- * U6 变更（relatedMemories）：
- * - project 自动召回已删，relatedMemories 恒为空数组，前端不再维护该字段
+ * 上下文按需化（#150, 2026-05-31）：
+ * - 自动召回 relatedMemories 已彻底删除（字段也清掉了），模型主动调 recall_memory/search_memories
  * - session 记忆脉络由后端注入 system prompt，前端 transport body 无需回传
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -495,7 +495,6 @@ function buildAgentRequestBody({
   return {
     tier,
     agentKey,
-    // relatedMemories 字段已在 U6 废弃（恒空），不再传给后端
     // v3 协议：anchor/anchors/references 字段已删，chips 拼进 user message text
     entryContext: {
       source,

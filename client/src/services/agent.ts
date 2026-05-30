@@ -14,7 +14,9 @@ export interface SessionTask {
  * - firstIndex：当前页第一条消息的绝对 index，下次懒加载传 before=firstIndex
  * - summary：session 记忆 content（由 compaction 提炼的对话脉络，后端注入 system prompt）
  * - tasks：session 记忆中的写作计划
- * - relatedMemories：U6 起恒为空数组，保留字段兼容前端结构，前端不使用
+ *
+ * 注:relatedMemories 字段已于 #150(2026-05-31) 彻底删除——自动召回已废,
+ * 模型主动调 recall_memory / search_memories 按需读
  */
 export interface SessionData {
   sessionKey: string;
@@ -23,7 +25,6 @@ export interface SessionData {
   firstIndex: number;
   summary: string;
   tasks: SessionTask[];
-  relatedMemories: never[];
   lastActiveAt: string | null;
 }
 

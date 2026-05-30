@@ -183,20 +183,16 @@ describe('PromptHandler.buildSystemPrompt', () => {
       expect(out).not.toContain('我是写作者');
     });
 
-    it('relatedMemories / sessionMemory 有才注入', () => {
+    it('sessionMemory 有才注入(relatedMemories 已删,#150 走 recall_memory)', () => {
       const without = handler.buildSystemPrompt(baseParams());
-      expect(without).not.toContain('<related_memories>');
       expect(without).not.toContain('<conversation_summary>');
 
       const out = handler.buildSystemPrompt(
         baseParams({
-          relatedMemories: [{ title: '召回', content: '相关内容' }],
           // session 记忆 content(脉络),替代旧 sessionSummary
           sessionMemory: '之前会话的脉络',
         }),
       );
-      expect(out).toContain('<related_memories>');
-      expect(out).toContain('相关内容');
       expect(out).toContain('<conversation_summary>');
       expect(out).toContain('之前会话的脉络');
     });

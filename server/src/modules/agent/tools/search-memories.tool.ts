@@ -24,7 +24,8 @@ export function createSearchMemoriesTool(memoryRepo: AgentMemoryRepository) {
       properties: {
         query: {
           type: 'string',
-          description: '搜索关键词(模糊匹配 title + content)。空串则按更新时间倒序',
+          description:
+            '搜索关键词(模糊匹配 title + content)。空串则按更新时间倒序',
         },
       },
       required: ['query'],
@@ -44,11 +45,9 @@ export function createSearchMemoriesTool(memoryRepo: AgentMemoryRepository) {
       const candidates = matched.slice(0, MAX_RESULTS);
 
       if (candidates.length === 0) {
-        return toolResult(
-          `没找到匹配「${query}」的记忆。`,
-          undefined,
-          { status: 'not_found' },
-        );
+        return toolResult(`没找到匹配「${query}」的记忆。`, undefined, {
+          status: 'not_found',
+        });
       }
 
       const lines = candidates.map((m) => `- ${m.title}`).join('\n');

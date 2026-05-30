@@ -110,15 +110,6 @@ export class AgentChatDto {
   @IsOptional()
   tier?: 'flash' | 'standard' | 'think';
 
-  /** 前端传入的相关召回记忆，注入 system prompt */
-  @Allow()
-  relatedMemories?: Array<{
-    key: string;
-    type: string;
-    title: string;
-    content: string;
-  }>;
-
   /** agent 入口标识，如 "writing-advisor"，用于加载对应 AgentEntryConfig */
   @IsString()
   @IsOptional()

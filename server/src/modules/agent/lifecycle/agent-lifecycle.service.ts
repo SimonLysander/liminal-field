@@ -58,9 +58,6 @@ export class AgentLifecycle {
    *
    * 返回的 summary = 本草稿 session 记忆 content(对话脉络);tasks = session 记忆的写作计划。
    * 不再有 totalRounds(轮数概念已废弃)。
-   *
-   * relatedMemories 恒为空数组:project 自动召回已随 project 记忆类型一并删除;
-   * 该字段为兼容前端响应结构暂留(前端契约清理留到 U7)。
    */
   async onSessionLoad(
     sessionKey: string,
@@ -80,8 +77,6 @@ export class AgentLifecycle {
     summary: string;
     tasks: Array<Record<string, unknown>>;
     lastActiveAt: Date | null;
-    /** 兼容前端结构暂留，恒为空（project 召回已删，清理留到 U7） */
-    relatedMemories: never[];
   }> {
     const memoryKey = agentInstanceKey ?? sessionKey;
     // 并行加载：全量消息（分页用）+ session 记忆（脉络/tasks）+ 最新段（lastActiveAt）
@@ -103,7 +98,6 @@ export class AgentLifecycle {
       summary: sessionMem?.content ?? '',
       tasks: (sessionMem?.tasks as Array<Record<string, unknown>>) ?? [],
       lastActiveAt: latestSeg?.lastActiveAt ?? null,
-      relatedMemories: [],
     };
   }
 
@@ -144,7 +138,6 @@ export class AgentLifecycle {
     const systemPrompt = this.prompt.buildSystemPrompt({
       ownerProfile: ownerProfile.name ? ownerProfile : undefined,
       coreMemories,
-      relatedMemories: dto.relatedMemories,
       // session 记忆 content = 旧对话提炼出的会话脉络
       sessionMemory: sessionMem?.content || undefined,
       document: dto.entryContext.document,
