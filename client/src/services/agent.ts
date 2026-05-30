@@ -82,7 +82,10 @@ export function deleteSession(sessionKey: string): Promise<void> {
 
 export interface MemoryItem {
   _id: string;
-  type: 'user' | 'project';
+  // 后端 AgentMemoryType 实际是 'user' | 'session',但 session 是草稿级会话脉络
+  // (走 sessionMemory + read_conversation_history,不进 UI 管理面板)。
+  // UI 只展示 user 记忆。
+  type: 'user';
   title: string;
   content: string;
   createdAt: string;

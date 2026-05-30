@@ -32,6 +32,8 @@ import { createGetCurrentDraftTool } from '../tools/get-current-document.tool';
 import { createReadCollectionEntryTool } from '../tools/read-collection-entry.tool';
 import { createRememberTool } from '../tools/remember.tool';
 import { createForgetTool } from '../tools/forget.tool';
+import { createRecallMemoryTool } from '../tools/recall-memory.tool';
+import { createSearchMemoriesTool } from '../tools/search-memories.tool';
 import { createSubAgentTool } from '../tools/sub-agent.tool';
 import { createWriteTasksTool } from '../tools/write-tasks.tool';
 import { createReadConversationHistoryTool } from '../tools/read-conversation-history.tool';
@@ -121,6 +123,10 @@ export class ToolAssembler {
       // 记忆工具：走 Memory Agent 统一处理分类、去重、合并
       remember: createRememberTool(this.memoryAgent),
       forget: createForgetTool(this.memoryAgent),
+      // 召回工具(#150 2026-05-31):配合 prompt 顶部 user 标题索引 → recall_memory 读全文;
+      // project 记忆完全不塞 prompt(数量会随项目膨胀),只走 search_memories 按需找
+      recall_memory: createRecallMemoryTool(this.memoryRepo),
+      search_memories: createSearchMemoriesTool(this.memoryRepo),
       // 子 agent：主 agent 委派明确任务，独立 context + 只读工具
       sub_agent: createSubAgentTool(
         this.subAgentService,

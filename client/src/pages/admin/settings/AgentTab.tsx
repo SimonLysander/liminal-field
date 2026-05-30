@@ -71,7 +71,13 @@ function ToolsEditor({
       onChange([...tools, tool]);
     }
   };
-  const orphanTools = tools.filter((t) => !availableTools.includes(t));
+  // 池空时不标红"已下线"——空池=endpoint 加载失败/未生效,不是真下线,误报会把所有工具
+  // 都标成下线(实测 dev server stale 时全栈截图全红)。只有池**非空**且工具不在池中
+  // 才算真下线。
+  const orphanTools =
+    availableTools.length > 0
+      ? tools.filter((t) => !availableTools.includes(t))
+      : [];
 
   return (
     <div className="space-y-1.5">

@@ -801,7 +801,10 @@ export function SyncTab() {
                   className="max-w-md"
                 />
               </Field>
-              <Field label="自动同步频率">
+              <Field
+                label="兜底定时任务"
+                helper="主推送靠 commit 后 15 秒去抖即时推;这条频率只用于兜底扫漏(进程崩/网络断时补推)+ 跨月归档。默认凌晨 3 点没人用时跑,最省心。"
+              >
                 <NativeSelect value={gitCron} onChange={setGitCron}>
                   {CRON_PRESETS.map((p) => (
                     <option key={p.value} value={p.value}>

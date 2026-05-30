@@ -9,7 +9,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { Pencil, Trash2, X, Check, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { banner } from '@/components/ui/banner-api';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 import {
   listMemories,
   updateMemory,
@@ -17,7 +16,7 @@ import {
   type MemoryItem,
 } from '@/services/agent';
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 5;
 
 /** 单条记忆:标题 + 内容预览 + hover 操作 */
 function MemoryRow({
@@ -178,16 +177,12 @@ function Pagination({
   );
 }
 
-/** 一段记忆(分组):heading + 描述 + 列表 + 分页 */
+/** 记忆列表 + 分页(不带 heading,外层负责) */
 function MemoryGroup({
-  title,
-  description,
   memories,
   onUpdate,
   onDelete,
 }: {
-  title: string;
-  description: string;
   memories: MemoryItem[];
   onUpdate: (id: string, data: { type?: string; title?: string; content?: string }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
@@ -202,44 +197,32 @@ function MemoryGroup({
   const start = (page - 1) * PAGE_SIZE;
   const displayed = memories.slice(start, start + PAGE_SIZE);
 
+  if (memories.length === 0) {
+    return (
+      <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
+        暂无记忆
+      </p>
+    );
+  }
   return (
-    <section className="space-y-3">
+    <>
       <div>
-        <h2
-          className="text-sm font-semibold"
-          style={{ color: 'var(--ink)' }}
-        >
-          {title}
-        </h2>
-        <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-          {description}
-        </p>
-      </div>
-      {memories.length === 0 ? (
-        <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
-          暂无记忆
-        </p>
-      ) : (
-        <>
-          <div>
-            {displayed.map((m) => (
-              <MemoryRow
-                key={m._id}
-                memory={m}
-                onUpdate={onUpdate}
-                onDelete={onDelete}
-              />
-            ))}
-          </div>
-          <Pagination
-            page={page}
-            total={memories.length}
-            pageSize={PAGE_SIZE}
-            onChange={setPage}
+        {displayed.map((m) => (
+          <MemoryRow
+            key={m._id}
+            memory={m}
+            onUpdate={onUpdate}
+            onDelete={onDelete}
           />
-        </>
-      )}
-    </section>
+        ))}
+      </div>
+      <Pagination
+        page={page}
+        total={memories.length}
+        pageSize={PAGE_SIZE}
+        onChange={setPage}
+      />
+    </>
   );
 }
 
@@ -307,58 +290,45 @@ export function MemoriesSection() {
   const matches = (m: MemoryItem) =>
     !q || m.title.toLowerCase().includes(q) || m.content.toLowerCase().includes(q);
 
+  // 后端只有 'user' / 'session' 两种类型,session 是草稿级会话脉络不在 UI 显示。
+  // 此前 UI 还显示"项目记忆"(filter type === 'project')是漏改的 bug:project
+  // 类型早已废止,这个 group 永远空。删掉。
   const userMemories = memories.filter((m) => m.type === 'user').filter(matches);
-  const projectMemories = memories
-    .filter((m) => m.type === 'project')
-    .filter(matches);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {/* heading + 搜索 */}
-      <div className="space-y-3">
-        <div>
-          <h2
-            className="text-sm font-semibold"
-            style={{ color: 'var(--ink)' }}
-          >
-            认知
-          </h2>
-          <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-            Agent 在对话中积累的关于你和你项目的认知
-          </p>
-        </div>
-        <div className="relative">
-          <Search
-            size={14}
-            strokeWidth={1.5}
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
-            style={{ color: 'var(--ink-ghost)' }}
-          />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索记忆(标题或内容)..."
-            className="flex h-7 w-full max-w-md rounded-sm border border-transparent bg-[var(--shelf)] pl-8 pr-2.5 text-md transition-colors placeholder:text-[var(--ink-ghost)] hover:bg-[var(--hover-overlay)] focus:bg-[var(--paper)] focus-visible:outline-none"
-            style={{ color: 'var(--ink)' }}
-          />
-        </div>
+      <div>
+        <h2
+          className="text-sm font-semibold"
+          style={{ color: 'var(--ink)' }}
+        >
+          认知
+        </h2>
+        <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+          Agent 在对话中积累的关于你的认知 · {userMemories.length} 条
+          {q ? ` · 搜索 "${query}"` : ''}
+        </p>
+      </div>
+      <div className="relative">
+        <Search
+          size={14}
+          strokeWidth={1.5}
+          className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+          style={{ color: 'var(--ink-ghost)' }}
+        />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="搜索记忆(标题或内容)..."
+          className="flex h-7 w-full max-w-md rounded-sm border border-transparent bg-[var(--shelf)] pl-8 pr-2.5 text-md transition-colors placeholder:text-[var(--ink-ghost)] hover:bg-[var(--hover-overlay)] focus:bg-[var(--paper)] focus-visible:outline-none"
+          style={{ color: 'var(--ink)' }}
+        />
       </div>
 
       <MemoryGroup
-        title="关于我"
-        description={`Agent 对你的认知 · ${userMemories.length} 条${q ? ` · 搜索 "${query}"` : ''}`}
         memories={userMemories}
-        onUpdate={handleUpdate}
-        onDelete={handleDelete}
-      />
-
-      <Separator />
-
-      <MemoryGroup
-        title="项目记忆"
-        description={`Agent 对你项目和内容的认知 · ${projectMemories.length} 条${q ? ` · 搜索 "${query}"` : ''}`}
-        memories={projectMemories}
         onUpdate={handleUpdate}
         onDelete={handleDelete}
       />

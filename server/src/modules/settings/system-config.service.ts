@@ -85,6 +85,9 @@ export class SystemConfigService implements OnModuleInit {
     'read_collection_entry',
     'remember',
     'forget',
+    // 召回(#150):recall 配合 prompt user 标题索引读全文;search 按需找 project / 索引外
+    'recall_memory',
+    'search_memories',
     'sub_agent',
     'write_tasks',
     'read_conversation_history',
