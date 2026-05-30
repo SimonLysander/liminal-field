@@ -20,6 +20,12 @@ export interface AgentConfig {
   tools: string[];
   /** 默认模型层级：flash / standard / think */
   tier: string;
+  /**
+   * 该 agent 使用的 AI provider id(2026-05-30,#5 重构)。
+   * 概念:provider 配置是「生产侧」(所有配过的都可用),agent 是「消费侧」(自己挑用谁)。
+   * 为空时回退到全局 activeAiProviderId(向后兼容);UI 上未配则禁用启用开关。
+   */
+  providerId: string;
 }
 
 /** 全量配置（脱敏，只含用户通过 UI 管理的字段） */

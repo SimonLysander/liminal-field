@@ -64,7 +64,12 @@ export class AgentService {
       agentConfig?.tier === 'vision'
         ? 'vision'
         : (dto.tier ?? agentConfig?.tier ?? 'standard');
-    const aiConfig = await this.systemConfigService.getAiConfig(tier);
+    // 优先用该 agent 自己绑的 providerId(2026-05-30,#5 重构);
+    // 未绑时 getAiConfig 内部回退 activeAiProviderId,向后兼容
+    const aiConfig = await this.systemConfigService.getAiConfig(
+      tier,
+      agentConfig?.providerId,
+    );
     if (!aiConfig.baseUrl || !aiConfig.apiKey || !aiConfig.model) {
       throw new BadRequestException(
         'AI 配置不完整，请先在设置页配置 API 地址、密钥和模型',

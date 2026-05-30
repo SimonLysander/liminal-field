@@ -115,6 +115,7 @@ export class SystemConfigService implements OnModuleInit {
       '你用 propose_caption 给的图说只是**提议**,要用户在卡片上点「应用」才生效——所以别说「已更新/已改好」,要说「我提议了…,满意就点应用」。',
     tools: [...SystemConfigService.GALLERY_CAPTION_TOOLS],
     tier: 'vision',
+    providerId: '',
   };
 
   constructor(
@@ -147,6 +148,7 @@ export class SystemConfigService implements OnModuleInit {
             systemPrompt: '',
             tools: [...SystemConfigService.WRITING_ADVISOR_TOOLS],
             tier: 'standard',
+            providerId: '',
           },
           { ...SystemConfigService.GALLERY_CAPTION_ENTRY },
         ] as AgentEntryConfig[],
@@ -427,6 +429,11 @@ export class SystemConfigService implements OnModuleInit {
   async getAiConfig(
     // tier 接受 string：来源含前端传入的运行时值，未知值在下方逻辑兜底为 standard
     tier: string = 'standard',
+    /**
+     * 该 agent 自己绑的 providerId(2026-05-30 引入)。优先使用此 provider;
+     * 为空时回退到全局 activeAiProviderId(向后兼容老数据/未配的 agent)。
+     */
+    providerId?: string,
   ): Promise<{
     baseUrl: string;
     apiKey: string;
@@ -436,8 +443,8 @@ export class SystemConfigService implements OnModuleInit {
     contextWindow: number;
   }> {
     const config = await this.repo.get();
-    const activeId = config?.activeAiProviderId || '';
-    const active = (config?.aiProviders ?? []).find((p) => p.id === activeId);
+    const resolvedId = providerId || config?.activeAiProviderId || '';
+    const active = (config?.aiProviders ?? []).find((p) => p.id === resolvedId);
 
     // 根据 tier 选择对应的模型名
     let model = '';
@@ -535,6 +542,7 @@ export class SystemConfigService implements OnModuleInit {
         systemPrompt: input.systemPrompt ?? '',
         tools: input.tools ?? [],
         tier: input.tier ?? 'standard',
+        providerId: input.providerId ?? '',
       });
     }
 

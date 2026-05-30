@@ -35,6 +35,15 @@ export class AgentEntryConfig {
   /** 默认模型层级：flash / standard / think */
   @prop({ trim: true, default: 'standard' })
   tier!: string;
+
+  /**
+   * 该 agent 使用的 AI provider id(2026-05-30 引入)。
+   * 概念:provider 配置是「生产侧」(所有配过的都可用),agent 是「消费侧」(自己挑用谁)。
+   * 可选——为空时回退到全局 activeAiProviderId(向后兼容老数据)。
+   * 未来 agent 启用守卫要求必须配此字段才能启用(前端 AgentTab 已加 disabled tooltip)。
+   */
+  @prop({ trim: true, default: '' })
+  providerId!: string;
 }
 
 /**

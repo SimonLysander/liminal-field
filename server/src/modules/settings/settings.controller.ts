@@ -328,6 +328,7 @@ export class SettingsController {
       systemPrompt?: string;
       tools?: string[];
       tier?: string;
+      providerId?: string;
     },
   ): Promise<{ success: boolean }> {
     await this.systemConfigService.saveAgentConfig(key, dto);

@@ -191,10 +191,12 @@ function ToolsEditor({
  */
 function AgentCard({
   agent,
+  providers,
   onSave,
   onDelete,
 }: {
   agent: AgentConfig;
+  providers: { id: string; name: string }[];
   onSave: (updated: Partial<AgentConfig>) => Promise<void>;
   onDelete?: () => Promise<void>;
 }) {
@@ -214,9 +216,17 @@ function AgentCard({
       systemPrompt: agent.systemPrompt,
       tools: [...agent.tools],
       tier: agent.tier,
+      providerId: agent.providerId,
     });
     setEditing(true);
   };
+
+  // #5 重构守卫:必须选了有效 provider 才能启用 agent。
+  // 当前 draft 的 providerId 未选 / 不在 providers 列表中 → 启用开关 disabled。
+  const currentProviderId = draft.providerId ?? agent.providerId;
+  const providerValid =
+    currentProviderId !== '' && providers.some((p) => p.id === currentProviderId);
+  const enableSwitchDisabled = saving || !providerValid;
 
   const cancelEdit = () => {
     setDraft({});
@@ -329,18 +339,27 @@ function AgentCard({
       {/* ── 编辑表单区域 ── */}
       {editing && (
         <div className="space-y-4">
-          {/* 启用开关 */}
+          {/* 启用开关:必须先选 provider 才能启用(#5 重构守卫) */}
           <div className="flex items-center justify-between">
             <FieldLabel>启用</FieldLabel>
             <button
               type="button"
               role="switch"
-              aria-checked={draft.enabled ?? agent.enabled}
-              onClick={() => setDraft((d) => ({ ...d, enabled: !(d.enabled ?? agent.enabled) }))}
-              disabled={saving}
+              aria-checked={(draft.enabled ?? agent.enabled) && providerValid}
+              onClick={() => {
+                // providerId 未选时禁止开启,避免落库 enabled=true 但调用必报"配置不完整"
+                if (enableSwitchDisabled) return;
+                setDraft((d) => ({ ...d, enabled: !(d.enabled ?? agent.enabled) }));
+              }}
+              disabled={enableSwitchDisabled}
+              title={
+                !providerValid
+                  ? '先选 Provider 才能启用'
+                  : undefined
+              }
               className="relative h-5 w-9 rounded-full transition-colors duration-200 disabled:opacity-40"
               style={{
-                background: (draft.enabled ?? agent.enabled)
+                background: (draft.enabled ?? agent.enabled) && providerValid
                   ? 'var(--mark-green)'
                   : 'var(--separator)',
               }}
@@ -349,7 +368,7 @@ function AgentCard({
                 className="absolute top-0.5 h-4 w-4 rounded-full shadow transition-transform duration-200"
                 style={{
                   background: 'white',
-                  transform: (draft.enabled ?? agent.enabled) ? 'translateX(1.25rem)' : 'translateX(0.125rem)',
+                  transform: (draft.enabled ?? agent.enabled) && providerValid ? 'translateX(1.25rem)' : 'translateX(0.125rem)',
                 }}
               />
             </button>
@@ -375,6 +394,33 @@ function AgentCard({
               placeholder="一句话说明此 agent 的用途"
               disabled={saving}
             />
+          </div>
+
+          {/* Provider 选择(#5 重构:每个 agent 自选,启用前必填) */}
+          <div>
+            <FieldLabel>
+              Provider
+              {!providerValid && (
+                <span className="ml-1.5 font-normal text-xs" style={{ color: 'var(--mark-red)' }}>
+                  必选,未选时启用被禁用
+                </span>
+              )}
+            </FieldLabel>
+            {providers.length === 0 ? (
+              <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+                还没有 Provider,请先到「集成」tab 添加。
+              </p>
+            ) : (
+              <SelectInput
+                value={draft.providerId ?? agent.providerId ?? ''}
+                onChange={(v) => setDraft((d) => ({ ...d, providerId: v }))}
+                options={[
+                  { value: '', label: '— 未选 —' },
+                  ...providers.map((p) => ({ value: p.id, label: p.name })),
+                ]}
+                disabled={saving}
+              />
+            )}
           </div>
 
           {/* 默认层级 */}
@@ -416,7 +462,7 @@ function AgentCard({
               disabled={saving}
               className="mt-1 w-full rounded-lg px-3 py-2 text-sm outline-none disabled:opacity-50"
               style={{
-                background: 'var(--shelf)',
+                background: 'var(--paper-white)',
                 color: 'var(--ink)',
                 border: '1px solid var(--separator)',
                 resize: 'vertical',
@@ -448,13 +494,21 @@ function AgentCard({
  */
 export function AgentTab() {
   const [agents, setAgents] = useState<AgentConfig[]>([]);
+  const [providers, setProviders] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   // 加载数据：silent=true 时跳过 setLoading(true)，避免页面闪烁
+  // 并行拉 agents + providers(#5 重构:每个 agent 要从 providers 列表里选一个)
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const data = await settingsApi.getAgentConfigs();
-      setAgents(data);
+      const [agentsData, configView] = await Promise.all([
+        settingsApi.getAgentConfigs(),
+        settingsApi.getConfig(),
+      ]);
+      setAgents(agentsData);
+      setProviders(
+        configView.ai.providers.map((p) => ({ id: p.id, name: p.name })),
+      );
     } catch {
       banner.error('加载 Agent 配置失败');
     } finally {
@@ -506,6 +560,7 @@ export function AgentTab() {
               <AgentCard
                 key={agent.key}
                 agent={agent}
+                providers={providers}
                 onSave={(updated) => handleSave(agent.key, updated)}
                 onDelete={undefined}
               />
