@@ -53,6 +53,23 @@ export interface DraftEditorAdapter<TState extends BaseDraftState> {
 /** useDraftEditor 的返回类型(供 ProseDraftEditor 等消费方泛型引用) */
 export type DraftEditorController<TState extends BaseDraftState> = ReturnType<typeof useDraftEditor<TState>>;
 
+/** 从 document.referrer 找一条比 fallback 更精准的返回路径,失败一律走 fallback */
+function resolveBackPath(fallback: string): string {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return fallback;
+  const ref = document.referrer;
+  if (!ref) return fallback;
+  try {
+    const refUrl = new URL(ref);
+    if (refUrl.origin !== window.location.origin) return fallback;
+    if (!refUrl.pathname.startsWith('/admin/')) return fallback;
+    // 排除从另一个 edit 页跳过来,避免返回又落到编辑器形成"返回即原页"
+    if (refUrl.pathname.endsWith('/edit')) return fallback;
+    return refUrl.pathname + refUrl.search;
+  } catch {
+    return fallback;
+  }
+}
+
 export function useDraftEditor<TState extends BaseDraftState>(adapter: DraftEditorAdapter<TState>) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -68,10 +85,16 @@ export function useDraftEditor<TState extends BaseDraftState>(adapter: DraftEdit
 
   const labels = adapter.labels;
 
-  /** 安全返回:有 app 内上一页就回退,否则去兜底路径(直接打开/刷新时 navigate(-1) 会退到坏页) */
+  /** 安全返回:有 app 内上一页就回退,否则去兜底路径(直接打开/刷新时 navigate(-1) 会退到坏页)。
+   *  hard refresh(列表用 window.location.href 跳进编辑页,导致 history 重置 → location.key='default')
+   *  的情况:再用 document.referrer 兜一层,避免 fallbackPath 丢钻入位置(笔记 ?topic= 没了就回根列表)。
+   *  referer 只接受同源 + /admin/ 列表页(排除 /edit 防循环)。 */
   const goBack = useCallback(() => {
-    if (location.key !== 'default') navigate(-1);
-    else navigate(adapterRef.current.fallbackPath);
+    if (location.key !== 'default') {
+      navigate(-1);
+      return;
+    }
+    navigate(resolveBackPath(adapterRef.current.fallbackPath));
   }, [location.key, navigate]);
 
   const [loading, setLoading] = useState(true);
