@@ -1,3 +1,4 @@
 node_modules
-dist
 .vite
+# 不再排除 dist:生产走 Dockerfile.prod,本机预 build 后镜像直接 COPY dist。
+# 服务器内存 1.8G 跑 vite 会 OOM,所以放弃 multi-stage build,见 [[project_deployment]] 踩坑1

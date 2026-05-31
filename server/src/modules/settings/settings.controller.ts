@@ -34,7 +34,7 @@ import { ContentRepoService } from '../content/content-repo.service';
 import { ContentGitService } from '../content/content-git.service';
 import { NavigationRepository } from '../navigation/navigation.repository';
 import { OssService } from '../oss/oss.service';
-import { ManifestService } from './manifest.service';
+import { ManifestService, ManifestDiff } from './manifest.service';
 import { RecoveryService } from './recovery.service';
 import { ArchiveService } from './archive.service';
 import { LocalResetService } from './local-reset.service';
@@ -421,6 +421,15 @@ export class SettingsController {
       git: gitStatus,
       manifestDirty,
     };
+  }
+
+  /**
+   * 推送 dialog 用:展示本次会推什么——四类 path 列表(reorder/rename/add/remove)。
+   * 后端算,前端拼文本。每次用户点推送按钮时拉,频率低不必缓存。
+   */
+  @Get('manifest-diff')
+  async getManifestDiff(): Promise<ManifestDiff> {
+    return this.manifestService.computeManifestDiff();
   }
 
   // ── 推送到远端 ───────────────────────────────────────────

@@ -20,6 +20,7 @@ import type {
   SettingsConfigView,
   SettingsStatus,
   StorageStatus,
+  ManifestDiff,
 } from '@/services/settings';
 import { useConfirm } from '@/contexts/ConfirmContext';
 
@@ -199,6 +200,87 @@ const SYNC_STATE_DISPLAY: Record<
   behind: { text: '远端有数据,可恢复', highlight: 'warning' },
 };
 
+/**
+ * 推送 dialog 的内容渲染:
+ * - 顶部一行总结("将推送以下变更到远端:" 或首次推送提示)
+ * - 4 个分节: 顺序调整 / 改名 / 新增 / 移除,各列完整路径
+ * - 没有 diff 时退化成简单一句话
+ *
+ * 路径用等宽字体显示,改名用 from → to 形式。
+ */
+function renderPushDialogContent({
+  syncState,
+  unpushedCount,
+  diff,
+}: {
+  syncState: string;
+  unpushedCount: number;
+  diff: ManifestDiff | null;
+}) {
+  if (syncState === 'remote_empty') {
+    return '首次推送,将本地数据推送到空远端仓库。';
+  }
+  // 既没本地提交也没结构变化(防御性,理论上 canPush 不会触发)
+  if (unpushedCount === 0 && (!diff || diff.totalChanges === 0)) {
+    return '将更新远端仓库。';
+  }
+  // 单纯有 commit 没结构变化,沿用旧的一句话
+  if ((!diff || diff.totalChanges === 0) && unpushedCount > 0) {
+    return `将推送 ${unpushedCount} 个本地提交到远端仓库。`;
+  }
+  // 有 diff:分节列路径。等宽字体让路径不被代理字体拉斜
+  const Section = ({
+    title,
+    items,
+  }: {
+    title: string;
+    items: React.ReactNode[];
+  }) => {
+    if (items.length === 0) return null;
+    return (
+      <div className="mt-3">
+        <div className="mb-1 text-xs font-semibold" style={{ color: 'var(--ink)' }}>
+          {title}（{items.length}）
+        </div>
+        <ul className="ml-2 space-y-0.5 font-mono text-xs">
+          {items.map((item, i) => (
+            <li key={i} className="break-all">
+              {item}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  };
+  return (
+    <div>
+      <div>将推送以下变更到远端:</div>
+      {unpushedCount > 0 ? (
+        <Section
+          title="本地提交"
+          items={[`${unpushedCount} 个 commit`]}
+        />
+      ) : null}
+      {diff ? (
+        <>
+          <Section title="顺序调整" items={diff.reorderedPaths} />
+          <Section
+            title="改名"
+            items={diff.renamedPaths.map((p) => (
+              <span>
+                {p.from} <span style={{ color: 'var(--ink-muted)' }}>→</span>{' '}
+                {p.to}
+              </span>
+            ))}
+          />
+          <Section title="新增" items={diff.addedPaths} />
+          <Section title="移除" items={diff.removedPaths} />
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 export function SyncTab() {
   const confirm = useConfirm();
 
@@ -371,19 +453,22 @@ export function SyncTab() {
     (localIsEmpty && syncState === 'synced');
 
   const handlePush = async () => {
-    const parts: string[] = [];
-    if (unpushedCount > 0) parts.push(`${unpushedCount} 个本地提交`);
-    if (manifestDirty) parts.push('结构/顺序调整');
-    const msg =
-      syncState === 'remote_empty'
-        ? '首次推送,将本地数据推送到空远端仓库。'
-        : parts.length > 0
-          ? `将推送:${parts.join(' + ')} 到远端仓库。`
-          : '将更新远端仓库。';
+    // 拉 manifest diff 详情:reorder/rename/add/remove 各类路径
+    // 失败兜底为空(不阻塞推送,只是 dialog 退化成"将更新远端")
+    let diff: ManifestDiff | null = null;
+    if (manifestDirty) {
+      diff = await settingsApi.getManifestDiff().catch(() => null);
+    }
+    const dialogContent = renderPushDialogContent({
+      syncState,
+      unpushedCount,
+      diff,
+    });
     const ok = await confirm({
       title: '推送到远端',
-      message: msg,
+      message: dialogContent,
       confirmLabel: '确认推送',
+      wide: diff && diff.totalChanges > 0 ? true : false,
     });
     if (!ok) return;
     setPushing(true);

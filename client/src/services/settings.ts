@@ -108,6 +108,18 @@ export interface StorageStatus {
   manifestDirty?: boolean;
 }
 
+/**
+ * 推送前给 UI 展示的 manifest 差异(reorder/rename/add/remove 节点路径)。
+ * 后端从 mongo 派生 manifest 跟磁盘 yaml 做语义 diff 得到。
+ */
+export interface ManifestDiff {
+  reorderedPaths: string[];
+  renamedPaths: { from: string; to: string }[];
+  addedPaths: string[];
+  removedPaths: string[];
+  totalChanges: number;
+}
+
 // ── API ─────────────────────────────────────────────────
 
 export const settingsApi = {
@@ -119,6 +131,9 @@ export const settingsApi = {
 
   // 存储状态（诊断）
   getStorageStatus: () => request<StorageStatus>('/settings/storage-status'),
+
+  // 推送 dialog:本次会推什么(路径列表)
+  getManifestDiff: () => request<ManifestDiff>('/settings/manifest-diff'),
 
   // 分区保存
   saveSyncConfig: (data: {

@@ -43,6 +43,33 @@ export interface Manifest {
   };
 }
 
+/**
+ * 推送前给 UI 展示的 manifest 差异:列出哪些节点的结构/顺序变了。
+ * 路径形如 "/notes/随笔/2025 笔记",根用 scope 名兜底。
+ */
+export interface ManifestDiff {
+  /** 同 id 节点,位置改变(同父级 order 改 或 跨父级移动) */
+  reorderedPaths: string[];
+  /** 同 id 节点改名,from = 磁盘旧路径,to = mongo 新路径 */
+  renamedPaths: { from: string; to: string }[];
+  /** mongo 有但磁盘 yaml 没有的节点 */
+  addedPaths: string[];
+  /** 磁盘 yaml 有但 mongo 没有的节点(只有手动删才会出现) */
+  removedPaths: string[];
+  /** 4 类总数,前端用来判 "无变化" */
+  totalChanges: number;
+}
+
+/** flattenManifest 输出:id → 节点扁平信息,给 diff 算法用 */
+interface FlatNode {
+  id: string;
+  /** 从根 (scope) 一路拼接的人类可读路径 */
+  path: string;
+  name: string;
+  order: number;
+  parentId: string | null;
+}
+
 const MANIFEST_FILE_NAME = '.liminal-field.yaml';
 const MANIFEST_VERSION = 1;
 
@@ -119,6 +146,98 @@ export class ManifestService {
     const current = await this.serializeManifestToYaml();
     const onDisk = await this.readManifestRaw();
     return current !== onDisk;
+  }
+
+  /**
+   * 算 mongo 派生 manifest vs 磁盘 .liminal-field.yaml 的语义 diff,
+   * 给推送 dialog 展示"本次会推什么"。
+   *
+   * 算法:把两边 manifest 树拍平成 id-indexed Map,然后按 id 集合做四类比对——
+   * 新增/移除/改名/位置变化(同父级 order 改 或 跨父级移动统一归位置)。
+   * 同时 name 和 parent 都变时优先归 renamed(from→to 信息已含 parent 路径)。
+   */
+  async computeManifestDiff(): Promise<ManifestDiff> {
+    const currentYaml = await this.serializeManifestToYaml();
+    const onDiskYaml = await this.readManifestRaw();
+
+    const current = yaml.load(currentYaml) as Manifest | null;
+    const onDisk = onDiskYaml
+      ? (yaml.load(onDiskYaml) as Manifest | null)
+      : null;
+
+    const currentIndex = current
+      ? this.flattenManifest(current)
+      : new Map<string, FlatNode>();
+    const onDiskIndex = onDisk
+      ? this.flattenManifest(onDisk)
+      : new Map<string, FlatNode>();
+
+    const addedPaths: string[] = [];
+    const removedPaths: string[] = [];
+    const renamedPaths: { from: string; to: string }[] = [];
+    const reorderedPaths: string[] = [];
+
+    for (const [id, c] of currentIndex) {
+      const o = onDiskIndex.get(id);
+      if (!o) {
+        addedPaths.push(c.path);
+        continue;
+      }
+      if (c.name !== o.name) {
+        renamedPaths.push({ from: o.path, to: c.path });
+      } else if (c.parentId !== o.parentId || c.order !== o.order) {
+        reorderedPaths.push(c.path);
+      }
+    }
+    for (const [id, o] of onDiskIndex) {
+      if (!currentIndex.has(id)) removedPaths.push(o.path);
+    }
+
+    return {
+      reorderedPaths,
+      renamedPaths,
+      addedPaths,
+      removedPaths,
+      totalChanges:
+        reorderedPaths.length +
+        renamedPaths.length +
+        addedPaths.length +
+        removedPaths.length,
+    };
+  }
+
+  /** 把 manifest 树按 BFS 拍平成 id-indexed Map,记录节点的完整路径 */
+  private flattenManifest(m: Manifest): Map<string, FlatNode> {
+    const out = new Map<string, FlatNode>();
+    const navigation = m.navigation ?? {};
+    for (const [scope, roots] of Object.entries(navigation)) {
+      const queue: Array<{
+        node: ManifestNode;
+        parentPath: string;
+        parentId: string | null;
+      }> = (roots ?? []).map((root) => ({
+        node: root,
+        parentPath: `/${scope}`,
+        parentId: null,
+      }));
+      while (queue.length > 0) {
+        const { node, parentPath, parentId } = queue.shift()!;
+        const path = `${parentPath}/${node.name}`;
+        out.set(node.id, {
+          id: node.id,
+          path,
+          name: node.name,
+          order: node.order,
+          parentId,
+        });
+        if (node.children?.length) {
+          for (const child of node.children) {
+            queue.push({ node: child, parentPath: path, parentId: node.id });
+          }
+        }
+      }
+    }
+    return out;
   }
 
   /** 读 yaml 文件原始字节(不解析,给 dirty 检测用)。文件不存在返空串。 */

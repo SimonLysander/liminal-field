@@ -1,0 +1,7 @@
+# 生产专用 Dockerfile:本机 pnpm build 出 dist,这里只把静态资源塞进 nginx
+# 用途:绕开服务器 1.8G 内存里 vite OOM(见 project_deployment 踩坑1)
+# 触发:本机 docker buildx build --platform linux/amd64 -f Dockerfile.prod
+FROM nginx:alpine
+COPY dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
