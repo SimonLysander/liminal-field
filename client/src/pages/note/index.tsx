@@ -33,20 +33,21 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { useScrollFade } from '@/hooks/use-scroll-fade';
 
 /* ================================================================
- * 阅读端按 URL query 分发（与 Sidebar 同源：URL 是唯一真相）：
- *   /note?doc=<id>     → NoteReader   文章阅读器（叶子文档正文）
- *   /note?topic=<id>   → FolderReader 主题着陆页（节点同质化:文件夹也有自己的正文）
+ * 阅读端按 URL query 分发(与 Sidebar 同源:URL 是唯一真相):
+ *   /note?node=<id>    → NoteReader   文章阅读器(叶子文档正文)
+ *   /note?at=<id>      → FolderReader 主题着陆页(节点同质化:文件夹也有自己的正文)
  *   /note              → NoteListView 未选态邀请
  *
- * 节点同质化(2026-05-29)：每个导航节点都有自己的 ContentItem，
- * 文件夹/主题节点也可能携带正文——进入文件夹时渲染其自身正文（若有），
- * 空正文则回退到邀请空态。doc 优先于 topic：同时存在时展示具体文档。
+ * 节点同质化(2026-05-29):每个导航节点都有自己的 ContentItem,
+ * 文件夹/主题节点也可能携带正文——进入文件夹时渲染其自身正文(若有),
+ * 空正文则回退到邀请空态。node 优先于 at:同时存在时展示具体文档。
  * ================================================================ */
 
 export default function NotePage() {
   const [searchParams] = useSearchParams();
-  const noteId = searchParams.get('doc');
-  const topicId = searchParams.get('topic');
+  // noteId / topicId 是语义命名(叶子文档 id / 钻入主题 id),与 query key 命名解耦
+  const noteId = searchParams.get('node');
+  const topicId = searchParams.get('at');
   if (noteId) return <NoteReader id={noteId} />;
   if (topicId) return <FolderReader nodeId={topicId} />;
   return <NoteListView />;

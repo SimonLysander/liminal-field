@@ -69,7 +69,8 @@ function buildPath(scope: string, id: string, admin?: boolean): string {
   }
 
   const publicPaths: Record<string, string> = {
-    notes: `/note?doc=${id}`,
+    // 阅读前台与 admin 同款 query 命名:?node= 指向当前选中的内容节点
+    notes: `/note?node=${id}`,
     gallery: `/gallery?post=${id}`,
     anthology: `/anthology?id=${id}`,
   };

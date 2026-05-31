@@ -206,7 +206,7 @@ export default function HomePage() {
                   variants={fadeUp}
                 >
                   <Link
-                    to={`/note?doc=${note.id}`}
+                    to={`/note?node=${note.id}`}
                     className="-mx-2 flex items-center gap-5 rounded-lg px-2 py-3.5 transition-colors duration-150"
                     style={{ borderBottom: '0.5px solid var(--separator)' }}
                     onMouseOver={(e) => {

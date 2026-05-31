@@ -100,10 +100,12 @@ export default function Sidebar() {
   /* ── 全局搜索 ⌘K ────────────────────────────────── */
   const { searchOpen, setSearchOpen } = useSearchHotkey();
 
-  /* query params 直接读 topic / doc，无需 regex 解析 pathname */
+  /* query params 直接读 at / node,无需 regex 解析 pathname:
+   *   at   = ancestor topic,当前钻入的文件夹节点 id(用于推 currentParentId)
+   *   node = 当前选中/打开的内容节点 id(叶子文档或主题正文) */
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTopicId = searchParams.get('topic');
-  const activeNoteId = searchParams.get('doc');
+  const activeTopicId = searchParams.get('at');
+  const activeNoteId = searchParams.get('node');
 
 
   /* 笔记树导航状态
@@ -142,14 +144,14 @@ export default function Sidebar() {
           .filter((n) => n.type === 'FOLDER')
           .map((n) => ({ id: n.id, name: n.name }));
         setBreadcrumb(folders);
-        // 从首页/分享 URL 跳来时只带 ?doc=xxx,没 topic= → 节点列表停在根级。
-        // 反查 path 后,如果发现 doc 在某个 folder 里,把 topic 补到 URL 里
+        // 从首页/分享 URL 跳来时只带 ?node=xxx,没 at= → 节点列表停在根级。
+        // 反查 path 后,如果发现 node 在某个 folder 里,把 at 补到 URL 里
         // (replace 不污染历史),让 currentParentId 自然推到对应 folder,
-        // 节点列表自动加载该层 + 当前 doc 节点高亮。
+        // 节点列表自动加载该层 + 当前 node 高亮。
         if (!activeTopicId && folders.length > 0) {
           const last = folders[folders.length - 1];
           setSearchParams(
-            { topic: last.id, doc: activeNoteId },
+            { at: last.id, node: activeNoteId },
             { replace: true },
           );
         }
@@ -181,11 +183,11 @@ export default function Sidebar() {
     navigate(spaceToPath(space));
   };
 
-  /* 进入文件夹：立即追加 breadcrumb（UI 即时反馈），URL 只写 topic */
+  /* 进入文件夹:立即追加 breadcrumb(UI 即时反馈),URL 只写 at(钻入文件夹 id) */
   const enterFolder = (node: StructureNode) => {
     navDirection.current = 1;
     setBreadcrumb((prev) => [...prev, { id: node.id, name: node.name }]);
-    navigate(`/note?topic=${node.id}`);
+    navigate(`/note?at=${node.id}`);
   };
 
   /* 面包屑回退：只改 URL，state 由 useEffect 同步 */
@@ -194,7 +196,7 @@ export default function Sidebar() {
     if (index === null) {
       navigate('/note');
     } else {
-      navigate(`/note?topic=${breadcrumb[index].id}`);
+      navigate(`/note?at=${breadcrumb[index].id}`);
     }
   };
 
@@ -412,8 +414,8 @@ export default function Sidebar() {
                         style={{ background: activeNoteId === node.contentItemId ? 'var(--shelf)' : undefined }}
                         onClick={() => navigate(
                           currentParentId
-                            ? `/note?topic=${currentParentId}&doc=${node.contentItemId}`
-                            : `/note?doc=${node.contentItemId}`,
+                            ? `/note?at=${currentParentId}&node=${node.contentItemId}`
+                            : `/note?node=${node.contentItemId}`,
                         )}
                       >
                         {/* 序号 — 零补位双位数，等宽排列 */}
