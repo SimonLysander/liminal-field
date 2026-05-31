@@ -100,6 +100,12 @@ export interface StorageStatus {
     lastCommitMessage: string;
     lastCommitTime: string;
   } | null;
+  /**
+   * mongo 当前 order 派生的清单 yaml 跟磁盘 yaml 不一致——
+   * 平时 reorder 不触发 commit,这个信号告诉 UI 状态行 + 推送按钮:
+   * "有 reorder 待推",syncState='synced' 时仍可推送。
+   */
+  manifestDirty?: boolean;
 }
 
 // ── API ─────────────────────────────────────────────────

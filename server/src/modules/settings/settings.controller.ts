@@ -399,18 +399,27 @@ export class SettingsController {
     oss: { connected: boolean; bucket: string; region: string };
     // git 字段类型跟随 getSyncStatus 实际返回(含 syncState),避免手写注解漂移
     git: Awaited<ReturnType<ContentGitService['getSyncStatus']>>;
+    /**
+     * mongo 当前 order 派生的 yaml 跟磁盘 yaml 是否字节不一致——
+     * 让前端在 syncState='synced' 但有 reorder 时仍能启用推送按钮。
+     */
+    manifestDirty: boolean;
   }> {
     // OSS 连通性
     const ossConnected = this.ossService.isDraftStorageReady();
     const ossRegion = process.env.OSS_REGION || '';
     const ossBucket = process.env.OSS_BUCKET || '';
 
-    // Git 仓库状态
-    const gitStatus = await this.contentGitService.getSyncStatus();
+    // 并行查 Git 状态 + manifest dirty
+    const [gitStatus, manifestDirty] = await Promise.all([
+      this.contentGitService.getSyncStatus(),
+      this.manifestService.isManifestDirty().catch(() => false),
+    ]);
 
     return {
       oss: { connected: ossConnected, bucket: ossBucket, region: ossRegion },
       git: gitStatus,
+      manifestDirty,
     };
   }
 
@@ -607,7 +616,14 @@ export class SettingsController {
 
   @Get('sync-status')
   async getSyncStatus() {
-    return this.contentGitService.getSyncStatus();
+    // 同时检查 manifest 是否 dirty(mongo 当前 order vs 磁盘 yaml 不一致)。
+    // 让 UI 知道"有 reorder 但 git 没提交"——平时 reorder 不触发 commit,
+    // 这个信号让按钮在 syncState='synced' 时仍然可点(因为 mongo 跟 git 实际有差)。
+    const [git, manifestDirty] = await Promise.all([
+      this.contentGitService.getSyncStatus(),
+      this.manifestService.isManifestDirty().catch(() => false),
+    ]);
+    return { ...(git ?? {}), manifestDirty };
   }
 
   // ── 灾难恢复 ────────────────────────────────────────────

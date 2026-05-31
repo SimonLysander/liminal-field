@@ -355,20 +355,31 @@ export function SyncTab() {
   const localIsEmpty = (status?.local.contentCount ?? 0) === 0;
   const syncState = storageStatus?.git?.syncState ?? 'no_remote';
   const unpushedCount = storageStatus?.git?.unpushedCommits ?? 0;
+  // mongo 里有 reorder 等结构变化但 yaml 还没提交 → manifestDirty=true
+  // 平时 reorder 不触发 git commit,这条信号让按钮在 syncState='synced' 时仍可点
+  const manifestDirty = storageStatus?.manifestDirty ?? false;
   const isConnected =
     !['no_remote', 'no_repo'].includes(syncState) ||
     (syncState === 'no_repo' && isConfigured);
-  const canPush = syncState === 'ahead' || syncState === 'remote_empty';
+  const canPush =
+    syncState === 'ahead' ||
+    syncState === 'remote_empty' ||
+    (manifestDirty && syncState === 'synced');
   const canSync =
     syncState === 'behind' ||
     syncState === 'diverged' ||
     (localIsEmpty && syncState === 'synced');
 
   const handlePush = async () => {
+    const parts: string[] = [];
+    if (unpushedCount > 0) parts.push(`${unpushedCount} 个本地提交`);
+    if (manifestDirty) parts.push('结构/顺序调整');
     const msg =
       syncState === 'remote_empty'
         ? '首次推送,将本地数据推送到空远端仓库。'
-        : `将推送 ${unpushedCount} 个本地提交到远端仓库。`;
+        : parts.length > 0
+          ? `将推送:${parts.join(' + ')} 到远端仓库。`
+          : '将更新远端仓库。';
     const ok = await confirm({
       title: '推送到远端',
       message: msg,
@@ -443,10 +454,14 @@ export function SyncTab() {
   const syncDisplay = SYNC_STATE_DISPLAY[effectiveState] ?? {
     text: effectiveState,
   };
+  // syncState='synced' 但 manifestDirty=true → 实际有 reorder 待推,状态行
+  // 改显"结构待推送"避免骗用户
   const syncValue =
     effectiveState === 'ahead'
       ? `${unpushedCount} 个提交待推送`
-      : syncDisplay.text;
+      : effectiveState === 'synced' && manifestDirty
+        ? '结构/顺序待推送'
+        : syncDisplay.text;
 
   return (
     <div className="space-y-6">

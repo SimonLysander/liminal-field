@@ -61,31 +61,18 @@ export class ManifestService {
   }
 
   /**
-   * 将当前 MongoDB 导航树序列化写入 .liminal-field.yaml。
-   *
-   * 流程：
-   * 1. 查询所有导航节点（无 scope 过滤，一次性取全量）
-   * 2. 按 scope 分组，对各 scope 构建父子树
-   * 3. 统计内容条数
-   * 4. 序列化为 YAML 并落盘
+   * 从当前 MongoDB 导航树序列化出 yaml 字符串(不落盘),给 writeManifest 和
+   * computeManifestDiff 共用。提取出来避免 dirty 检测每次都写文件。
    */
-  async writeManifest(): Promise<void> {
-    // 取全量节点：按 order ASC + _id ASC 确保序列化结果稳定，避免无意义 diff
-    // NavigationRepository 没有 findAll，用 listByParentId(undefined) 只返回根节点；
-    // 需要用 findAllDescendants 方式遍历，但更简单的方案是直接读底层 model。
-    // 此处用 findRootNodes(scope) × each scope + findAllDescendants 递归。
+  async serializeManifestToYaml(): Promise<string> {
     const allItems = await this.contentRepository.listAll();
-
     const navigation: Record<string, ManifestNode[]> = {};
-
     for (const scope of Object.values(NavigationScope)) {
       const roots = await this.navigationRepository.findRootNodes(scope);
       navigation[scope] = await Promise.all(
         roots.map((root) => this.serializeNode(root._id.toString())),
       );
     }
-
-    // 统计：按 scope 统计关联到内容节点的数量
     const notesCount = await this.countContentNodesByScope(
       NavigationScope.notes,
     );
@@ -95,7 +82,6 @@ export class ManifestService {
     const anthologyCount = await this.countContentNodesByScope(
       NavigationScope.anthology,
     );
-
     const manifest: Manifest = {
       version: MANIFEST_VERSION,
       navigation,
@@ -106,18 +92,43 @@ export class ManifestService {
         anthology: anthologyCount,
       },
     };
-
-    const yamlContent = yaml.dump(manifest, {
+    return yaml.dump(manifest, {
       indent: 2,
       lineWidth: 120,
       quotingType: '"',
     });
+  }
 
+  /**
+   * 将当前 MongoDB 导航树序列化写入 .liminal-field.yaml。
+   */
+  async writeManifest(): Promise<void> {
+    const yamlContent = await this.serializeManifestToYaml();
     const manifestPath = join(this.repoRoot, MANIFEST_FILE_NAME);
     await writeFile(manifestPath, yamlContent, 'utf8');
-    this.logger.log(
-      `Manifest written: ${allItems.length} items, ${Object.keys(navigation).join('/')} scopes`,
-    );
+    this.logger.log(`Manifest written`);
+  }
+
+  /**
+   * 检查 mongo 当前 order 派生的 yaml 跟磁盘 .liminal-field.yaml 是否字节一致。
+   *
+   * 用途:让 syncStatus 知道"有 reorder 但 git 没提交"——平时 reorder
+   * 不触发 commit,这个 diff 信号让 UI 把同步状态标"未同步"+ 按钮可点。
+   */
+  async isManifestDirty(): Promise<boolean> {
+    const current = await this.serializeManifestToYaml();
+    const onDisk = await this.readManifestRaw();
+    return current !== onDisk;
+  }
+
+  /** 读 yaml 文件原始字节(不解析,给 dirty 检测用)。文件不存在返空串。 */
+  private async readManifestRaw(): Promise<string> {
+    const manifestPath = join(this.repoRoot, MANIFEST_FILE_NAME);
+    try {
+      return await readFile(manifestPath, 'utf8');
+    } catch {
+      return '';
+    }
   }
 
   /**
