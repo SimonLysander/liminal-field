@@ -43,7 +43,7 @@ import { useDraftAssetContext } from '@/contexts/DraftAssetContext';
 /**
  * EditorChildrenBridge — 在 <Plate> context 内把 editor 实例 + children 写进父级传入的 ref。
  *
- * 为什么需要单独子组件：useEditorRef 必须在 <Plate> context 内调用，但调用方(AiAdvisorPanel/
+ * 为什么需要单独子组件：useEditorRef 必须在 <Plate> context 内调用，但调用方(AdvisorSidebar/
  * use-advisor-chat)在 <Plate> 外——通过此桥把 editor 暴露出去，聊天侧 computeDocDiff /
  * deserializeMd 才能拿到真实 editor.children + editor 实例。
  *

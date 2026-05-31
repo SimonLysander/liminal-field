@@ -72,7 +72,7 @@ function blockSignature(block: Descendant): string {
  *
  * 早期实现用 `Math.random()`,导致 computeDocDiff 每次调用都出全新 ID。
  * 配合 useMemo(`v3ProposalsByCallId`)+ useEffect 链路会触发 Max update depth
- * 死循环:pendingProposal 引用持续变化 → AiAdvisorPanel effect 跑 → setState →
+ * 死循环:pendingProposal 引用持续变化 → AdvisorSidebar effect 跑 → setState →
  * 父 re-render → useChat messages 引用可能变 → useMemo 重算 → 又出新 hunks → ...
  *
  * 用 kind:blockPath 作 ID,相同 oldChildren + newChildren 出相同 hunks,引用稳定。

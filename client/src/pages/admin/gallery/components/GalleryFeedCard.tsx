@@ -30,7 +30,7 @@ function formatRelativeTime(dateStr: string): string {
 }
 
 
-// ─── 可点击照片网格（5 列，与编辑页 PhotoGrid 一致）───
+// ─── 可点击照片网格（5 列）───
 
 function ClickablePhotoGrid({ urls, onPhotoClick }: { urls: string[]; onPhotoClick?: (index: number) => void }) {
   if (urls.length === 0) return null;

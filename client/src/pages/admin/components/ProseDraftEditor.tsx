@@ -89,7 +89,7 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
     }
   }, []);
 
-  // 给 AiAdvisorPanel 的 getter:从桥 ref 读取，ref 空时降级返回空数组/undefined
+  // 给 AdvisorSidebar 的 getter:从桥 ref 读取，ref 空时降级返回空数组/undefined
   const getEditorChildren = useCallback(
     () => editorBridgeRef.current?.getChildren() ?? [],
     [],
@@ -99,7 +99,7 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
     [],
   );
 
-  // AiAdvisorPanel 上抛 pendingProposal 时落到 state
+  // AdvisorSidebar 上抛 pendingProposal 时落到 state
   const handleProposalChange = useCallback((p: Proposal | undefined) => {
     setV3PendingProposal(p);
   }, []);
@@ -169,7 +169,7 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
       {/* ── Row 1: 三栏各自独立顶栏(均 52px,无 borderBottom,跟 Notion 派对齐)──
           [1,1] 大纲栏顶栏:返回按钮 + "大纲" label —— 返回挂这里 = 真窗口左上角
           [1,2] 编辑器栏顶栏:标题输入框 + 自动保存 + 保存 + 提交 + 主题 + ⋯
-          [1,3]+[2,3] AiAdvisorPanel 占整列(row-span 2),自管内部 header + 内容流 */}
+          [1,3]+[2,3] AdvisorSidebar 占整列(row-span 2),自管内部 header + 内容流 */}
 
       {/* [1,1] 大纲栏顶栏:返回 + 文档标题(标题挪到这里 — 跟返回按钮一组,符合 iOS 导航
           "[← 上级] 当前页"的心智;原 "大纲" label 删掉,大纲是辅助导航不需要 label 重复)。
@@ -371,7 +371,7 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
         </div>
       </div>
 
-      {/* [1,3]+[2,3] AiAdvisorPanel 独占第三列(row-span 2),内部自管顶栏 + 消息流 */}
+      {/* [1,3]+[2,3] AdvisorSidebar 独占第三列(row-span 2),内部自管顶栏 + 消息流 */}
       {advisor?.enabled ? (
         <div style={{ gridColumn: 3, gridRow: '1 / span 2', minHeight: 0 }}>
           <AdvisorSidebar

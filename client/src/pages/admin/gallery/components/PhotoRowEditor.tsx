@@ -1,5 +1,5 @@
 /*
- * PhotoRowEditor — 画廊编辑器主体:行式布局替代原 5 列网格 + Modal。
+ * PhotoRowEditor — 画廊编辑器主体:行式布局,一行一张照片。
  *
  * 每一行 = 左 ⋮⋮ 拖柄 + 80×80 缩略图 + 右侧主区(caption + 副信息行)。
  * 设计要点:
@@ -8,8 +8,7 @@
  *   - 点缩略图 = 全屏 Lightbox 看大图(只看,不编辑)
  *   - 日期(📅 popover)、分辨率/大小(只读 tag)、EXIF(⋯ popover 装 4 个数字)
  *
- * 复用资源:dnd-kit(同 PhotoGrid)、EXIF_TEXT_FIELDS / Calendar / Popover。
- * 替代 PhotoGrid 和 PhotoEditModal,Modal 整个砍掉。
+ * 用到的资源:dnd-kit、EXIF_TEXT_FIELDS、Calendar、Popover。
  */
 
 import { useRef, useState } from 'react';
@@ -79,7 +78,7 @@ function SortableRow({
     isDragging,
   } = useSortable({ id: photo.id });
 
-  // 本地 caption 草稿:每次按键不立刻回流父级,blur 才提交(同 PhotoEditModal 思路)
+  // 本地 caption 草稿:每次按键不立刻回流父级,blur 才提交
   const [captionDraft, setCaptionDraft] = useState(photo.caption ?? '');
   // 图像尺寸只读展示:首次加载后从 naturalWidth/Height 拿,失败留 null
   const [dim, setDim] = useState<{ w: number; h: number } | null>(null);

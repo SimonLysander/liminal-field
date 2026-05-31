@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
  *
  * 用 DOM 的 selectionchange(编辑器无关、可靠;Plate v53 未暴露现成选区文本 API)。
  * 关键:**折叠选区时不清空、保留上次非空选中**——否则用户选完文字去点聊天框,
- * 选区一折叠 pill 就消失了。清除交给 AiAdvisorPanel 的"取消选区"按钮(dismiss)。
+ * 选区一折叠 pill 就消失了。清除交给 AdvisorSidebar 的"取消选区"按钮(dismiss)。
  *
  * @param containerSelector 选区必须落在此容器内才算数(如编辑器 '[data-slate-editor]')
  */

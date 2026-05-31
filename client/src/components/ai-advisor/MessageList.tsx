@@ -1,7 +1,7 @@
 /**
  * MessageList — 消息列表，自动滚动到底部 + 滚到顶懒加载更早历史。
  *
- * 空状态由父组件 AiAdvisorPanel 负责，此组件只负责渲染有消息时的列表。
+ * 空状态由父组件 AdvisorSidebar 负责，此组件只负责渲染有消息时的列表。
  *
  * 懒加载设计（U7 新增）：
  * - 顶部放一个哨兵 div，用 IntersectionObserver 检测用户是否滚到顶

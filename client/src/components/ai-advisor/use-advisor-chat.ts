@@ -84,12 +84,12 @@ export interface UseAdvisorChatOptions {
   onAfterSave?: () => void;
   /**
    * v3 改稿：获取当前 editor.children，供 computeDocDiff 计算 hunks。
-   * 由 AiAdvisorPanel 透传自 ProseDraftEditor。
+   * 由 AdvisorSidebar 透传自 ProseDraftEditor。
    */
   getEditorChildren?: () => Descendant[];
   /**
    * v3 改稿：获取当前 Plate editor 实例，供 deserializeMd(editor, newMarkdown) 使用。
-   * 由 AiAdvisorPanel 透传自 ProseDraftEditor。
+   * 由 AdvisorSidebar 透传自 ProseDraftEditor。
    */
   getEditor?: () => unknown;
 }

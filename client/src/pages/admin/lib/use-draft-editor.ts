@@ -5,7 +5,7 @@
  * 1.5s debounce 自动保存、local-first 草稿缓冲、提交、丢弃、⌘S/⇧⌘S、大纲提取。
  * 场景差异(标识 / 数据接口 / 透传字段 / 返回路径)全部通过 adapter 注入。
  *
- * 不含:三栏布局、AiAdvisorPanel(见 ProseDraftEditor)。agent 上下文是场景相关的,
+ * 不含:三栏布局、AdvisorSidebar(见 ProseDraftEditor)。agent 上下文是场景相关的,
  * 由各页面构造后注入布局,不属于「文稿编辑」内核。
  */
 
