@@ -228,12 +228,16 @@ function getCenterFrameSize(photo: GalleryPhoto): { width: string; height: strin
   const w = Number.parseFloat(photo.tags.width ?? '');
   const h = Number.parseFloat(photo.tags.height ?? '');
   const ratio = Number.isFinite(w) && Number.isFinite(h) && h > 0 ? w / h : null;
+  // Sidebar 180 + ArcTimeline 120 = 300,扣掉的可用区按 94% 算最大宽
   if (!ratio) {
-    return { width: 'min(80vw, calc(96vh - 44px))', height: 'min(80vw, calc(96vh - 44px))' };
+    return {
+      width: 'min(calc(80vw - 300px), calc(96vh - 44px))',
+      height: 'min(calc(80vw - 300px), calc(96vh - 44px))',
+    };
   }
   return {
-    width: `min(94vw, 1880px, calc((96vh - 44px) * ${ratio}))`,
-    height: `min(calc(96vh - 44px), calc(94vw / ${ratio}), calc(1880px / ${ratio}))`,
+    width: `min(calc(94vw - 300px), 1880px, calc((96vh - 44px) * ${ratio}))`,
+    height: `min(calc(96vh - 44px), calc((94vw - 300px) / ${ratio}), calc(1880px / ${ratio}))`,
   };
 }
 
@@ -260,12 +264,13 @@ function PhotoCarousel({
       {neighbors.map((i) => (
         <img key={photos[i].id} src={photos[i].url} alt="" aria-hidden="true" style={{ display: 'none' }} />
       ))}
-      {/* 单图相框:自然 flow,由父级 flex 居中;竖排 [图][白条],无绝对定位 coverflow。
-          图片区用比例算出的明确尺寸 → 加载时不塌陷、贴合照片。 */}
+      {/* 单图相框:外层 width 锁定为图片 width,否则 inline-flex 跟随最大子元素,
+          白条 EXIF 内容 minimum 比图片宽就会撑外层 → 白条伸出图片外。 */}
       <div
         className="rounded-md"
       style={{
         position: 'relative',
+        width: frameSize.width,
         display: 'inline-flex',
         flexDirection: 'column',
         boxShadow: '0 22px 80px rgba(0,0,0,0.28)',
@@ -507,6 +512,21 @@ function BlurBackground({ photoUrl }: { photoUrl: string | null }) {
       />
       {/* 层 2：暗色蒙版兜底 */}
       <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)' }} />
+      {/*
+        层 3:径向 vignette。
+        主图按 aspect ratio 算尺寸,几乎不可能正好填满可见区,左右总有 gap。
+        这层让边缘永远渐黑——任意 viewport / 任意比例下,Sidebar / ArcTimeline
+        之间露出的 BlurBackground 都被压暗,亮场景下也看不到"灰条"。
+        中心 50% 区透明保留沉浸感,外圈渐进到 65% 黑。
+      */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background:
+            'radial-gradient(ellipse 60% 70% at center, transparent 0%, rgba(0,0,0,0.45) 65%, rgba(0,0,0,0.75) 100%)',
+        }}
+      />
     </div>,
     document.body,
   );
@@ -671,7 +691,15 @@ export default function GalleryPage() {
           height: '100%',
         }}
       >
-        {/* 照片展示区 — 去掉右侧硬 padding，时间线是半透明浮层不影响居中 */}
+        {/*
+          照片展示区:左右 padding 都扣浮层宽度,让主图按"真实可见区"居中。
+          - 左:Sidebar 浮层 ~180px
+          - 右:ArcTimeline 浮层 ~132px
+          浮层用 absolute 不占 flex 流,如果不扣 padding,主图按 viewport 全
+          宽算居中 → 实际偏左 60px → 右侧 BlurBackground 大块露出。
+          加上 BlurBackground 的 vignette 双保险:亮场景下边缘永远黑,
+          剩下的几十像素 gap 看不出灰色。
+        */}
         <div
           style={{
             flex: 1,
@@ -679,6 +707,8 @@ export default function GalleryPage() {
             alignItems: 'center',
             justifyContent: 'center',
             padding: '16px 12px',
+            paddingLeft: 180,
+            paddingRight: 132,
           }}
         >
           {/* dots/caption 已收编进白条与照片下沿,无需独立浮层 */}
