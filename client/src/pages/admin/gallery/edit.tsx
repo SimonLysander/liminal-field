@@ -26,7 +26,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { LoadingState } from '@/components/LoadingState';
 import { PhotoRowEditor } from './components/PhotoRowEditor';
-// 注:GalleryProseEditor.tsx(相册随笔)保留在 components/ 但未挂载 — 产品克制,无前台展示
 import { MetadataFields } from './components/LocationSelect';
 import { CommitPopover } from './components/CommitPopover';
 import { InlineCaptionCard } from './components/InlineCaptionCard';
@@ -269,9 +268,7 @@ export default function GalleryEditPage() {
             onDateChange={updateDate}
             onLocationChange={updateLocation}
           />
-          {/* 相册随笔编辑(GalleryProseEditor)已下架——前台从未读取该字段,
-              产品上"画廊故事让图说话"克制原则,不需要相册级别的散文。
-              service 层 prose 字段保留(避免破坏 Aurora 画廊 context 流)。 */}
+          {/* 注:后端 prose 字段保留,Aurora 画廊 context 流要用;前端无编辑入口(产品克制:"画廊故事让图说话")。 */}
         </div>
       </div>
       </div>
