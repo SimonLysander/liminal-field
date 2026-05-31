@@ -24,9 +24,10 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
 import { LoadingState } from '@/components/LoadingState';
-import { PhotoGrid } from './components/PhotoGrid';
-import { PhotoEditModal } from './components/PhotoEditModal';
-import { GalleryProseEditor } from './components/GalleryProseEditor';
+import { PhotoRowEditor } from './components/PhotoRowEditor';
+// PhotoGrid + PhotoEditModal 已下架:行式布局把 caption/EXIF 都 inline,Modal 砍掉
+// 看大图改走 PhotoRowEditor 内置 Lightbox(纯展示,不编辑)
+// GalleryProseEditor 已下架(相册随笔无前台展示,产品决定克制) — 保留组件文件待回归
 import { MetadataFields } from './components/LocationSelect';
 import { CommitPopover } from './components/CommitPopover';
 import { InlineCaptionCard } from './components/InlineCaptionCard';
@@ -77,7 +78,6 @@ export default function GalleryEditPage() {
     saveStatus,
     lastSavedAt,
     updateTitle,
-    updateProse,
     reorderPhotos,
     updateCaption,
     updatePhotoTags,
@@ -85,7 +85,7 @@ export default function GalleryEditPage() {
     retryUpload,
     uploadProgress,
     deletePhoto,
-    setCover,
+    // setCover 暂时拿不到入口(原在 PhotoEditModal 里),后续可加 PhotoRowEditor 右键菜单
     updateDate,
     updateLocation,
     save,
@@ -135,14 +135,7 @@ export default function GalleryEditPage() {
       .catch(() => setHasVision(false));
   }, []);
 
-  // 照片编辑弹窗状态
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalPhotoIndex, setModalPhotoIndex] = useState(0);
-
-  const handlePhotoClick = (index: number) => {
-    setModalPhotoIndex(index);
-    setModalOpen(true);
-  };
+  // (PhotoEditModal 已下架:照片编辑弹窗状态、handlePhotoClick 都不需要了)
 
   // 提交：Modal 输入变更说明 → Git commit → 跳回列表页
   const handleCommit = async (changeNote: string) => {
@@ -255,12 +248,13 @@ export default function GalleryEditPage() {
       {/* 滚动内容区 */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-[var(--layout-reading-max)] flex-col gap-5 px-10 py-6 max-[520px]:px-4">
-          {/* 照片网格 */}
-          <PhotoGrid
+          {/* 照片行式编辑器:缩略 + caption inline + 日期/EXIF popover + Lightbox 看大图 */}
+          <PhotoRowEditor
             photos={photos}
             uploadProgress={uploadProgress}
             onReorder={reorderPhotos}
-            onPhotoClick={handlePhotoClick}
+            onCaptionChange={updateCaption}
+            onTagsChange={updatePhotoTags}
             onDelete={deletePhoto}
             onUpload={(files) => void uploadPhotos(files)}
             onRetry={(photoId) => void retryUpload(photoId)}
@@ -273,12 +267,9 @@ export default function GalleryEditPage() {
             onDateChange={updateDate}
             onLocationChange={updateLocation}
           />
-
-          {/* 随笔编辑区（无框，工具栏已 Portal 到 topbar） */}
-          <GalleryProseEditor
-            initialMarkdown={prose}
-            onChange={updateProse}
-          />
+          {/* 相册随笔编辑(GalleryProseEditor)已下架——前台从未读取该字段,
+              产品上"画廊故事让图说话"克制原则,不需要相册级别的散文。
+              service 层 prose 字段保留(避免破坏 Aurora 画廊 context 流)。 */}
         </div>
       </div>
       </div>
@@ -343,17 +334,7 @@ export default function GalleryEditPage() {
         </aside>
       )}
 
-      {/* 照片编辑弹窗 */}
-      <PhotoEditModal
-        open={modalOpen}
-        photos={photos}
-        initialIndex={modalPhotoIndex}
-        onClose={() => setModalOpen(false)}
-        onCaptionChange={updateCaption}
-        onTagsChange={updatePhotoTags}
-        onSetCover={setCover}
-        onDelete={deletePhoto}
-      />
+      {/* PhotoEditModal 已下架:caption/EXIF 都在 PhotoRowEditor 行内编辑,看大图走 Lightbox */}
     </div>
   );
 }

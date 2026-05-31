@@ -24,11 +24,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { NotebookText, X } from 'lucide-react';
 import { galleryApi } from '@/services/workspace';
 import type { GalleryPhoto, GalleryPublicListItem, GalleryPublicDetail } from '@/services/workspace';
 import { appleEase } from '@/lib/motion';
-import MarkdownBody from '@/components/shared/MarkdownBody';
 
 // ─── PhotoFrameBar ─────────────────────────────────────────────────────────────
 
@@ -538,17 +536,13 @@ export default function GalleryPage() {
   // 当前展示的照片索引（控制 PhotoCarousel 和 ← → 键导航）
   const [photoIdx, setPhotoIdx] = useState(0);
 
-  // 手记抽屉开关:从左侧滑入展示 prose,默认收起不打扰沉浸主图
-  const [noteOpen, setNoteOpen] = useState(false);
-
   // 已加载的详情缓存，避免重复请求（key: post id）
   const detailCache = useRef<Map<string, GalleryPublicDetail>>(new Map());
 
-  /** 切换相册：更新 URL 参数,顺带关闭手记抽屉(避免上本随笔留屏) */
+  /** 切换相册：更新 URL 参数 */
   const selectPost = useCallback((idx: number) => {
     const post = posts[idx];
     if (post) {
-      setNoteOpen(false);
       setSearchParams({ post: post.id }, { replace: true });
     }
   }, [posts, setSearchParams]);
@@ -631,11 +625,6 @@ export default function GalleryPage() {
   // ── 键盘导航 ────────────────────────────────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Esc 优先关闭抽屉(若开)——而不是跑去翻图
-      if (e.key === 'Escape' && noteOpen) {
-        setNoteOpen(false);
-        return;
-      }
       switch (e.key) {
         case 'ArrowLeft':  navigatePhoto(-1); break;
         case 'ArrowRight': navigatePhoto(1);  break;
@@ -645,9 +634,7 @@ export default function GalleryPage() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [navigatePhoto, navigatePost, noteOpen]);
-
-  // 注:切相册时关抽屉的逻辑在 selectPost 源头收,不放 effect 里(避免 react-hooks/set-state-in-effect)
+  }, [navigatePhoto, navigatePost]);
 
   // ── 渲染 ──────────────────────────────────────────────────────────────────────
 
@@ -709,121 +696,6 @@ export default function GalleryPage() {
         currentIdx={postIdx}
         onSelect={(i) => { selectPost(i); }}
       />
-
-      {/*
-        左上"手记"图标:只在当前相册有 prose 时显示,克制小按钮(默认不显形)。
-        点击 → 抽屉从左侧滑出(z-index 30 压过 ArcTimeline 20)。
-        prose 是相册整体的散文(≤50字),不打扰主图沉浸感的前提下让随笔"够得到"。
-      */}
-      {currentDetail?.prose && currentDetail.prose.trim() && (
-        <button
-          type="button"
-          aria-label="打开相册手记"
-          onClick={() => setNoteOpen(true)}
-          style={{
-            position: 'absolute',
-            left: 16, top: 16, zIndex: 25,
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '6px 12px',
-            borderRadius: 999,
-            border: '1px solid rgba(255,255,255,0.18)',
-            background: 'rgba(0,0,0,0.28)',
-            color: 'rgba(255,255,255,0.7)',
-            backdropFilter: 'blur(8px)',
-            fontSize: 12,
-            cursor: 'pointer',
-            transition: 'opacity 0.2s, background 0.2s',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(0,0,0,0.42)';
-            e.currentTarget.style.color = 'rgba(255,255,255,0.92)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'rgba(0,0,0,0.28)';
-            e.currentTarget.style.color = 'rgba(255,255,255,0.7)';
-          }}
-        >
-          <NotebookText size={14} strokeWidth={1.5} />
-          <span>手记</span>
-        </button>
-      )}
-
-      {/* 手记抽屉:左侧 fixed 滑入,纸色,渲染 prose markdown */}
-      <AnimatePresence>
-        {noteOpen && currentDetail?.prose && (
-          <>
-            {/* scrim:点击关闭。透明度低,保留主图可见性 */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              onClick={() => setNoteOpen(false)}
-              style={{
-                position: 'absolute', inset: 0, zIndex: 28,
-                background: 'rgba(0,0,0,0.18)',
-              }}
-            />
-            {/* 抽屉本体:左侧滑入,纸色,容纳 prose */}
-            <motion.aside
-              initial={{ x: '-100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '-100%' }}
-              transition={{ duration: 0.32, ease: appleEase }}
-              style={{
-                position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 30,
-                width: 'min(360px, 86vw)',
-                background: 'var(--paper, #fbfaf6)',
-                boxShadow: '6px 0 32px rgba(0,0,0,0.18)',
-                display: 'flex', flexDirection: 'column',
-                overflow: 'hidden',
-              }}
-            >
-              <header
-                style={{
-                  flexShrink: 0,
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '14px 18px',
-                  borderBottom: '1px solid var(--separator, rgba(45,45,45,0.08))',
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: 13, fontWeight: 500,
-                    color: 'var(--ink-faded, #555)',
-                    letterSpacing: '0.04em',
-                  }}
-                >
-                  手记
-                </span>
-                <button
-                  type="button"
-                  aria-label="关闭手记"
-                  onClick={() => setNoteOpen(false)}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    width: 28, height: 28, borderRadius: 6,
-                    border: 'none', background: 'transparent',
-                    color: 'var(--ink-ghost, #999)', cursor: 'pointer',
-                  }}
-                >
-                  <X size={16} strokeWidth={1.5} />
-                </button>
-              </header>
-              <div
-                style={{
-                  flex: 1, overflowY: 'auto',
-                  padding: '18px 22px',
-                  fontSize: 14, lineHeight: 1.75,
-                  color: 'var(--ink, #2a2a2a)',
-                }}
-              >
-                <MarkdownBody markdown={currentDetail.prose} />
-              </div>
-            </motion.aside>
-          </>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

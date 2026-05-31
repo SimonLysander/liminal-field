@@ -89,57 +89,8 @@ const FIELD_HOVER =
 const FIELD_FOCUS = 'border-[var(--accent)]';
 
 /* ─── 照片级：EXIF 拍摄参数 ─── */
-
-/**
- * 字段定义：顺序与收起态一致（大小·分辨率·光圈·快门·ISO·焦距·日期）
- * 大小和分辨率只读，不在此列表；日期用 Calendar 组件单独处理。
- *
- * 用户只输入数字，单位由 prefix/suffix 自动拼接。
- * - 存储格式：f/2.8, 1/250s, 400, 28mm
- * - 输入框显示纯数字部分，前后缀作为视觉提示
- * - pattern 校验的是纯数字输入（不含单位）
- */
-const TEXT_FIELDS: {
-  key: string;
-  label: string;
-  placeholder: string;
-  prefix?: string;
-  suffix?: string;
-  /** 校验纯数字输入 */
-  pattern: RegExp;
-  /** 从存储值中提取纯数字部分 */
-  parse: (v: string) => string;
-  /** 将纯数字输入转为存储格式 */
-  format: (v: string) => string;
-}[] = [
-  {
-    key: 'aperture', label: '光圈', placeholder: '2.8',
-    prefix: 'f/',
-    pattern: /^\d+(\.\d+)?$/,
-    parse: (v) => v.replace(/^f\//, ''),
-    format: (v) => v ? `f/${v}` : '',
-  },
-  {
-    key: 'shutter', label: '快门', placeholder: '1/250',
-    suffix: 's',
-    pattern: /^(1\/\d+|\d+(\.\d+)?)$/,
-    parse: (v) => v.replace(/s$/, ''),
-    format: (v) => v ? `${v}s` : '',
-  },
-  {
-    key: 'iso', label: 'ISO', placeholder: '400',
-    pattern: /^\d+$/,
-    parse: (v) => v,
-    format: (v) => v,
-  },
-  {
-    key: 'focalLength', label: '焦距', placeholder: '28',
-    suffix: 'mm',
-    pattern: /^\d+$/,
-    parse: (v) => v.replace(/mm$/, ''),
-    format: (v) => v ? `${v}mm` : '',
-  },
-];
+// EXIF_TEXT_FIELDS 已抽到 photo-exif-fields.ts(纯数据文件,react-refresh 规则要求)
+import { EXIF_TEXT_FIELDS } from './photo-exif-fields';
 
 interface PhotoMetadataFieldsProps {
   tags: Record<string, string>;
@@ -203,7 +154,7 @@ export function PhotoMetadataFields({ tags, fileSize, dimensions, onChange }: Ph
       </FieldGroup>
 
       {/* 可编辑字段（光圈、快门、ISO、焦距）— 顺序与收起态一致 */}
-      {TEXT_FIELDS.map(({ key, label, placeholder, prefix, suffix, pattern, parse, format }) => {
+      {EXIF_TEXT_FIELDS.map(({ key, label, placeholder, prefix, suffix, pattern, parse, format }) => {
         const rawValue = tags[key] ? parse(tags[key]) : '';
         return (
           <FieldGroup key={key} label={label}>
