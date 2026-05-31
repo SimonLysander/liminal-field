@@ -42,7 +42,6 @@ const ContentAdmin = lazy(() => import('./pages/admin/content'));
 const GalleryAdmin = lazy(() => import('./pages/admin/gallery'));
 const GalleryEditPage = lazy(() => import('./pages/admin/gallery/edit'));
 const AnthologyAdmin = lazy(() => import('./pages/admin/anthology'));
-const AnthologyEntryEditPage = lazy(() => import('./pages/admin/anthology/edit'));
 const DraftEditPage = lazy(() => import('./pages/admin/edit'));
 const ImportPreviewPage = lazy(() => import('./pages/admin/import-preview'));
 const BatchImportPage = lazy(() => import('./pages/admin/batch-import'));
@@ -235,17 +234,6 @@ function App() {
             <AuthGuard>
               <Suspense fallback={<LoadingState variant="full" />}>
                 <DraftEditPage />
-              </Suspense>
-            </AuthGuard>
-          }
-        />
-        {/* 旧路径(基于 entryKey)Phase 6 清,期间仍保留以兼容直接打开的链接 */}
-        <Route
-          path="/admin/anthology/:id/entries/:entryKey/edit"
-          element={
-            <AuthGuard>
-              <Suspense fallback={<LoadingState variant="full" />}>
-                <AnthologyEntryEditPage />
               </Suspense>
             </AuthGuard>
           }
