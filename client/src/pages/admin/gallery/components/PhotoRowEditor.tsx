@@ -143,14 +143,19 @@ function SortableRow({
     <div
       ref={setNodeRef}
       style={style}
-      className="group relative flex items-stretch gap-3 rounded-md py-2 transition-colors hover:bg-[color-mix(in_srgb,var(--shelf)_60%,transparent)]"
-      {...attributes}
+      className="group relative flex items-stretch gap-3 rounded-md py-2"
     >
-      {/* 拖拽柄:只把 listeners 挂这里,整行就不会因点图/写字误触拖动 */}
+      {/*
+        拖拽柄:attributes + listeners 都挂这里,不挂外层 row。
+        如果挂外层,dnd-kit 默认给 row 加 role="button" + tabIndex=0,
+        整张卡片会被 a11y 当成 button,子元素点击都连带卡片响应——
+        用户感受到的"点任何元素整张卡都点一下"就是这个原因。
+      */}
       <button
         type="button"
         aria-label="拖拽重排"
         className="flex w-5 shrink-0 cursor-grab items-center justify-center text-[var(--ink-ghost)] opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
+        {...attributes}
         {...listeners}
       >
         <GripVertical size={14} strokeWidth={1.5} />
@@ -195,7 +200,9 @@ function SortableRow({
 
       {/* 右侧主区:caption + 副信息行 */}
       <div className="flex min-w-0 flex-1 flex-col gap-1 py-0.5">
-        {/* caption 输入(默认 inline,无边框,focus 出下沿 accent 线) */}
+        {/* caption 输入:默认完全融在纸面,光标本身就是 focus 反馈
+            (之前 border-bottom 因 textarea 默认 borderRadius=6 被圆角切成弧形,
+            视觉上像"整张卡片被框住",其实是 border-bottom 的几何错觉) */}
         <div className="relative">
           <textarea
             data-input-bare
@@ -210,14 +217,13 @@ function SortableRow({
             placeholder="写一句…"
             maxLength={CAPTION_MAX}
             rows={1}
-            className="w-full resize-none border-0 bg-transparent py-1 pr-12 text-sm outline-none shadow-none placeholder:text-[var(--ink-ghost)]"
+            className="w-full resize-none border-0 bg-transparent py-1 pr-12 text-sm outline-none placeholder:text-[var(--ink-ghost)]"
             style={{
               color: 'var(--ink)',
-              borderBottom: '1px solid transparent',
+              borderRadius: 0,
+              boxShadow: 'none',
               minHeight: 28,
             }}
-            onFocus={(e) => { e.currentTarget.style.borderBottom = '1px solid var(--accent)'; }}
-            onBlurCapture={(e) => { e.currentTarget.style.borderBottom = '1px solid transparent'; }}
           />
           {/* 字数计数:右侧绝对定位,达上限变红 */}
           <span
@@ -291,8 +297,10 @@ function SortableRow({
                 </button>
               </PopoverTrigger>
               <PopoverContent
-                className="w-[260px] p-3"
+                className="w-[180px] p-3"
                 align="end"
+                side="top"
+                sideOffset={4}
                 style={{ background: 'var(--paper)' }}
               >
                 <div
@@ -301,19 +309,29 @@ function SortableRow({
                 >
                   拍摄参数
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                {/* 4 字段单列竖排:label 在左、输入框在右,窄而高 */}
+                <div className="flex flex-col gap-2">
                   {EXIF_TEXT_FIELDS.map(({ key, label, placeholder, prefix, suffix, pattern, parse, format }) => {
                     const rawValue = photo.tags?.[key] ? parse(photo.tags[key]) : '';
                     return (
-                      <div key={key} className="flex flex-col gap-1">
-                        <label className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>{label}</label>
+                      <div key={key} className="flex items-center gap-2">
+                        <label
+                          className="w-9 shrink-0 text-2xs"
+                          style={{ color: 'var(--ink-ghost)' }}
+                        >
+                          {label}
+                        </label>
                         <div
-                          className="flex h-7 items-center rounded-md border bg-[var(--shelf)] px-2 transition-colors focus-within:border-[var(--accent)]"
+                          className="flex h-7 flex-1 items-center rounded-md border bg-[var(--shelf)] px-2 transition-colors focus-within:border-[var(--accent)]"
                           style={{ borderColor: errors[key] ? 'var(--mark-red)' : 'var(--separator)' }}
                         >
                           {prefix && (
                             <span className="shrink-0 text-xs" style={{ color: 'var(--ink-ghost)' }}>{prefix}</span>
                           )}
+                          {/*
+                            data-input-bare + inline boxShadow:none:
+                            双保险压全局 :focus-visible ring(否则外层 border accent + input ring 双圈)
+                          */}
                           <input
                             data-input-bare
                             type="text"
@@ -321,8 +339,8 @@ function SortableRow({
                             onChange={(e) => handleExifChange(key, e.target.value, format)}
                             onBlur={(e) => handleExifBlur(key, e.target.value, pattern)}
                             placeholder={placeholder}
-                            className="min-w-0 flex-1 border-0 bg-transparent px-1 text-xs shadow-none outline-none placeholder:text-[var(--ink-ghost)]"
-                            style={{ color: 'var(--ink)' }}
+                            className="min-w-0 flex-1 border-0 bg-transparent px-1 text-xs outline-none placeholder:text-[var(--ink-ghost)]"
+                            style={{ color: 'var(--ink)', boxShadow: 'none' }}
                           />
                           {suffix && (
                             <span className="shrink-0 text-xs" style={{ color: 'var(--ink-ghost)' }}>{suffix}</span>
