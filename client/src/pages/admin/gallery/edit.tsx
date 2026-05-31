@@ -123,14 +123,19 @@ export default function GalleryEditPage() {
     navigate(to);
   };
 
-  // 图说写手 Aurora 浮层:仅当当前启用 provider 配了视觉模型时才挂(没视觉模型看不了图)
+  // 图说写手 Aurora 浮层:仅当 gallery-caption-writer agent 实际会用的 provider 配了视觉模型时才挂。
+  // 2026-05-30 #5 重构后每个 agent 自选 provider,不能再问全局 activeProviderId(那一支会指着没视觉的 deepseek
+  // 而 agent 早绑了配视觉的 zhipu)。解析顺序与后端 agent.service 一致:visionProviderId → providerId → activeProviderId。
   const [hasVision, setHasVision] = useState(false);
   useEffect(() => {
     void settingsApi
       .getConfig()
       .then((c) => {
-        const active = c.ai.providers.find((p) => p.id === c.ai.activeProviderId);
-        setHasVision(!!active?.visionModel);
+        const agent = c.agent.configs.find((a) => a.key === 'gallery-caption-writer');
+        const visionProviderId =
+          agent?.visionProviderId || agent?.providerId || c.ai.activeProviderId;
+        const provider = c.ai.providers.find((p) => p.id === visionProviderId);
+        setHasVision(!!provider?.visionModel);
       })
       .catch(() => setHasVision(false));
   }, []);
