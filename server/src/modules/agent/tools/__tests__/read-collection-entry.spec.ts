@@ -15,12 +15,12 @@ const run = (tool: unknown, input: unknown) =>
 
 const doc = (contentItemId: string): DocumentContext => ({
   contentItemId,
-  title: '当前条目',
+  title: '当前节点',
   bodyMarkdown: 'x',
 });
 
 describe('read_collection_entry', () => {
-  it('正常读同集兄弟条目:usePublished=false,返回标题+正文', async () => {
+  it('正常读同集兄弟节点:usePublished=false,返回标题+正文', async () => {
     const reader = {
       getEntryDetail: jest
         .fn()
@@ -29,13 +29,13 @@ describe('read_collection_entry', () => {
     const r = parse(
       await run(
         createReadCollectionEntryTool(() => doc('ci_x:e_self'), reader),
-        { entryKey: 'e_other' },
+        { nodeId: 'e_other' },
       ),
     );
     expect(r.meta?.status).toBe('ok');
     expect(r.detail).toBe('世界是…');
     expect(r.summary).toContain('认识世界');
-    // 关键:用文集 id + 目标 entryKey + usePublished=false(最新已提交,不限发布)
+    // 关键:用文集 id + 目标 nodeId + usePublished=false(最新已提交,不限发布)
     expect(reader.getEntryDetail).toHaveBeenCalledWith(
       'ci_x',
       'e_other',
@@ -43,24 +43,24 @@ describe('read_collection_entry', () => {
     );
   });
 
-  it('当前文档不是文集条目(无冒号)→ invalid', async () => {
+  it('当前文档不是文集子节点(无冒号)→ invalid', async () => {
     const reader = { getEntryDetail: jest.fn() };
     const r = parse(
       await run(
         createReadCollectionEntryTool(() => doc('ci_plain_note'), reader),
-        { entryKey: 'e_other' },
+        { nodeId: 'e_other' },
       ),
     );
     expect(r.meta?.status).toBe('invalid');
     expect(reader.getEntryDetail).not.toHaveBeenCalled();
   });
 
-  it('请求的就是当前正在编辑的条目 → invalid,提示用 get_current_draft', async () => {
+  it('请求的就是当前正在编辑的节点 → invalid,提示用 get_current_draft', async () => {
     const reader = { getEntryDetail: jest.fn() };
     const r = parse(
       await run(
         createReadCollectionEntryTool(() => doc('ci_x:e_self'), reader),
-        { entryKey: 'e_self' },
+        { nodeId: 'e_self' },
       ),
     );
     expect(r.meta?.status).toBe('invalid');
@@ -68,14 +68,14 @@ describe('read_collection_entry', () => {
     expect(reader.getEntryDetail).not.toHaveBeenCalled();
   });
 
-  it('条目不存在(reader 抛错)→ not_found', async () => {
+  it('节点不存在(reader 抛错)→ not_found', async () => {
     const reader = {
       getEntryDetail: jest.fn().mockRejectedValue(new Error('not found')),
     };
     const r = parse(
       await run(
         createReadCollectionEntryTool(() => doc('ci_x:e_self'), reader),
-        { entryKey: 'e_ghost' },
+        { nodeId: 'e_ghost' },
       ),
     );
     expect(r.meta?.status).toBe('not_found');
