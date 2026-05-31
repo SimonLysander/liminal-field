@@ -555,6 +555,12 @@ export interface AnthologyPublicDetail {
   id: string;
   title: string;
   description: string;
+  /**
+   * 卷首语:文集容器自身的正文(Markdown)。
+   * 空字符串表示无卷首语,展示端按空处理(不渲染该区块)。
+   * 节点同质化(Phase 1)后容器节点也有自己的正文,卷首语随之落地。
+   */
+  bodyMarkdown: string;
   entries: AnthologyEntryMeta[];
 }
 
@@ -590,8 +596,13 @@ export interface AnthologyEntryDetail {
   /** 最后更新时间（ISO 8601），与 NoteReader 的 updatedAt 同语义。 */
   updatedAt: string;
   bodyMarkdown: string;
-  prev: { key: string; title: string } | null;
-  next: { key: string; title: string } | null;
+  /**
+   * 上一篇导航引用。Phase 1 起 nodeId = 子节点 contentItemId,前端按
+   * 不透明字符串使用——拼 ?node=<nodeId> 跳转下一条阅读。
+   */
+  prev: { nodeId: string; title: string } | null;
+  /** 下一篇导航引用,语义同 prev。 */
+  next: { nodeId: string; title: string } | null;
 }
 
 /** 条目草稿保存请求体：anthology 条目草稿无 summary，结构与 EditorDraft 完全一致 */

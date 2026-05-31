@@ -301,6 +301,25 @@ export function useAdminWorkspace(options: { scope: 'notes' | 'anthology' } = { 
       setDraftInfo('');
       setHistoryLoading(true);
 
+      /*
+       * Phase 5 优雅降级:anthology scope 下 admin 主页不调 notes 专用的
+       * contentItemsApi(否则 404——文集节点不在 notes 表)。
+       * 折中策略:右侧 preview/history 暂留空,用户点节点直接进编辑器
+       * (/admin/anthology/:id/edit)看完整内容与版本。
+       * 长期方案:scope 适配整套通用节点 API,Phase 8 polish 再做。
+       */
+      if (scope === 'anthology') {
+        setFormalContent(EMPTY_FORMAL_CONTENT);
+        setDraftState(EMPTY_DRAFT_EDITOR_STATE);
+        setHistory([]);
+        setDraftPresence(EMPTY_DRAFT_PRESENCE);
+        setIsDirty(false);
+        setLastDraftSavedAt('');
+        setContentLoading(false);
+        setHistoryLoading(false);
+        return;
+      }
+
       try {
         const [detail, historyResult, existingDraft] =
           await Promise.all([
