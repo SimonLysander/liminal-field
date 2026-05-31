@@ -98,8 +98,6 @@ describe('Owner Profile & Memory Management (E2E)', () => {
 
   // ── 记忆管理 ──
 
-  let memoryId: string;
-
   describe('GET /agent/memories', () => {
     it('初始应返回空列表', async () => {
       const res = await supertest(ctx.app.getHttpServer())
@@ -115,12 +113,11 @@ describe('Owner Profile & Memory Management (E2E)', () => {
     it('通过 repository 创建记忆后应能通过 API 列出', async () => {
       // 通过 repository 创建测试记忆（E2E 测管理接口，不测 agent chat）
       const memoryRepo = ctx.app.get(AgentMemoryRepository);
-      const doc = await memoryRepo.upsert({
+      await memoryRepo.upsert({
         type: 'user',
         title: '测试记忆',
         content: '用户喜欢喝咖啡',
       });
-      memoryId = (doc._id as any).toString();
 
       const res = await supertest(ctx.app.getHttpServer())
         .get('/api/v1/agent/memories')
@@ -132,32 +129,9 @@ describe('Owner Profile & Memory Management (E2E)', () => {
       expect(res.body.data[0].type).toBe('user');
     });
 
-    it('PUT /agent/memories/:id 应能更新记忆', async () => {
-      // 只更新 content;type 保持 user(project 类型已废弃,记忆类型不再由管理端切换)
-      const res = await supertest(ctx.app.getHttpServer())
-        .put(`/api/v1/agent/memories/${memoryId}`)
-        .set('Cookie', cookie)
-        .send({ content: '用户喜欢喝红茶' })
-        .expect(200);
-
-      expect(res.body.data.content).toBe('用户喜欢喝红茶');
-      expect(res.body.data.type).toBe('user');
-      expect(res.body.data.title).toBe('测试记忆'); // title 未改
-    });
-
-    it('DELETE /agent/memories/:id 应能删除记忆', async () => {
-      await supertest(ctx.app.getHttpServer())
-        .delete(`/api/v1/agent/memories/${memoryId}`)
-        .set('Cookie', cookie)
-        .expect(200);
-
-      const res = await supertest(ctx.app.getHttpServer())
-        .get('/api/v1/agent/memories')
-        .set('Cookie', cookie)
-        .expect(200);
-
-      expect(res.body.data.length).toBe(0);
-    });
+    // PUT/DELETE /agent/memories 用例已删除:#150(2026-05-30) event log 改造后,
+    // 旧 user 记忆迁入 observations,update/delete 端点故意下线(只保留 GET 做 readonly 翻阅历史)。
+    // 新链路的可写测试覆盖在 agent 模块的 observations + view 单测里。
   });
 
   // ── 会话 tasks（#103） ──
