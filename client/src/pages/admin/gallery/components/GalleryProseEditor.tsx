@@ -4,8 +4,8 @@
  * 与全功能 PlateMarkdownEditor 的区别：
  *   - 使用 GalleryEditorKit 插件套件（无标题、代码块、表格等）
  *   - 内置工具栏（不通过 Portal 渲染到外部）
- *   - 500 字符限制计数器，超限时计数变红
- *   - 最小高度 100px，适合画廊随笔输入场景
+ *   - 50 字符硬上限计数器,超限时计数变红(沉浸式画廊"极其克制"的核心)
+ *   - 最小高度 100px,适合画廊随笔输入场景
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -38,7 +38,11 @@ import { ToolbarButton, ToolbarGroup } from '@/components/ui/toolbar';
 import { FloatingToolbar } from '@/components/ui/floating-toolbar';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
-const CHAR_LIMIT = 500;
+// 50 字硬上限——沉浸式画廊"极其克制"的具象化:一段话给整本相册定调。
+// 跟后端 propose_caption MAX_CAPTION=30 / PhotoEditModal textarea maxLength=30
+// 一致的克制纲领。Plate 编辑器不像 textarea 能直接 maxLength,
+// 这里通过计数器变红 + 工具栏隐藏的方式做软约束(超长仍能 typing 但视觉拒)。
+const CHAR_LIMIT = 50;
 
 /* 从 editor.children 提取所有纯文本，用于字符计数 */
 function getEditorPlainText(editor: ReturnType<typeof usePlateEditor>): string {

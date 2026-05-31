@@ -2,7 +2,12 @@ import { tool, jsonSchema } from 'ai';
 import { toolResult } from './tool-result';
 import type { GalleryContext } from './gallery-context';
 
-const MAX_CAPTION = 500;
+/**
+ * 图说硬上限 30 字——"极其克制"是沉浸式画廊的核心:一句白描点睛足矣。
+ * 跟前端 PhotoEditModal textarea 的 maxLength={30} 一致,
+ * 跟 system prompt 的"30 字内"指示一致(双重保险)。
+ */
+const MAX_CAPTION = 30;
 
 /**
  * propose_caption —— 为单张照片提议图说(caption)。
@@ -18,7 +23,8 @@ export function createProposeCaptionTool(
       '为某张照片**提议**图说(caption)。传 fileName + caption(+可选 reason)。' +
       '**这只是提议,不会自动生效**——用户要在卡片上点「应用」才真正写入照片。' +
       '所以调用后请说类似「我提议了图说『…』,满意就点应用」,**绝不要**说「已更新/已改好/已保存」(改动还没生效,那是假的)。' +
-      '图说要短、具体、贴合画面与随笔语气。',
+      '**图说硬上限 30 字,一句白描点睛即可**——超出会被工具拒。' +
+      '别堆形容词、别说正确的废话,平实贴画面最好。',
     inputSchema: jsonSchema<{
       fileName: string;
       caption: string;

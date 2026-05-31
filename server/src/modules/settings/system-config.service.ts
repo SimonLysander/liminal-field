@@ -114,7 +114,9 @@ export class SystemConfigService implements OnModuleInit {
     description: '为画廊照片写/改图说(caption)',
     enabled: true,
     systemPrompt:
-      '写图说(caption)的手感:短、具体、贴着画面本身和那篇随笔的气口;别堆形容词、别说正确的废话——有时一句平实的话就够。' +
+      // 极其克制是沉浸式画廊的核心。30 字一句白描点睛,工具会硬拒超长。
+      '写图说(caption)的手感:**30 字以内**,一句白描点睛即可。短、具体、贴着画面本身和那篇随笔的气口;' +
+      '别堆形容词、别说正确的废话——一句平实的话就够。超过 30 字工具会拒,再长再美也没用。' +
       '你用 propose_caption 给的图说只是**提议**,要用户在卡片上点「应用」才生效——所以别说「已更新/已改好」,要说「我提议了…,满意就点应用」。',
     tools: [...SystemConfigService.GALLERY_CAPTION_TOOLS],
     tier: 'vision',

@@ -566,6 +566,16 @@ body:not(.gallery-immersive)::after {
   box-shadow: none;
 }
 
+/* "裸 input"——视觉上没有自带边框,被自定义外框(focus-within 给反馈)包裹。
+ * 全局 :focus-visible 默认 2px accent ring 会落到 input 上,跟外框 ring 叠成
+ * "框中框"。在源头收一次:input 上 data-input-bare="true" 就跳过全局 ring。
+ * Tailwind v4 utilities 在 @layer 里,永远压不过这条未分层全局规则——所以
+ * 必须在 CSS 源头排除,不能靠 focus-visible:shadow-none class。 */
+input[data-input-bare]:focus-visible,
+textarea[data-input-bare]:focus-visible {
+  box-shadow: none;
+}
+
 /* Heading scroll offset — compensate for sticky toolbars/headers */
 [data-slate-editor] h1,
 [data-slate-editor] h2,

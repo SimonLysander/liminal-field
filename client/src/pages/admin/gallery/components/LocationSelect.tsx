@@ -215,14 +215,20 @@ export function PhotoMetadataFields({ tags, fileSize, dimensions, onChange }: Ph
               {prefix && (
                 <span className="shrink-0 text-xs" style={{ color: 'var(--ink-ghost)' }}>{prefix}</span>
               )}
-              {/* 裸 input,无自身边框/底色——外层盒子才是唯一的「框」,避免框中框 */}
+              {/*
+                裸 input:无自身边框/底色,外层盒子才是唯一的「框」。
+                - border-0 / shadow-none:挡 Tailwind v4 preflight 可能留的 input 默认边框
+                - data-input-bare:让 index.css 全局 :focus-visible 规则不再给 input 加 2px ring
+                  (否则外层 focus-within ring + input ring 叠成框中框)
+              */}
               <input
+                data-input-bare
                 type="text"
                 value={rawValue}
                 onChange={(e) => handleFieldChange(key, e.target.value, format)}
                 onBlur={(e) => handleFieldBlur(key, e.target.value, pattern)}
                 placeholder={placeholder}
-                className="min-w-0 flex-1 bg-transparent px-1 text-sm outline-none placeholder:text-[var(--ink-ghost)]"
+                className="min-w-0 flex-1 border-0 bg-transparent px-1 text-sm shadow-none outline-none placeholder:text-[var(--ink-ghost)]"
                 style={{ color: 'var(--ink)' }}
               />
               {suffix && (

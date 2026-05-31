@@ -386,6 +386,7 @@ export function PhotoEditModal({
           </div>
           <div className="relative">
             <textarea
+              data-input-bare
               className="w-full resize-none rounded-md border border-[var(--separator)] bg-[var(--shelf)] px-3 py-2.5 text-sm outline-none transition-colors hover:border-[var(--box-border)] focus:border-[var(--accent)]"
               style={{ color: 'var(--ink)', minHeight: '72px' }}
               placeholder="给这张照片写一句说明…"

@@ -101,7 +101,7 @@ export default function Sidebar() {
   const { searchOpen, setSearchOpen } = useSearchHotkey();
 
   /* query params 直接读 topic / doc，无需 regex 解析 pathname */
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const activeTopicId = searchParams.get('topic');
   const activeNoteId = searchParams.get('doc');
 
@@ -142,6 +142,17 @@ export default function Sidebar() {
           .filter((n) => n.type === 'FOLDER')
           .map((n) => ({ id: n.id, name: n.name }));
         setBreadcrumb(folders);
+        // 从首页/分享 URL 跳来时只带 ?doc=xxx,没 topic= → 节点列表停在根级。
+        // 反查 path 后,如果发现 doc 在某个 folder 里,把 topic 补到 URL 里
+        // (replace 不污染历史),让 currentParentId 自然推到对应 folder,
+        // 节点列表自动加载该层 + 当前 doc 节点高亮。
+        if (!activeTopicId && folders.length > 0) {
+          const last = folders[folders.length - 1];
+          setSearchParams(
+            { topic: last.id, doc: activeNoteId },
+            { replace: true },
+          );
+        }
       }).catch((err) => {
         console.error('[Sidebar] 面包屑路径加载失败:', err);
         // 面包屑路径加载失败不影响页面功能，静默降级
@@ -164,7 +175,7 @@ export default function Sidebar() {
     }
 
     return () => { cancelled = true; };
-  }, [activeNoteId, activeTopicId, active]);
+  }, [activeNoteId, activeTopicId, active, setSearchParams]);
 
   const handleNavigate = (space: Space) => {
     navigate(spaceToPath(space));
