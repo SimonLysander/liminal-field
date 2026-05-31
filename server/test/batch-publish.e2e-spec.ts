@@ -110,8 +110,4 @@ describe('Batch Publish (e2e)', () => {
     expect(res.body.data.successCount).toBe(3);
     expect(res.body.data.skippedCount).toBe(0);
   });
-
-  // describe '文件夹概览（GET /structure-nodes/:id/overview）' 已删除 ——
-  // FolderOverviewPanel 组件 2026-05-29 退役后 endpoint 和 service 方法都已清理
-  // (见 commit 0e19c9e),该 endpoint 不再存在。
 });

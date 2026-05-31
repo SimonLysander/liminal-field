@@ -1,13 +1,14 @@
 /*
  * GalleryEditPage — 画廊动态编辑页 (/admin/gallery/:id/edit)
  *
- * 布局：
- *   浮动胶囊顶栏（左：导航，右：主题切换 + 操作按钮）
- *   滚动内容区（--layout-reading-max 居中）：PhotoGrid + GalleryProseEditor + LocationSelect
- *   PhotoEditModal（照片详情弹窗）
+ * 布局:
+ *   浮动胶囊顶栏(左:导航,右:主题切换 + 操作按钮)
+ *   滚动内容区(--layout-reading-max 居中):PhotoRowEditor + MetadataFields
+ *     caption/EXIF 在 PhotoRowEditor 行内 inline 编辑;看大图走 Lightbox(纯展示)
+ *   右侧 AdvisorSidebar(配了视觉模型才挂)
  *
- * 进入此页面时 id 必定存在（从列表页 Modal 创建后跳转而来）。
- * 所有编辑通过 draft 自动保存，"提交"触发首次/新版本 Git commit。
+ * 进入此页面时 id 必定存在(从列表页创建后跳转而来)。
+ * 所有编辑通过 draft 自动保存,"提交"触发首次/新版本 Git commit。
  */
 
 import { useEffect, useState } from 'react';
@@ -25,9 +26,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { LoadingState } from '@/components/LoadingState';
 import { PhotoRowEditor } from './components/PhotoRowEditor';
-// PhotoGrid + PhotoEditModal 已下架:行式布局把 caption/EXIF 都 inline,Modal 砍掉
-// 看大图改走 PhotoRowEditor 内置 Lightbox(纯展示,不编辑)
-// GalleryProseEditor 已下架(相册随笔无前台展示,产品决定克制) — 保留组件文件待回归
+// 注:GalleryProseEditor.tsx(相册随笔)保留在 components/ 但未挂载 — 产品克制,无前台展示
 import { MetadataFields } from './components/LocationSelect';
 import { CommitPopover } from './components/CommitPopover';
 import { InlineCaptionCard } from './components/InlineCaptionCard';
@@ -85,7 +84,7 @@ export default function GalleryEditPage() {
     retryUpload,
     uploadProgress,
     deletePhoto,
-    // setCover 暂时拿不到入口(原在 PhotoEditModal 里),后续可加 PhotoRowEditor 右键菜单
+    // setCover 暂无入口,后续可加 PhotoRowEditor 右键菜单
     updateDate,
     updateLocation,
     save,
@@ -139,8 +138,6 @@ export default function GalleryEditPage() {
       })
       .catch(() => setHasVision(false));
   }, []);
-
-  // (PhotoEditModal 已下架:照片编辑弹窗状态、handlePhotoClick 都不需要了)
 
   // 提交：Modal 输入变更说明 → Git commit → 跳回列表页
   const handleCommit = async (changeNote: string) => {
@@ -338,8 +335,6 @@ export default function GalleryEditPage() {
           />
         </aside>
       )}
-
-      {/* PhotoEditModal 已下架:caption/EXIF 都在 PhotoRowEditor 行内编辑,看大图走 Lightbox */}
     </div>
   );
 }
