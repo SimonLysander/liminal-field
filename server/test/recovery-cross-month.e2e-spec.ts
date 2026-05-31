@@ -112,8 +112,11 @@ describe('跨月恢复 (e2e, 本地 bare 仓当远端)', () => {
     // 内容确实回来了
     expect(await repo.findById(noteId)).toBeTruthy();
     expect(await repo.findById(anthologyId)).toBeTruthy();
+    // Phase 1:阅读端走 /public/ 路由,nodeId 即子节点 contentItemId
     const entryDetail = await supertest(server)
-      .get(`/api/v1/spaces/anthology/items/${anthologyId}/entries/${entryKey}`)
+      .get(
+        `/api/v1/spaces/anthology/public/items/${anthologyId}/entries/${entryKey}`,
+      )
       .set('Cookie', cookie)
       .expect(200);
     expect(entryDetail.body.data.bodyMarkdown).toContain(ENTRY_BODY);

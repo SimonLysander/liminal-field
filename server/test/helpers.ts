@@ -345,59 +345,80 @@ export async function createAnthologyItem(
 }
 
 /**
- * 向文集添加一个条目，返回 { entryKey, detail } 对象。
+ * 向文集添加一个子节点(原 entry 概念),返回新节点的 contentItemId。
  *
- * - entryKey：新增条目的 key（nanoid 格式 `e_xxxxxxxx`），由 API 返回值动态获取
- * - detail：更新后的 AnthologyAdminDetail（含完整条目列表）
- *
- * 两步流程（对应当前业务逻辑）：
- * 1. POST addEntry → 创建空 system snapshot，更新索引，返回新增条目 key
- * 2. PUT saveEntry → 提交用户内容（bodyMarkdown），生成用户级 snapshot
- *
- * 如果 bodyMarkdown 非空，第二步才有意义。bodyMarkdown 为空时只做第一步。
+ * Phase 1 重构(2026-05-31)后流程:走通用页面树接口 POST /structure-nodes
+ * (parentId 指向文集容器节点,scope=anthology)创建子节点,后端自动 mint 空 ContentItem。
+ * 然后通过通用 PUT /spaces/anthology/items/:id 提交正文(若有)。
+ */
+export async function createAnthologyChildNode(
+  app: NestFastifyApplication,
+  cookie: string,
+  anthologyContentItemId: string,
+  title: string,
+  bodyMarkdown = '',
+): Promise<string> {
+  // 1. 通过 contents/:id/structure-path 反查文集容器的 NavigationNode id
+  //    (POST /structure-nodes 的 parentId 接受 NavigationNode id,不是 contentItemId)
+  const pathRes = await supertest(app.getHttpServer())
+    .get(`/api/v1/contents/${anthologyContentItemId}/structure-path`)
+    .set('Cookie', cookie)
+    .expect(200);
+  const parentNavNodeId = pathRes.body.data[pathRes.body.data.length - 1].id;
+
+  // 2. 创建子 NavigationNode(scope=anthology,parentId=容器节点),
+  //    后端自动建空 ContentItem,返回 contentItemId。
+  const createRes = await supertest(app.getHttpServer())
+    .post('/api/v1/structure-nodes')
+    .set('Cookie', cookie)
+    .send({
+      name: title,
+      scope: 'anthology',
+      parentId: parentNavNodeId,
+    })
+    .expect(201);
+  const nodeContentItemId = createRes.body.data.contentItemId;
+
+  // 3. 提交子节点正文(通用 :scope/items/:id PUT 走 workspaceService.update → saveContent)
+  if (bodyMarkdown) {
+    await supertest(app.getHttpServer())
+      .put(`/api/v1/spaces/anthology/items/${nodeContentItemId}`)
+      .set('Cookie', cookie)
+      .send({
+        title,
+        bodyMarkdown,
+        changeNote: `初稿:${title}`,
+      })
+      .expect(200);
+  }
+
+  return nodeContentItemId;
+}
+
+/**
+ * 向后兼容 wrapper:Phase 1 前签名 addAnthologyEntry({ title, bodyMarkdown }),
+ * 返回 { entryKey, detail }。新代码请直接用 createAnthologyChildNode。
  */
 export async function addAnthologyEntry(
   app: NestFastifyApplication,
   cookie: string,
-  anthologyId: string,
-  entry: { title: string; date?: string; bodyMarkdown: string },
+  anthologyContentItemId: string,
+  entry: { title: string; bodyMarkdown: string; date?: string },
 ): Promise<{ entryKey: string; detail: any }> {
-  // Step 1：addEntry 创建空条目（只传 title/date，bodyMarkdown 传空字符串）
-  const addRes = await supertest(app.getHttpServer())
-    .post(`/api/v1/spaces/anthology/items/${anthologyId}/entries`)
-    .set('Cookie', cookie)
-    .send({
-      title: entry.title,
-      ...(entry.date ? { date: entry.date } : {}),
-      bodyMarkdown: '',
-      changeNote: `添加条目：${entry.title}`,
-    })
-    .expect(201);
-
-  const detail = addRes.body.data;
-
-  // 从返回的条目列表中取最后一个（刚添加的）条目 key
-  // entry key 现在是 nanoid 格式（e_xxxxxxxx），不再是自增序号（e001）
-  const entries: Array<{ key: string }> = detail.entries;
-  const entryKey = entries[entries.length - 1].key;
-
-  // Step 2：如果有正文内容，提交条目内容（生成用户级 snapshot）
-  if (entry.bodyMarkdown) {
-    const saveRes = await supertest(app.getHttpServer())
-      .put(`/api/v1/spaces/anthology/items/${anthologyId}/entries/${entryKey}`)
-      .set('Cookie', cookie)
-      .send({
-        title: entry.title,
-        ...(entry.date ? { date: entry.date } : {}),
-        bodyMarkdown: entry.bodyMarkdown,
-        changeNote: `初稿：${entry.title}`,
-      })
-      .expect(200);
-
-    return { entryKey, detail: saveRes.body.data };
-  }
-
-  return { entryKey, detail };
+  const nodeId = await createAnthologyChildNode(
+    app,
+    cookie,
+    anthologyContentItemId,
+    entry.title,
+    entry.bodyMarkdown,
+  );
+  // 返回更新后的容器管理端详情供调用方拿 entries 列表(向后兼容)
+  const res = await supertest(app.getHttpServer())
+    .get(
+      `/api/v1/spaces/anthology/items/${anthologyContentItemId}?visibility=all`,
+    )
+    .set('Cookie', cookie);
+  return { entryKey: nodeId, detail: res.body?.data ?? {} };
 }
 
 /**

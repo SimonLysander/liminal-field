@@ -32,6 +32,7 @@ import { ContentRepository } from '../content/content.repository';
 import { ContentSnapshotRepository } from '../content/content-snapshot.repository';
 import { ContentRepoService } from '../content/content-repo.service';
 import { ContentGitService } from '../content/content-git.service';
+import { ContentService } from '../content/content.service';
 import { NavigationRepository } from '../navigation/navigation.repository';
 import { OssService } from '../oss/oss.service';
 import { ManifestService, ManifestDiff } from './manifest.service';
@@ -85,6 +86,7 @@ export class SettingsController {
     private readonly navigationRepository: NavigationRepository,
     private readonly contentRepoService: ContentRepoService,
     private readonly contentGitService: ContentGitService,
+    private readonly contentService: ContentService,
     private readonly ossService: OssService,
     private readonly manifestService: ManifestService,
     private readonly recoveryService: RecoveryService,
@@ -440,7 +442,10 @@ export class SettingsController {
    */
   @Post('push-to-remote')
   async pushToRemote(): Promise<{ success: boolean; message: string }> {
-    // 推送前先把所有 pending snapshot 写入 git（不等 cron）
+    // C0 治理(2026-05-31):先 await fire-and-forget 的 archiveToGit 全部完成,
+    // 否则刚 saveContent 的内容可能还没进 git 就被 push 跳过(lifecycle-remote flaky 根因)。
+    await this.contentService.waitForInFlightArchives();
+    // 推送前再把所有 pending snapshot 写入 git(不等 cron),给 archiveToGit 失败的兜底
     await this.contentGitService.retryPendingArchives();
 
     try {
