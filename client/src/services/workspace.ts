@@ -318,6 +318,25 @@ export const workspaceApi = {
       body: formData,
     });
   },
+
+  // ── 节点通用草稿(笔记走静态 notes/items/:id/draft、文集走通用 :scope/items/:id/draft)──
+  // 后端 workspace.controller 已注册通用 :scope/items/:id/draft 三件套,本组方法为前端门面,
+  // 由 DraftEditPage 按 scope 分流(笔记仍走 notesApi.getDraft 保零风险)。
+
+  /** 获取节点草稿。无草稿返回 null(后端 200)。 */
+  getNodeDraft: (scope: 'notes' | 'anthology', id: string) =>
+    request<EditorDraft | null>(`/spaces/${scope}/items/${id}/draft`),
+
+  /** 保存节点草稿(upsert,只写 MongoDB,不产 Git snapshot)。 */
+  saveNodeDraft: (scope: 'notes' | 'anthology', id: string, dto: SaveDraftDto) =>
+    request<EditorDraft>(`/spaces/${scope}/items/${id}/draft`, {
+      method: 'PUT',
+      body: JSON.stringify(dto),
+    }),
+
+  /** 丢弃节点草稿。 */
+  deleteNodeDraft: (scope: 'notes' | 'anthology', id: string) =>
+    request<void>(`/spaces/${scope}/items/${id}/draft`, { method: 'DELETE' }),
 };
 
 // ─── notesApi — notes scope 专用，兼容原 contentItemsApi 接口 ───

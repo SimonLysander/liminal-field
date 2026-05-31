@@ -230,6 +230,17 @@ function App() {
           }
         />
         <Route
+          path="/admin/anthology/:id/edit"
+          element={
+            <AuthGuard>
+              <Suspense fallback={<LoadingState variant="full" />}>
+                <DraftEditPage />
+              </Suspense>
+            </AuthGuard>
+          }
+        />
+        {/* 旧路径(基于 entryKey)Phase 6 清,期间仍保留以兼容直接打开的链接 */}
+        <Route
           path="/admin/anthology/:id/entries/:entryKey/edit"
           element={
             <AuthGuard>
