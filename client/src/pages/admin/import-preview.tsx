@@ -145,8 +145,8 @@ export default function ImportPreviewPage() {
       const result = await importApi.confirm(parseId, parentId, title);
       // 导入成功后跳转到管理预览页（跳转即为成功反馈）
       const params = new URLSearchParams();
-      if (parentId) params.set('topic', parentId);
-      params.set('doc', result.contentItemId);
+      if (parentId) params.set('at', parentId);
+      params.set('node', result.contentItemId);
       navigate(`/admin/notes?${params.toString()}`);
     } catch (err) {
       banner.error(parseError(err, '导入失败'));
@@ -158,7 +158,7 @@ export default function ImportPreviewPage() {
   const handleCancel = () => {
     clearSessionStart();
     if (parseId) importApi.cancelParse(parseId).catch(() => {});
-    const backUrl = parentId ? `/admin/notes?topic=${parentId}` : '/admin/notes';
+    const backUrl = parentId ? `/admin/notes?at=${parentId}` : '/admin/notes';
     navigate(backUrl);
   };
 

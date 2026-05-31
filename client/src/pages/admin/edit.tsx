@@ -86,8 +86,8 @@ const DraftEditPage = () => {
       async discard() {
         await contentItemsApi.deleteDraft(id!);
       },
-      // 返回/提交后回到「该文档详情」(带 doc),而非内容管理空首页——保留选中上下文
-      fallbackPath: id ? `/admin/notes?doc=${id}` : '/admin/notes',
+      // 返回/提交后回到「该文档详情」(带 node 参数),而非内容管理空首页——保留选中上下文
+      fallbackPath: id ? `/admin/notes?node=${id}` : '/admin/notes',
       labels: { loadError: '加载内容失败' },
     }),
     [id],
