@@ -27,10 +27,14 @@ export const NodeFormModal = ({
   modal,
   onClose,
   onSubmit,
+  scope = 'notes',
 }: {
   modal: ModalState;
   onClose: () => void;
   onSubmit: (payload: NodeSubmitPayload) => Promise<void>;
+  /** 当前 scope。'notes' 时显示导入入口(单文件/文件夹),其他 scope(如 'anthology')
+   *  隐藏 — 文集是连载创作场景,没有"老库迁移"需求,YAGNI。 */
+  scope?: 'notes' | 'anthology';
 }) => {
   const [name, setName] = useState(modal.node?.name ?? '');
   const [submitting, setSubmitting] = useState(false);
@@ -135,6 +139,7 @@ export const NodeFormModal = ({
       <Modal
         open
         onClose={onClose}
+        className="sm:max-w-md"
         title={isCreate ? '新建' : '重命名'}
         footer={
           <>
@@ -164,7 +169,7 @@ export const NodeFormModal = ({
             />
           </FieldLabel>
 
-          {isCreate && (
+          {isCreate && scope === 'notes' && (
             <>
               <input
                 ref={fileInputRef}

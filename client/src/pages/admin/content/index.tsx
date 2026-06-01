@@ -224,6 +224,7 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
           modal={workspace.modal}
           onClose={workspace.closeModal}
           onSubmit={workspace.handleCreateOrEdit}
+          scope={scope}
         />
       )}
       {workspace.deleteTarget && (
