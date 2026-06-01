@@ -167,7 +167,7 @@ export class ToolAssembler {
               createProposeDocumentRewriteTool(getDocument),
           }
         : {}),
-      // 文集条目场景(contentItemId 形如 `${anthologyId}:${entryKey}`)才挂:读同集其它条目
+      // 文集子节点场景(contentItemId 形如 `${anthologyId}:${nodeId}`)才挂:读同集其它子节点
       ...(entryContext.document?.contentItemId.includes(':')
         ? {
             read_collection_entry: createReadCollectionEntryTool(

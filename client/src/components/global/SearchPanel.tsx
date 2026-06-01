@@ -59,16 +59,18 @@ const SCOPE_LABEL: Record<string, string> = {
 /** 根据 scope 和上下文（管理端/展示端）生成跳转路径 */
 function buildPath(scope: string, id: string, admin?: boolean): string {
   if (admin) {
+    // admin 笔记/文集 URL 统一用通用 query 'node'(选中的内容节点);相册保持 'post'
     const adminPaths: Record<string, string> = {
-      notes: `/admin/notes?doc=${id}`,
+      notes: `/admin/notes?node=${id}`,
       gallery: `/admin/gallery?post=${id}`,
-      anthology: `/admin/anthology?doc=${id}`,
+      anthology: `/admin/anthology?node=${id}`,
     };
     return adminPaths[scope] ?? adminPaths.notes;
   }
 
   const publicPaths: Record<string, string> = {
-    notes: `/note?doc=${id}`,
+    // 阅读前台与 admin 同款 query 命名:?node= 指向当前选中的内容节点
+    notes: `/note?node=${id}`,
     gallery: `/gallery?post=${id}`,
     anthology: `/anthology?id=${id}`,
   };

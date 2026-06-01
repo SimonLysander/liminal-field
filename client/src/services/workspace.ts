@@ -318,6 +318,25 @@ export const workspaceApi = {
       body: formData,
     });
   },
+
+  // ── 节点通用草稿(笔记走静态 notes/items/:id/draft、文集走通用 :scope/items/:id/draft)──
+  // 后端 workspace.controller 已注册通用 :scope/items/:id/draft 三件套,本组方法为前端门面,
+  // 由 DraftEditPage 按 scope 分流(笔记仍走 notesApi.getDraft 保零风险)。
+
+  /** 获取节点草稿。无草稿返回 null(后端 200)。 */
+  getNodeDraft: (scope: 'notes' | 'anthology', id: string) =>
+    request<EditorDraft | null>(`/spaces/${scope}/items/${id}/draft`),
+
+  /** 保存节点草稿(upsert,只写 MongoDB,不产 Git snapshot)。 */
+  saveNodeDraft: (scope: 'notes' | 'anthology', id: string, dto: SaveDraftDto) =>
+    request<EditorDraft>(`/spaces/${scope}/items/${id}/draft`, {
+      method: 'PUT',
+      body: JSON.stringify(dto),
+    }),
+
+  /** 丢弃节点草稿。 */
+  deleteNodeDraft: (scope: 'notes' | 'anthology', id: string) =>
+    request<void>(`/spaces/${scope}/items/${id}/draft`, { method: 'DELETE' }),
 };
 
 // ─── notesApi — notes scope 专用，兼容原 contentItemsApi 接口 ───
@@ -524,9 +543,9 @@ export interface AnthologyPublicListItem {
   updatedAt: string;
 }
 
-/** 文集条目元数据（索引里的冗余字段） */
+/** 文集目录中的子节点元数据(目录展示用)。Phase 8 起 key 字段统一为 nodeId(= 子 contentItemId)。 */
 export interface AnthologyEntryMeta {
-  key: string;
+  nodeId: string;
   title: string;
   date: string | null;
 }
@@ -536,163 +555,50 @@ export interface AnthologyPublicDetail {
   id: string;
   title: string;
   description: string;
+  /**
+   * 卷首语:文集容器自身的正文(Markdown)。
+   * 空字符串表示无卷首语,展示端按空处理(不渲染该区块)。
+   * 节点同质化(Phase 1)后容器节点也有自己的正文,卷首语随之落地。
+   */
+  bodyMarkdown: string;
   entries: AnthologyEntryMeta[];
 }
 
-/** 管理端文集列表项 */
-export interface AnthologyAdminListItem extends AnthologyPublicListItem {
-  status: 'committed' | 'published';
-  hasUnpublishedChanges: boolean;
-}
-
-/**
- * 管理端条目元数据（含两层发布状态字段）。
- * - publishedVersionId: 已发布的 snapshot versionId，null 表示条目未发布
- * - hasUnpublishedChanges: 条目有新内容尚未同步到 publishedVersionId
- */
-export interface AnthologyAdminEntryMeta extends AnthologyEntryMeta {
-  hasContent: boolean;
-  publishedVersionId: string | null;
-  hasUnpublishedChanges: boolean;
-}
-
-/** 管理端文集详情 */
-export interface AnthologyAdminDetail extends AnthologyPublicDetail {
-  status: 'committed' | 'published';
-  hasUnpublishedChanges: boolean;
-  entries: AnthologyAdminEntryMeta[];
-}
-
-/** 条目正文详情 */
+/** 文集子节点正文详情(阅读端)。Phase 8 起 key 字段统一为 nodeId(= 子 contentItemId)。 */
 export interface AnthologyEntryDetail {
-  key: string;
+  nodeId: string;
   title: string;
   date: string | null;
   /** 最后更新时间（ISO 8601），与 NoteReader 的 updatedAt 同语义。 */
   updatedAt: string;
   bodyMarkdown: string;
-  prev: { key: string; title: string } | null;
-  next: { key: string; title: string } | null;
+  /**
+   * 上一篇导航引用。Phase 1 起 nodeId = 子节点 contentItemId,前端按
+   * 不透明字符串使用——拼 ?node=<nodeId> 跳转下一条阅读。
+   */
+  prev: { nodeId: string; title: string } | null;
+  /** 下一篇导航引用,语义同 prev。 */
+  next: { nodeId: string; title: string } | null;
 }
 
-/** 条目草稿保存请求体：anthology 条目草稿无 summary，结构与 EditorDraft 完全一致 */
-export type AnthologyEntryDraftDto = EditorDraft;
-
+/**
+ * 阅读端文集 API。Phase 8 polish:管理端 anthology 写操作走通用 nodeApi/structureApi
+ * (节点同质化后管理端跟 notes 共用接口),anthologyApi 只保留前台阅读三件套。
+ */
 export const anthologyApi = {
-  // ── 展示端 ──
-
   listPublished: () =>
     request<AnthologyPublicListItem[]>('/spaces/anthology/items?status=published'),
 
   getPublicDetail: (id: string) =>
     request<AnthologyPublicDetail>(`/spaces/anthology/items/${id}`),
 
-  getEntry: (id: string, entryKey: string) =>
-    request<AnthologyEntryDetail>(`/spaces/anthology/items/${id}/entries/${entryKey}`),
-
-  /** 获取条目的历史版本内容（按 snapshot versionId） */
-  getEntryByVersion: (id: string, entryKey: string, versionId: string) =>
-    request<AnthologyEntryDetail>(`/spaces/anthology/items/${id}/entries/${entryKey}/versions/${versionId}`),
-
-  // ── 管理端 ──
-
-  list: (status?: string) => {
-    const query = status ? `?status=${status}` : '';
-    return request<AnthologyAdminListItem[]>(`/spaces/anthology/items${query}`);
-  },
-
-  getById: (id: string) =>
-    request<AnthologyAdminDetail>(`/spaces/anthology/items/${id}?visibility=all`),
-
-  create: (dto: { title: string }) =>
-    request<AnthologyAdminListItem>('/spaces/anthology/items', {
-      method: 'POST',
-      body: JSON.stringify({ title: dto.title, bodyMarkdown: '\u200B', changeNote: '创建文集' }),
-    }),
-
-  addEntry: (id: string, dto: { title: string; date?: string; bodyMarkdown: string; changeNote?: string }) =>
-    request<AnthologyAdminDetail>(`/spaces/anthology/items/${id}/entries`, {
-      method: 'POST',
-      body: JSON.stringify(dto),
-    }),
-
-  saveEntry: (id: string, entryKey: string, dto: { title: string; date?: string; bodyMarkdown: string; changeNote?: string }) =>
-    request<AnthologyAdminDetail>(`/spaces/anthology/items/${id}/entries/${entryKey}`, {
-      method: 'PUT',
-      body: JSON.stringify(dto),
-    }),
-
-  removeEntry: (id: string, entryKey: string) =>
-    request<AnthologyAdminDetail>(`/spaces/anthology/items/${id}/entries/${entryKey}`, {
-      method: 'DELETE',
-    }),
-
-  reorderEntries: (id: string, newOrder: string[]) =>
-    request<AnthologyAdminDetail>(`/spaces/anthology/items/${id}/entries/reorder`, {
-      method: 'PUT',
-      body: JSON.stringify({ newOrder }),
-    }),
-
-  // ── 条目草稿 CRUD ──
-
-  /** 获取条目草稿。无草稿返回 null（200）。 */
-  getEntryDraft: (id: string, entryKey: string) =>
-    request<EditorDraft | null>(`/spaces/anthology/items/${id}/entries/${entryKey}/draft`),
-
-  /** 保存条目草稿（autosave）。只写 MongoDB，不产生 Git snapshot。 */
-  saveEntryDraft: (id: string, entryKey: string, dto: SaveDraftDto) =>
-    request<EditorDraft>(`/spaces/anthology/items/${id}/entries/${entryKey}/draft`, {
-      method: 'PUT',
-      body: JSON.stringify(dto),
-    }),
-
-  /** 丢弃条目草稿。 */
-  deleteEntryDraft: (id: string, entryKey: string) =>
-    request<void>(`/spaces/anthology/items/${id}/entries/${entryKey}/draft`, {
-      method: 'DELETE',
-    }),
-
   /**
-   * 获取单篇条目的版本历史（按 entries/eXXX.md 筛选），供管理端版本时间线使用。
-   * 与 notes/gallery 的 getHistory 语义对等。
+   * 阅读端:取文集某子节点正文 + prev/next 导航。
+   * URL path /spaces/anthology/public/items/:id/entries/:nodeId
+   * (entries 段保留作外部目录语义,与后端 controller 路由对齐)。
    */
-  getEntryHistory: (id: string, entryKey: string) =>
-    request<ContentHistoryEntry[]>(`/spaces/anthology/items/${id}/entries/${entryKey}/history`),
-
-  // ── 文集级发布（上线/下线整个文集）──
-
-  publish: (id: string) =>
-    request<AnthologyAdminDetail>(`/spaces/anthology/items/${id}/publish`, {
-      method: 'PUT',
-    }),
-
-  unpublish: (id: string) =>
-    request<AnthologyAdminDetail>(`/spaces/anthology/items/${id}/unpublish`, {
-      method: 'PUT',
-    }),
-
-  // ── 条目级发布（单篇独立发布/取消发布）──
-
-  /** 发布单篇条目：将该条目 publishedVersionId 指向最新 snapshot。 */
-  publishEntry: (id: string, entryKey: string) =>
-    request<AnthologyAdminDetail>(`/spaces/anthology/items/${id}/entries/${entryKey}/publish`, {
-      method: 'PUT',
-    }),
-
-  /** 取消发布单篇条目：将该条目 publishedVersionId 设为 null。 */
-  unpublishEntry: (id: string, entryKey: string) =>
-    request<AnthologyAdminDetail>(`/spaces/anthology/items/${id}/entries/${entryKey}/unpublish`, {
-      method: 'PUT',
-    }),
-
-  /** 批量发布所有有内容的条目（一次提交，高效）。 */
-  publishAllEntries: (id: string) =>
-    request<AnthologyAdminDetail>(`/spaces/anthology/items/${id}/entries/publish-all`, {
-      method: 'POST',
-    }),
-
-  remove: (id: string) =>
-    request<void>(`/spaces/anthology/items/${id}`, { method: 'DELETE' }),
+  getEntry: (id: string, nodeId: string) =>
+    request<AnthologyEntryDetail>(`/spaces/anthology/public/items/${id}/entries/${nodeId}`),
 };
 
 // ── 首页 ──

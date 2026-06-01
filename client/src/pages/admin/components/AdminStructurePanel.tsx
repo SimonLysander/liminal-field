@@ -32,8 +32,10 @@ type AdminStructurePanelProps = {
   error: string;
   selectedNodeId: string | null;
   breadcrumb: BreadcrumbItem[];
-  /** URL 中的 topic param，直接作为新建操作的 parentId（不从 breadcrumb 推导，避免异步落后） */
+  /** URL 中的 at param,直接作为新建操作的 parentId（不从 breadcrumb 推导，避免异步落后） */
   currentParentId: string | undefined;
+  /** 顶部标题(笔记 admin="笔记"、文集 admin="文集"),默认沿用通用"内容管理" */
+  sectionTitle?: string;
   onReload: () => void;
   // onSelect 已移除：节点同质化后点击统一走 onEnterFolder（Route A），onSelect 是废死接口
   onEnterFolder: (node: StructureNode) => void;
@@ -170,6 +172,7 @@ export function AdminStructurePanel({
   selectedNodeId,
   breadcrumb,
   currentParentId,
+  sectionTitle = '内容管理',
   onReload,
   onEnterFolder,
   onGoToBreadcrumb,
@@ -240,7 +243,7 @@ export function AdminStructurePanel({
           className="text-base font-semibold"
           style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}
         >
-          内容管理
+          {sectionTitle}
         </div>
         <div className="mt-1 text-2xs" style={{ color: 'var(--ink-ghost)' }}>
           {nodes.length} 个项目

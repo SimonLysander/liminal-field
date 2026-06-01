@@ -39,12 +39,18 @@ import type { BreadcrumbItem } from '../components/AdminStructurePanel';
  * 只调 navigate()，不直接 setState。状态自动从 URL 派生。
  * ================================================================ */
 
-export function useAdminWorkspace() {
+/**
+ * 接受 scope 参数复用同一套工作区逻辑(笔记/文集共享 ContentAdmin 壳子,
+ * 内部对应不同的 StructureNode 集合)。默认 'notes' 兼容现有调用方。
+ * URL query 用通用 'at'(进入哪一层)/'node'(选中哪个内容)而非业务性的 topic/doc。
+ */
+export function useAdminWorkspace(options: { scope: 'notes' | 'anthology' } = { scope: 'notes' }) {
+  const { scope } = options;
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const confirm = useConfirm();
-  const urlFolderId = searchParams.get('topic') ?? undefined;
-  const urlContentItemId = searchParams.get('doc') ?? undefined;
+  const urlFolderId = searchParams.get('at') ?? undefined;
+  const urlContentItemId = searchParams.get('node') ?? undefined;
 
   /* ================================================================
    * 第一层派生：breadcrumb ← API 按 urlFolderId 反查
@@ -67,18 +73,18 @@ export function useAdminWorkspace() {
     setError('');
     try {
       const result = parentId
-        ? await structureApi.getChildren(parentId, { visibility: 'all', scope: 'notes' })
-        : await structureApi.getRootNodes({ visibility: 'all', scope: 'notes' });
+        ? await structureApi.getChildren(parentId, { visibility: 'all', scope })
+        : await structureApi.getRootNodes({ visibility: 'all', scope });
       setNodes(result.children);
       // 节点同质化:路径含所有祖先(不再只留 type==='FOLDER'),这样进入任意节点(含叶子)
       // 都能正确显示它自己的正文 + 面包屑,并在它下面新建子页面。
       setPathNodes(result.path);
       setBreadcrumb(result.path.map((n) => ({ id: n.id, name: n.name })));
     } catch (loadError) {
-      // parentId 不存在（404）→ 清掉无效 topic，fallback 到根节点
+      // parentId 不存在（404）→ 清掉无效 at,fallback 到根节点
       const { isApiError } = await import('@/services/request');
       if (parentId && isApiError(loadError, 404)) {
-        searchParams.delete('topic');
+        searchParams.delete('at');
         setSearchParams(searchParams, { replace: true });
         return;
       }
@@ -88,7 +94,7 @@ export function useAdminWorkspace() {
     } finally {
       setLoading(false);
     }
-  }, [searchParams, setSearchParams]);
+  }, [searchParams, setSearchParams, scope]);
 
   /* urlFolderId 变化 → 重新加载当前层级 */
   useEffect(() => {
@@ -123,11 +129,11 @@ export function useAdminWorkspace() {
 
   const buildUrl = useCallback((folderId?: string, contentItemId?: string) => {
     const params = new URLSearchParams();
-    if (folderId) params.set('topic', folderId);
-    if (contentItemId) params.set('doc', contentItemId);
+    if (folderId) params.set('at', folderId);
+    if (contentItemId) params.set('node', contentItemId);
     const qs = params.toString();
-    return qs ? `/admin/notes?${qs}` : '/admin/notes';
-  }, []);
+    return qs ? `/admin/${scope}?${qs}` : `/admin/${scope}`;
+  }, [scope]);
 
   const enterFolder = useCallback((node: StructureNode) => {
     navigate(buildUrl(node.id));
@@ -135,11 +141,11 @@ export function useAdminWorkspace() {
 
   const goToBreadcrumb = useCallback((index: number | null) => {
     if (index === null) {
-      navigate('/admin/notes');
+      navigate(`/admin/${scope}`);
     } else {
       navigate(buildUrl(breadcrumb[index].id));
     }
-  }, [navigate, buildUrl, breadcrumb]);
+  }, [navigate, buildUrl, breadcrumb, scope]);
 
   const selectNode = useCallback((node: StructureNode | null) => {
     if (node?.contentItemId) {
@@ -177,9 +183,9 @@ export function useAdminWorkspace() {
     const created = await structureApi.createNode(createPayload);
     void loadLevel(urlFolderId);
 
-    // DOC 节点创建后直接跳转编辑页
+    // DOC 节点创建后直接跳转编辑页(按 scope 走)
     if (created.type === 'DOC' && created.contentItemId) {
-      window.location.href = `/admin/notes/${created.contentItemId}/edit`;
+      window.location.href = `/admin/${scope}/${created.contentItemId}/edit`;
     }
   };
 
@@ -295,6 +301,25 @@ export function useAdminWorkspace() {
       setDraftInfo('');
       setHistoryLoading(true);
 
+      /*
+       * Phase 5 优雅降级:anthology scope 下 admin 主页不调 notes 专用的
+       * contentItemsApi(否则 404——文集节点不在 notes 表)。
+       * 折中策略:右侧 preview/history 暂留空,用户点节点直接进编辑器
+       * (/admin/anthology/:id/edit)看完整内容与版本。
+       * 长期方案:scope 适配整套通用节点 API,Phase 8 polish 再做。
+       */
+      if (scope === 'anthology') {
+        setFormalContent(EMPTY_FORMAL_CONTENT);
+        setDraftState(EMPTY_DRAFT_EDITOR_STATE);
+        setHistory([]);
+        setDraftPresence(EMPTY_DRAFT_PRESENCE);
+        setIsDirty(false);
+        setLastDraftSavedAt('');
+        setContentLoading(false);
+        setHistoryLoading(false);
+        return;
+      }
+
       try {
         const [detail, historyResult, existingDraft] =
           await Promise.all([
@@ -314,7 +339,7 @@ export function useAdminWorkspace() {
         const { isApiError } = await import('@/services/request');
         if (isApiError(workspaceError, 404)) {
           banner.error('该内容不属于当前模块');
-          navigate('/admin/notes', { replace: true });
+          navigate(`/admin/${scope}`, { replace: true });
           return;
         }
         setContentError(parseError(workspaceError, '加载正式内容失败'));
@@ -329,7 +354,7 @@ export function useAdminWorkspace() {
         setHistoryLoading(false);
       }
     },
-    [probeDraftPresence, navigate],
+    [probeDraftPresence, navigate, scope],
   );
 
   /* contentItemId 变化 → 加载内容或重置 */
@@ -370,10 +395,16 @@ export function useAdminWorkspace() {
 
   /* ================================================================
    * 元数据轻量更新（摘要等，不创建新版本）
+   *
+   * Phase 8 scope 防卫:anthology 模块下用户编辑走 /admin/anthology/:id/edit
+   * 专属编辑器,不应该在 ContentAdmin 主页触发草稿/发布/摘要等写操作。
+   * 各方法首行 noop 早 return,避免 anthology 节点误命中 notes 专用 API
+   * 而 404。
    * ================================================================ */
 
   const updateSummary = useCallback(
     async (summary: string) => {
+      if (scope === 'anthology') return;
       if (!activeContentItemId) return;
       try {
         const detail = await contentItemsApi.patchMeta(activeContentItemId, { summary });
@@ -382,7 +413,7 @@ export function useAdminWorkspace() {
         banner.error(`更新摘要失败: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
-    [activeContentItemId],
+    [activeContentItemId, scope],
   );
 
   /* ================================================================
@@ -393,13 +424,16 @@ export function useAdminWorkspace() {
     key: K,
     value: DraftEditorState[K],
   ) => {
+    // Phase 8 scope 防卫:anthology 主页不参与草稿编辑(走专属编辑器),屏蔽改动以防误存。
+    if (scope === 'anthology') return;
     setDraftState((current) => ({ ...current, [key]: value }));
     setIsDirty(true);
     setAutosaveError('');
-  }, []);
+  }, [scope]);
 
   const createDraftFromFormalVersion = useCallback(
     async (overwrite: boolean) => {
+      if (scope === 'anthology') return;
       if (!activeContentItemId || !formalContent.id) return;
 
       if (overwrite && draftPresence.exists) {
@@ -430,10 +464,12 @@ export function useAdminWorkspace() {
       formalContent.latestVersion.summary,
       formalContent.latestVersion.title,
       activeContentItemId,
+      scope,
     ],
   );
 
   const resumeDraft = useCallback(async () => {
+    if (scope === 'anthology') return;
     if (!activeContentItemId) return;
 
     setContentLoading(true);
@@ -457,10 +493,11 @@ export function useAdminWorkspace() {
     } finally {
       setContentLoading(false);
     }
-  }, [activeContentItemId]);
+  }, [activeContentItemId, scope]);
 
   const saveDraft = useCallback(
     async (options?: { silent?: boolean }) => {
+      if (scope === 'anthology') return;
       if (!activeContentItemId) return;
 
       if (options?.silent) {
@@ -494,10 +531,12 @@ export function useAdminWorkspace() {
       draftState.summary,
       draftState.title,
       activeContentItemId,
+      scope,
     ],
   );
 
   const commitDraft = useCallback(async () => {
+    if (scope === 'anthology') return;
     if (!activeContentItemId) return;
     try {
       const saved = await contentItemsApi.save(activeContentItemId, {
@@ -532,9 +571,11 @@ export function useAdminWorkspace() {
     draftState.summary,
     draftState.title,
     activeContentItemId,
+    scope,
   ]);
 
   const discardDraft = useCallback(async () => {
+    if (scope === 'anthology') return;
     if (!activeContentItemId) return;
     try {
       await contentItemsApi.deleteDraft(activeContentItemId);
@@ -562,13 +603,14 @@ export function useAdminWorkspace() {
     } catch (err) {
       banner.error(`丢弃草稿失败: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [formalContent, activeContentItemId]);
+  }, [formalContent, activeContentItemId, scope]);
 
   /* ================================================================
    * 发布操作
    * ================================================================ */
 
   const publishContent = useCallback(async () => {
+    if (scope === 'anthology') return;
     if (!activeContentItemId) return;
     try {
       const saved = await contentItemsApi.publish(activeContentItemId);
@@ -577,9 +619,10 @@ export function useAdminWorkspace() {
     } catch (err) {
       banner.error(`发布失败: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [activeContentItemId]);
+  }, [activeContentItemId, scope]);
 
   const unpublishContent = useCallback(async () => {
+    if (scope === 'anthology') return;
     if (!activeContentItemId) return;
     try {
       const saved = await contentItemsApi.unpublish(activeContentItemId);
@@ -588,7 +631,7 @@ export function useAdminWorkspace() {
     } catch (err) {
       banner.error(`取消发布失败: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [activeContentItemId]);
+  }, [activeContentItemId, scope]);
 
   /* ================================================================
    * 版本预览
@@ -596,6 +639,7 @@ export function useAdminWorkspace() {
 
   const previewVersion = useCallback(
     async (versionId: string) => {
+      if (scope === 'anthology') return;
       if (!activeContentItemId) return;
       if (preview?.versionId === versionId) return;
       // 点击最新版本时退出预览（用 versionId 对比）
@@ -621,12 +665,13 @@ export function useAdminWorkspace() {
         setPreviewLoading(false);
       }
     },
-    [activeContentItemId, preview?.versionId, formalContent.latestVersion.versionId],
+    [activeContentItemId, preview?.versionId, formalContent.latestVersion.versionId, scope],
   );
 
   const exitPreview = useCallback(() => { setPreview(null); }, []);
 
   const publishPreview = useCallback(async () => {
+    if (scope === 'anthology') return;
     if (!activeContentItemId || !preview) return;
     try {
       const saved = await contentItemsApi.publish(activeContentItemId, preview.versionId);
@@ -635,7 +680,7 @@ export function useAdminWorkspace() {
     } catch (err) {
       banner.error(`发布失败: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [activeContentItemId, preview]);
+  }, [activeContentItemId, preview, scope]);
 
   /* ================================================================
    * 自动保存

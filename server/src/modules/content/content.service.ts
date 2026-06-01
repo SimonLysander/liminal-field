@@ -37,6 +37,13 @@ import { ContentSaveAction, SaveContentDto } from './dto/save-content.dto';
 export class ContentService {
   private readonly logger = new Logger(ContentService.name);
 
+  /**
+   * 正在异步归档(fire-and-forget)的 archiveToGit promise 集合。
+   * push-to-remote 推之前 await 这些 promise,避免漏推未完成的归档(C0 节 flaky 治理)。
+   * promise resolve/reject 时通过 finally 自动从 set 移除。
+   */
+  private readonly inFlightArchives = new Set<Promise<void>>();
+
   constructor(
     private readonly contentRepository: ContentRepository,
     private readonly contentRepoService: ContentRepoService,
@@ -46,6 +53,16 @@ export class ContentService {
     @Inject(getModelToken(NavigationNode.name))
     private readonly navigationModel: ReturnModelType<typeof NavigationNode>,
   ) {}
+
+  /**
+   * 等待所有正在飞的 archiveToGit 完成(或失败)。
+   * push-to-remote 在 retryPendingArchives 之前调用,确保异步归档全部落盘。
+   * 用 allSettled 而非 all:archiveToGit 内部自吞错误,但仍兜底——
+   * 任何意外 rejected promise 都不应让 push-to-remote 失败,失败的归档由 retry 接管。
+   */
+  async waitForInFlightArchives(): Promise<void> {
+    await Promise.allSettled(Array.from(this.inFlightArchives));
+  }
 
   private buildContentId(): string {
     return `ci_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
@@ -448,10 +465,12 @@ export class ContentService {
         // commitHash 有意省略——异步回填
       });
 
-      // 异步归档到 Git，不阻塞请求；错误由 archiveToGit 内部捕获并记录日志。
+      // 异步归档到 Git,不阻塞请求;错误由 archiveToGit 内部捕获并记录日志。
       // 主文件(main.md)与子文件(entries/*.md)都归档:传 fileName 让子文件按其路径
       // 写入,否则文集条目正文永远进不了 Git、恢复时丢失(历史踩坑)。
-      void this.archiveToGit(
+      // in-flight 登记:把 promise 加入 inFlightArchives,push-to-remote 推之前 await
+      // 所有未完成的归档,避免 fire-and-forget 漏推(C0 节 flaky 治理 2026-05-31)。
+      const archivePromise = this.archiveToGit(
         id,
         versionId,
         dto.bodyMarkdown,
@@ -460,7 +479,11 @@ export class ContentService {
         summary,
         nextChangeLogs,
         dto.fileName ?? null,
-      );
+      ).finally(() => {
+        this.inFlightArchives.delete(archivePromise);
+      });
+      this.inFlightArchives.add(archivePromise);
+      void archivePromise;
     }
 
     if (dto.action === ContentSaveAction.publish) {

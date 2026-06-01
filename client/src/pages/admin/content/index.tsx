@@ -1,8 +1,10 @@
 /*
- * ContentAdmin — 笔记内容管理模块
+ * ContentAdmin — 笔记/文集内容管理模块(壳子共享,scope 决定数据源)
  *
  * 布局：AdminStructurePanel（面包屑钻入列表）+ 中间内容预览 + 右侧上下文面板。
  * AdminShell 提供外层容器（h-screen + IconRail），本组件只负责内容区域。
+ * scope:'notes'(默认,笔记 admin) / 'anthology'(文集 admin)——影响 URL 路径、
+ * 数据源(structureApi 的 scope 过滤)、文案、跳转编辑路径、移动对话框等。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -24,8 +26,12 @@ import type { ContentHistoryEntry } from '@/services/workspace';
 import { LoadingState, ContentFade } from '@/components/LoadingState';
 import { VersionTimeline } from '../components/VersionTimeline';
 
-const ContentAdmin = () => {
-  const workspace = useAdminWorkspace();
+interface ContentAdminProps {
+  scope?: 'notes' | 'anthology';
+}
+
+const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
+  const workspace = useAdminWorkspace({ scope });
   const confirm = useConfirm();
   /* 选中节点的恢复由 useAdminWorkspace 的 URL 同步处理 */
 
@@ -107,8 +113,11 @@ const ContentAdmin = () => {
   }, [getHeadingEls]);
 
   const editUrl = activeNode?.contentItemId
-    ? `/admin/notes/${activeNode.contentItemId}/edit`
+    ? `/admin/${scope}/${activeNode.contentItemId}/edit`
     : null;
+
+  /* 侧栏顶部标题随 scope 切换:笔记 admin="笔记",文集 admin="文集"。 */
+  const sectionTitle = scope === 'notes' ? '笔记' : '文集';
 
   return (
     <>
@@ -120,6 +129,7 @@ const ContentAdmin = () => {
         selectedNodeId={workspace.selectedNode?.id ?? null}
         breadcrumb={workspace.breadcrumb}
         currentParentId={workspace.currentParentId}
+        sectionTitle={sectionTitle}
         onReload={workspace.reloadLevel}
         onEnterFolder={workspace.enterFolder}
         onGoToBreadcrumb={workspace.goToBreadcrumb}
@@ -226,7 +236,7 @@ const ContentAdmin = () => {
       {workspace.moveTarget && (
         <MoveToDialog
           node={workspace.moveTarget}
-          scope="notes"
+          scope={scope}
           onConfirm={(targetFolderId) =>
             workspace.moveNodeToFolder(workspace.moveTarget!.id, targetFolderId)
           }

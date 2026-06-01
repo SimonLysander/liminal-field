@@ -392,7 +392,7 @@ export default function BatchImportPage() {
       setParseProgress({ done: session.items.length, total: session.items.length });
     }).catch(() => {
       // 会话已不存在（已完成/已过期），静默跳回
-      navigate(`/admin/notes?topic=${parentId}`, { replace: true });
+      navigate(`/admin/notes?at=${parentId}`, { replace: true });
     });
   }, [urlBatchId, incomingFiles, restoredFromStorage, navigate, parentId]);
 
@@ -516,17 +516,17 @@ export default function BatchImportPage() {
           if (progress.status === 'done') {
             clearInterval(pollRef.current!);
             pollRef.current = null;
-            navigate(`/admin/notes?topic=${parentId}`, { replace: true });
+            navigate(`/admin/notes?at=${parentId}`, { replace: true });
           } else if (progress.status === 'failed') {
             clearInterval(pollRef.current!);
             pollRef.current = null;
             banner.error('部分文档导入失败');
-            navigate(`/admin/notes?topic=${parentId}`, { replace: true });
+            navigate(`/admin/notes?at=${parentId}`, { replace: true });
           }
         } catch {
           clearInterval(pollRef.current!);
           pollRef.current = null;
-          navigate(`/admin/notes?topic=${parentId}`, { replace: true });
+          navigate(`/admin/notes?at=${parentId}`, { replace: true });
         }
       }, 800);
     } catch (err) {
@@ -540,7 +540,7 @@ export default function BatchImportPage() {
     clearSessionStart();
     if (batchId) await importApi.cancelBatch(batchId).catch(() => {});
     sessionStorage.removeItem(`batch-import-${batchId}`);
-    navigate(`/admin/notes?topic=${parentId}`, { replace: true });
+    navigate(`/admin/notes?at=${parentId}`, { replace: true });
   }, [batchId, parentId, navigate]);
 
   // 进度条百分比

@@ -13,7 +13,7 @@ import {
   createNoteItem,
   commitNoteContent,
   createAnthologyItem,
-  addAnthologyEntry,
+  createAnthologyChildNode,
 } from './helpers';
 import { SettingsModule } from '../src/modules/settings/settings.module';
 import { ContentRepository } from '../src/modules/content/content.repository';
@@ -43,10 +43,13 @@ describe('一键发布全部最新版 publish-all (e2e)', () => {
       cookie,
       '待发布文集',
     );
-    const { entryKey } = await addAnthologyEntry(ctx.app, cookie, anthologyId, {
-      title: '条目一',
-      bodyMarkdown: '条目正文',
-    });
+    const childNodeId = await createAnthologyChildNode(
+      ctx.app,
+      cookie,
+      anthologyId,
+      '条目一',
+      '条目正文',
+    );
 
     const contentRepo = ctx.app.get(ContentRepository);
     // 初始都未发布
@@ -68,11 +71,11 @@ describe('一键发布全部最新版 publish-all (e2e)', () => {
     const note = await contentRepo.findById(noteId);
     expect(note?.publishedVersion).toBeTruthy();
 
-    // 文集已上线 + 条目子 ContentItem 各自上线
+    // 文集已上线 + 子节点 ContentItem 各自上线
     const anthology = await contentRepo.findById(anthologyId);
     expect(anthology?.publishedVersion).toBeTruthy();
-    // entryKey 即条目子 ContentItem id;它的 publishedVersion 已被一键发布上线
-    const entryItem = await contentRepo.findById(entryKey);
+    // childNodeId 即子 ContentItem id;它的 publishedVersion 已被一键发布上线
+    const entryItem = await contentRepo.findById(childNodeId);
     expect(entryItem?.publishedVersion).toBeTruthy();
   });
 });

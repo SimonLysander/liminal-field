@@ -42,7 +42,6 @@ const ContentAdmin = lazy(() => import('./pages/admin/content'));
 const GalleryAdmin = lazy(() => import('./pages/admin/gallery'));
 const GalleryEditPage = lazy(() => import('./pages/admin/gallery/edit'));
 const AnthologyAdmin = lazy(() => import('./pages/admin/anthology'));
-const AnthologyEntryEditPage = lazy(() => import('./pages/admin/anthology/edit'));
 const DraftEditPage = lazy(() => import('./pages/admin/edit'));
 const ImportPreviewPage = lazy(() => import('./pages/admin/import-preview'));
 const BatchImportPage = lazy(() => import('./pages/admin/batch-import'));
@@ -151,8 +150,9 @@ function MainLayout() {
           {/* 打开具体文档时 key 变化触发入场动画，浏览目录时稳定 key 不做动画 */}
           <motion.div
             key={(() => {
-              const doc = new URLSearchParams(location.search).get('doc');
-              return doc ? `/note/${doc}` : '/note';
+              // ?node= 指向当前阅读的内容节点 id(叶子文档或主题正文均用同一 query)
+              const node = new URLSearchParams(location.search).get('node');
+              return node ? `/note/${node}` : '/note';
             })()}
             className="relative z-[1] flex flex-1 overflow-hidden"
             variants={pageVariants}
@@ -230,11 +230,11 @@ function App() {
           }
         />
         <Route
-          path="/admin/anthology/:id/entries/:entryKey/edit"
+          path="/admin/anthology/:id/edit"
           element={
             <AuthGuard>
               <Suspense fallback={<LoadingState variant="full" />}>
-                <AnthologyEntryEditPage />
+                <DraftEditPage />
               </Suspense>
             </AuthGuard>
           }
