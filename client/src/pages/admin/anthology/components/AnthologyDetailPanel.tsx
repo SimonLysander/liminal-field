@@ -232,6 +232,7 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
             onUnpublish={handleUnpublish}
             onPublishAll={handlePublishAll}
             onDelete={onDelete}
+            onReload={() => void loadDetail()}
           />
         )}
         </div>
@@ -402,6 +403,31 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** 顶部操作行的文本链接(对齐笔记 ContentVersionView 的 TextLink):
+ *  灰字 + hover 变深,无 bg、无 border。用于"刷新"、"返回最新"等次要操作 */
+function TextLink({
+  label, onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="nav-item text-xs transition-colors duration-150"
+      style={{
+        color: 'var(--ink-faded)',
+        background: 'none', border: 'none', cursor: 'pointer',
+        fontFamily: 'inherit', padding: '4px 0',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--ink)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-faded)'; }}
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  );
+}
+
 function SideLink({
   label, primary, onClick,
 }: {
@@ -429,7 +455,7 @@ function SideLink({
 
 function AnthologyOverviewView({
   row, detail,
-  onEditPreface, onPublish, onUnpublish, onPublishAll, onDelete,
+  onEditPreface, onPublish, onUnpublish, onPublishAll, onDelete, onReload,
 }: {
   row: AnthologyRow;
   detail: AnthologyAdminDetail;
@@ -438,6 +464,7 @@ function AnthologyOverviewView({
   onUnpublish: () => void;
   onPublishAll: () => void;
   onDelete: () => void;
+  onReload: () => void;
 }) {
   const updateYmd = new Date(row.updatedAt).toLocaleDateString('zh-CN', {
     month: 'numeric', day: 'numeric',
@@ -460,30 +487,34 @@ function AnthologyOverviewView({
             <span>{updateYmd} 更新</span>
           </p>
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button type="button"
-              className="rounded-md p-1.5 transition-colors hover:text-[var(--ink)]"
-              style={{ color: 'var(--ink-faded)' }} aria-label="文集操作">
-              <MoreHorizontal size={18} strokeWidth={1.5} />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onEditPreface}>
-              <FileEdit size={14} strokeWidth={1.5} className="mr-2" />
-              编辑卷首语
-            </DropdownMenuItem>
-            {detail.status === 'published'
-              ? <DropdownMenuItem onClick={onUnpublish}>取消发布</DropdownMenuItem>
-              : <DropdownMenuItem onClick={onPublish}>发布文集</DropdownMenuItem>}
-            {detail.status === 'published' && (
-              <DropdownMenuItem onClick={onPublishAll}>一键发布全部</DropdownMenuItem>
-            )}
-            <DropdownMenuItem onClick={onDelete} style={{ color: 'var(--danger)' }}>
-              删除文集
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* 操作组(对齐笔记 ContentVersionView header):刷新文本链接 + ⋯ 菜单 */}
+        <div className="flex shrink-0 items-center gap-4 pt-1">
+          <TextLink label="刷新" onClick={onReload} />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button"
+                className="nav-item rounded-md p-1.5 transition-colors hover:text-[var(--ink)]"
+                style={{ color: 'var(--ink-faded)' }} aria-label="文集操作">
+                <MoreHorizontal size={18} strokeWidth={1.5} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onEditPreface}>
+                <FileEdit size={14} strokeWidth={1.5} className="mr-2" />
+                编辑卷首语
+              </DropdownMenuItem>
+              {detail.status === 'published'
+                ? <DropdownMenuItem onClick={onUnpublish}>取消发布</DropdownMenuItem>
+                : <DropdownMenuItem onClick={onPublish}>发布文集</DropdownMenuItem>}
+              {detail.status === 'published' && (
+                <DropdownMenuItem onClick={onPublishAll}>一键发布全部</DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={onDelete} style={{ color: 'var(--danger)' }}>
+                删除文集
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {/* 简介 / 卷首语正文预览。中区不放章节列表——章节已挪到左栏钻入层。 */}
@@ -515,25 +546,26 @@ function EntryPreviewView({
   const [bodyLoading, setBodyLoading] = useState(true);
   const [bodyError, setBodyError] = useState('');
 
-  useEffect(() => {
-    let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+  /* fetchBody 抽出来:useEffect 首次拉 + 顶部「刷新」按钮再拉 */
+  const fetchBody = useCallback(async () => {
     setBodyLoading(true);
     setBodyError('');
-    (async () => {
-      try {
-        const d = (await workspaceApi.getById('anthology', entry.nodeId, {
-          visibility: 'all',
-        })) as unknown as EntryDetail;
-        if (!cancelled) setBody(d);
-      } catch (err) {
-        if (!cancelled) setBodyError(parseError(err, '加载章节正文失败'));
-      } finally {
-        if (!cancelled) setBodyLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
+    try {
+      const d = (await workspaceApi.getById('anthology', entry.nodeId, {
+        visibility: 'all',
+      })) as unknown as EntryDetail;
+      setBody(d);
+    } catch (err) {
+      setBodyError(parseError(err, '加载章节正文失败'));
+    } finally {
+      setBodyLoading(false);
+    }
   }, [entry.nodeId]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchBody();
+  }, [fetchBody]);
 
   const isPublished = !!entry.publishedVersionId;
   // commitHash 字段笔记中区有(来自 Snapshot),这里用 publishedVersionId 兜底,
@@ -566,16 +598,8 @@ function EntryPreviewView({
             *  原 ChevronLeft + 《文集名》面包屑已删。 */}
         </div>
         <div className="flex shrink-0 items-center gap-4 pt-1">
-          <button
-            type="button"
-            onClick={onEdit}
-            className="text-xs transition-colors duration-150"
-            style={{ color: 'var(--ink-faded)', fontFamily: 'inherit', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--ink)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-faded)'; }}
-          >
-            编辑
-          </button>
+          <TextLink label="刷新" onClick={() => void fetchBody()} />
+          <TextLink label="编辑" onClick={onEdit} />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
