@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ChevronLeft, MoreHorizontal, FileEdit } from 'lucide-react';
+import { MoreHorizontal, FileEdit } from 'lucide-react';
 import { banner } from '@/components/ui/banner-api';
 import { LoadingState } from '@/components/LoadingState';
 import { useConfirm } from '@/contexts/ConfirmContext';
@@ -184,10 +184,16 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
     }
   };
 
-  if (loading) return <LoadingState variant="inline" />;
+  /* loading/error 必须撑满父并居中——父是横向 flex 容器,默认 flex item 宽是内容自然宽,
+   * 直接 return <LoadingState/> 会左对齐 + 切换时位置闪一下。 */
+  if (loading) return (
+    <div className="flex h-full w-full items-center justify-center">
+      <LoadingState variant="inline" />
+    </div>
+  );
   if (error)
     return (
-      <div className="p-8">
+      <div className="flex h-full w-full items-center justify-center p-8">
         <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>
       </div>
     );
@@ -207,9 +213,7 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
         <div className="flex-1 overflow-y-auto px-10 py-8">
         {selectedEntry ? (
           <EntryPreviewView
-            anthologyTitle={detail.title}
             entry={selectedEntry}
-            onBack={() => selectEntry(null)}
             onEdit={() => {
               window.location.href = `/admin/anthology/${selectedEntry.nodeId}/edit`;
             }}
@@ -497,11 +501,9 @@ function AnthologyOverviewView({
 /* ── 视图 2:章节预览 ────────────────────────────────────────── */
 
 function EntryPreviewView({
-  anthologyTitle, entry, onBack, onEdit, onDelete,
+  entry, onEdit, onDelete,
 }: {
-  anthologyTitle: string;
   entry: AdminEntry;
-  onBack: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -557,17 +559,8 @@ function EntryPreviewView({
               {entry.updatedAt ? new Date(entry.updatedAt).toLocaleString('zh-CN') : '--'}
             </span>
           </div>
-          {/* "你正在《X》" — 章节没有自己的面包屑,仅一行小字提示来源文集,
-            *  点击可返回文集态(清掉 ?entry=)。比顶部面包屑更克制。 */}
-          <button
-            type="button"
-            onClick={onBack}
-            className="mt-2 inline-flex items-center gap-1 text-2xs transition-colors hover:text-[var(--ink)]"
-            style={{ color: 'var(--ink-ghost)' }}
-          >
-            <ChevronLeft size={12} strokeWidth={1.5} />
-            《{anthologyTitle || '文集'}》
-          </button>
+          {/* 中区不再放返回入口——想看文集本身,点左栏顶部的文集名(那是用户认知里的"回卷")。
+            *  原 ChevronLeft + 《文集名》面包屑已删。 */}
         </div>
         <div className="flex shrink-0 items-center gap-4 pt-1">
           <button

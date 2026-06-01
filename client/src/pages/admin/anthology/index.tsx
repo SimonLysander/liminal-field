@@ -257,17 +257,21 @@ const AnthologyAdmin = () => {
                   type="button"
                   onClick={backToCollections}
                   className="flex items-center gap-1 text-2xs transition-colors hover:text-[var(--ink)]"
-                  style={{ color: 'var(--ink-ghost)' }}
+                  style={{ color: 'var(--ink-ghost)', outline: 'none', WebkitTapHighlightColor: 'transparent' }}
                   aria-label="返回文集列表"
                 >
                   <span>‹</span> 文集
                 </button>
-                <div
-                  className="mt-1 truncate text-base font-semibold"
-                  style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}
+                {/* h2 文集名 可点 = 切回文集态(清 ?entry= 保留 ?node=);用户认知"想看文集就点这里" */}
+                <button
+                  type="button"
+                  onClick={() => selectAnthology(selectedRow.contentItemId)}
+                  className="mt-1 block w-full truncate text-left text-base font-semibold transition-colors hover:text-[var(--ink-faded)]"
+                  style={{ color: 'var(--ink)', letterSpacing: '-0.01em', outline: 'none', WebkitTapHighlightColor: 'transparent' }}
+                  aria-label="查看文集本身"
                 >
                   {selectedRow.title || '无标题'}
-                </div>
+                </button>
               </>
             ) : (
               <>
@@ -313,9 +317,11 @@ const AnthologyAdmin = () => {
                         <button
                           type="button"
                           onClick={() => entry.contentItemId && selectEntry(entry.contentItemId)}
-                          className="block w-full rounded-lg px-3 py-2 text-left"
+                          className="block w-full rounded-lg px-3 py-2 text-left focus:outline-none focus-visible:outline-none"
                           style={{
                             background: active ? 'var(--shelf)' : 'transparent',
+                            outline: 'none',
+                            WebkitTapHighlightColor: 'transparent',
                           }}
                         >
                           <div
@@ -355,9 +361,11 @@ const AnthologyAdmin = () => {
                         <button
                           type="button"
                           onClick={() => selectAnthology(row.contentItemId)}
-                          className="block w-full rounded-lg px-3 py-2 text-left"
+                          className="block w-full rounded-lg px-3 py-2 text-left focus:outline-none focus-visible:outline-none"
                           style={{
                             background: active ? 'var(--shelf)' : 'transparent',
+                            outline: 'none',
+                            WebkitTapHighlightColor: 'transparent',
                           }}
                         >
                           <div
@@ -485,8 +493,10 @@ export { StatusBadge };
 /* chineseNumeral 已退役(卷宗气韵改卡片视觉后,章节列表不再用中文编号)。 */
 
 function EmptyHint() {
+  /* w-full 必须:父级是横向 flex 容器,默认 flex item 宽是内容自然宽,
+   * 不撑满 → 内部 items-center 没法水平居中。这个 bug 反复栽,记在 [[feedback_flex_item_full_width]]. */
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-2">
+    <div className="flex h-full w-full flex-col items-center justify-center gap-2">
       <p className="text-sm" style={{ color: 'var(--ink-faded)' }}>
         未选择文集
       </p>
