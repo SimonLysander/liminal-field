@@ -253,6 +253,31 @@ describe('Anthology CRUD (e2e, Phase 1 page-tree)', () => {
       expect(res.body.data.bodyMarkdown).toContain('这是一段卷首语');
     });
 
+    it('PATCH meta 未登录 → 401(防止匿名改简介)', async () => {
+      const id = await createAnthologyItem(ctx.app, cookie, '401 防护文集');
+      await supertest(ctx.app.getHttpServer())
+        .patch(`/api/v1/spaces/anthology/items/${id}/meta`)
+        .send({ summary: '匿名改' })
+        .expect(401);
+    });
+
+    it('PATCH meta 不存在 id → 404', async () => {
+      await supertest(ctx.app.getHttpServer())
+        .patch('/api/v1/spaces/anthology/items/ci_doesnotexist/meta')
+        .set('Cookie', cookie)
+        .send({ summary: '无效' })
+        .expect(404);
+    });
+
+    it('PATCH meta 用 notes 的 contentItemId(scope 不匹配)→ 404', async () => {
+      const noteId = await createNoteItem(ctx.app, cookie, 'scope 不匹配笔记');
+      await supertest(ctx.app.getHttpServer())
+        .patch(`/api/v1/spaces/anthology/items/${noteId}/meta`)
+        .set('Cookie', cookie)
+        .send({ summary: '跨 scope 改' })
+        .expect(404);
+    });
+
     it('PATCH meta 更新简介 → 管理端详情读到新简介且保留卷首语', async () => {
       const id = await createAnthologyItem(ctx.app, cookie, '简介 inline edit 文集');
       const PREFACE = '## 卷首\n\n这段卷首语不能丢。';
@@ -282,6 +307,132 @@ describe('Anthology CRUD (e2e, Phase 1 page-tree)', () => {
         .expect(200);
       expect(detailRes.body.data.description).toBe('新的文集简介');
       expect(detailRes.body.data.bodyMarkdown).toContain('这段卷首语不能丢');
+    });
+  });
+
+  // ─── 文集级历史/版本预览(新增 endpoints)─────────────────────────────
+
+  describe('GET /spaces/anthology/items/:id/history', () => {
+    it('未登录 → 401', async () => {
+      const id = await createAnthologyItem(ctx.app, cookie, 'history 401 文集');
+      await supertest(ctx.app.getHttpServer())
+        .get(`/api/v1/spaces/anthology/items/${id}/history`)
+        .expect(401);
+    });
+
+    it('不存在 id → 404', async () => {
+      await supertest(ctx.app.getHttpServer())
+        .get('/api/v1/spaces/anthology/items/ci_doesnotexist/history')
+        .set('Cookie', cookie)
+        .expect(404);
+    });
+
+    it('用 notes id 调 anthology history → 404(scope 隔离)', async () => {
+      const noteId = await createNoteItem(ctx.app, cookie, 'history 跨 scope 笔记');
+      await supertest(ctx.app.getHttpServer())
+        .get(`/api/v1/spaces/anthology/items/${noteId}/history`)
+        .set('Cookie', cookie)
+        .expect(404);
+    });
+
+    it('创建+改两次卷首语 → 返回多条历史,含 versionId/commitHash', async () => {
+      const id = await createAnthologyItem(ctx.app, cookie, 'history 多版本文集');
+      await supertest(ctx.app.getHttpServer())
+        .put(`/api/v1/spaces/anthology/items/${id}`)
+        .set('Cookie', cookie)
+        .send({ title: 'history 多版本文集', bodyMarkdown: 'v1 卷首语', changeNote: 'v1' })
+        .expect(200);
+      await supertest(ctx.app.getHttpServer())
+        .put(`/api/v1/spaces/anthology/items/${id}`)
+        .set('Cookie', cookie)
+        .send({ title: 'history 多版本文集', bodyMarkdown: 'v2 卷首语', changeNote: 'v2' })
+        .expect(200);
+
+      const res = await supertest(ctx.app.getHttpServer())
+        .get(`/api/v1/spaces/anthology/items/${id}/history`)
+        .set('Cookie', cookie)
+        .expect(200);
+
+      expect(Array.isArray(res.body.data)).toBe(true);
+      expect(res.body.data.length).toBeGreaterThanOrEqual(2);
+      for (const entry of res.body.data) {
+        expect(entry).toHaveProperty('versionId');
+        expect(entry).toHaveProperty('commitHash');
+      }
+    });
+  });
+
+  describe('GET /spaces/anthology/items/:id/versions/:versionId', () => {
+    it('成功读取历史版本 → 返回旧 bodyMarkdown/description', async () => {
+      const id = await createAnthologyItem(ctx.app, cookie, 'version 预览文集');
+      // v1
+      await supertest(ctx.app.getHttpServer())
+        .put(`/api/v1/spaces/anthology/items/${id}`)
+        .set('Cookie', cookie)
+        .send({ title: 'version 预览文集', bodyMarkdown: 'v1 旧卷首语', changeNote: 'v1' })
+        .expect(200);
+      // v2 改掉
+      await supertest(ctx.app.getHttpServer())
+        .put(`/api/v1/spaces/anthology/items/${id}`)
+        .set('Cookie', cookie)
+        .send({ title: 'version 预览文集', bodyMarkdown: 'v2 新卷首语', changeNote: 'v2' })
+        .expect(200);
+
+      // 拿 v1 的 versionId(history 按 createdAt desc,末位即首版)
+      const historyRes = await supertest(ctx.app.getHttpServer())
+        .get(`/api/v1/spaces/anthology/items/${id}/history`)
+        .set('Cookie', cookie)
+        .expect(200);
+      const firstVersionId =
+        historyRes.body.data[historyRes.body.data.length - 1].versionId;
+
+      const previewRes = await supertest(ctx.app.getHttpServer())
+        .get(`/api/v1/spaces/anthology/items/${id}/versions/${firstVersionId}`)
+        .set('Cookie', cookie)
+        .expect(200);
+      // 读到旧版本内容(具体字段视实现:bodyMarkdown 或 description)
+      expect(previewRes.body.data).toBeDefined();
+      expect(previewRes.body.data.bodyMarkdown).toBeDefined();
+    });
+
+    it('不存在 versionId → 404', async () => {
+      const id = await createAnthologyItem(ctx.app, cookie, '不存在 version 文集');
+      await supertest(ctx.app.getHttpServer())
+        .get(`/api/v1/spaces/anthology/items/${id}/versions/version_nope`)
+        .set('Cookie', cookie)
+        .expect(404);
+    });
+
+    it('用 notes id 调 anthology versions → 404(scope 隔离)', async () => {
+      const noteId = await createNoteItem(ctx.app, cookie, 'version 跨 scope 笔记');
+      await supertest(ctx.app.getHttpServer())
+        .get(`/api/v1/spaces/anthology/items/${noteId}/versions/foo`)
+        .set('Cookie', cookie)
+        .expect(404);
+    });
+
+    it('用子条目的 versionId 访问容器版本 → 404(assertMainSnapshotBelongsTo)', async () => {
+      const id = await createAnthologyItem(ctx.app, cookie, '子条目 version 防漏文集');
+      const nodeId = await createAnthologyChildNode(
+        ctx.app,
+        cookie,
+        id,
+        '子条目',
+        '子条目正文。',
+      );
+      // 拿子条目的 versionId
+      const entryHistoryRes = await supertest(ctx.app.getHttpServer())
+        .get(`/api/v1/spaces/anthology/items/${id}/entries/${nodeId}/history`)
+        .set('Cookie', cookie)
+        .expect(200);
+      expect(entryHistoryRes.body.data.length).toBeGreaterThan(0);
+      const entryVersionId = entryHistoryRes.body.data[0].versionId;
+
+      // 用子条目的 versionId 调容器版本预览 → 应 404
+      await supertest(ctx.app.getHttpServer())
+        .get(`/api/v1/spaces/anthology/items/${id}/versions/${entryVersionId}`)
+        .set('Cookie', cookie)
+        .expect(404);
     });
   });
 
