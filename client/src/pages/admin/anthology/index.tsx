@@ -214,9 +214,12 @@ const AnthologyAdmin = () => {
   return (
     <>
       <Topbar />
-      {/* w-full:main 在外层 flex 容器(全局 layout 的 flex-1 主区)里默认只占自然宽度,
-       *  必须显式撑满,否则中区 flex-1 拿到的剩余空间是 0 → 视觉被挤成竖条。 */}
-      <main className="flex h-[calc(100vh-var(--topbar-h,52px))] w-full overflow-hidden">
+      {/* h-full + w-full:
+       *  - Topbar 是 absolute right-3 top-3(不占布局空间),不该用 calc 减 topbar 高度
+       *  - 父 wrapper 是 flex flex-1(100vh),main 用 h-full 撑满,aside footer 才能贴底
+       *  - calc(100vh - 52) 会让 main 短 52px,footer 视觉上离 viewport 底有空隙——
+       *    这就是用户看到的"footer 没贴底"老 bug */}
+      <main className="flex h-full w-full overflow-hidden">
         {/* 左:钻入式渐进导航(笔记 AdminStructurePanel 同交互心智) + 卷宗气韵视觉
          *
          *  视图层级由 URL 推断:
