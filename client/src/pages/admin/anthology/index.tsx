@@ -233,71 +233,72 @@ const AnthologyAdmin = () => {
          *    - 底部「新 作」/「新 篇」二字按钮,letterSpacing 同题签气韵
          *
          *  设计宪法对齐:无栏线分隔(右无 border-r);Tailwind 优先,CSS 变量必 inline;字号走 text-* token。 */}
+        {/* 左:钻入式渐进导航(笔记 AdminStructurePanel 同心智)+ 卡片状 active 视觉
+         *  视图层级由 URL 推断:
+         *    - 无 ?node= → 文集层(展示文集列表)
+         *    - 有 ?node= → 章节层(展示该文集的条目;顶部「‹ 文集」点击=返回文集层)
+         *  视觉:
+         *    - 列表项 active = rounded-md + bg-shelf + font-medium(用户认可的"卡片状")
+         *    - hover **绝不变 bg**(用户审美:hover bg = 卡片动效,严禁)
+         *    - 系统字体(不上阅读体——避免画面太"古朴",侧栏要管理感) */}
         <aside
           className="flex shrink-0 flex-col"
-          style={{
-            width: '200px',
-            background: 'var(--sidebar-bg)',
-            fontFamily: 'var(--font-reading)',
-          }}
+          style={{ width: '200px', background: 'var(--sidebar-bg)' }}
         >
-          {/* 顶部题签:文集层=「文 集」(letterSpacing 模拟空格);章节层=《文集名》(可点返回) */}
-          <div className="shrink-0 px-5 pt-7 pb-3">
+          {/* 顶部题签:文集层=「文集」;章节层=「‹ 文集」返回入口 + 当前文集名 */}
+          <div className="shrink-0 px-3 pt-7 pb-2">
             {selectedRow ? (
-              <button
-                type="button"
-                onClick={backToCollections}
-                className="block w-full truncate text-left text-base transition-colors hover:text-[var(--ink-faded)]"
-                style={{ color: 'var(--ink)', fontFamily: 'inherit' }}
-                aria-label="返回文集列表"
-              >
-                《{selectedRow.title || '无标题'}》
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={backToCollections}
+                  className="flex items-center gap-1 px-2 text-xs transition-colors hover:text-[var(--ink)]"
+                  style={{ color: 'var(--ink-faded)' }}
+                  aria-label="返回文集列表"
+                >
+                  <span>‹</span> 文集
+                </button>
+                <h2
+                  className="mt-1 truncate px-2 text-base font-medium"
+                  style={{ color: 'var(--ink)' }}
+                >
+                  {selectedRow.title || '无标题'}
+                </h2>
+              </>
             ) : (
-              <h2
-                className="text-base"
-                style={{ color: 'var(--ink)', letterSpacing: '0.5em' }}
-              >
+              <h2 className="px-2 text-base font-medium" style={{ color: 'var(--ink)' }}>
                 文集
               </h2>
             )}
-            {/* 扉页装饰线:不是栏分隔,只是题签下方一笔 */}
-            <div className="mt-2 h-px" style={{ background: 'var(--separator)' }} />
           </div>
 
-          {/* 列表区:文集层 or 章节层,二者只渲染一个 */}
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">
+          {/* 列表区:钻入层切换 */}
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
             {selectedRow ? (
               /* ── 章节层 ── */
               entriesLoading ? (
                 <LoadingState variant="inline" />
               ) : entries.length === 0 ? (
-                <p className="py-2 text-sm" style={{ color: 'var(--ink-ghost)' }}>
-                  暂无篇章
+                <p className="px-2 py-2 text-sm" style={{ color: 'var(--ink-ghost)' }}>
+                  暂无条目
                 </p>
               ) : (
-                <ul className="space-y-3">
-                  {entries.map((entry, i) => {
+                <ul className="space-y-0.5">
+                  {entries.map((entry) => {
                     const active = entry.contentItemId === selectedEntryContentItemId;
                     return (
                       <li key={entry.id}>
                         <button
                           type="button"
                           onClick={() => entry.contentItemId && selectEntry(entry.contentItemId)}
-                          className="block w-full truncate text-left text-sm transition-colors"
+                          className="block w-full truncate rounded-md px-2 py-1.5 text-left text-sm"
                           style={{
-                            color: active ? 'var(--ink)' : 'var(--ink-faded)',
+                            background: active ? 'var(--shelf)' : 'transparent',
+                            color: active ? 'var(--ink)' : 'var(--ink-light)',
                             fontWeight: active ? 600 : 400,
-                            fontFamily: 'inherit',
-                            lineHeight: 1.6,
                           }}
                         >
-                          {/* 中文数字编号 + 篇名(1em margin-left 模拟全角空格,避开 lint
-                            *  对 U+3000 的 no-irregular-whitespace 报错) */}
-                          <span style={{ fontWeight: active ? 700 : 600, color: active ? 'var(--ink)' : 'var(--ink-light)' }}>
-                            {chineseNumeral(i + 1)}
-                          </span>
-                          <span style={{ marginLeft: '1em' }}>{entry.name || '无标题'}</span>
+                          {entry.name || '无标题'}
                         </button>
                       </li>
                     );
@@ -309,42 +310,37 @@ const AnthologyAdmin = () => {
               listLoading ? (
                 <LoadingState variant="inline" />
               ) : listError ? (
-                <p className="py-2 text-sm" style={{ color: 'var(--danger)' }}>{listError}</p>
+                <p className="px-2 text-sm" style={{ color: 'var(--danger)' }}>{listError}</p>
               ) : rows.length === 0 ? (
-                <p className="py-2 text-sm" style={{ color: 'var(--ink-ghost)' }}>
+                <p className="px-2 py-2 text-sm" style={{ color: 'var(--ink-ghost)' }}>
                   尚无文集
                 </p>
               ) : (
-                <ul className="space-y-3">
-                  {rows.map((row) => (
-                    <li key={row.contentItemId}>
-                      <button
-                        type="button"
-                        onClick={() => selectAnthology(row.contentItemId)}
-                        className="flex w-full items-center justify-between gap-2 text-left text-sm transition-colors hover:text-[var(--ink)]"
-                        style={{
-                          color: 'var(--ink-light)',
-                          fontFamily: 'inherit',
-                          lineHeight: 1.6,
-                        }}
-                      >
-                        <span className="min-w-0 truncate">
+                <ul className="space-y-0.5">
+                  {rows.map((row) => {
+                    const active = row.contentItemId === selectedContentItemId;
+                    return (
+                      <li key={row.contentItemId}>
+                        <button
+                          type="button"
+                          onClick={() => selectAnthology(row.contentItemId)}
+                          className="block w-full truncate rounded-md px-2 py-1.5 text-left text-sm"
+                          style={{
+                            background: active ? 'var(--shelf)' : 'transparent',
+                            color: active ? 'var(--ink)' : 'var(--ink-light)',
+                            fontWeight: active ? 600 : 400,
+                          }}
+                        >
                           {row.title || '无标题'}
-                        </span>
-                        {/* 钻入暗示:一个小三角,极淡 */}
-                        <span className="shrink-0 text-2xs" style={{ color: 'var(--ink-ghost)' }}>
-                          ▸
-                        </span>
-                      </button>
-                    </li>
-                  ))}
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               )
             )}
-          </div>
 
-          {/* footer:文集层=「新 作」,章节层=「新 篇」。letterSpacing 同题签气韵 */}
-          <div className="shrink-0 px-5 py-4">
+            {/* footer:贴在列表末尾(同滚动区,不抢占固定区) */}
             <button
               type="button"
               onClick={() =>
@@ -352,15 +348,10 @@ const AnthologyAdmin = () => {
                   ? setEntryModal({ open: true, mode: 'create' })
                   : setModal({ open: true, mode: 'create' })
               }
-              className="block w-full text-sm transition-colors hover:text-[var(--ink)]"
-              style={{
-                color: 'var(--ink-faded)',
-                fontFamily: 'inherit',
-                letterSpacing: '0.5em',
-                textAlign: 'center',
-              }}
+              className="mt-2 block w-full rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:text-[var(--ink)]"
+              style={{ color: 'var(--ink-ghost)' }}
             >
-              {selectedRow ? '新篇' : '新作'}
+              + {selectedRow ? '新建条目' : '新建文集'}
             </button>
           </div>
         </aside>
@@ -430,20 +421,7 @@ function StatusBadge({ status, hasUnpublishedChanges }: {
 
 export { StatusBadge };
 
-/** 中文数字 1..99(99 后回落到阿拉伯)。卷宗气韵:章节编号"一/二/三/十一/二十一"古朴。 */
-const ZH_DIGITS = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
-function chineseNumeral(n: number): string {
-  if (n < 0) return String(n);
-  if (n < 10) return ZH_DIGITS[n];
-  if (n === 10) return '十';
-  if (n < 20) return '十' + ZH_DIGITS[n - 10];
-  if (n < 100) {
-    const tens = Math.floor(n / 10);
-    const ones = n % 10;
-    return ZH_DIGITS[tens] + '十' + (ones === 0 ? '' : ZH_DIGITS[ones]);
-  }
-  return String(n);
-}
+/* chineseNumeral 已退役(卷宗气韵改卡片视觉后,章节列表不再用中文编号)。 */
 
 function EmptyHint() {
   return (

@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ChevronLeft, MoreHorizontal, Plus, FileEdit } from 'lucide-react';
+import { ChevronLeft, MoreHorizontal, FileEdit } from 'lucide-react';
 import { banner } from '@/components/ui/banner-api';
 import { LoadingState } from '@/components/LoadingState';
 import { useConfirm } from '@/contexts/ConfirmContext';
@@ -226,12 +226,6 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
             onUnpublish={handleUnpublish}
             onPublishAll={handlePublishAll}
             onDelete={onDelete}
-            onCreateEntry={() => setModal({ open: true, mode: 'create' })}
-            onPreviewEntry={(id) => selectEntry(id)}
-            onEditEntry={(id) => {
-              window.location.href = `/admin/anthology/${id}/edit`;
-            }}
-            onDeleteEntry={(entry) => void handleDeleteEntry(entry)}
           />
         )}
         </div>
@@ -429,7 +423,6 @@ function SideLink({
 function AnthologyOverviewView({
   row, detail,
   onEditPreface, onPublish, onUnpublish, onPublishAll, onDelete,
-  onCreateEntry, onPreviewEntry, onEditEntry, onDeleteEntry,
 }: {
   row: AnthologyRow;
   detail: AnthologyAdminDetail;
@@ -438,10 +431,6 @@ function AnthologyOverviewView({
   onUnpublish: () => void;
   onPublishAll: () => void;
   onDelete: () => void;
-  onCreateEntry: () => void;
-  onPreviewEntry: (id: string) => void;
-  onEditEntry: (id: string) => void;
-  onDeleteEntry: (entry: AdminEntry) => void;
 }) {
   const updateYmd = new Date(row.updatedAt).toLocaleDateString('zh-CN', {
     month: 'numeric', day: 'numeric',
@@ -490,112 +479,18 @@ function AnthologyOverviewView({
         </DropdownMenu>
       </div>
 
-      {/* 简介:仅 divider 分隔,无 label——西式 caption(uppercase + letter-spacing)与纸墨气质冲突 */}
-      <div className="mb-8 border-t pt-4" style={{ borderColor: 'var(--separator)' }}>
+      {/* 简介 / 卷首语正文预览。中区不放章节列表——章节已挪到左栏钻入层。 */}
+      <div className="pt-2">
         <p className="text-sm leading-relaxed" style={{ color: 'var(--ink-faded)' }}>
           {detail.description || '暂无简介'}
         </p>
-      </div>
-
-      {/* 章节区:小标题 ink-faded 普通字号,不大写不字距 */}
-      <div className="border-t pt-4" style={{ borderColor: 'var(--separator)' }}>
-        <div className="mb-3 flex items-center justify-between">
-          <div className="text-xs" style={{ color: 'var(--ink-faded)' }}>
-            章节 · {detail.entries.length}
+        {detail.bodyMarkdown.trim() && (
+          <div className="mt-6">
+            <MarkdownBody markdown={detail.bodyMarkdown} contentItemId={row.contentItemId} />
           </div>
-          <button type="button" onClick={onCreateEntry}
-            className="flex items-center gap-1.5 text-xs transition-colors"
-            style={{ color: 'var(--ink-faded)' }}>
-            <Plus size={12} strokeWidth={1.5} />
-            添加章节
-          </button>
-        </div>
-
-        {detail.entries.length === 0 ? (
-          <p className="py-8 text-center text-xs" style={{ color: 'var(--ink-ghost)' }}>
-            还没有章节,点上方「添加章节」开始
-          </p>
-        ) : (
-          <ul className="divide-y" style={{ borderColor: 'var(--separator)' }}>
-            {detail.entries.map((entry, idx) => (
-              <li key={entry.nodeId}>
-                <EntryRow
-                  index={idx}
-                  entry={entry}
-                  onPreview={() => onPreviewEntry(entry.nodeId)}
-                  onEdit={() => onEditEntry(entry.nodeId)}
-                  onDelete={() => onDeleteEntry(entry)}
-                />
-              </li>
-            ))}
-          </ul>
         )}
       </div>
     </>
-  );
-}
-
-function EntryRow({
-  index, entry, onPreview, onEdit, onDelete,
-}: {
-  index: number;
-  entry: AdminEntry;
-  onPreview: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const isPublished = !!entry.publishedVersionId;
-  const updateYmd = entry.updatedAt
-    ? new Date(entry.updatedAt).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
-    : '--';
-  const status = isPublished ? 'published' : 'committed';
-
-  /* 整行点击 = 选中并切换到预览态(不进入编辑器);编辑/⋯按钮 stopPropagation 避免冒泡触发预览。
-   *  无 hover bg(避免卡片化动效),仅 cursor-pointer 提示可点。 */
-  const stop = (e: React.MouseEvent) => e.stopPropagation();
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onPreview}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPreview(); } }}
-      className="flex cursor-pointer items-center gap-4 px-2 py-3 text-xs"
-    >
-      <span className="shrink-0 text-2xs tabular-nums"
-        style={{ color: 'var(--ink-ghost)', minWidth: '24px' }}>
-        {String(index + 1).padStart(2, '0')}
-      </span>
-      <span className="min-w-0 flex-1 truncate text-sm"
-        style={{ color: entry.hasContent ? 'var(--ink)' : 'var(--ink-ghost)' }}>
-        {entry.title || (entry.hasContent ? '无标题' : '(空章节)')}
-      </span>
-      <span className="shrink-0" style={{ minWidth: '90px' }}>
-        <StatusBadge status={status} hasUnpublishedChanges={entry.hasUnpublishedChanges} />
-      </span>
-      <span className="shrink-0 tabular-nums"
-        style={{ color: 'var(--ink-ghost)', minWidth: '50px' }}>
-        {updateYmd}
-      </span>
-      <div className="flex shrink-0 items-center gap-1" onClick={stop}>
-        <button type="button" onClick={onEdit}
-          className="rounded px-2 py-1 transition-colors hover:text-[var(--ink)]"
-          style={{ color: 'var(--ink-faded)' }}>编辑</button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button type="button"
-              className="rounded p-1 transition-colors hover:text-[var(--ink)]"
-              style={{ color: 'var(--ink-faded)' }} aria-label="章节操作">
-              <MoreHorizontal size={14} strokeWidth={1.5} />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onDelete} style={{ color: 'var(--danger)' }}>
-              删除
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </div>
   );
 }
 
