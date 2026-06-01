@@ -215,12 +215,12 @@ const AnthologyAdmin = () => {
         {/* 左:两段栈 — 顶部 文集列表 + (选中后) 底部 该文集章节列表 + footer 新建文集
          *  Why 两段栈:文集双层模型(文集→章节),左栏自然映射两层结构;
          *  选中文集才长出章节段,中区与右栏即时跟着切换,导航不离开侧栏。 */}
+        {/* 宽度 200px,无 border-r,对齐 /admin/notes 左栏(整套是项目设计语言"无栏线"决定) */}
         <aside
-          className="flex shrink-0 flex-col border-r"
+          className="flex shrink-0 flex-col"
           style={{
-            width: '280px',
+            width: '200px',
             background: 'var(--sidebar-bg)',
-            borderColor: 'var(--separator)',
           }}
         >
           {/* 顶部 section:文集列表 */}

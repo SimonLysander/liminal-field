@@ -237,11 +237,11 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
         </div>
       </div>
 
-      {/* 右栏:章节版本时间线(与笔记/画廊心智一致——常驻右栏,不弹 dialog) */}
+      {/* 右栏 — 宽度 261px / 无 border-l,对齐 /admin/notes 右栏(设计语言"无栏线") */}
       {selectedEntry && (
         <aside
-          className="flex shrink-0 flex-col border-l"
-          style={{ width: '320px', borderColor: 'var(--separator)' }}
+          className="flex shrink-0 flex-col"
+          style={{ width: '261px' }}
         >
           <EntryVersionsRail
             anthologyContentItemId={row.contentItemId}
@@ -636,35 +636,66 @@ function EntryPreviewView({
   }, [entry.nodeId]);
 
   const isPublished = !!entry.publishedVersionId;
-  const status = isPublished ? 'published' : 'committed';
-  const updateYmd = entry.updatedAt
-    ? new Date(entry.updatedAt).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
-    : '--';
-  // 版本时间线已在右栏常驻(AnthologyDetailPanel 根 layout 横向二段),这里不再放「版本」按钮。
+  // commitHash 字段笔记中区有(来自 Snapshot),这里用 publishedVersionId 兜底,
+  // 没发布过则用 nodeId 前 8 位让 pill 仍有形态(语义=该节点 id 的速写,跟笔记 pill 视觉一致)。
+  const pillHash = entry.publishedVersionId ?? entry.nodeId;
 
+  /* 视觉严格抄笔记 ContentVersionView header:
+   *  - 大标题 text-5xl serif bold(用 var(--font-reading) 阅读体)
+   *  - 状态徽章(VersionStatusPill 风格) + 时间
+   *  - 右操作组: 编辑 + ⋯ 菜单
+   *  - 不放面包屑(左栏两段栈已表达层级,跟笔记心智一致——左侧结构面板管层级) */
   return (
-    <>
-      {/* 面包屑 + 编辑 + ⋯ */}
-      <div className="mb-4 flex items-center justify-between gap-4">
-        <button type="button" onClick={onBack}
-          className="flex items-center gap-1 text-xs transition-colors hover:text-[var(--ink)]"
-          style={{ color: 'var(--ink-faded)' }}>
-          <ChevronLeft size={14} strokeWidth={1.5} />
-          {anthologyTitle || '文集'}
-        </button>
-        <div className="flex items-center gap-1">
-          <button type="button" onClick={onEdit}
-            className="rounded-md px-3 py-1.5 text-sm transition-colors hover:text-[var(--ink)]"
-            style={{ color: 'var(--ink-faded)' }}>编辑</button>
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <h2
+            className="text-5xl font-bold"
+            style={{ color: 'var(--ink)', fontFamily: 'var(--font-reading)', letterSpacing: '-0.025em' }}
+          >
+            {entry.title || '(空章节)'}
+          </h2>
+          <div className="mt-2 flex items-center gap-2.5">
+            <VersionStatusPill isPublished={isPublished} commitHash={pillHash} />
+            <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>
+              {entry.updatedAt ? new Date(entry.updatedAt).toLocaleString('zh-CN') : '--'}
+            </span>
+          </div>
+          {/* "你正在《X》" — 章节没有自己的面包屑,仅一行小字提示来源文集,
+            *  点击可返回文集态(清掉 ?entry=)。比顶部面包屑更克制。 */}
+          <button
+            type="button"
+            onClick={onBack}
+            className="mt-2 inline-flex items-center gap-1 text-2xs transition-colors hover:text-[var(--ink)]"
+            style={{ color: 'var(--ink-ghost)' }}
+          >
+            <ChevronLeft size={12} strokeWidth={1.5} />
+            《{anthologyTitle || '文集'}》
+          </button>
+        </div>
+        <div className="flex shrink-0 items-center gap-4 pt-1">
+          <button
+            type="button"
+            onClick={onEdit}
+            className="text-xs transition-colors duration-150"
+            style={{ color: 'var(--ink-faded)', fontFamily: 'inherit', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--ink)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-faded)'; }}
+          >
+            编辑
+          </button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button type="button"
-                className="rounded-md p-1.5 transition-colors hover:text-[var(--ink)]"
-                style={{ color: 'var(--ink-faded)' }} aria-label="章节操作">
-                <MoreHorizontal size={18} strokeWidth={1.5} />
+              <button
+                className="flex h-6 w-6 items-center justify-center rounded-md transition-opacity hover:opacity-70 focus:outline-none data-[state=open]:opacity-100"
+                style={{ color: 'var(--ink-ghost)' }}
+                aria-label="章节操作"
+              >
+                <MoreHorizontal size={14} strokeWidth={1.5} />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" className="min-w-[120px]">
               <DropdownMenuItem onClick={onDelete} style={{ color: 'var(--danger)' }}>
                 删除章节
               </DropdownMenuItem>
@@ -673,32 +704,39 @@ function EntryPreviewView({
         </div>
       </div>
 
-      {/* 标题 + 元信息 */}
-      <h1 className="text-2xl font-medium" style={{ color: 'var(--ink)' }}>
-        {entry.title || '(空章节)'}
-      </h1>
-      <p className="mt-2 flex items-center gap-2 text-xs" style={{ color: 'var(--ink-faded)' }}>
-        <StatusBadge status={status} hasUnpublishedChanges={entry.hasUnpublishedChanges} />
-        <span>·</span>
-        <span>{updateYmd} 更新</span>
-      </p>
-
-      {/* 正文 readonly */}
-      <div className="mt-8 border-t pt-6" style={{ borderColor: 'var(--separator)' }}>
+      {/* 正文 — 不带 border-t 分割(设计语言:无栏线),直接续在 header 后 */}
+      <div className="pt-2">
         {bodyLoading ? (
           <LoadingState variant="inline" />
         ) : bodyError ? (
           <p className="text-sm" style={{ color: 'var(--danger)' }}>{bodyError}</p>
         ) : body && body.bodyMarkdown.trim() ? (
-          <div className="prose prose-sm max-w-none">
-            <MarkdownBody markdown={body.bodyMarkdown} contentItemId={entry.nodeId} />
-          </div>
+          <MarkdownBody markdown={body.bodyMarkdown} contentItemId={entry.nodeId} />
         ) : (
           <p className="py-8 text-center text-xs" style={{ color: 'var(--ink-ghost)' }}>
             (空章节,点右上「编辑」开始写)
           </p>
         )}
       </div>
-    </>
+    </div>
+  );
+}
+
+/** 抄笔记 ContentVersionView 的 VersionStatusPill,视觉/字号/圆角完全一致 */
+function VersionStatusPill({ isPublished, commitHash }: { isPublished: boolean; commitHash: string }) {
+  return (
+    <span
+      className="inline-flex items-center gap-[5px] rounded-full px-2.5 py-[3px] text-2xs font-medium"
+      style={{
+        background: isPublished ? 'var(--success-soft)' : 'var(--accent-soft)',
+        color: isPublished ? 'var(--mark-green)' : 'var(--ink-faded)',
+      }}
+    >
+      <span className="h-[5px] w-[5px] rounded-full" style={{ background: 'currentColor' }} />
+      {isPublished ? '已发布' : '已提交'}
+      <span style={{ fontFamily: 'var(--font-mono)', opacity: 0.7 }}>
+        {commitHash.slice(0, 8)}
+      </span>
+    </span>
   );
 }
