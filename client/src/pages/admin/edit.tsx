@@ -121,6 +121,11 @@ const NotesEditPanel = ({ id }: { id: string }) => {
 
 const AnthologyNodeEditPanel = ({ id }: { id: string }) => {
   const agentEnabled = useWritingAdvisorEnabled();
+  /* 跳进编辑器时调用方在 query 里塞了 at=文集id;
+   *   有 at → 编辑的是章节 → 返回路径 = at=文集id & chapter=章节id(左栏定位到章节选中)
+   *   无 at → 编辑的是文集本身(卷首语)→ 返回路径 = at=文集id(=本编辑的 id),文集态 */
+  const location = useLocation();
+  const parentAt = new URLSearchParams(location.search).get('at');
 
   const adapter = useMemo<DraftEditorAdapter<BaseDraftState>>(
     () => ({
@@ -171,10 +176,12 @@ const AnthologyNodeEditPanel = ({ id }: { id: string }) => {
       async discard() {
         await workspaceApi.deleteNodeDraft('anthology', id);
       },
-      fallbackPath: `/admin/anthology?node=${id}`,
+      fallbackPath: parentAt
+        ? `/admin/anthology?at=${parentAt}&chapter=${id}`
+        : `/admin/anthology?at=${id}`,
       labels: { loadError: '加载内容失败' },
     }),
-    [id],
+    [id, parentAt],
   );
 
   const editor = useDraftEditor(adapter);

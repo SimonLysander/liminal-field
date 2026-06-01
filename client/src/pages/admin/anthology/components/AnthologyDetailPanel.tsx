@@ -67,7 +67,8 @@ interface Props {
 export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
   const confirm = useConfirm();
   const [searchParams, setSearchParams] = useSearchParams();
-  const selectedEntryId = searchParams.get('entry') ?? null;
+  /* URL key 跟 index.tsx 同步:?at=文集 / ?at=&chapter=条目 */
+  const selectedEntryId = searchParams.get('chapter') ?? null;
 
   const [detail, setDetail] = useState<AnthologyAdminDetail | null>(null);
   const [childrenNavs, setChildrenNavs] = useState<StructureNode[]>([]);
@@ -107,8 +108,8 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
 
   const selectEntry = (entryId: string | null) => {
     const next = new URLSearchParams(searchParams);
-    if (entryId) next.set('entry', entryId);
-    else next.delete('entry');
+    if (entryId) next.set('chapter', entryId);
+    else next.delete('chapter');
     setSearchParams(next, { replace: true });
   };
 
@@ -154,7 +155,8 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
       await loadDetail();
       void onReload();
       if (created.contentItemId) {
-        window.location.href = `/admin/anthology/${created.contentItemId}/edit`;
+        /* 条目编辑带 ?at=文集id 让 edit.tsx 算出"返回 = 条目选中态" */
+        window.location.href = `/admin/anthology/${created.contentItemId}/edit?at=${row.contentItemId}`;
       }
     } catch (err) {
       banner.error(parseError(err, '新增章节失败'));
@@ -215,7 +217,7 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
           <EntryPreviewView
             entry={selectedEntry}
             onEdit={() => {
-              window.location.href = `/admin/anthology/${selectedEntry.nodeId}/edit`;
+              window.location.href = `/admin/anthology/${selectedEntry.nodeId}/edit?at=${row.contentItemId}`;
             }}
             onDelete={() => void handleDeleteEntry(selectedEntry)}
           />
@@ -318,7 +320,8 @@ function EntryVersionsRail({
   }, [entryNodeId]);
 
   const goToEditor = () => {
-    window.location.href = `/admin/anthology/${entryNodeId}/edit`;
+    /* 带 ?at=文集id 让编辑器返回时定位到条目选中态 */
+    window.location.href = `/admin/anthology/${entryNodeId}/edit?at=${anthologyContentItemId}`;
   };
 
   return (

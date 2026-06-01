@@ -54,9 +54,14 @@ export interface AnthologyRow {
 }
 
 const AnthologyAdmin = () => {
+  /* URL 状态(对齐笔记 admin at 心智 + 文集场景化 chapter):
+   *   ?at=文集contentItemId         → 文集态:左栏钻入到该文集,中区显示文集详情
+   *   ?at=文集id&chapter=条目id     → 章节态:钻入文集 + 选中某条目,中区显示章节详情
+   *   (无参数)                       → 文集层:展示文集列表
+   * 笔记单层只用 ?at=(选中即钻入);文集双层 ?at=(钻入文集)+ ?chapter=(选中章节)。 */
   const [searchParams, setSearchParams] = useSearchParams();
-  const selectedContentItemId = searchParams.get('node') ?? null;
-  const selectedEntryContentItemId = searchParams.get('entry') ?? null;
+  const selectedContentItemId = searchParams.get('at') ?? null;
+  const selectedEntryContentItemId = searchParams.get('chapter') ?? null;
   const confirm = useConfirm();
 
   const [rows, setRows] = useState<AnthologyRow[]>([]);
@@ -148,9 +153,9 @@ const AnthologyAdmin = () => {
   }, [selectedRow, loadEntries]);
 
   const selectAnthology = (contentItemId: string) => {
-    /* 切文集:同时清掉 entry,避免上个文集的 entry id 卡住 */
+    /* 切文集 = 钻入到该文集(at=文集id),清掉 node(选中的条目) */
     const next = new URLSearchParams();
-    next.set('node', contentItemId);
+    next.set('at', contentItemId);
     setSearchParams(next, { replace: true });
   };
 
@@ -162,8 +167,8 @@ const AnthologyAdmin = () => {
   const selectEntry = (entryContentItemId: string) => {
     if (!selectedContentItemId) return;
     const next = new URLSearchParams();
-    next.set('node', selectedContentItemId);
-    next.set('entry', entryContentItemId);
+    next.set('at', selectedContentItemId);
+    next.set('chapter', entryContentItemId);
     setSearchParams(next, { replace: true });
   };
 
@@ -177,7 +182,8 @@ const AnthologyAdmin = () => {
       await Promise.all([loadEntries(selectedRow.contentItemId), loadList()]);
       setEntryModal({ open: false, mode: 'create' });
       if (created.contentItemId) {
-        window.location.href = `/admin/anthology/${created.contentItemId}/edit`;
+        /* ?at=文集id 让编辑器返回时能定位到条目态(at=文集 & node=条目) */
+        window.location.href = `/admin/anthology/${created.contentItemId}/edit?at=${selectedRow.contentItemId}`;
       }
     } catch (err) {
       banner.error(parseError(err, '新增章节失败'));
@@ -296,7 +302,7 @@ const AnthologyAdmin = () => {
                   文集
                 </div>
                 <div className="mt-1 text-2xs" style={{ color: 'var(--ink-ghost)' }}>
-                  {rows.length} 个文集
+                  {rows.length} 部
                 </div>
               </>
             )}
@@ -323,7 +329,7 @@ const AnthologyAdmin = () => {
                   暂无条目
                 </p>
               ) : (
-                <ul className="space-y-1">
+                <ul className="space-y-1.5">
                   {entries.map((entry) => {
                     const active = entry.nodeId === selectedEntryContentItemId;
                     const isPublished = !!entry.publishedVersionId;
@@ -335,7 +341,6 @@ const AnthologyAdmin = () => {
                         <button
                           type="button"
                           onClick={() => selectEntry(entry.nodeId)}
-                          /* nav-item 类豁免全局 button:active 的"按压缩放 + 内陷阴影" */
                           className="nav-item block w-full rounded-lg px-3 py-2 text-left focus:outline-none focus-visible:outline-none"
                           style={{
                             background: active ? 'var(--shelf)' : 'transparent',
@@ -352,15 +357,16 @@ const AnthologyAdmin = () => {
                           >
                             {entry.title || '无标题'}
                           </div>
+                          {/* 状态点(compact) + M/D 更新 — 紧凑信息行 */}
                           <div
-                            className="mt-0.5 flex items-center gap-1.5 truncate text-2xs"
+                            className="mt-1 flex items-center gap-1.5 truncate text-2xs"
                             style={{ color: 'var(--ink-ghost)' }}
                           >
                             <StatusBadge
                               status={isPublished ? 'published' : 'committed'}
                               hasUnpublishedChanges={entry.hasUnpublishedChanges}
+                              compact
                             />
-                            <span>·</span>
                             <span>{updateYmd} 更新</span>
                           </div>
                         </button>
@@ -432,7 +438,7 @@ const AnthologyAdmin = () => {
             <button
               type="button"
               onClick={() => selectedRow ? void loadEntries(selectedRow.contentItemId) : void loadList()}
-              className="nav-item flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs transition-colors hover:text-[var(--ink)]"
+              className="nav-item flex items-center gap-1 rounded px-1.5 py-0.5 text-xs transition-colors hover:text-[var(--ink)]"
               style={{ color: 'var(--ink-faded)' }}
             >
               刷新
@@ -444,7 +450,7 @@ const AnthologyAdmin = () => {
                   ? setEntryModal({ open: true, mode: 'create' })
                   : setModal({ open: true, mode: 'create' })
               }
-              className="nav-item flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs font-medium transition-colors hover:text-[var(--ink)]"
+              className="nav-item flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium transition-colors hover:text-[var(--ink)]"
               style={{ color: 'var(--ink)' }}
             >
               + 新建
@@ -488,14 +494,33 @@ const AnthologyAdmin = () => {
 
 /* 状态徽章 — 严格遵设计宪法 §3.0/§3.2:
  *   语义信号优先「文字 + 小点」,不糊色块;颜色只剩红/绿(蓝已砍)。
- *   - 草稿        → 灰字「草稿」(状态默认,无点)
+ *   - 草稿        → 灰字「草稿」(默认,无点)
  *   - 已发布      → 小绿点 + 灰字「已发布」(success)
- *   - 有未发布改动 → 小红点 + 灰字「有未发布改动」(待办/未完成 → danger 语义)
- * 颜色一律走 token (--success / --danger),不硬编码 rgba。 */
-function StatusBadge({ status, hasUnpublishedChanges }: {
+ *   - 有未发布改动 → 小红点 + 灰字「有未发布改动」(danger 语义)
+ *   - compact 模式 → 只显示点,无文字(配合 ListRow 卡片副信息使用,节省空间);
+ *                   草稿无文字时显示灰点,保持有形可视。 */
+function StatusBadge({ status, hasUnpublishedChanges, compact }: {
   status: 'committed' | 'published';
   hasUnpublishedChanges: boolean;
+  compact?: boolean;
 }) {
+  if (compact) {
+    const bg =
+      status !== 'published' ? 'var(--ink-ghost)' :
+      hasUnpublishedChanges ? 'var(--danger)' :
+      'var(--success)';
+    const label =
+      status !== 'published' ? '草稿' :
+      hasUnpublishedChanges ? '有未发布改动' : '已发布';
+    return (
+      <span
+        className="inline-block size-1.5 shrink-0 rounded-full"
+        style={{ background: bg }}
+        title={label}
+        aria-label={label}
+      />
+    );
+  }
   if (status !== 'published') {
     return <span style={{ color: 'var(--ink-ghost)' }}>草稿</span>;
   }
