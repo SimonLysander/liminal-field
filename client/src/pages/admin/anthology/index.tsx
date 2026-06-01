@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+/* 钻入式左栏改造后:Plus icon 不再用(底部按钮改"新作/新篇"纯字),lucide 直接拆。 */
 import Topbar from '@/components/global/Topbar';
 import { banner } from '@/components/ui/banner-api';
 import { LoadingState } from '@/components/LoadingState';
@@ -143,6 +143,11 @@ const AnthologyAdmin = () => {
     setSearchParams(next, { replace: true });
   };
 
+  /** 章节层 → 文集层(钻入式导航的"返回"):清空 URL,左栏自动切回文集列表 */
+  const backToCollections = () => {
+    setSearchParams({}, { replace: true });
+  };
+
   const selectEntry = (entryContentItemId: string) => {
     if (!selectedContentItemId) return;
     const next = new URLSearchParams();
@@ -212,134 +217,150 @@ const AnthologyAdmin = () => {
       {/* w-full:main 在外层 flex 容器(全局 layout 的 flex-1 主区)里默认只占自然宽度,
        *  必须显式撑满,否则中区 flex-1 拿到的剩余空间是 0 → 视觉被挤成竖条。 */}
       <main className="flex h-[calc(100vh-var(--topbar-h,52px))] w-full overflow-hidden">
-        {/* 左:两段栈 — 顶部 文集列表 + (选中后) 底部 该文集章节列表 + footer 新建文集
-         *  Why 两段栈:文集双层模型(文集→章节),左栏自然映射两层结构;
-         *  选中文集才长出章节段,中区与右栏即时跟着切换,导航不离开侧栏。 */}
-        {/* 宽度 200px,无 border-r,对齐 /admin/notes 左栏(整套是项目设计语言"无栏线"决定) */}
+        {/* 左:钻入式渐进导航(笔记 AdminStructurePanel 同交互心智) + 卷宗气韵视觉
+         *
+         *  视图层级由 URL 推断:
+         *    - 无 ?node= → 文集层(目录扉页:展示文集列表)
+         *    - 有 ?node= → 章节层(展开该文集的目录页:展示章节列表,顶部《文集名》点击=返回)
+         *    - 章节层 + ?entry= → 章节高亮(但中右栏 + 左栏列表都还在,只切高亮项)
+         *
+         *  卷宗感落地:
+         *    - 全栏字体 var(--font-reading)(霞鹜文楷 LXGW 阅读体)
+         *    - 顶部题签「文 集」/《文集名》二字间 letterSpacing 模拟全角空格
+         *    - 题签下一根 1px 极淡墨线(扉页装饰)
+         *    - 章节用中文数字「一/二/三」编号 + 全角空格 + 篇名
+         *    - 选中态:仅字色加深 + font-medium,无 bg 块、无装饰条、无 hover bg(用户审美:任何 hover bg 都算"卡片动效")
+         *    - 底部「新 作」/「新 篇」二字按钮,letterSpacing 同题签气韵
+         *
+         *  设计宪法对齐:无栏线分隔(右无 border-r);Tailwind 优先,CSS 变量必 inline;字号走 text-* token。 */}
         <aside
           className="flex shrink-0 flex-col"
           style={{
             width: '200px',
             background: 'var(--sidebar-bg)',
+            fontFamily: 'var(--font-reading)',
           }}
         >
-          {/* 顶部 section:文集列表 */}
+          {/* 顶部题签:文集层=「文 集」(letterSpacing 模拟空格);章节层=《文集名》(可点返回) */}
           <div className="shrink-0 px-5 pt-7 pb-3">
-            <h2 className="text-sm font-medium" style={{ color: 'var(--ink)' }}>
-              文集
-            </h2>
-            <p className="mt-0.5 text-2xs" style={{ color: 'var(--ink-faded)' }}>
-              {rows.length} 部作品
-            </p>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {listLoading ? (
-              <LoadingState variant="inline" />
-            ) : listError ? (
-              <p className="px-5 text-xs" style={{ color: 'var(--danger)' }}>{listError}</p>
-            ) : rows.length === 0 ? (
-              <p className="px-5 py-4 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-                还没有文集,点下方「新建文集」开始
-              </p>
+            {selectedRow ? (
+              <button
+                type="button"
+                onClick={backToCollections}
+                className="block w-full truncate text-left text-base transition-colors hover:text-[var(--ink-faded)]"
+                style={{ color: 'var(--ink)', fontFamily: 'inherit' }}
+                aria-label="返回文集列表"
+              >
+                《{selectedRow.title || '无标题'}》
+              </button>
             ) : (
-              <ul>
-                {rows.map((row) => {
-                  const active = row.contentItemId === selectedContentItemId;
-                  return (
+              <h2
+                className="text-base"
+                style={{ color: 'var(--ink)', letterSpacing: '0.5em' }}
+              >
+                文集
+              </h2>
+            )}
+            {/* 扉页装饰线:不是栏分隔,只是题签下方一笔 */}
+            <div className="mt-2 h-px" style={{ background: 'var(--separator)' }} />
+          </div>
+
+          {/* 列表区:文集层 or 章节层,二者只渲染一个 */}
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">
+            {selectedRow ? (
+              /* ── 章节层 ── */
+              entriesLoading ? (
+                <LoadingState variant="inline" />
+              ) : entries.length === 0 ? (
+                <p className="py-2 text-sm" style={{ color: 'var(--ink-ghost)' }}>
+                  暂无篇章
+                </p>
+              ) : (
+                <ul className="space-y-3">
+                  {entries.map((entry, i) => {
+                    const active = entry.contentItemId === selectedEntryContentItemId;
+                    return (
+                      <li key={entry.id}>
+                        <button
+                          type="button"
+                          onClick={() => entry.contentItemId && selectEntry(entry.contentItemId)}
+                          className="block w-full truncate text-left text-sm transition-colors"
+                          style={{
+                            color: active ? 'var(--ink)' : 'var(--ink-faded)',
+                            fontWeight: active ? 600 : 400,
+                            fontFamily: 'inherit',
+                            lineHeight: 1.6,
+                          }}
+                        >
+                          {/* 中文数字编号 + 篇名(1em margin-left 模拟全角空格,避开 lint
+                            *  对 U+3000 的 no-irregular-whitespace 报错) */}
+                          <span style={{ fontWeight: active ? 700 : 600, color: active ? 'var(--ink)' : 'var(--ink-light)' }}>
+                            {chineseNumeral(i + 1)}
+                          </span>
+                          <span style={{ marginLeft: '1em' }}>{entry.name || '无标题'}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )
+            ) : (
+              /* ── 文集层 ── */
+              listLoading ? (
+                <LoadingState variant="inline" />
+              ) : listError ? (
+                <p className="py-2 text-sm" style={{ color: 'var(--danger)' }}>{listError}</p>
+              ) : rows.length === 0 ? (
+                <p className="py-2 text-sm" style={{ color: 'var(--ink-ghost)' }}>
+                  尚无文集
+                </p>
+              ) : (
+                <ul className="space-y-3">
+                  {rows.map((row) => (
                     <li key={row.contentItemId}>
                       <button
                         type="button"
                         onClick={() => selectAnthology(row.contentItemId)}
-                        className="w-full px-5 py-2 text-left"
-                        style={active ? { background: 'var(--shelf)' } : undefined}
+                        className="flex w-full items-center justify-between gap-2 text-left text-sm transition-colors hover:text-[var(--ink)]"
+                        style={{
+                          color: 'var(--ink-light)',
+                          fontFamily: 'inherit',
+                          lineHeight: 1.6,
+                        }}
                       >
-                        <div
-                          className={`truncate text-sm ${active ? 'font-medium' : ''}`}
-                          style={{ color: active ? 'var(--ink)' : 'var(--ink-faded)' }}
-                        >
+                        <span className="min-w-0 truncate">
                           {row.title || '无标题'}
-                        </div>
+                        </span>
+                        {/* 钻入暗示:一个小三角,极淡 */}
+                        <span className="shrink-0 text-2xs" style={{ color: 'var(--ink-ghost)' }}>
+                          ▸
+                        </span>
                       </button>
                     </li>
-                  );
-                })}
-              </ul>
+                  ))}
+                </ul>
+              )
             )}
           </div>
 
-          {/* 底部 section:选中文集的章节列表 + 新增章节 */}
-          {selectedRow && (
-            <>
-              <div
-                className="flex shrink-0 items-center justify-between border-t px-5 pt-4 pb-2"
-                style={{ borderColor: 'var(--separator)' }}
-              >
-                <div className="min-w-0">
-                  <h3 className="truncate text-2xs font-medium uppercase"
-                    style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}>
-                    章节
-                  </h3>
-                  <p className="mt-0.5 truncate text-2xs" style={{ color: 'var(--ink-faded)' }}>
-                    {selectedRow.title || '无标题'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEntryModal({ open: true, mode: 'create' })}
-                  className="shrink-0 transition-colors hover:text-[var(--ink)]"
-                  style={{ color: 'var(--ink-faded)' }}
-                  aria-label="新增章节"
-                >
-                  <Plus size={14} strokeWidth={1.5} />
-                </button>
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                {entriesLoading ? (
-                  <LoadingState variant="inline" />
-                ) : entries.length === 0 ? (
-                  <p className="px-5 py-3 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-                    还没有章节
-                  </p>
-                ) : (
-                  <ul>
-                    {entries.map((entry) => {
-                      const active = entry.contentItemId === selectedEntryContentItemId;
-                      return (
-                        <li key={entry.id}>
-                          <button
-                            type="button"
-                            onClick={() => entry.contentItemId && selectEntry(entry.contentItemId)}
-                            className="w-full truncate px-5 py-1.5 text-left text-sm"
-                            style={{
-                              background: active ? 'var(--shelf)' : 'transparent',
-                              color: active ? 'var(--ink)' : 'var(--ink-faded)',
-                              fontWeight: active ? 500 : 400,
-                            }}
-                          >
-                            {entry.name || '(空标题)'}
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-            </>
-          )}
-
-          {/* footer:新建文集 */}
-          <div
-            className="shrink-0 border-t px-3 py-3"
-            style={{ borderColor: 'var(--separator)' }}
-          >
+          {/* footer:文集层=「新 作」,章节层=「新 篇」。letterSpacing 同题签气韵 */}
+          <div className="shrink-0 px-5 py-4">
             <button
               type="button"
-              onClick={() => setModal({ open: true, mode: 'create' })}
-              className="flex w-full items-center justify-center gap-1.5 py-2 text-sm transition-colors hover:text-[var(--ink)]"
-              style={{ color: 'var(--ink-faded)' }}
+              onClick={() =>
+                selectedRow
+                  ? setEntryModal({ open: true, mode: 'create' })
+                  : setModal({ open: true, mode: 'create' })
+              }
+              className="block w-full text-sm transition-colors hover:text-[var(--ink)]"
+              style={{
+                color: 'var(--ink-faded)',
+                fontFamily: 'inherit',
+                letterSpacing: '0.5em',
+                textAlign: 'center',
+              }}
             >
-              <Plus size={14} strokeWidth={1.5} />
-              新建文集
+              {selectedRow ? '新篇' : '新作'}
             </button>
           </div>
         </aside>
@@ -408,6 +429,21 @@ function StatusBadge({ status, hasUnpublishedChanges }: {
 }
 
 export { StatusBadge };
+
+/** 中文数字 1..99(99 后回落到阿拉伯)。卷宗气韵:章节编号"一/二/三/十一/二十一"古朴。 */
+const ZH_DIGITS = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+function chineseNumeral(n: number): string {
+  if (n < 0) return String(n);
+  if (n < 10) return ZH_DIGITS[n];
+  if (n === 10) return '十';
+  if (n < 20) return '十' + ZH_DIGITS[n - 10];
+  if (n < 100) {
+    const tens = Math.floor(n / 10);
+    const ones = n % 10;
+    return ZH_DIGITS[tens] + '十' + (ones === 0 ? '' : ZH_DIGITS[ones]);
+  }
+  return String(n);
+}
 
 function EmptyHint() {
   return (
