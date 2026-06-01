@@ -396,32 +396,6 @@ export async function createAnthologyChildNode(
 }
 
 /**
- * 向后兼容 wrapper:Phase 1 前签名 addAnthologyEntry({ title, bodyMarkdown }),
- * 返回 { entryKey, detail }。新代码请直接用 createAnthologyChildNode。
- */
-export async function addAnthologyEntry(
-  app: NestFastifyApplication,
-  cookie: string,
-  anthologyContentItemId: string,
-  entry: { title: string; bodyMarkdown: string; date?: string },
-): Promise<{ entryKey: string; detail: any }> {
-  const nodeId = await createAnthologyChildNode(
-    app,
-    cookie,
-    anthologyContentItemId,
-    entry.title,
-    entry.bodyMarkdown,
-  );
-  // 返回更新后的容器管理端详情供调用方拿 entries 列表(向后兼容)
-  const res = await supertest(app.getHttpServer())
-    .get(
-      `/api/v1/spaces/anthology/items/${anthologyContentItemId}?visibility=all`,
-    )
-    .set('Cookie', cookie);
-  return { entryKey: nodeId, detail: res.body?.data ?? {} };
-}
-
-/**
  * 提交 gallery 内容（写入 frontmatter main.md + git commit）。
  * photos 需要包含至少一张照片（file 字段必须对应 assets 目录中已存在的文件）。
  */

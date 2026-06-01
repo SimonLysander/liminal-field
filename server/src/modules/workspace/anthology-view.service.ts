@@ -262,25 +262,25 @@ export class AnthologyViewService {
   }
 
   /**
-   * 把若干条目节点组装成 { key, title, date } 的有序列表(目录展示用)。
-   * date 从每个条目子 ContentItem 的正文 frontmatter 读取(旧数据兼容),
-   * 兜底快照 createdAt。
+   * 把若干子节点组装成 { nodeId, title, date } 的有序列表(目录展示用)。
+   * date 从每个子 ContentItem 的正文 frontmatter 读取(旧数据兼容),
+   * 兜底快照 createdAt。Phase 8 起字段统一为 nodeId(与通用页面树命名对齐)。
    */
   private async toEntryRefs(
     nodes: NavigationNode[],
   ): Promise<AnthologyEntryRef[]> {
     return Promise.all(
       nodes.map(async (node) => {
-        const key = node.contentItemId;
-        const item = await this.contentRepository.findById(key);
-        const snapshot = await this.loadEntryLatestSnapshot(key);
+        const nodeId = node.contentItemId;
+        const item = await this.contentRepository.findById(nodeId);
+        const snapshot = await this.loadEntryLatestSnapshot(nodeId);
         const parsed = snapshot
           ? parseEntryContent(snapshot.bodyMarkdown)
           : { date: null, bodyMarkdown: '' };
         const date =
           parsed.date ??
           (snapshot ? snapshot.createdAt.toISOString().split('T')[0] : null);
-        return { key, title: this.entryTitle(node, item), date };
+        return { nodeId, title: this.entryTitle(node, item), date };
       }),
     );
   }
@@ -308,12 +308,12 @@ export class AnthologyViewService {
 
   /**
    * 给 Aurora 拼"整集脉络"字符串(#150 续 2026-05-31):
-   * 输入文集条目的合成 contentItemId(形如 `${anthologyId}:${entryKey}`),
-   * 返回该条目所属文集的 标题/描述/条目列表/当前位置 的一段文本。
+   * 输入文集子节点的合成 contentItemId(形如 `${anthologyId}:${childNodeId}`),
+   * 返回该子节点所属文集的 标题/描述/子节点列表/当前位置 的一段文本。
    *
    * 设计:把前端 anthology/edit.tsx 里那段拼装搬到后端——避免前端每轮 chat 都重发同一份脉络
    * (#150 按需化原则:工具能提供的不要一直注入 + 后端 pull 替代前端 push)。
-   * 非文集条目格式(无 `:`)或文集已删 → 返回 null,prompt.handler 自然不会注入 <collection>。
+   * 非合成 id 格式(无 `:`)或文集已删 → 返回 null,prompt.handler 自然不会注入 <collection>。
    */
   async buildCollectionContextForEntry(
     entryContentItemId: string,
@@ -321,7 +321,7 @@ export class AnthologyViewService {
     const sep = entryContentItemId.indexOf(':');
     if (sep < 0) return null;
     const anthologyId = entryContentItemId.slice(0, sep);
-    const currentEntryKey = entryContentItemId.slice(sep + 1);
+    const currentNodeId = entryContentItemId.slice(sep + 1);
     try {
       // 走阅读端 detail(含已发布子节点列表),Aurora 上下文跟随容器视角
       const anthologyNode = await this.getAnthologyNode(anthologyId);
@@ -332,7 +332,7 @@ export class AnthologyViewService {
       const list = entries
         .map(
           (e, i) =>
-            `${i + 1}. ${e.title || '(无标题)'} (key: ${e.key})${e.key === currentEntryKey ? ' ← 当前正在编辑' : ''}`,
+            `${i + 1}. ${e.title || '(无标题)'} (nodeId: ${e.nodeId})${e.nodeId === currentNodeId ? ' ← 当前正在编辑' : ''}`,
         )
         .join('\n');
       const desc = index.description?.trim()
@@ -556,7 +556,7 @@ export class AnthologyViewService {
       }
       // 管理端:正文快照缺失 → 返回空正文让编辑器正常打开(自愈),不堵死用户。
       return {
-        key: nodeId,
+        nodeId,
         title: this.entryTitle(entryNode, entryItem),
         date: new Date().toISOString().split('T')[0],
         updatedAt: new Date().toISOString(),
@@ -566,12 +566,12 @@ export class AnthologyViewService {
       };
     }
 
-    // updatedAt 取该条目最新 snapshot 的 createdAt(与 NoteReader 同语义)
+    // updatedAt 取该子节点最新 snapshot 的 createdAt(与 NoteReader 同语义)
     const latestSnapshot = await this.loadEntryLatestSnapshot(nodeId);
     const parsed = parseEntryContent(entrySnapshot.bodyMarkdown);
 
     return {
-      key: nodeId,
+      nodeId,
       title: this.entryTitle(entryNode, entryItem),
       date: parsed.date ?? entrySnapshot.createdAt.toISOString().split('T')[0],
       updatedAt: (latestSnapshot ?? entrySnapshot).createdAt.toISOString(),
@@ -621,7 +621,7 @@ export class AnthologyViewService {
     const { prev, next } = this.buildPrevNext(refs, entryIdx);
 
     return {
-      key: nodeId,
+      nodeId,
       title: this.entryTitle(entryNode, entryItem),
       date: parsed.date ?? snapshot.createdAt.toISOString().split('T')[0],
       updatedAt: snapshot.createdAt.toISOString(),

@@ -19,7 +19,7 @@ import {
   createNoteItem,
   commitNoteContent,
   createAnthologyItem,
-  addAnthologyEntry,
+  createAnthologyChildNode,
 } from './helpers';
 import { SettingsModule } from '../src/modules/settings/settings.module';
 import { ContentRepository } from '../src/modules/content/content.repository';
@@ -71,10 +71,13 @@ describe('跨月恢复 (e2e, 本地 bare 仓当远端)', () => {
       '跨月笔记',
     );
     const anthologyId = await createAnthologyItem(ctx.app, cookie, '跨月文集');
-    const { entryKey } = await addAnthologyEntry(ctx.app, cookie, anthologyId, {
-      title: '条目',
-      bodyMarkdown: ENTRY_BODY,
-    });
+    const childNodeId = await createAnthologyChildNode(
+      ctx.app,
+      cookie,
+      anthologyId,
+      '条目',
+      ENTRY_BODY,
+    );
     await supertest(server)
       .post('/api/v1/settings/push-to-remote')
       .set('Cookie', cookie)
@@ -115,7 +118,7 @@ describe('跨月恢复 (e2e, 本地 bare 仓当远端)', () => {
     // Phase 1:阅读端走 /public/ 路由,nodeId 即子节点 contentItemId
     const entryDetail = await supertest(server)
       .get(
-        `/api/v1/spaces/anthology/public/items/${anthologyId}/entries/${entryKey}`,
+        `/api/v1/spaces/anthology/public/items/${anthologyId}/entries/${childNodeId}`,
       )
       .set('Cookie', cookie)
       .expect(200);

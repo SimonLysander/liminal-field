@@ -105,7 +105,7 @@ describe('Anthology CRUD (e2e, Phase 1 page-tree)', () => {
         .set('Cookie', cookie)
         .expect(200);
       expect(detailRes.body.data.entries).toHaveLength(1);
-      expect(detailRes.body.data.entries[0].key).toBe(nodeId);
+      expect(detailRes.body.data.entries[0].nodeId).toBe(nodeId);
       expect(detailRes.body.data.entries[0].title).toBe('第一篇');
 
       // 子节点正文走管理端阅读接口(getEntryDetail)
@@ -113,7 +113,7 @@ describe('Anthology CRUD (e2e, Phase 1 page-tree)', () => {
         .get(`/api/v1/spaces/anthology/public/items/${id}/entries/${nodeId}`)
         .set('Cookie', cookie)
         .expect(200);
-      expect(entryRes.body.data.key).toBe(nodeId);
+      expect(entryRes.body.data.nodeId).toBe(nodeId);
       expect(entryRes.body.data.bodyMarkdown).toContain('这是第一篇的内容');
     });
 
@@ -139,7 +139,7 @@ describe('Anthology CRUD (e2e, Phase 1 page-tree)', () => {
         .get(`/api/v1/spaces/anthology/items/${id}?visibility=all`)
         .set('Cookie', cookie)
         .expect(200);
-      const keys = detailRes.body.data.entries.map((e: any) => e.key);
+      const keys = detailRes.body.data.entries.map((e: any) => e.nodeId);
       expect(keys).toEqual([k1, k2]);
     });
 
@@ -197,7 +197,7 @@ describe('Anthology CRUD (e2e, Phase 1 page-tree)', () => {
         .expect(200);
 
       const entry = res.body.data;
-      expect(entry.key).toBe(k1);
+      expect(entry.nodeId).toBe(k1);
       expect(entry.prev).toBeNull();
       expect(entry.next).toMatchObject({ nodeId: k2, title: '第二篇' });
     });
@@ -408,7 +408,7 @@ describe('Anthology 发布 (e2e, Phase 1 page-tree)', () => {
       .get(`/api/v1/spaces/anthology/public/items/${id}/entries/${nodeId}`)
       .expect(200);
 
-    expect(res.body.data.key).toBe(nodeId);
+    expect(res.body.data.nodeId).toBe(nodeId);
     expect(res.body.data.title).toBe('公开条目');
     expect(res.body.data.bodyMarkdown).toContain('公开的条目内容');
   });
@@ -452,7 +452,7 @@ describe('Anthology 发布 (e2e, Phase 1 page-tree)', () => {
       .set('Cookie', cookie)
       .expect(200);
     const adminEntry = adminRes.body.data.entries.find(
-      (e: any) => e.key === nodeId,
+      (e: any) => e.nodeId === nodeId,
     );
     expect(adminEntry.title).toBe('修改后的标题');
 
@@ -460,7 +460,7 @@ describe('Anthology 发布 (e2e, Phase 1 page-tree)', () => {
     const publicRes = await supertest(ctx.app.getHttpServer())
       .get(`/api/v1/spaces/anthology/public/items/${id}/entries/${nodeId}`)
       .expect(200);
-    expect(publicRes.body.data.key).toBe(nodeId);
+    expect(publicRes.body.data.nodeId).toBe(nodeId);
     expect(publicRes.body.data.bodyMarkdown).toContain('原始正文');
   });
 

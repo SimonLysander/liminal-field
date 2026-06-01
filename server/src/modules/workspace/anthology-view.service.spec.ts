@@ -157,9 +157,9 @@ describe('AnthologyViewService.buildCollectionContextForEntry (#150 续 2026-05-
     // 当前条目带标记,其他条目不带
     expect(out).toMatch(/夜走玄武湖.*← 当前正在编辑/);
     expect(out).not.toMatch(/初到.*← 当前正在编辑/);
-    // 条目 key 必须暴露(给 read_collection_entry 用)
-    expect(out).toContain('key: entry-a');
-    expect(out).toContain('key: entry-b');
+    // 节点 id 必须暴露(给 read_collection_entry 用)
+    expect(out).toContain('nodeId: entry-a');
+    expect(out).toContain('nodeId: entry-b');
   });
 
   it('容器找不到 → 返 null 不阻塞 chat', async () => {

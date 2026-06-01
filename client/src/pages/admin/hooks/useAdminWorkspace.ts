@@ -395,10 +395,16 @@ export function useAdminWorkspace(options: { scope: 'notes' | 'anthology' } = { 
 
   /* ================================================================
    * 元数据轻量更新（摘要等，不创建新版本）
+   *
+   * Phase 8 scope 防卫:anthology 模块下用户编辑走 /admin/anthology/:id/edit
+   * 专属编辑器,不应该在 ContentAdmin 主页触发草稿/发布/摘要等写操作。
+   * 各方法首行 noop 早 return,避免 anthology 节点误命中 notes 专用 API
+   * 而 404。
    * ================================================================ */
 
   const updateSummary = useCallback(
     async (summary: string) => {
+      if (scope === 'anthology') return;
       if (!activeContentItemId) return;
       try {
         const detail = await contentItemsApi.patchMeta(activeContentItemId, { summary });
@@ -407,7 +413,7 @@ export function useAdminWorkspace(options: { scope: 'notes' | 'anthology' } = { 
         banner.error(`更新摘要失败: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
-    [activeContentItemId],
+    [activeContentItemId, scope],
   );
 
   /* ================================================================
@@ -418,13 +424,16 @@ export function useAdminWorkspace(options: { scope: 'notes' | 'anthology' } = { 
     key: K,
     value: DraftEditorState[K],
   ) => {
+    // Phase 8 scope 防卫:anthology 主页不参与草稿编辑(走专属编辑器),屏蔽改动以防误存。
+    if (scope === 'anthology') return;
     setDraftState((current) => ({ ...current, [key]: value }));
     setIsDirty(true);
     setAutosaveError('');
-  }, []);
+  }, [scope]);
 
   const createDraftFromFormalVersion = useCallback(
     async (overwrite: boolean) => {
+      if (scope === 'anthology') return;
       if (!activeContentItemId || !formalContent.id) return;
 
       if (overwrite && draftPresence.exists) {
@@ -455,10 +464,12 @@ export function useAdminWorkspace(options: { scope: 'notes' | 'anthology' } = { 
       formalContent.latestVersion.summary,
       formalContent.latestVersion.title,
       activeContentItemId,
+      scope,
     ],
   );
 
   const resumeDraft = useCallback(async () => {
+    if (scope === 'anthology') return;
     if (!activeContentItemId) return;
 
     setContentLoading(true);
@@ -482,10 +493,11 @@ export function useAdminWorkspace(options: { scope: 'notes' | 'anthology' } = { 
     } finally {
       setContentLoading(false);
     }
-  }, [activeContentItemId]);
+  }, [activeContentItemId, scope]);
 
   const saveDraft = useCallback(
     async (options?: { silent?: boolean }) => {
+      if (scope === 'anthology') return;
       if (!activeContentItemId) return;
 
       if (options?.silent) {
@@ -519,10 +531,12 @@ export function useAdminWorkspace(options: { scope: 'notes' | 'anthology' } = { 
       draftState.summary,
       draftState.title,
       activeContentItemId,
+      scope,
     ],
   );
 
   const commitDraft = useCallback(async () => {
+    if (scope === 'anthology') return;
     if (!activeContentItemId) return;
     try {
       const saved = await contentItemsApi.save(activeContentItemId, {
@@ -557,9 +571,11 @@ export function useAdminWorkspace(options: { scope: 'notes' | 'anthology' } = { 
     draftState.summary,
     draftState.title,
     activeContentItemId,
+    scope,
   ]);
 
   const discardDraft = useCallback(async () => {
+    if (scope === 'anthology') return;
     if (!activeContentItemId) return;
     try {
       await contentItemsApi.deleteDraft(activeContentItemId);
@@ -587,13 +603,14 @@ export function useAdminWorkspace(options: { scope: 'notes' | 'anthology' } = { 
     } catch (err) {
       banner.error(`丢弃草稿失败: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [formalContent, activeContentItemId]);
+  }, [formalContent, activeContentItemId, scope]);
 
   /* ================================================================
    * 发布操作
    * ================================================================ */
 
   const publishContent = useCallback(async () => {
+    if (scope === 'anthology') return;
     if (!activeContentItemId) return;
     try {
       const saved = await contentItemsApi.publish(activeContentItemId);
@@ -602,9 +619,10 @@ export function useAdminWorkspace(options: { scope: 'notes' | 'anthology' } = { 
     } catch (err) {
       banner.error(`发布失败: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [activeContentItemId]);
+  }, [activeContentItemId, scope]);
 
   const unpublishContent = useCallback(async () => {
+    if (scope === 'anthology') return;
     if (!activeContentItemId) return;
     try {
       const saved = await contentItemsApi.unpublish(activeContentItemId);
@@ -613,7 +631,7 @@ export function useAdminWorkspace(options: { scope: 'notes' | 'anthology' } = { 
     } catch (err) {
       banner.error(`取消发布失败: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [activeContentItemId]);
+  }, [activeContentItemId, scope]);
 
   /* ================================================================
    * 版本预览
@@ -621,6 +639,7 @@ export function useAdminWorkspace(options: { scope: 'notes' | 'anthology' } = { 
 
   const previewVersion = useCallback(
     async (versionId: string) => {
+      if (scope === 'anthology') return;
       if (!activeContentItemId) return;
       if (preview?.versionId === versionId) return;
       // 点击最新版本时退出预览（用 versionId 对比）
@@ -646,12 +665,13 @@ export function useAdminWorkspace(options: { scope: 'notes' | 'anthology' } = { 
         setPreviewLoading(false);
       }
     },
-    [activeContentItemId, preview?.versionId, formalContent.latestVersion.versionId],
+    [activeContentItemId, preview?.versionId, formalContent.latestVersion.versionId, scope],
   );
 
   const exitPreview = useCallback(() => { setPreview(null); }, []);
 
   const publishPreview = useCallback(async () => {
+    if (scope === 'anthology') return;
     if (!activeContentItemId || !preview) return;
     try {
       const saved = await contentItemsApi.publish(activeContentItemId, preview.versionId);
@@ -660,7 +680,7 @@ export function useAdminWorkspace(options: { scope: 'notes' | 'anthology' } = { 
     } catch (err) {
       banner.error(`发布失败: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [activeContentItemId, preview]);
+  }, [activeContentItemId, preview, scope]);
 
   /* ================================================================
    * 自动保存

@@ -306,10 +306,10 @@ function AnthologyOverview({ id }: { id: string }) {
             {detail.entries.map((entry, index) => {
               const date = entry.date ? new Date(entry.date) : null;
               return (
-                <li key={entry.key}>
+                <li key={entry.nodeId}>
                   <Link
-                    // Phase 5:URL 切 ?at=&node=,跟 admin 命名一致;entry.key 在 Phase 1 后即子 contentItemId(= nodeId)
-                    to={`/anthology?at=${id}&node=${entry.key}`}
+                    // Phase 5:URL 切 ?at=&node=,跟 admin 命名一致;Phase 8 起 entry.nodeId 即子 contentItemId
+                    to={`/anthology?at=${id}&node=${entry.nodeId}`}
                     className="group -mx-2 flex items-baseline gap-4 rounded-lg px-2 py-3.5 transition-colors duration-150 hover:bg-[var(--shelf)]"
                     style={{ borderBottom: '0.5px solid var(--separator)' }}
                   >
@@ -348,7 +348,7 @@ function AnthologyOverview({ id }: { id: string }) {
           {detail.entries.length > 0 && (
             <div className="mt-8">
               <Link
-                to={`/anthology?at=${id}&node=${detail.entries[0].key}`}
+                to={`/anthology?at=${id}&node=${detail.entries[0].nodeId}`}
                 className="inline-flex items-center gap-1.5 text-md font-medium transition-colors duration-150 hover:text-[var(--ink)]"
                 style={{ color: 'var(--ink-faded)' }}
               >
@@ -389,8 +389,8 @@ function EntryReader({ anthologyId, entryNodeId }: { anthologyId: string; entryN
       if (cancelled) return;
       setEntry(entryData);
       setAnthologyTitle(detail.title);
-      // entries 列表里仍是 key 字段(详情 DTO 未改),但 key==nodeId,可直接用于定位
-      const idx = detail.entries.findIndex((e) => e.key === entryNodeId);
+      // Phase 8 后 entries 列表统一 nodeId 字段,直接定位当前阅读位置
+      const idx = detail.entries.findIndex((e) => e.nodeId === entryNodeId);
       setProgress({ current: idx + 1, total: detail.entries.length });
       setLoading(false);
     }).catch(() => {

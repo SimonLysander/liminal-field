@@ -157,7 +157,7 @@ describe('Anthology 归档 → 恢复 全流程 (e2e regression)', () => {
       .expect(200);
     expect(containerRes.body.data.bodyMarkdown).toContain(PREFACE_MARKER);
     expect(containerRes.body.data.entries).toHaveLength(1);
-    expect(containerRes.body.data.entries[0].key).toBe(nodeId);
+    expect(containerRes.body.data.entries[0].nodeId).toBe(nodeId);
     // 子节点正文通过阅读端路由(带 cookie = 管理端语义,读最新)
     const entryRes = await supertest(ctx.app.getHttpServer())
       .get(
