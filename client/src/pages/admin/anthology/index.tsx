@@ -32,6 +32,15 @@ interface AnthologyAdminListItem {
   updatedAt: string;
 }
 
+/* 左栏条目卡数据(来自 admin detail.entries):带状态/时间,供副信息展示 */
+interface AnthologyEntryListItem {
+  nodeId: string;
+  title: string;
+  publishedVersionId: string | null;
+  hasUnpublishedChanges: boolean;
+  updatedAt: string;
+}
+
 /** 列表行 = list item + navigation id 合并(navId 用于结构操作,删除/排序) */
 export interface AnthologyRow {
   navId: string;
@@ -54,8 +63,10 @@ const AnthologyAdmin = () => {
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState('');
   const [modal, setModal] = useState<ModalState>({ open: false, mode: 'create' });
-  /* 章节列表与新建章节弹窗独立于文集弹窗 */
-  const [entries, setEntries] = useState<StructureNode[]>([]);
+  /* 章节列表与新建章节弹窗独立于文集弹窗
+   * 左栏 entries 不用 structure children(只有 name),改用 admin detail 拿到带状态/时间的完整字段,
+   * 让条目卡能展示「状态徽章 · M/D 更新」副信息(对齐文集卡设计)。 */
+  const [entries, setEntries] = useState<AnthologyEntryListItem[]>([]);
   const [entriesLoading, setEntriesLoading] = useState(false);
   const [entryModal, setEntryModal] = useState<ModalState>({ open: false, mode: 'create' });
 
@@ -112,14 +123,14 @@ const AnthologyAdmin = () => {
     [rows, selectedContentItemId],
   );
 
-  /* 当前文集变化 → 拉它的章节列表(structure children) */
-  const loadEntries = useCallback(async (parentNavId: string) => {
+  /* 当前文集变化 → 拉它的 admin detail,取 entries(带 publishedVersionId/hasUnpublishedChanges/updatedAt 完整字段) */
+  const loadEntries = useCallback(async (contentItemId: string) => {
     setEntriesLoading(true);
     try {
-      const r = await structureApi.getChildren(parentNavId, {
-        scope: 'anthology', visibility: 'all',
-      });
-      setEntries(r.children);
+      const d = await workspaceApi.getById('anthology', contentItemId, {
+        visibility: 'all',
+      }) as unknown as { entries: AnthologyEntryListItem[] };
+      setEntries(d.entries ?? []);
     } catch {
       setEntries([]);
     } finally {
@@ -133,7 +144,7 @@ const AnthologyAdmin = () => {
       setEntries([]);
       return;
     }
-    void loadEntries(selectedRow.navId);
+    void loadEntries(selectedRow.contentItemId);
   }, [selectedRow, loadEntries]);
 
   const selectAnthology = (contentItemId: string) => {
@@ -163,7 +174,7 @@ const AnthologyAdmin = () => {
       const created = await structureApi.createNode({
         name: dto.name, type: 'DOC', scope: 'anthology', parentId: selectedRow.navId,
       });
-      await Promise.all([loadEntries(selectedRow.navId), loadList()]);
+      await Promise.all([loadEntries(selectedRow.contentItemId), loadList()]);
       setEntryModal({ open: false, mode: 'create' });
       if (created.contentItemId) {
         window.location.href = `/admin/anthology/${created.contentItemId}/edit`;
@@ -314,13 +325,18 @@ const AnthologyAdmin = () => {
               ) : (
                 <ul className="space-y-1">
                   {entries.map((entry) => {
-                    const active = entry.contentItemId === selectedEntryContentItemId;
+                    const active = entry.nodeId === selectedEntryContentItemId;
+                    const isPublished = !!entry.publishedVersionId;
+                    const updateYmd = entry.updatedAt
+                      ? new Date(entry.updatedAt).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
+                      : '--';
                     return (
-                      <li key={entry.id}>
+                      <li key={entry.nodeId}>
                         <button
                           type="button"
-                          onClick={() => entry.contentItemId && selectEntry(entry.contentItemId)}
-                          className="block w-full rounded-lg px-3 py-2 text-left focus:outline-none focus-visible:outline-none"
+                          onClick={() => selectEntry(entry.nodeId)}
+                          /* nav-item 类豁免全局 button:active 的"按压缩放 + 内陷阴影" */
+                          className="nav-item block w-full rounded-lg px-3 py-2 text-left focus:outline-none focus-visible:outline-none"
                           style={{
                             background: active ? 'var(--shelf)' : 'transparent',
                             outline: 'none',
@@ -334,10 +350,18 @@ const AnthologyAdmin = () => {
                               fontWeight: active ? 500 : 400,
                             }}
                           >
-                            {entry.name || '无标题'}
+                            {entry.title || '无标题'}
                           </div>
-                          <div className="mt-0.5 text-2xs" style={{ color: 'var(--ink-ghost)' }}>
-                            条目
+                          <div
+                            className="mt-0.5 flex items-center gap-1.5 truncate text-2xs"
+                            style={{ color: 'var(--ink-ghost)' }}
+                          >
+                            <StatusBadge
+                              status={isPublished ? 'published' : 'committed'}
+                              hasUnpublishedChanges={entry.hasUnpublishedChanges}
+                            />
+                            <span>·</span>
+                            <span>{updateYmd} 更新</span>
                           </div>
                         </button>
                       </li>
@@ -364,7 +388,7 @@ const AnthologyAdmin = () => {
                         <button
                           type="button"
                           onClick={() => selectAnthology(row.contentItemId)}
-                          className="block w-full rounded-lg px-3 py-2 text-left focus:outline-none focus-visible:outline-none"
+                          className="nav-item block w-full rounded-lg px-3 py-2 text-left focus:outline-none focus-visible:outline-none"
                           style={{
                             background: active ? 'var(--shelf)' : 'transparent',
                             outline: 'none',
