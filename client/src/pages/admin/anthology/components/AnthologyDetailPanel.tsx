@@ -1,38 +1,37 @@
-/*
- * AnthologyDetailPanel — 中区。两种视图按 URL ?entry= 切换:
- *   无 entry:文集概览(元信息 + 简介 + 章节列表)
- *   有 entry:章节预览(面包屑 + 标题 + 元信息 + 正文 readonly + [编辑])
- *
- * 章节列表行不响应点击,操作走显式按钮(预览/编辑/⋯)。
- * 状态徽章统一抄 VersionTimeline 的设计语言(rounded + 浅底 + mark-color 字)。
- */
-
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ChevronLeft, MoreHorizontal, Plus, FileEdit } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import { banner } from '@/components/ui/banner-api';
 import { LoadingState } from '@/components/LoadingState';
 import { useConfirm } from '@/contexts/ConfirmContext';
+import { smoothBounce } from '@/lib/motion';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { workspaceApi } from '@/services/workspace';
+  workspaceApi,
+  type ContentHistoryEntry,
+  type ContentVersion,
+} from '@/services/workspace';
 import { structureApi, type StructureNode } from '@/services/structure';
 import { request } from '@/services/request';
-import MarkdownBody from '@/components/shared/MarkdownBody';
+import { ContentVersionView } from '../../components/ContentVersionView';
+import { FormalSidePanel } from '../../components/FormalSidePanel';
 import { NodeFormModal } from '../../components/NodeFormModal';
-import type { ModalState, NodeSubmitPayload } from '../../types';
+import { MoveToDialog } from '../../components/MoveToDialog';
+import type {
+  DraftPresence,
+  FormalContentState,
+  ModalState,
+  NodeSubmitPayload,
+  PreviewState,
+} from '../../types';
 import { parseError } from '../../helpers';
-import { type AnthologyRow, StatusBadge } from '../index';
+import { type AnthologyRow } from '../index';
 
-/** 后端 toAdminEntryRef 返回 */
 interface AdminEntry {
   nodeId: string;
   title: string;
   date: string | null;
+  latestVersion: ContentVersion | null;
+  publishedVersion: ContentVersion | null;
   hasContent: boolean;
   publishedVersionId: string | null;
   hasUnpublishedChanges: boolean;
@@ -43,18 +42,30 @@ interface AnthologyAdminDetail {
   id: string;
   title: string;
   description: string;
+  latestVersion: ContentVersion | null;
+  publishedVersion: ContentVersion | null;
   bodyMarkdown: string;
   status: 'committed' | 'published';
   hasUnpublishedChanges: boolean;
+  updatedAt: string;
   entries: AdminEntry[];
 }
 
 interface EntryDetail {
   nodeId: string;
   title: string;
+  summary?: string;
   date: string | null;
   updatedAt: string;
   bodyMarkdown: string;
+}
+
+interface AnthologyVersionDetail {
+  id: string;
+  title: string;
+  description: string;
+  bodyMarkdown: string;
+  updatedAt: string;
 }
 
 interface Props {
@@ -63,20 +74,37 @@ interface Props {
   onDelete: () => void;
 }
 
+const EMPTY_DRAFT: DraftPresence = { exists: false };
+
 export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
   const confirm = useConfirm();
   const [searchParams, setSearchParams] = useSearchParams();
-  const selectedEntryId = searchParams.get('entry') ?? null;
+  const selectedEntryId = searchParams.get('chapter') ?? null;
 
   const [detail, setDetail] = useState<AnthologyAdminDetail | null>(null);
   const [childrenNavs, setChildrenNavs] = useState<StructureNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [modal, setModal] = useState<ModalState>({ open: false, mode: 'create' });
+  const [moveTarget, setMoveTarget] = useState<StructureNode | null>(null);
 
-  const loadDetail = useCallback(async () => {
-    setLoading(true);
-    setError('');
+  const [entryDetail, setEntryDetail] = useState<EntryDetail | null>(null);
+  const [entryLoading, setEntryLoading] = useState(false);
+  const [entryError, setEntryError] = useState('');
+  const [history, setHistory] = useState<ContentHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [draftPresence, setDraftPresence] = useState<DraftPresence>(EMPTY_DRAFT);
+  const [preview, setPreview] = useState<PreviewState | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [activeIndex, setActiveIndex] = useState(-1);
+
+  const loadDetail = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setLoading(true);
+      setError('');
+    }
     try {
       const [d, children] = await Promise.all([
         workspaceApi.getById('anthology', row.contentItemId, {
@@ -89,7 +117,7 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
     } catch (err) {
       setError(parseError(err, '加载文集详情失败'));
     } finally {
-      setLoading(false);
+      if (!options?.silent) setLoading(false);
     }
   }, [row.contentItemId, row.navId]);
 
@@ -104,63 +132,281 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
     return m;
   }, [childrenNavs]);
 
-  const selectEntry = (entryId: string | null) => {
-    const next = new URLSearchParams(searchParams);
-    if (entryId) next.set('entry', entryId);
-    else next.delete('entry');
-    setSearchParams(next, { replace: true });
-  };
+  const selectedEntry = selectedEntryId && detail
+    ? detail.entries.find((e) => e.nodeId === selectedEntryId) ?? null
+    : null;
+  const selectedEntryNodeId = selectedEntry?.nodeId ?? null;
+  const activeContentId = selectedEntry?.nodeId ?? row.contentItemId;
 
-  const handlePublish = async () => {
-    try {
-      await request(`/spaces/anthology/items/${row.contentItemId}/publish`, { method: 'PUT' });
-      banner.success('已发布');
-      await Promise.all([loadDetail(), onReload()]);
-    } catch (err) {
-      banner.error(parseError(err, '发布失败'));
-    }
-  };
-
-  const handleUnpublish = async () => {
-    try {
-      await request(`/spaces/anthology/items/${row.contentItemId}/unpublish`, { method: 'PUT' });
-      banner.success('已取消发布');
-      await Promise.all([loadDetail(), onReload()]);
-    } catch (err) {
-      banner.error(parseError(err, '取消发布失败'));
-    }
-  };
-
-  const handlePublishAll = async () => {
-    try {
-      await request(`/spaces/anthology/items/${row.contentItemId}/publish-all`, { method: 'POST' });
-      banner.success('已发布全部');
-      await Promise.all([loadDetail(), onReload()]);
-    } catch (err) {
-      banner.error(parseError(err, '发布失败'));
-    }
-  };
-
-  const handleCreateEntry = async (payload: NodeSubmitPayload) => {
-    const dto = payload.node as { name: string };
-    try {
-      const created = await structureApi.createNode({
-        name: dto.name,
+  const activeNode = useMemo<StructureNode | null>(() => {
+    if (!detail) return null;
+    if (selectedEntry) {
+      return {
+        id: navIdByContent.get(selectedEntry.nodeId) ?? selectedEntry.nodeId,
+        name: selectedEntry.title || '无标题',
         type: 'DOC',
-        scope: 'anthology',
         parentId: row.navId,
-      });
-      await loadDetail();
-      void onReload();
-      if (created.contentItemId) {
-        window.location.href = `/admin/anthology/${created.contentItemId}/edit`;
-      }
-    } catch (err) {
-      banner.error(parseError(err, '新增章节失败'));
+        contentItemId: selectedEntry.nodeId,
+        sortOrder: 0,
+        hasChildren: false,
+        createdAt: selectedEntry.updatedAt,
+        updatedAt: selectedEntry.updatedAt,
+      };
     }
-  };
+    return {
+      id: row.navId,
+      name: detail.title || row.title || '无标题',
+      type: 'DOC',
+      contentItemId: row.contentItemId,
+      sortOrder: 0,
+      hasChildren: detail.entries.length > 0,
+      createdAt: detail.updatedAt,
+      updatedAt: detail.updatedAt,
+    };
+  }, [detail, navIdByContent, row, selectedEntry]);
 
-  const handleDeleteEntry = async (entry: AdminEntry) => {
+  const loadEntryDetail = useCallback(async (options?: { silent?: boolean }) => {
+    if (!selectedEntryNodeId) {
+      setEntryDetail(null);
+      setEntryLoading(false);
+      setEntryError('');
+      return;
+    }
+    if (!options?.silent) {
+      setEntryLoading(true);
+      setEntryError('');
+    }
+    try {
+      const d = await request<EntryDetail>(
+        `/spaces/anthology/public/items/${row.contentItemId}/entries/${selectedEntryNodeId}`,
+      );
+      setEntryDetail(d);
+    } catch (err) {
+      setEntryError(parseError(err, '加载章节正文失败'));
+      setEntryDetail(null);
+    } finally {
+      if (!options?.silent) setEntryLoading(false);
+    }
+  }, [row.contentItemId, selectedEntryNodeId]);
+
+  /* 切换章节/回文集时重置预览态,再拉新章节正文 */
+  useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
+    setPreview(null);
+    setActiveIndex(-1);
+    void loadEntryDetail();
+  }, [loadEntryDetail]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const historyUrl = selectedEntryNodeId
+      ? `/spaces/anthology/items/${row.contentItemId}/entries/${selectedEntryNodeId}/history`
+      : `/spaces/anthology/items/${row.contentItemId}/history`;
+
+    void (async () => {
+      setHistoryLoading(true);
+      try {
+        const [historyResult, draft] = await Promise.all([
+          request<ContentHistoryEntry[]>(historyUrl),
+          workspaceApi.getNodeDraft('anthology', activeContentId),
+        ]);
+        if (cancelled) return;
+        setHistory(historyResult);
+        setDraftPresence(draft ? { exists: true, savedAt: draft.savedAt } : EMPTY_DRAFT);
+      } catch (err) {
+        if (!cancelled) {
+          setHistory([]);
+          setDraftPresence(EMPTY_DRAFT);
+          banner.error(parseError(err, '加载右栏信息失败'));
+        }
+      } finally {
+        if (!cancelled) setHistoryLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeContentId, row.contentItemId, selectedEntryNodeId]);
+
+  /* 刷新当前活动视图;选中条目时额外拉条目正文,文集态时只拉容器详情 */
+  const reloadActive = useCallback(async (options?: { silent?: boolean }) => {
+    const tasks: Array<Promise<unknown>> = [
+      loadDetail(options),
+      Promise.resolve(onReload()),
+    ];
+    if (selectedEntryNodeId) tasks.push(loadEntryDetail(options));
+    await Promise.all(tasks);
+  }, [loadDetail, loadEntryDetail, onReload, selectedEntryNodeId]);
+
+  const content = useMemo<FormalContentState | null>(() => {
+    if (!detail) return null;
+    if (selectedEntry) {
+      const body = entryDetail?.bodyMarkdown ?? '';
+      const latestVersion = normalizeVersion(
+        selectedEntry.latestVersion,
+        selectedEntry.nodeId,
+        selectedEntry.title,
+      );
+      /* publishedVersion 兼容两种数据形态:
+       *   - 新数据:selectedEntry.publishedVersion 是完整对象
+       *   - 老数据兜底:只有 publishedVersionId(其余字段从最新版补) */
+      let publishedVersionSource: Partial<ContentVersion> | null = null;
+      if (selectedEntry.publishedVersion) {
+        publishedVersionSource = selectedEntry.publishedVersion;
+      } else if (selectedEntry.publishedVersionId) {
+        publishedVersionSource = { versionId: selectedEntry.publishedVersionId };
+      }
+      const publishedVersion = publishedVersionSource
+        ? normalizeVersion(publishedVersionSource, selectedEntry.nodeId, selectedEntry.title)
+        : null;
+      return {
+        id: selectedEntry.nodeId,
+        status: publishedVersion ? 'published' : 'committed',
+        latestVersion,
+        publishedVersion,
+        hasUnpublishedChanges: selectedEntry.hasUnpublishedChanges,
+        bodyMarkdown: body,
+        headings: extractMarkdownHeadings(body),
+        updatedAt: entryDetail?.updatedAt ?? selectedEntry.updatedAt,
+      };
+    }
+
+    return {
+      id: row.contentItemId,
+      status: detail.status,
+      latestVersion: normalizeVersion(detail.latestVersion, row.contentItemId, detail.title),
+      publishedVersion: detail.publishedVersion
+        ? normalizeVersion(detail.publishedVersion, row.contentItemId, detail.title)
+        : null,
+      hasUnpublishedChanges: detail.hasUnpublishedChanges,
+      bodyMarkdown: detail.bodyMarkdown,
+      headings: extractMarkdownHeadings(detail.bodyMarkdown),
+      updatedAt: detail.updatedAt ?? row.updatedAt,
+    };
+  }, [detail, entryDetail, row, selectedEntry]);
+
+  const toc = useMemo(
+    () => (preview?.headings ?? content?.headings ?? []).map((h, i) => ({
+      level: h.level,
+      text: h.text,
+      index: i,
+    })),
+    [content?.headings, preview?.headings],
+  );
+
+  const getHeadingEls = useCallback(
+    () => previewRef.current?.querySelectorAll<HTMLElement>('[data-heading-id]'),
+    [],
+  );
+
+  const handlePreviewScroll = useCallback(() => {
+    const container = previewRef.current;
+    const els = getHeadingEls();
+    if (!container || !els || els.length === 0) return;
+    const threshold = container.getBoundingClientRect().top + 50;
+    for (let i = els.length - 1; i >= 0; i--) {
+      if (els[i].getBoundingClientRect().top <= threshold) {
+        setActiveIndex(i);
+        return;
+      }
+    }
+    setActiveIndex(0);
+  }, [getHeadingEls]);
+
+  useEffect(() => {
+    const el = previewRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', handlePreviewScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handlePreviewScroll);
+  }, [handlePreviewScroll]);
+
+  const scrollToHeading = useCallback((index: number) => {
+    const els = getHeadingEls();
+    const container = previewRef.current;
+    if (!els || !els[index] || !container) return;
+    const el = els[index];
+    const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16;
+    container.scrollTo({ top, behavior: 'smooth' });
+
+    el.classList.remove('toc-highlight');
+    void el.offsetWidth;
+    el.classList.add('toc-highlight');
+    el.addEventListener('animationend', () => el.classList.remove('toc-highlight'), { once: true });
+  }, [getHeadingEls]);
+
+  const handleSaveSummary = useCallback(async (summary: string) => {
+    await workspaceApi.patchMeta('anthology', activeContentId, { summary });
+    await reloadActive({ silent: true });
+  }, [activeContentId, reloadActive]);
+
+  const handlePublish = useCallback(async () => {
+    await request(`/spaces/anthology/items/${activeContentId}/publish`, { method: 'PUT' });
+    await reloadActive({ silent: true });
+  }, [activeContentId, reloadActive]);
+
+  const handleUnpublish = useCallback(async () => {
+    await request(`/spaces/anthology/items/${activeContentId}/unpublish`, { method: 'PUT' });
+    await reloadActive({ silent: true });
+  }, [activeContentId, reloadActive]);
+
+  const handlePublishPreview = useCallback(async () => {
+    if (!preview) return;
+    await request(`/spaces/anthology/items/${activeContentId}/publish`, {
+      method: 'PUT',
+      body: JSON.stringify({ versionId: preview.versionId }),
+    });
+    setPreview(null);
+    await reloadActive({ silent: true });
+  }, [activeContentId, preview, reloadActive]);
+
+  const handlePublishAll = useCallback(async () => {
+    await request(`/spaces/anthology/items/${row.contentItemId}/publish-all`, { method: 'POST' });
+    banner.success('已发布全部');
+    await reloadActive({ silent: true });
+  }, [reloadActive, row.contentItemId]);
+
+  const handlePreviewVersion = useCallback(async (versionId: string) => {
+    if (!content) return;
+    if (preview?.versionId === versionId) return;
+    if (versionId === content.latestVersion.versionId) {
+      setPreview(null);
+      return;
+    }
+
+    setPreviewLoading(true);
+    try {
+      /* 章节级 vs 文集容器级:URL 和 summary 字段名不同(章节用 summary,容器用 description),其他装载逻辑一致 */
+      const url = selectedEntryNodeId
+        ? `/spaces/anthology/items/${row.contentItemId}/entries/${selectedEntryNodeId}/versions/${versionId}`
+        : `/spaces/anthology/items/${row.contentItemId}/versions/${versionId}`;
+      const d = await request<EntryDetail & AnthologyVersionDetail>(url);
+      setPreview({
+        versionId,
+        title: d.title,
+        summary: selectedEntryNodeId ? d.summary ?? '' : d.description,
+        bodyMarkdown: d.bodyMarkdown,
+        headings: extractMarkdownHeadings(d.bodyMarkdown),
+        committedAt: d.updatedAt,
+      });
+    } catch (err) {
+      banner.error(parseError(err, '加载版本内容失败'));
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [content, preview?.versionId, row.contentItemId, selectedEntryNodeId]);
+
+  const handleEditNode = useCallback((node: StructureNode) => {
+    setModal({ open: true, mode: 'edit', node });
+  }, []);
+
+  const handleModalSubmit = useCallback(async (payload: NodeSubmitPayload) => {
+    if (modal.mode !== 'edit' || !modal.node) return;
+    await structureApi.updateNode(modal.node.id, payload.node);
+    await reloadActive();
+  }, [modal.mode, modal.node, reloadActive]);
+
+  const handleDeleteEntry = useCallback(async (entry: AdminEntry) => {
     const navId = navIdByContent.get(entry.nodeId);
     if (!navId) {
       banner.error('找不到该章节的导航节点');
@@ -173,345 +419,152 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
       confirmLabel: '删除',
     });
     if (!ok) return;
-    try {
-      await structureApi.deleteNode(navId);
-      banner.success('已删除');
-      if (selectedEntryId === entry.nodeId) selectEntry(null);
-      await Promise.all([loadDetail(), onReload()]);
-    } catch (err) {
-      banner.error(parseError(err, '删除失败'));
+    await structureApi.deleteNode(navId);
+    banner.success('已删除');
+    const next = new URLSearchParams(searchParams);
+    next.delete('chapter');
+    setSearchParams(next, { replace: true });
+    await reloadActive();
+  }, [confirm, navIdByContent, reloadActive, searchParams, setSearchParams]);
+
+  const handleDeleteNode = useCallback((node: StructureNode) => {
+    if (node.contentItemId === row.contentItemId) {
+      onDelete();
+      return;
     }
-  };
+    const entry = detail?.entries.find((e) => e.nodeId === node.contentItemId);
+    if (entry) void handleDeleteEntry(entry);
+  }, [detail?.entries, handleDeleteEntry, onDelete, row.contentItemId]);
 
-  if (loading) return <LoadingState variant="inline" />;
-  if (error)
-    return (
-      <div className="p-8">
-        <p className="text-sm" style={{ color: 'var(--mark-red)' }}>{error}</p>
-      </div>
-    );
-  if (!detail) return null;
+  const handleMoveConfirm = useCallback(async (targetFolderId: string | null) => {
+    if (!moveTarget) return;
+    await structureApi.updateNode(moveTarget.id, { parentId: targetFolderId });
+    await reloadActive();
+  }, [moveTarget, reloadActive]);
 
-  // 视图分流:章节预览 vs 文集概览
-  const selectedEntry = selectedEntryId
-    ? detail.entries.find((e) => e.nodeId === selectedEntryId) ?? null
-    : null;
+  if (loading) return (
+    <div className="flex h-full w-full items-center justify-center">
+      <LoadingState variant="inline" />
+    </div>
+  );
+  if (error) return (
+    <div className="flex h-full w-full items-center justify-center p-8">
+      <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>
+    </div>
+  );
+  if (!detail || !activeNode || !content) return null;
+
+  const editUrl = selectedEntry
+    ? `/admin/anthology/${selectedEntry.nodeId}/edit?at=${row.contentItemId}`
+    : `/admin/anthology/${row.contentItemId}/edit`;
+  const latestHistoryEntry = history.find(
+    (entry) => entry.versionId === content.latestVersion.versionId,
+  );
+  const canEditSummary = !!latestHistoryEntry && (latestHistoryEntry.source ?? 'user') === 'user';
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex-1 overflow-y-auto px-10 py-8">
-        {selectedEntry ? (
-          <EntryPreviewView
-            anthologyTitle={detail.title}
-            entry={selectedEntry}
-            onBack={() => selectEntry(null)}
-            onEdit={() => {
-              window.location.href = `/admin/anthology/${selectedEntry.nodeId}/edit`;
-            }}
-            onDelete={() => void handleDeleteEntry(selectedEntry)}
-          />
-        ) : (
-          <AnthologyOverviewView
-            row={row}
-            detail={detail}
-            onEditPreface={() => {
-              window.location.href = `/admin/anthology/${row.contentItemId}/edit`;
-            }}
-            onPublish={handlePublish}
-            onUnpublish={handleUnpublish}
-            onPublishAll={handlePublishAll}
-            onDelete={onDelete}
-            onCreateEntry={() => setModal({ open: true, mode: 'create' })}
-            onPreviewEntry={(id) => selectEntry(id)}
-            onEditEntry={(id) => {
-              window.location.href = `/admin/anthology/${id}/edit`;
-            }}
-            onDeleteEntry={(entry) => void handleDeleteEntry(entry)}
-          />
-        )}
+    <div className="flex h-full w-full min-w-0 overflow-hidden" style={{ background: 'var(--paper)' }}>
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div
+          className="flex-1 overflow-y-auto px-10 py-9 max-[520px]:px-4"
+          ref={previewRef}
+        >
+          <div className="mx-auto w-full max-w-[var(--layout-reading-max)]">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeNode.id}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -2 }}
+                transition={{ duration: 0.2, ease: smoothBounce }}
+              >
+                <ContentVersionView
+                  node={activeNode}
+                  content={content}
+                  loading={selectedEntry ? entryLoading : false}
+                  error={selectedEntry ? entryError : ''}
+                  preview={preview}
+                  previewLoading={previewLoading}
+                  canEditSummary={canEditSummary}
+                  onSaveSummary={handleSaveSummary}
+                  onReload={() => reloadActive({ silent: true })}
+                  onPublish={handlePublish}
+                  onUnpublish={handleUnpublish}
+                  onExitPreview={() => setPreview(null)}
+                  onPublishPreview={handlePublishPreview}
+                  onEdit={handleEditNode}
+                  onDelete={handleDeleteNode}
+                  onMoveTo={setMoveTarget}
+                  onPublishAll={!selectedEntry && detail.entries.length > 0 ? handlePublishAll : undefined}
+                />
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </div>
       </div>
+
+      <aside
+        className="flex shrink-0 flex-col overflow-hidden px-5 py-7"
+        style={{ width: 'var(--layout-context)' }}
+      >
+        <FormalSidePanel
+          toc={toc}
+          activeIndex={activeIndex}
+          onScrollToHeading={scrollToHeading}
+          draftPresence={draftPresence}
+          history={history}
+          historyLoading={historyLoading}
+          publishedVersionId={content.publishedVersion?.versionId ?? null}
+          activeVersionId={preview?.versionId ?? null}
+          onEditDraft={() => {
+            window.location.href = editUrl;
+          }}
+          onSelectVersion={handlePreviewVersion}
+        />
+      </aside>
 
       {modal.open && (
         <NodeFormModal
           modal={modal}
           onClose={() => setModal({ open: false, mode: 'create' })}
-          onSubmit={handleCreateEntry}
+          onSubmit={handleModalSubmit}
           scope="anthology"
+        />
+      )}
+      {moveTarget && (
+        <MoveToDialog
+          node={moveTarget}
+          scope="anthology"
+          onConfirm={handleMoveConfirm}
+          onClose={() => setMoveTarget(null)}
         />
       )}
     </div>
   );
 }
 
-/* ── 视图 1:文集概览 ────────────────────────────────────────── */
-
-function AnthologyOverviewView({
-  row, detail,
-  onEditPreface, onPublish, onUnpublish, onPublishAll, onDelete,
-  onCreateEntry, onPreviewEntry, onEditEntry, onDeleteEntry,
-}: {
-  row: AnthologyRow;
-  detail: AnthologyAdminDetail;
-  onEditPreface: () => void;
-  onPublish: () => void;
-  onUnpublish: () => void;
-  onPublishAll: () => void;
-  onDelete: () => void;
-  onCreateEntry: () => void;
-  onPreviewEntry: (id: string) => void;
-  onEditEntry: (id: string) => void;
-  onDeleteEntry: (entry: AdminEntry) => void;
-}) {
-  const updateYmd = new Date(row.updatedAt).toLocaleDateString('zh-CN', {
-    month: 'numeric', day: 'numeric',
-  });
-
-  return (
-    <>
-      {/* 顶部:title + 元信息 + ⋯ */}
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-2xl font-medium" style={{ color: 'var(--ink)' }}>
-            《{detail.title || '无标题'}》
-          </h1>
-          <p className="mt-2 flex items-center gap-2 text-xs" style={{ color: 'var(--ink-faded)' }}>
-            <span>{row.entryCount} 篇</span>
-            <span>·</span>
-            <StatusBadge status={detail.status} hasUnpublishedChanges={detail.hasUnpublishedChanges} />
-            <span>·</span>
-            <span>{updateYmd} 更新</span>
-          </p>
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button type="button"
-              className="rounded-md p-1.5 transition-colors hover:bg-[var(--shelf)]"
-              style={{ color: 'var(--ink-faded)' }} aria-label="文集操作">
-              <MoreHorizontal size={18} strokeWidth={1.5} />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onEditPreface}>
-              <FileEdit size={14} strokeWidth={1.5} className="mr-2" />
-              编辑卷首语
-            </DropdownMenuItem>
-            {detail.status === 'published'
-              ? <DropdownMenuItem onClick={onUnpublish}>取消发布</DropdownMenuItem>
-              : <DropdownMenuItem onClick={onPublish}>发布文集</DropdownMenuItem>}
-            {detail.status === 'published' && (
-              <DropdownMenuItem onClick={onPublishAll}>一键发布全部</DropdownMenuItem>
-            )}
-            <DropdownMenuItem onClick={onDelete} style={{ color: 'var(--mark-red)' }}>
-              删除文集
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      {/* 简介 */}
-      <div className="mb-8 border-t pt-4" style={{ borderColor: 'var(--separator)' }}>
-        <div className="mb-1.5 text-2xs font-medium uppercase"
-          style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}>简介</div>
-        <p className="text-sm leading-relaxed" style={{ color: 'var(--ink-faded)' }}>
-          {detail.description || '暂无简介'}
-        </p>
-      </div>
-
-      {/* 章节区 */}
-      <div className="border-t pt-4" style={{ borderColor: 'var(--separator)' }}>
-        <div className="mb-3 flex items-center justify-between">
-          <div className="text-2xs font-medium uppercase"
-            style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}>章节</div>
-          <button type="button" onClick={onCreateEntry}
-            className="flex items-center gap-1.5 text-xs transition-colors"
-            style={{ color: 'var(--ink-faded)' }}>
-            <Plus size={12} strokeWidth={1.5} />
-            添加章节
-          </button>
-        </div>
-
-        {detail.entries.length === 0 ? (
-          <p className="py-8 text-center text-xs" style={{ color: 'var(--ink-ghost)' }}>
-            还没有章节,点上方「添加章节」开始
-          </p>
-        ) : (
-          <ul className="divide-y" style={{ borderColor: 'var(--separator)' }}>
-            {detail.entries.map((entry, idx) => (
-              <li key={entry.nodeId}>
-                <EntryRow
-                  index={idx}
-                  entry={entry}
-                  onPreview={() => onPreviewEntry(entry.nodeId)}
-                  onEdit={() => onEditEntry(entry.nodeId)}
-                  onDelete={() => onDeleteEntry(entry)}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </>
-  );
+function normalizeVersion(
+  version: Partial<ContentVersion> | null | undefined,
+  fallbackId: string,
+  fallbackTitle: string,
+): ContentVersion {
+  return {
+    versionId: version?.versionId || fallbackId,
+    commitHash: version?.commitHash ?? '',
+    title: version?.title ?? fallbackTitle,
+    summary: version?.summary ?? '',
+  };
 }
 
-function EntryRow({
-  index, entry, onPreview, onEdit, onDelete,
-}: {
-  index: number;
-  entry: AdminEntry;
-  onPreview: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const isPublished = !!entry.publishedVersionId;
-  const updateYmd = entry.updatedAt
-    ? new Date(entry.updatedAt).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
-    : '--';
-  // 状态徽章(抄 StatusBadge,但 entry 用 publishedVersionId 派生)
-  const status = isPublished ? 'published' : 'committed';
-
-  return (
-    <div className="flex items-center gap-4 px-2 py-3">
-      <span className="shrink-0 text-2xs tabular-nums"
-        style={{ color: 'var(--ink-ghost)', minWidth: '24px' }}>
-        {String(index + 1).padStart(2, '0')}
-      </span>
-      <span className="min-w-0 flex-1 truncate text-sm"
-        style={{ color: entry.hasContent ? 'var(--ink)' : 'var(--ink-ghost)' }}>
-        {entry.title || (entry.hasContent ? '无标题' : '(空章节)')}
-      </span>
-      <span className="shrink-0" style={{ minWidth: '90px' }}>
-        <StatusBadge status={status} hasUnpublishedChanges={entry.hasUnpublishedChanges} />
-      </span>
-      <span className="shrink-0 text-xs tabular-nums"
-        style={{ color: 'var(--ink-ghost)', minWidth: '50px' }}>
-        {updateYmd}
-      </span>
-      <div className="flex shrink-0 items-center gap-1">
-        <button type="button" onClick={onPreview}
-          className="rounded px-2 py-1 text-xs transition-colors hover:bg-[var(--shelf)]"
-          style={{ color: 'var(--ink-faded)' }}>预览</button>
-        <button type="button" onClick={onEdit}
-          className="rounded px-2 py-1 text-xs transition-colors hover:bg-[var(--shelf)]"
-          style={{ color: 'var(--ink-faded)' }}>编辑</button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button type="button"
-              className="rounded p-1 transition-colors hover:bg-[var(--shelf)]"
-              style={{ color: 'var(--ink-faded)' }} aria-label="章节操作">
-              <MoreHorizontal size={14} strokeWidth={1.5} />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onDelete} style={{ color: 'var(--mark-red)' }}>
-              删除
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </div>
-  );
-}
-
-/* ── 视图 2:章节预览 ────────────────────────────────────────── */
-
-function EntryPreviewView({
-  anthologyTitle, entry, onBack, onEdit, onDelete,
-}: {
-  anthologyTitle: string;
-  entry: AdminEntry;
-  onBack: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  // 章节正文:再 fetch 一次,因为 toAdminEntryRef 不带正文
-  const [body, setBody] = useState<EntryDetail | null>(null);
-  const [bodyLoading, setBodyLoading] = useState(true);
-  const [bodyError, setBodyError] = useState('');
-
-  useEffect(() => {
-    let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setBodyLoading(true);
-    setBodyError('');
-    (async () => {
-      try {
-        const d = (await workspaceApi.getById('anthology', entry.nodeId, {
-          visibility: 'all',
-        })) as unknown as EntryDetail;
-        if (!cancelled) setBody(d);
-      } catch (err) {
-        if (!cancelled) setBodyError(parseError(err, '加载章节正文失败'));
-      } finally {
-        if (!cancelled) setBodyLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [entry.nodeId]);
-
-  const isPublished = !!entry.publishedVersionId;
-  const status = isPublished ? 'published' : 'committed';
-  const updateYmd = entry.updatedAt
-    ? new Date(entry.updatedAt).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
-    : '--';
-
-  return (
-    <>
-      {/* 面包屑 + ⋯ */}
-      <div className="mb-4 flex items-center justify-between gap-4">
-        <button type="button" onClick={onBack}
-          className="flex items-center gap-1 text-xs transition-colors hover:text-[var(--ink)]"
-          style={{ color: 'var(--ink-faded)' }}>
-          <ChevronLeft size={14} strokeWidth={1.5} />
-          《{anthologyTitle || '文集'}》
-        </button>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={onEdit}
-            className="rounded-md px-3 py-1.5 text-sm transition-colors hover:bg-[var(--shelf)]"
-            style={{ color: 'var(--ink-faded)' }}>编辑</button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button type="button"
-                className="rounded-md p-1.5 transition-colors hover:bg-[var(--shelf)]"
-                style={{ color: 'var(--ink-faded)' }} aria-label="章节操作">
-                <MoreHorizontal size={18} strokeWidth={1.5} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onDelete} style={{ color: 'var(--mark-red)' }}>
-                删除章节
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-
-      {/* 标题 + 元信息 */}
-      <h1 className="text-2xl font-medium" style={{ color: 'var(--ink)' }}>
-        {entry.title || '(空章节)'}
-      </h1>
-      <p className="mt-2 flex items-center gap-2 text-xs" style={{ color: 'var(--ink-faded)' }}>
-        <StatusBadge status={status} hasUnpublishedChanges={entry.hasUnpublishedChanges} />
-        <span>·</span>
-        <span>{updateYmd} 更新</span>
-      </p>
-
-      {/* 正文 readonly */}
-      <div className="mt-8 border-t pt-6" style={{ borderColor: 'var(--separator)' }}>
-        {bodyLoading ? (
-          <LoadingState variant="inline" />
-        ) : bodyError ? (
-          <p className="text-sm" style={{ color: 'var(--mark-red)' }}>{bodyError}</p>
-        ) : body && body.bodyMarkdown.trim() ? (
-          <div className="prose prose-sm max-w-none">
-            <MarkdownBody markdown={body.bodyMarkdown} contentItemId={entry.nodeId} />
-          </div>
-        ) : (
-          <p className="py-8 text-center text-xs" style={{ color: 'var(--ink-ghost)' }}>
-            (空章节,点右上「编辑」开始写)
-          </p>
-        )}
-      </div>
-    </>
-  );
+function extractMarkdownHeadings(markdown: string): { level: number; text: string }[] {
+  const headings: { level: number; text: string }[] = [];
+  for (const line of markdown.split('\n')) {
+    const match = /^(#{1,3})\s+(.+?)\s*#*$/.exec(line.trim());
+    if (!match) continue;
+    headings.push({
+      level: match[1].length,
+      text: match[2].trim(),
+    });
+  }
+  return headings;
 }

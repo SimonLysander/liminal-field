@@ -32,6 +32,7 @@ export const ContentVersionView = ({
   error,
   preview,
   previewLoading,
+  canEditSummary = true,
   onSaveSummary,
   onReload,
   onPublish,
@@ -60,9 +61,10 @@ export const ContentVersionView = ({
   }
 
   const startEditSummary = useCallback(() => {
+    if (!canEditSummary) return;
     setLocalSummary(summary);
     setEditingSummary(true);
-  }, [summary]);
+  }, [canEditSummary, summary]);
 
   const cancelEditSummary = useCallback(() => {
     setLocalSummary(summary);
@@ -70,11 +72,12 @@ export const ContentVersionView = ({
   }, [summary]);
 
   const confirmSummary = useCallback(async () => {
+    if (!canEditSummary) return;
     setSaving(true);
     await onSaveSummary(localSummary);
     setSaving(false);
     setEditingSummary(false);
-  }, [localSummary, onSaveSummary]);
+  }, [canEditSummary, localSummary, onSaveSummary]);
 
   /* 当前展示的版本是否为已发布版（用 versionId 对比） */
   const viewingVersionId = preview?.versionId ?? content.latestVersion.versionId;
@@ -240,24 +243,25 @@ export const ContentVersionView = ({
           <textarea
             value={editingSummary ? localSummary : summary}
             onChange={(e) => {
+              if (!canEditSummary) return;
               if (e.target.value.length <= 300) setLocalSummary(e.target.value);
             }}
-            readOnly={!editingSummary}
+            readOnly={!canEditSummary || !editingSummary}
             placeholder="暂无摘要"
             rows={2}
             maxLength={300}
             className="w-full resize-none rounded-md text-sm leading-relaxed outline-none transition-colors duration-150"
             style={{
               background: 'var(--shelf)',
-              color: editingSummary ? 'var(--ink-light)' : 'var(--ink-faded)',
+              color: editingSummary && canEditSummary ? 'var(--ink-light)' : 'var(--ink-faded)',
               padding: '8px 10px',
-              border: editingSummary ? '1px solid var(--separator)' : '1px solid transparent',
-              cursor: editingSummary ? 'text' : 'default',
+              border: editingSummary && canEditSummary ? '1px solid var(--separator)' : '1px solid transparent',
+              cursor: editingSummary && canEditSummary ? 'text' : 'default',
             }}
           />
           <div
             className="mt-1 flex items-center justify-between"
-            style={{ visibility: editingSummary ? 'visible' : 'hidden' }}
+            style={{ visibility: editingSummary && canEditSummary ? 'visible' : 'hidden' }}
           >
             <div className="flex items-center gap-2.5">
               <button
@@ -280,7 +284,7 @@ export const ContentVersionView = ({
               {localSummary.length}/300
             </span>
           </div>
-          {!editingSummary && (
+          {!editingSummary && canEditSummary && (
             <button
               className="absolute right-2 top-2 rounded-md p-1 opacity-0 transition-all hover:bg-[var(--paper)] group-hover:opacity-100"
               style={{ color: 'var(--ink-ghost)' }}

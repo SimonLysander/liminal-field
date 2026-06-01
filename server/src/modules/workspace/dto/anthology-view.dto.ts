@@ -21,6 +21,8 @@
  * - 展示端只能看到文集已发布 + 子节点 publishedVersion 非 null 的节点
  */
 
+import type { ContentVersionDto } from '../../content/dto/content-detail.dto';
+
 // ── 共用子类型 ──
 
 /** 索引中单个子节点的简要信息(目录展示用)。Phase 8 起 key 字段统一为 nodeId(=子 contentItemId)。 */
@@ -33,6 +35,10 @@ export interface AnthologyEntryRef {
 
 /** 管理端章节引用:在 EntryRef 基础上补发布状态(给文集 admin 章节表格用)。后端已有数据,前端无需额外请求。 */
 export interface AnthologyAdminEntryRef extends AnthologyEntryRef {
+  /** 该章节最新提交版本。 */
+  latestVersion: ContentVersionDto | null;
+  /** 该章节当前发布版本。 */
+  publishedVersion: ContentVersionDto | null;
   /** 该章节是否已有实际内容(snapshot 存在且正文非空)。空章节 = 已创建未写。 */
   hasContent: boolean;
   /** 该章节已发布的 snapshot versionId,null 表示未发布。 */
@@ -69,6 +75,8 @@ export class AnthologyEntryDetailDto {
   /** 子节点 id(= 子 contentItemId)。Phase 8 polish 起从 key 改为 nodeId。 */
   nodeId: string;
   title: string;
+  /** 管理端历史版本预览使用；阅读端可为空。 */
+  summary?: string;
   /** 内容日期(frontmatter),兜底 snapshot createdAt。 */
   date: string | null;
   /** 最后更新时间(最新 snapshot 的 createdAt),与 NoteReader 的 updatedAt 同语义。 */
