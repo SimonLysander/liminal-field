@@ -263,7 +263,9 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
   );
 }
 
-/** 章节版本时间线右栏 — 抄笔记 ContentSidePanel 的"版本"区结构 */
+/** 章节右栏 — 严格抄笔记 ContentAdmin > FormalSidePanel 三段(大纲/编辑/版本)的视觉与结构。
+ *  数据各自简化拉取:大纲暂留空(后续解析章节正文标题再补);编辑段拉 anthology draft;版本段已成熟。
+ *  心智与笔记完全一致——uppercase caption、字号、间距、InfoRow/SideLink helpers 全部照抄。 */
 function EntryVersionsRail({
   anthologyContentItemId, entryNodeId, publishedVersionId,
 }: {
@@ -272,14 +274,17 @@ function EntryVersionsRail({
   publishedVersionId: string | null;
 }) {
   const [history, setHistory] = useState<ContentHistoryEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState('');
+  const [draftExists, setDraftExists] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
 
+  /* 版本历史 */
   useEffect(() => {
     let cancelled = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(true);
-    setError('');
+    setHistoryLoading(true);
+    setHistoryError('');
     void (async () => {
       try {
         const data = await request<ContentHistoryEntry[]>(
@@ -287,37 +292,135 @@ function EntryVersionsRail({
         );
         if (!cancelled) setHistory(data);
       } catch (err) {
-        if (!cancelled) setError(parseError(err, '加载版本历史失败'));
+        if (!cancelled) setHistoryError(parseError(err, '加载版本历史失败'));
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setHistoryLoading(false);
       }
     })();
     return () => { cancelled = true; };
   }, [anthologyContentItemId, entryNodeId]);
 
+  /* 草稿状态(getNodeDraft 后端 200 返回 null = 无草稿) */
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const draft = await workspaceApi.getNodeDraft('anthology', entryNodeId);
+        if (cancelled) return;
+        setDraftExists(!!draft);
+        setDraftSavedAt(draft?.savedAt ?? null);
+      } catch {
+        if (!cancelled) {
+          setDraftExists(false);
+          setDraftSavedAt(null);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [entryNodeId]);
+
+  const goToEditor = () => {
+    window.location.href = `/admin/anthology/${entryNodeId}/edit`;
+  };
+
   return (
-    <div className="flex h-full flex-col px-5 pt-7 pb-3">
-      <div
-        className="mb-2.5 shrink-0 text-2xs font-semibold uppercase"
-        style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}
-      >
-        版本
+    <div className="flex h-full flex-col overflow-hidden px-5 py-7">
+      {/* 大纲 — flex-1,内部滚动;暂占位"暂无标题"(后续接章节正文 toc 解析) */}
+      <div className="mb-5 flex min-h-0 flex-1 flex-col">
+        <SectionCaption>大纲</SectionCaption>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>暂无标题</p>
+        </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {loading ? (
-          <LoadingState variant="inline" />
-        ) : error ? (
-          <p className="text-xs" style={{ color: 'var(--danger)' }}>{error}</p>
-        ) : history.length === 0 ? (
-          <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>暂无版本</p>
+
+      {/* 编辑 — shrink-0,固定高度,显示草稿状态 + 入口链接 */}
+      <div className="mb-5 shrink-0">
+        <SectionCaption>编辑</SectionCaption>
+        {draftExists ? (
+          <div className="space-y-2">
+            <InfoRow label="已有草稿" value="是" />
+            <InfoRow
+              label="上次保存"
+              value={draftSavedAt ? new Date(draftSavedAt).toLocaleString('zh-CN') : '--'}
+            />
+            <div className="flex gap-4 pt-2">
+              <SideLink label="继续编辑 →" primary onClick={goToEditor} />
+            </div>
+          </div>
         ) : (
-          <VersionTimeline
-            history={history}
-            publishedVersionId={publishedVersionId}
-          />
+          <>
+            <p className="mb-3.5 text-xs leading-relaxed" style={{ color: 'var(--ink-ghost)' }}>
+              进入编辑器创建草稿
+            </p>
+            <SideLink label="开始编辑 →" primary onClick={goToEditor} />
+          </>
         )}
       </div>
+
+      {/* 版本 — flex-1,内部滚动 */}
+      <div className="flex min-h-0 flex-1 flex-col">
+        <SectionCaption>版本</SectionCaption>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {historyLoading ? (
+            <LoadingState variant="inline" />
+          ) : historyError ? (
+            <p className="text-xs" style={{ color: 'var(--danger)' }}>{historyError}</p>
+          ) : history.length === 0 ? (
+            <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>暂无版本</p>
+          ) : (
+            <VersionTimeline
+              history={history}
+              publishedVersionId={publishedVersionId}
+            />
+          )}
+        </div>
+      </div>
     </div>
+  );
+}
+
+/* ── helpers 抄自 content/index.tsx ────────────────────────────────── */
+
+function SectionCaption({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="mb-2.5 shrink-0 text-2xs font-semibold uppercase"
+      style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between py-0.5">
+      <span className="text-xs" style={{ color: 'var(--ink-faded)' }}>{label}</span>
+      <span className="text-xs font-medium" style={{ color: 'var(--ink)' }}>{value}</span>
+    </div>
+  );
+}
+
+function SideLink({
+  label, primary, onClick,
+}: {
+  label: string;
+  primary?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="text-xs transition-colors duration-150"
+      style={{
+        color: primary ? 'var(--ink)' : 'var(--ink-faded)',
+        fontWeight: primary ? 600 : 400,
+        background: 'none', border: 'none', cursor: 'pointer',
+        fontFamily: 'inherit', padding: '4px 0',
+      }}
+      onClick={onClick}
+    >
+      {label}
+    </button>
   );
 }
 
