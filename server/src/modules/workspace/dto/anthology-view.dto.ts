@@ -31,6 +31,18 @@ export interface AnthologyEntryRef {
   date: string | null;
 }
 
+/** 管理端章节引用:在 EntryRef 基础上补发布状态(给文集 admin 章节表格用)。后端已有数据,前端无需额外请求。 */
+export interface AnthologyAdminEntryRef extends AnthologyEntryRef {
+  /** 该章节是否已有实际内容(snapshot 存在且正文非空)。空章节 = 已创建未写。 */
+  hasContent: boolean;
+  /** 该章节已发布的 snapshot versionId,null 表示未发布。 */
+  publishedVersionId: string | null;
+  /** 章节最新 snapshot 与已发布 snapshot 不一致(有待发布的新改动)。 */
+  hasUnpublishedChanges: boolean;
+  /** 章节自己的 updatedAt(最近变更时间,ISO 8601)。 */
+  updatedAt: string;
+}
+
 // ── 展示端 ──
 
 export class AnthologyPublicListItemDto {

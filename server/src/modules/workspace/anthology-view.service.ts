@@ -36,6 +36,7 @@ import {
   AnthologyPublicDetailDto,
   AnthologyEntryDetailDto,
   AnthologyEntryRef,
+  AnthologyAdminEntryRef,
 } from './dto/anthology-view.dto';
 import { ContentHistoryEntryDto } from '../content/dto/content-history.dto';
 import { EditorDraftRepository } from './editor-draft.repository';
@@ -677,7 +678,7 @@ export class AnthologyViewService {
     bodyMarkdown: string;
     status: 'committed' | 'published';
     hasUnpublishedChanges: boolean;
-    entries: AnthologyEntryRef[];
+    entries: AnthologyAdminEntryRef[];
   }> {
     const item = await this.contentRepository.findById(contentItemId);
     if (!item)
@@ -696,8 +697,42 @@ export class AnthologyViewService {
       hasUnpublishedChanges: item.publishedVersion
         ? item.latestVersion?.versionId !== item.publishedVersion.versionId
         : false,
-      entries: await this.toEntryRefs(children),
+      entries: await this.toAdminEntryRefs(children),
     };
+  }
+
+  /** 管理端章节 ref:在 EntryRef 基础上补发布状态(数据均后端已有,不引入新逻辑)。 */
+  private async toAdminEntryRefs(
+    nodes: NavigationNode[],
+  ): Promise<AnthologyAdminEntryRef[]> {
+    return Promise.all(
+      nodes.map(async (node) => {
+        const nodeId = node.contentItemId;
+        const item = await this.contentRepository.findById(nodeId);
+        const snapshot = await this.loadEntryLatestSnapshot(nodeId);
+        const parsed = snapshot
+          ? parseEntryContent(snapshot.bodyMarkdown)
+          : { date: null, bodyMarkdown: '' };
+        const date =
+          parsed.date ??
+          (snapshot ? snapshot.createdAt.toISOString().split('T')[0] : null);
+        const publishedVersionId = item?.publishedVersion?.versionId ?? null;
+        const hasUnpublishedChanges = !!(
+          publishedVersionId &&
+          item?.latestVersion?.versionId !== publishedVersionId
+        );
+        return {
+          nodeId,
+          title: this.entryTitle(node, item),
+          date,
+          hasContent: !!snapshot && snapshot.bodyMarkdown.trim().length > 0,
+          publishedVersionId,
+          hasUnpublishedChanges,
+          updatedAt:
+            item?.updatedAt?.toISOString() ?? new Date(0).toISOString(),
+        };
+      }),
+    );
   }
 
   /**
