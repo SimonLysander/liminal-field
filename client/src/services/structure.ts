@@ -14,6 +14,9 @@ export interface StructureNode {
 export interface CreateStructureNodeDto {
   name: string;
   type: StructureNodeType;
+  /** 节点 scope:'notes' / 'anthology' / 'gallery'。后端按它分流——不传会默认 'notes',
+   *  导致文集/画廊管理后台新建的节点跑到笔记 scope 里(文集 admin 建文集变成文稿)。 */
+  scope: string;
   parentId?: string;
   contentItemId?: string;
   sortOrder?: number;

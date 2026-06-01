@@ -179,7 +179,9 @@ export function useAdminWorkspace(options: { scope: 'notes' | 'anthology' } = { 
       return;
     }
 
-    const createPayload = payload.node as CreateStructureNodeDto;
+    // 必传 scope:hook 自己知道当前 scope(notes/anthology),后端默认 'notes',
+    // 不传会让文集 admin 新建的节点跑进笔记 scope。
+    const createPayload = { ...(payload.node as CreateStructureNodeDto), scope };
     const created = await structureApi.createNode(createPayload);
     void loadLevel(urlFolderId);
 
