@@ -270,7 +270,7 @@ const AnthologyAdmin = () => {
                 <button
                   type="button"
                   onClick={backToCollections}
-                  className="flex items-center gap-1 text-2xs transition-colors hover:text-[var(--ink)]"
+                  className="nav-item flex items-center gap-1 text-2xs transition-colors hover:text-[var(--ink)]"
                   style={{ color: 'var(--ink-ghost)', outline: 'none', WebkitTapHighlightColor: 'transparent' }}
                   aria-label="返回文集列表"
                 >
@@ -280,7 +280,7 @@ const AnthologyAdmin = () => {
                 <button
                   type="button"
                   onClick={() => selectAnthology(selectedRow.contentItemId)}
-                  className="mt-1 block w-full truncate text-left text-base font-semibold transition-colors hover:text-[var(--ink-faded)]"
+                  className="nav-item mt-1 block w-full truncate text-left text-base font-semibold transition-colors hover:text-[var(--ink-faded)]"
                   style={{ color: 'var(--ink)', letterSpacing: '-0.01em', outline: 'none', WebkitTapHighlightColor: 'transparent' }}
                   aria-label="查看文集本身"
                 >
@@ -431,8 +431,8 @@ const AnthologyAdmin = () => {
           >
             <button
               type="button"
-              onClick={() => selectedRow ? void loadEntries(selectedRow.navId) : void loadList()}
-              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs transition-colors hover:text-[var(--ink)]"
+              onClick={() => selectedRow ? void loadEntries(selectedRow.contentItemId) : void loadList()}
+              className="nav-item flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs transition-colors hover:text-[var(--ink)]"
               style={{ color: 'var(--ink-faded)' }}
             >
               刷新
@@ -444,7 +444,7 @@ const AnthologyAdmin = () => {
                   ? setEntryModal({ open: true, mode: 'create' })
                   : setModal({ open: true, mode: 'create' })
               }
-              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs font-medium transition-colors hover:text-[var(--ink)]"
+              className="nav-item flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs font-medium transition-colors hover:text-[var(--ink)]"
               style={{ color: 'var(--ink)' }}
             >
               + 新建
