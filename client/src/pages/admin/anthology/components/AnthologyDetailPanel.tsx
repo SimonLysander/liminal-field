@@ -122,7 +122,8 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
   }, [row.contentItemId, row.navId]);
 
   useEffect(() => {
-    void Promise.resolve().then(() => loadDetail());
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadDetail();
   }, [loadDetail]);
 
   const navIdByContent = useMemo(() => {
@@ -188,17 +189,12 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
     }
   }, [row.contentItemId, selectedEntryNodeId]);
 
+  /* 切换章节/回文集时重置预览态,再拉新章节正文 */
   useEffect(() => {
-    let cancelled = false;
-    void Promise.resolve().then(() => {
-      if (cancelled) return;
-      setPreview(null);
-      setActiveIndex(-1);
-      void loadEntryDetail();
-    });
-    return () => {
-      cancelled = true;
-    };
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
+    setPreview(null);
+    setActiveIndex(-1);
+    void loadEntryDetail();
   }, [loadEntryDetail]);
 
   useEffect(() => {
@@ -233,16 +229,14 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
     };
   }, [activeContentId, row.contentItemId, selectedEntryNodeId]);
 
+  /* 刷新当前活动视图;选中条目时额外拉条目正文,文集态时只拉容器详情 */
   const reloadActive = useCallback(async (options?: { silent?: boolean }) => {
-    if (selectedEntryNodeId) {
-      await Promise.all([
-        loadEntryDetail({ silent: options?.silent }),
-        loadDetail({ silent: options?.silent }),
-        onReload(),
-      ]);
-    } else {
-      await Promise.all([loadDetail({ silent: options?.silent }), onReload()]);
-    }
+    const tasks: Array<Promise<unknown>> = [
+      loadDetail(options),
+      Promise.resolve(onReload()),
+    ];
+    if (selectedEntryNodeId) tasks.push(loadEntryDetail(options));
+    await Promise.all(tasks);
   }, [loadDetail, loadEntryDetail, onReload, selectedEntryNodeId]);
 
   const content = useMemo<FormalContentState | null>(() => {
@@ -254,11 +248,18 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
         selectedEntry.nodeId,
         selectedEntry.title,
       );
-      const publishedVersion = selectedEntry.publishedVersion
-        ? normalizeVersion(selectedEntry.publishedVersion, selectedEntry.nodeId, selectedEntry.title)
-        : selectedEntry.publishedVersionId
-          ? normalizeVersion({ versionId: selectedEntry.publishedVersionId }, selectedEntry.nodeId, selectedEntry.title)
-          : null;
+      /* publishedVersion 兼容两种数据形态:
+       *   - 新数据:selectedEntry.publishedVersion 是完整对象
+       *   - 老数据兜底:只有 publishedVersionId(其余字段从最新版补) */
+      let publishedVersionSource: Partial<ContentVersion> | null = null;
+      if (selectedEntry.publishedVersion) {
+        publishedVersionSource = selectedEntry.publishedVersion;
+      } else if (selectedEntry.publishedVersionId) {
+        publishedVersionSource = { versionId: selectedEntry.publishedVersionId };
+      }
+      const publishedVersion = publishedVersionSource
+        ? normalizeVersion(publishedVersionSource, selectedEntry.nodeId, selectedEntry.title)
+        : null;
       return {
         id: selectedEntry.nodeId,
         status: publishedVersion ? 'published' : 'committed',
@@ -375,31 +376,19 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
 
     setPreviewLoading(true);
     try {
-      if (selectedEntryNodeId) {
-        const d = await request<EntryDetail>(
-          `/spaces/anthology/items/${row.contentItemId}/entries/${selectedEntryNodeId}/versions/${versionId}`,
-        );
-        setPreview({
-          versionId,
-          title: d.title,
-          summary: d.summary ?? '',
-          bodyMarkdown: d.bodyMarkdown,
-          headings: extractMarkdownHeadings(d.bodyMarkdown),
-          committedAt: d.updatedAt,
-        });
-      } else {
-        const d = await request<AnthologyVersionDetail>(
-          `/spaces/anthology/items/${row.contentItemId}/versions/${versionId}`,
-        );
-        setPreview({
-          versionId,
-          title: d.title,
-          summary: d.description,
-          bodyMarkdown: d.bodyMarkdown,
-          headings: extractMarkdownHeadings(d.bodyMarkdown),
-          committedAt: d.updatedAt,
-        });
-      }
+      /* 章节级 vs 文集容器级:URL 和 summary 字段名不同(章节用 summary,容器用 description),其他装载逻辑一致 */
+      const url = selectedEntryNodeId
+        ? `/spaces/anthology/items/${row.contentItemId}/entries/${selectedEntryNodeId}/versions/${versionId}`
+        : `/spaces/anthology/items/${row.contentItemId}/versions/${versionId}`;
+      const d = await request<EntryDetail & AnthologyVersionDetail>(url);
+      setPreview({
+        versionId,
+        title: d.title,
+        summary: selectedEntryNodeId ? d.summary ?? '' : d.description,
+        bodyMarkdown: d.bodyMarkdown,
+        headings: extractMarkdownHeadings(d.bodyMarkdown),
+        committedAt: d.updatedAt,
+      });
     } catch (err) {
       banner.error(parseError(err, '加载版本内容失败'));
     } finally {

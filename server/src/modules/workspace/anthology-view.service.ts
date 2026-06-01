@@ -174,7 +174,15 @@ export class AnthologyViewService {
   // ── 内部辅助 ──────────────────────────────────────────────────────────────
 
   private toContentVersionDto(
-    version: { versionId?: string; commitHash?: string; title?: string; summary?: string } | null | undefined,
+    version:
+      | {
+          versionId?: string;
+          commitHash?: string;
+          title?: string;
+          summary?: string;
+        }
+      | null
+      | undefined,
   ): ContentVersionDto | null {
     if (!version) return null;
     return {
@@ -440,11 +448,9 @@ export class AnthologyViewService {
    *
    * 文集简介同时存在于 latestVersion.summary 与容器 main.md frontmatter.description。
    * 为避免刷新后从 snapshot 解析回旧值,这里提交一版新的容器索引快照。
+   * 子节点(章节)走通用 patchMeta,不需要重写索引。
    */
-  async patchMeta(
-    contentItemId: string,
-    fields: { summary?: string },
-  ): Promise<Awaited<ReturnType<AnthologyViewService['toAdminDetail']>> | { success: true }> {
+  async patchMeta(contentItemId: string, fields: { summary?: string }) {
     const item = await this.contentRepository.findById(contentItemId);
     if (!item)
       throw new NotFoundException(`Anthology ${contentItemId} not found`);
@@ -453,7 +459,7 @@ export class AnthologyViewService {
       await this.navigationRepository.findByContentItemId(contentItemId);
     if (node?.parentId) {
       await this.contentService.patchMeta(contentItemId, fields);
-      return { success: true };
+      return { success: true as const };
     }
 
     const index = await this.loadIndex(contentItemId);
@@ -745,7 +751,15 @@ export class AnthologyViewService {
   async getAnthologyHistory(
     contentItemId: string,
   ): Promise<ContentHistoryEntryDto[]> {
-    await this.getAnthologyNode(contentItemId);
+    /* 必须是容器节点,跟 patchMeta / getAnthologyByVersion 的 parentId 分流一致。
+     * 不加这层守门:子条目 contentItemId 也能调成功,返回的是子条目 main.md 历史
+     * 而非"文集级历史",前端把它当文集时间线展示就错位。 */
+    const node = await this.getAnthologyNode(contentItemId);
+    if (node.parentId) {
+      throw new NotFoundException(
+        `Anthology ${contentItemId} is not a container node`,
+      );
+    }
     const snapshots = await this.contentService.listVersionsByFileName(
       contentItemId,
       null,

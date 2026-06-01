@@ -363,10 +363,7 @@ export class WorkspaceController {
 
   /** 轻量更新文集元数据(简介等),用于管理端中区 inline-edit。 */
   @Patch('anthology/items/:id/meta')
-  async patchAnthologyMeta(
-    @Param('id') id: string,
-    @Body() dto: PatchMetaDto,
-  ) {
+  async patchAnthologyMeta(@Param('id') id: string, @Body() dto: PatchMetaDto) {
     await this.workspaceService.assertScopeMatch('anthology', id);
     return this.anthologyViewService.patchMeta(id, dto);
   }

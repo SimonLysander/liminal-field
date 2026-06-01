@@ -43,20 +43,20 @@ export function FormalSidePanel({
     panel.scrollTo({ top: target, behavior: 'smooth' });
   }, [activeIndex]);
 
+  const savedAtText = draftPresence.savedAt
+    ? new Date(draftPresence.savedAt).toLocaleString('zh-CN')
+    : '--';
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* 大纲 — flex-1，内部滚动；无标题时占位，避免布局跳动 */}
       <div className="mb-5 flex min-h-0 flex-1 flex-col">
-        <div
-          className="mb-2.5 shrink-0 text-2xs font-semibold uppercase"
-          style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}
-        >
-          大纲
-        </div>
+        <SectionCaption>大纲</SectionCaption>
         <div ref={tocPanelRef} className="min-h-0 flex-1 overflow-y-auto">
           {toc.length > 0 ? (
             toc.map((item, i) => {
               const isActive = activeIndex === i;
+              const basePadding = (item.level - 1) * 8 + 10;
               return (
                 <motion.div
                   key={item.index}
@@ -65,9 +65,9 @@ export function FormalSidePanel({
                     color: isActive ? 'var(--ink)' : 'var(--ink-faded)',
                     fontWeight: isActive ? 500 : 400,
                     borderColor: isActive ? 'var(--ink)' : 'transparent',
-                    paddingLeft: `${(item.level - 1) * 8 + 10}px`,
+                    paddingLeft: `${basePadding}px`,
                   }}
-                  animate={{ paddingLeft: isActive ? (item.level - 1) * 8 + 12 : (item.level - 1) * 8 + 10 }}
+                  animate={{ paddingLeft: isActive ? basePadding + 2 : basePadding }}
                   transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                   onClick={() => onScrollToHeading(i)}
                 >
@@ -83,19 +83,11 @@ export function FormalSidePanel({
 
       {/* 编辑 — shrink-0，固定高度 */}
       <div className="mb-5 shrink-0">
-        <div
-          className="mb-2.5 text-2xs font-semibold uppercase"
-          style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}
-        >
-          编辑
-        </div>
+        <SectionCaption>编辑</SectionCaption>
         {draftPresence.exists ? (
           <div className="space-y-2">
             <InfoRow label="已有草稿" value="是" />
-            <InfoRow
-              label="上次保存"
-              value={draftPresence.savedAt ? new Date(draftPresence.savedAt).toLocaleString('zh-CN') : '--'}
-            />
+            <InfoRow label="上次保存" value={savedAtText} />
             <div className="flex gap-4 pt-2">
               <SideLink label="继续编辑 →" primary onClick={onEditDraft} />
             </div>
@@ -112,12 +104,7 @@ export function FormalSidePanel({
 
       {/* 版本 — flex-1，内部滚动 */}
       <div className="flex min-h-0 flex-1 flex-col">
-        <div
-          className="mb-2.5 shrink-0 text-2xs font-semibold uppercase"
-          style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}
-        >
-          版本
-        </div>
+        <SectionCaption>版本</SectionCaption>
         <div className="min-h-0 flex-1 overflow-y-auto">
           <ContentFade stateKey={historyLoading ? 'loading' : 'history'}>
             {historyLoading ? (
@@ -139,6 +126,18 @@ export function FormalSidePanel({
   );
 }
 
+/* 右栏段落 caption,uppercase 小字号,三段(大纲/编辑/版本)共用 */
+function SectionCaption({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="mb-2.5 shrink-0 text-2xs font-semibold uppercase"
+      style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}
+    >
+      {children}
+    </div>
+  );
+}
+
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between py-0.5">
@@ -151,19 +150,17 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 function SideLink({
   label,
   primary,
-  danger,
   onClick,
 }: {
   label: string;
   primary?: boolean;
-  danger?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       className="text-xs transition-colors duration-150"
       style={{
-        color: danger ? 'var(--mark-red)' : primary ? 'var(--ink)' : 'var(--ink-faded)',
+        color: primary ? 'var(--ink)' : 'var(--ink-faded)',
         fontWeight: primary ? 600 : 400,
         background: 'none',
         border: 'none',

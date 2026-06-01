@@ -278,8 +278,25 @@ describe('Anthology CRUD (e2e, Phase 1 page-tree)', () => {
         .expect(404);
     });
 
+    it('PATCH meta summary 超过 300 字 → 400(DTO 硬上限,防绕过前端软约束)', async () => {
+      const id = await createAnthologyItem(
+        ctx.app,
+        cookie,
+        'maxLength 防护文集',
+      );
+      await supertest(ctx.app.getHttpServer())
+        .patch(`/api/v1/spaces/anthology/items/${id}/meta`)
+        .set('Cookie', cookie)
+        .send({ summary: 'x'.repeat(301) })
+        .expect(400);
+    });
+
     it('PATCH meta 更新简介 → 管理端详情读到新简介且保留卷首语', async () => {
-      const id = await createAnthologyItem(ctx.app, cookie, '简介 inline edit 文集');
+      const id = await createAnthologyItem(
+        ctx.app,
+        cookie,
+        '简介 inline edit 文集',
+      );
       const PREFACE = '## 卷首\n\n这段卷首语不能丢。';
 
       await supertest(ctx.app.getHttpServer())
@@ -328,24 +345,59 @@ describe('Anthology CRUD (e2e, Phase 1 page-tree)', () => {
     });
 
     it('用 notes id 调 anthology history → 404(scope 隔离)', async () => {
-      const noteId = await createNoteItem(ctx.app, cookie, 'history 跨 scope 笔记');
+      const noteId = await createNoteItem(
+        ctx.app,
+        cookie,
+        'history 跨 scope 笔记',
+      );
       await supertest(ctx.app.getHttpServer())
         .get(`/api/v1/spaces/anthology/items/${noteId}/history`)
         .set('Cookie', cookie)
         .expect(404);
     });
 
+    it('用子条目 contentItemId 调容器 history → 404(parentId 守门)', async () => {
+      const id = await createAnthologyItem(
+        ctx.app,
+        cookie,
+        '子条目 history 防漏文集',
+      );
+      const childNodeId = await createAnthologyChildNode(
+        ctx.app,
+        cookie,
+        id,
+        '子条目',
+        '子条目正文。',
+      );
+      await supertest(ctx.app.getHttpServer())
+        .get(`/api/v1/spaces/anthology/items/${childNodeId}/history`)
+        .set('Cookie', cookie)
+        .expect(404);
+    });
+
     it('创建+改两次卷首语 → 返回多条历史,含 versionId/commitHash', async () => {
-      const id = await createAnthologyItem(ctx.app, cookie, 'history 多版本文集');
+      const id = await createAnthologyItem(
+        ctx.app,
+        cookie,
+        'history 多版本文集',
+      );
       await supertest(ctx.app.getHttpServer())
         .put(`/api/v1/spaces/anthology/items/${id}`)
         .set('Cookie', cookie)
-        .send({ title: 'history 多版本文集', bodyMarkdown: 'v1 卷首语', changeNote: 'v1' })
+        .send({
+          title: 'history 多版本文集',
+          bodyMarkdown: 'v1 卷首语',
+          changeNote: 'v1',
+        })
         .expect(200);
       await supertest(ctx.app.getHttpServer())
         .put(`/api/v1/spaces/anthology/items/${id}`)
         .set('Cookie', cookie)
-        .send({ title: 'history 多版本文集', bodyMarkdown: 'v2 卷首语', changeNote: 'v2' })
+        .send({
+          title: 'history 多版本文集',
+          bodyMarkdown: 'v2 卷首语',
+          changeNote: 'v2',
+        })
         .expect(200);
 
       const res = await supertest(ctx.app.getHttpServer())
@@ -369,13 +421,21 @@ describe('Anthology CRUD (e2e, Phase 1 page-tree)', () => {
       await supertest(ctx.app.getHttpServer())
         .put(`/api/v1/spaces/anthology/items/${id}`)
         .set('Cookie', cookie)
-        .send({ title: 'version 预览文集', bodyMarkdown: 'v1 旧卷首语', changeNote: 'v1' })
+        .send({
+          title: 'version 预览文集',
+          bodyMarkdown: 'v1 旧卷首语',
+          changeNote: 'v1',
+        })
         .expect(200);
       // v2 改掉
       await supertest(ctx.app.getHttpServer())
         .put(`/api/v1/spaces/anthology/items/${id}`)
         .set('Cookie', cookie)
-        .send({ title: 'version 预览文集', bodyMarkdown: 'v2 新卷首语', changeNote: 'v2' })
+        .send({
+          title: 'version 预览文集',
+          bodyMarkdown: 'v2 新卷首语',
+          changeNote: 'v2',
+        })
         .expect(200);
 
       // 拿 v1 的 versionId(history 按 createdAt desc,末位即首版)
@@ -396,7 +456,11 @@ describe('Anthology CRUD (e2e, Phase 1 page-tree)', () => {
     });
 
     it('不存在 versionId → 404', async () => {
-      const id = await createAnthologyItem(ctx.app, cookie, '不存在 version 文集');
+      const id = await createAnthologyItem(
+        ctx.app,
+        cookie,
+        '不存在 version 文集',
+      );
       await supertest(ctx.app.getHttpServer())
         .get(`/api/v1/spaces/anthology/items/${id}/versions/version_nope`)
         .set('Cookie', cookie)
@@ -404,7 +468,11 @@ describe('Anthology CRUD (e2e, Phase 1 page-tree)', () => {
     });
 
     it('用 notes id 调 anthology versions → 404(scope 隔离)', async () => {
-      const noteId = await createNoteItem(ctx.app, cookie, 'version 跨 scope 笔记');
+      const noteId = await createNoteItem(
+        ctx.app,
+        cookie,
+        'version 跨 scope 笔记',
+      );
       await supertest(ctx.app.getHttpServer())
         .get(`/api/v1/spaces/anthology/items/${noteId}/versions/foo`)
         .set('Cookie', cookie)
@@ -412,7 +480,11 @@ describe('Anthology CRUD (e2e, Phase 1 page-tree)', () => {
     });
 
     it('用子条目的 versionId 访问容器版本 → 404(assertMainSnapshotBelongsTo)', async () => {
-      const id = await createAnthologyItem(ctx.app, cookie, '子条目 version 防漏文集');
+      const id = await createAnthologyItem(
+        ctx.app,
+        cookie,
+        '子条目 version 防漏文集',
+      );
       const nodeId = await createAnthologyChildNode(
         ctx.app,
         cookie,
