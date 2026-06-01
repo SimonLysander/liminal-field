@@ -19,10 +19,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { workspaceApi } from '@/services/workspace';
+import { workspaceApi, type ContentHistoryEntry } from '@/services/workspace';
 import { structureApi, type StructureNode } from '@/services/structure';
 import { request } from '@/services/request';
 import MarkdownBody from '@/components/shared/MarkdownBody';
+import { VersionTimeline } from '@/pages/admin/components/VersionTimeline';
 import { NodeFormModal } from '../../components/NodeFormModal';
 import type { ModalState, NodeSubmitPayload } from '../../types';
 import { parseError } from '../../helpers';
@@ -187,7 +188,7 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
   if (error)
     return (
       <div className="p-8">
-        <p className="text-sm" style={{ color: 'var(--mark-red)' }}>{error}</p>
+        <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>
       </div>
     );
   if (!detail) return null;
@@ -197,9 +198,13 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
     ? detail.entries.find((e) => e.nodeId === selectedEntryId) ?? null
     : null;
 
+  /* Layout 横向三段:
+   *   左主体(中区内容,竖向滚动) | 右版本栏(只在选中章节时出现,与笔记/画廊心智一致)
+   * 文集概览态没有右栏(后端未暴露文集级 history,且 OverviewView 没有"被预览的某版本"概念) */
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex-1 overflow-y-auto px-10 py-8">
+    <div className="flex h-full w-full min-w-0 overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="flex-1 overflow-y-auto px-10 py-8">
         {selectedEntry ? (
           <EntryPreviewView
             anthologyTitle={detail.title}
@@ -229,7 +234,22 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
             onDeleteEntry={(entry) => void handleDeleteEntry(entry)}
           />
         )}
+        </div>
       </div>
+
+      {/* 右栏:章节版本时间线(与笔记/画廊心智一致——常驻右栏,不弹 dialog) */}
+      {selectedEntry && (
+        <aside
+          className="flex shrink-0 flex-col border-l"
+          style={{ width: '320px', borderColor: 'var(--separator)' }}
+        >
+          <EntryVersionsRail
+            anthologyContentItemId={row.contentItemId}
+            entryNodeId={selectedEntry.nodeId}
+            publishedVersionId={selectedEntry.publishedVersionId}
+          />
+        </aside>
+      )}
 
       {modal.open && (
         <NodeFormModal
@@ -239,6 +259,64 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
           scope="anthology"
         />
       )}
+    </div>
+  );
+}
+
+/** 章节版本时间线右栏 — 抄笔记 ContentSidePanel 的"版本"区结构 */
+function EntryVersionsRail({
+  anthologyContentItemId, entryNodeId, publishedVersionId,
+}: {
+  anthologyContentItemId: string;
+  entryNodeId: string;
+  publishedVersionId: string | null;
+}) {
+  const [history, setHistory] = useState<ContentHistoryEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true);
+    setError('');
+    void (async () => {
+      try {
+        const data = await request<ContentHistoryEntry[]>(
+          `/spaces/anthology/items/${anthologyContentItemId}/entries/${entryNodeId}/history`,
+        );
+        if (!cancelled) setHistory(data);
+      } catch (err) {
+        if (!cancelled) setError(parseError(err, '加载版本历史失败'));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [anthologyContentItemId, entryNodeId]);
+
+  return (
+    <div className="flex h-full flex-col px-5 pt-7 pb-3">
+      <div
+        className="mb-2.5 shrink-0 text-2xs font-semibold uppercase"
+        style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}
+      >
+        版本
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {loading ? (
+          <LoadingState variant="inline" />
+        ) : error ? (
+          <p className="text-xs" style={{ color: 'var(--danger)' }}>{error}</p>
+        ) : history.length === 0 ? (
+          <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>暂无版本</p>
+        ) : (
+          <VersionTimeline
+            history={history}
+            publishedVersionId={publishedVersionId}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -266,13 +344,14 @@ function AnthologyOverviewView({
     month: 'numeric', day: 'numeric',
   });
 
+  /* 文集自身的 history 后端未暴露(只有章节级 /entries/:nodeId/history),
+   * 这里暂不挂版本按钮——避免点击 404。后端补 endpoint 后再开。 */
   return (
     <>
-      {/* 顶部:title + 元信息 + ⋯ */}
       <div className="mb-4 flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-2xl font-medium" style={{ color: 'var(--ink)' }}>
-            《{detail.title || '无标题'}》
+            {detail.title || '无标题'}
           </h1>
           <p className="mt-2 flex items-center gap-2 text-xs" style={{ color: 'var(--ink-faded)' }}>
             <span>{row.entryCount} 篇</span>
@@ -285,7 +364,7 @@ function AnthologyOverviewView({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button type="button"
-              className="rounded-md p-1.5 transition-colors hover:bg-[var(--shelf)]"
+              className="rounded-md p-1.5 transition-colors hover:text-[var(--ink)]"
               style={{ color: 'var(--ink-faded)' }} aria-label="文集操作">
               <MoreHorizontal size={18} strokeWidth={1.5} />
             </button>
@@ -301,27 +380,26 @@ function AnthologyOverviewView({
             {detail.status === 'published' && (
               <DropdownMenuItem onClick={onPublishAll}>一键发布全部</DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={onDelete} style={{ color: 'var(--mark-red)' }}>
+            <DropdownMenuItem onClick={onDelete} style={{ color: 'var(--danger)' }}>
               删除文集
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
 
-      {/* 简介 */}
+      {/* 简介:仅 divider 分隔,无 label——西式 caption(uppercase + letter-spacing)与纸墨气质冲突 */}
       <div className="mb-8 border-t pt-4" style={{ borderColor: 'var(--separator)' }}>
-        <div className="mb-1.5 text-2xs font-medium uppercase"
-          style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}>简介</div>
         <p className="text-sm leading-relaxed" style={{ color: 'var(--ink-faded)' }}>
           {detail.description || '暂无简介'}
         </p>
       </div>
 
-      {/* 章节区 */}
+      {/* 章节区:小标题 ink-faded 普通字号,不大写不字距 */}
       <div className="border-t pt-4" style={{ borderColor: 'var(--separator)' }}>
         <div className="mb-3 flex items-center justify-between">
-          <div className="text-2xs font-medium uppercase"
-            style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}>章节</div>
+          <div className="text-xs" style={{ color: 'var(--ink-faded)' }}>
+            章节 · {detail.entries.length}
+          </div>
           <button type="button" onClick={onCreateEntry}
             className="flex items-center gap-1.5 text-xs transition-colors"
             style={{ color: 'var(--ink-faded)' }}>
@@ -367,11 +445,19 @@ function EntryRow({
   const updateYmd = entry.updatedAt
     ? new Date(entry.updatedAt).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
     : '--';
-  // 状态徽章(抄 StatusBadge,但 entry 用 publishedVersionId 派生)
   const status = isPublished ? 'published' : 'committed';
 
+  /* 整行点击 = 选中并切换到预览态(不进入编辑器);编辑/⋯按钮 stopPropagation 避免冒泡触发预览。
+   *  无 hover bg(避免卡片化动效),仅 cursor-pointer 提示可点。 */
+  const stop = (e: React.MouseEvent) => e.stopPropagation();
   return (
-    <div className="flex items-center gap-4 px-2 py-3">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onPreview}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPreview(); } }}
+      className="flex cursor-pointer items-center gap-4 px-2 py-3 text-xs"
+    >
       <span className="shrink-0 text-2xs tabular-nums"
         style={{ color: 'var(--ink-ghost)', minWidth: '24px' }}>
         {String(index + 1).padStart(2, '0')}
@@ -383,27 +469,24 @@ function EntryRow({
       <span className="shrink-0" style={{ minWidth: '90px' }}>
         <StatusBadge status={status} hasUnpublishedChanges={entry.hasUnpublishedChanges} />
       </span>
-      <span className="shrink-0 text-xs tabular-nums"
+      <span className="shrink-0 tabular-nums"
         style={{ color: 'var(--ink-ghost)', minWidth: '50px' }}>
         {updateYmd}
       </span>
-      <div className="flex shrink-0 items-center gap-1">
-        <button type="button" onClick={onPreview}
-          className="rounded px-2 py-1 text-xs transition-colors hover:bg-[var(--shelf)]"
-          style={{ color: 'var(--ink-faded)' }}>预览</button>
+      <div className="flex shrink-0 items-center gap-1" onClick={stop}>
         <button type="button" onClick={onEdit}
-          className="rounded px-2 py-1 text-xs transition-colors hover:bg-[var(--shelf)]"
+          className="rounded px-2 py-1 transition-colors hover:text-[var(--ink)]"
           style={{ color: 'var(--ink-faded)' }}>编辑</button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button type="button"
-              className="rounded p-1 transition-colors hover:bg-[var(--shelf)]"
+              className="rounded p-1 transition-colors hover:text-[var(--ink)]"
               style={{ color: 'var(--ink-faded)' }} aria-label="章节操作">
               <MoreHorizontal size={14} strokeWidth={1.5} />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onDelete} style={{ color: 'var(--mark-red)' }}>
+            <DropdownMenuItem onClick={onDelete} style={{ color: 'var(--danger)' }}>
               删除
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -454,31 +537,32 @@ function EntryPreviewView({
   const updateYmd = entry.updatedAt
     ? new Date(entry.updatedAt).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
     : '--';
+  // 版本时间线已在右栏常驻(AnthologyDetailPanel 根 layout 横向二段),这里不再放「版本」按钮。
 
   return (
     <>
-      {/* 面包屑 + ⋯ */}
+      {/* 面包屑 + 编辑 + ⋯ */}
       <div className="mb-4 flex items-center justify-between gap-4">
         <button type="button" onClick={onBack}
           className="flex items-center gap-1 text-xs transition-colors hover:text-[var(--ink)]"
           style={{ color: 'var(--ink-faded)' }}>
           <ChevronLeft size={14} strokeWidth={1.5} />
-          《{anthologyTitle || '文集'}》
+          {anthologyTitle || '文集'}
         </button>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <button type="button" onClick={onEdit}
-            className="rounded-md px-3 py-1.5 text-sm transition-colors hover:bg-[var(--shelf)]"
+            className="rounded-md px-3 py-1.5 text-sm transition-colors hover:text-[var(--ink)]"
             style={{ color: 'var(--ink-faded)' }}>编辑</button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button type="button"
-                className="rounded-md p-1.5 transition-colors hover:bg-[var(--shelf)]"
+                className="rounded-md p-1.5 transition-colors hover:text-[var(--ink)]"
                 style={{ color: 'var(--ink-faded)' }} aria-label="章节操作">
                 <MoreHorizontal size={18} strokeWidth={1.5} />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onDelete} style={{ color: 'var(--mark-red)' }}>
+              <DropdownMenuItem onClick={onDelete} style={{ color: 'var(--danger)' }}>
                 删除章节
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -501,7 +585,7 @@ function EntryPreviewView({
         {bodyLoading ? (
           <LoadingState variant="inline" />
         ) : bodyError ? (
-          <p className="text-sm" style={{ color: 'var(--mark-red)' }}>{bodyError}</p>
+          <p className="text-sm" style={{ color: 'var(--danger)' }}>{bodyError}</p>
         ) : body && body.bodyMarkdown.trim() ? (
           <div className="prose prose-sm max-w-none">
             <MarkdownBody markdown={body.bodyMarkdown} contentItemId={entry.nodeId} />
