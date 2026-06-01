@@ -139,7 +139,7 @@ export const NodeFormModal = ({
       <Modal
         open
         onClose={onClose}
-        className="sm:max-w-md"
+        className="sm:max-w-xs"
         title={isCreate ? '新建' : '重命名'}
         footer={
           <>

@@ -141,7 +141,8 @@ const AnthologyNodeEditPanel = ({ id }: { id: string }) => {
         // 对 entry 节点,title 来自 latestVersion.title,bodyMarkdown 来自该节点 snapshot 正文。
         // 类型上 workspaceApi.getById 标注为 ContentDetail(notes 形状),anthology 结构兼容这两个字段,
         // 其余字段 DraftEditPage 不消费,as ContentDetail 是契约层的"取 title+bodyMarkdown"窄化。
-        const detail = (await workspaceApi.getById('anthology', id)) as ContentDetail;
+        // 必须 visibility:'all',否则 controller 走 toPublicDetail 对未发布文集抛 404
+        const detail = (await workspaceApi.getById('anthology', id, { visibility: 'all' })) as ContentDetail;
         return {
           title: detail.title,
           bodyMarkdown: detail.bodyMarkdown,

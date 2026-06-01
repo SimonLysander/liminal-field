@@ -279,8 +279,15 @@ export const workspaceApi = {
       `/spaces/${scope}/items${toQueryString({ status: options?.status })}`,
     ),
 
-  getById: (scope: string, id: string) =>
-    request<ContentDetail>(`/spaces/${scope}/items/${id}`),
+  /**
+   * 通用节点详情。visibility:
+   * - 不传(默认):走展示端语义,文集/画廊未发布会 404
+   * - 'all':走管理端语义,返回 draft/未发布字段,admin 编辑器必传
+   */
+  getById: (scope: string, id: string, options?: { visibility?: ContentVisibility }) =>
+    request<ContentDetail>(
+      `/spaces/${scope}/items/${id}${toQueryString({ visibility: options?.visibility })}`,
+    ),
 
   create: (scope: string, dto: CreateContentDto) =>
     request<ContentDetail>(`/spaces/${scope}/items`, {
