@@ -331,6 +331,23 @@ export class WorkspaceController {
     return this.anthologyViewService.getEntryByVersion(id, nodeId, versionId);
   }
 
+  @Get('anthology/items/:id/history')
+  async getAnthologyHistory(
+    @Param('id') id: string,
+  ): Promise<ContentHistoryEntryDto[]> {
+    await this.workspaceService.assertScopeMatch('anthology', id);
+    return this.anthologyViewService.getAnthologyHistory(id);
+  }
+
+  @Get('anthology/items/:id/versions/:versionId')
+  async getAnthologyByVersion(
+    @Param('id') id: string,
+    @Param('versionId') versionId: string,
+  ) {
+    await this.workspaceService.assertScopeMatch('anthology', id);
+    return this.anthologyViewService.getAnthologyByVersion(id, versionId);
+  }
+
   /**
    * 一键递归发布文集容器 + 所有子节点。
    * 顺序:先发容器(子节点发布需先发容器),再并发发子节点。
@@ -342,6 +359,16 @@ export class WorkspaceController {
     await this.workspaceService.assertScopeMatch('anthology', id);
     await this.anthologyViewService.publishAnthologyAndDescendants(id);
     return { success: true };
+  }
+
+  /** 轻量更新文集元数据(简介等),用于管理端中区 inline-edit。 */
+  @Patch('anthology/items/:id/meta')
+  async patchAnthologyMeta(
+    @Param('id') id: string,
+    @Body() dto: PatchMetaDto,
+  ) {
+    await this.workspaceService.assertScopeMatch('anthology', id);
+    return this.anthologyViewService.patchMeta(id, dto);
   }
 
   // ─── 通用草稿接口(Phase 1 新增 anthology 走这里) ────────────────────────
@@ -523,8 +550,11 @@ export class WorkspaceController {
       await this.galleryViewService.assertPublishable(id, body?.versionId);
     // anthology 文集级发布走独立方法,不再用通用 publish
     if (scope === 'anthology') {
-      await this.anthologyViewService.publishAnthology(id);
-      return this.anthologyViewService.toAdminDetail(id);
+      await this.anthologyViewService.publishAnthology(id, body?.versionId);
+      if (await this.anthologyViewService.isAnthologyContainer(id)) {
+        return this.anthologyViewService.toAdminDetail(id);
+      }
+      return { success: true };
     }
     await this.workspaceService.publish(scope, id, body?.versionId);
     if (scope === 'notes') return this.noteViewService.getById(id, 'all');
@@ -539,7 +569,10 @@ export class WorkspaceController {
     // anthology 文集级取消发布走独立方法
     if (scope === 'anthology') {
       await this.anthologyViewService.unpublishAnthology(id);
-      return this.anthologyViewService.toAdminDetail(id);
+      if (await this.anthologyViewService.isAnthologyContainer(id)) {
+        return this.anthologyViewService.toAdminDetail(id);
+      }
+      return { success: true };
     }
     await this.workspaceService.unpublish(scope, id);
     if (scope === 'notes') return this.noteViewService.getById(id, 'all');

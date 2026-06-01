@@ -1,39 +1,37 @@
-/*
- * AnthologyDetailPanel — 中区。两种视图按 URL ?entry= 切换:
- *   无 entry:文集概览(元信息 + 简介 + 章节列表)
- *   有 entry:章节预览(面包屑 + 标题 + 元信息 + 正文 readonly + [编辑])
- *
- * 章节列表行不响应点击,操作走显式按钮(预览/编辑/⋯)。
- * 状态徽章统一抄 VersionTimeline 的设计语言(rounded + 浅底 + mark-color 字)。
- */
-
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { MoreHorizontal, FileEdit } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import { banner } from '@/components/ui/banner-api';
 import { LoadingState } from '@/components/LoadingState';
 import { useConfirm } from '@/contexts/ConfirmContext';
+import { smoothBounce } from '@/lib/motion';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { workspaceApi, type ContentHistoryEntry } from '@/services/workspace';
+  workspaceApi,
+  type ContentHistoryEntry,
+  type ContentVersion,
+} from '@/services/workspace';
 import { structureApi, type StructureNode } from '@/services/structure';
 import { request } from '@/services/request';
-import MarkdownBody from '@/components/shared/MarkdownBody';
-import { VersionTimeline } from '@/pages/admin/components/VersionTimeline';
+import { ContentVersionView } from '../../components/ContentVersionView';
+import { FormalSidePanel } from '../../components/FormalSidePanel';
 import { NodeFormModal } from '../../components/NodeFormModal';
-import type { ModalState, NodeSubmitPayload } from '../../types';
+import { MoveToDialog } from '../../components/MoveToDialog';
+import type {
+  DraftPresence,
+  FormalContentState,
+  ModalState,
+  NodeSubmitPayload,
+  PreviewState,
+} from '../../types';
 import { parseError } from '../../helpers';
-import { type AnthologyRow, StatusBadge } from '../index';
+import { type AnthologyRow } from '../index';
 
-/** 后端 toAdminEntryRef 返回 */
 interface AdminEntry {
   nodeId: string;
   title: string;
   date: string | null;
+  latestVersion: ContentVersion | null;
+  publishedVersion: ContentVersion | null;
   hasContent: boolean;
   publishedVersionId: string | null;
   hasUnpublishedChanges: boolean;
@@ -44,18 +42,30 @@ interface AnthologyAdminDetail {
   id: string;
   title: string;
   description: string;
+  latestVersion: ContentVersion | null;
+  publishedVersion: ContentVersion | null;
   bodyMarkdown: string;
   status: 'committed' | 'published';
   hasUnpublishedChanges: boolean;
+  updatedAt: string;
   entries: AdminEntry[];
 }
 
 interface EntryDetail {
   nodeId: string;
   title: string;
+  summary?: string;
   date: string | null;
   updatedAt: string;
   bodyMarkdown: string;
+}
+
+interface AnthologyVersionDetail {
+  id: string;
+  title: string;
+  description: string;
+  bodyMarkdown: string;
+  updatedAt: string;
 }
 
 interface Props {
@@ -64,10 +74,11 @@ interface Props {
   onDelete: () => void;
 }
 
+const EMPTY_DRAFT: DraftPresence = { exists: false };
+
 export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
   const confirm = useConfirm();
   const [searchParams, setSearchParams] = useSearchParams();
-  /* URL key 跟 index.tsx 同步:?at=文集 / ?at=&chapter=条目 */
   const selectedEntryId = searchParams.get('chapter') ?? null;
 
   const [detail, setDetail] = useState<AnthologyAdminDetail | null>(null);
@@ -75,10 +86,25 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [modal, setModal] = useState<ModalState>({ open: false, mode: 'create' });
+  const [moveTarget, setMoveTarget] = useState<StructureNode | null>(null);
 
-  const loadDetail = useCallback(async () => {
-    setLoading(true);
-    setError('');
+  const [entryDetail, setEntryDetail] = useState<EntryDetail | null>(null);
+  const [entryLoading, setEntryLoading] = useState(false);
+  const [entryError, setEntryError] = useState('');
+  const [history, setHistory] = useState<ContentHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [draftPresence, setDraftPresence] = useState<DraftPresence>(EMPTY_DRAFT);
+  const [preview, setPreview] = useState<PreviewState | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [activeIndex, setActiveIndex] = useState(-1);
+
+  const loadDetail = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setLoading(true);
+      setError('');
+    }
     try {
       const [d, children] = await Promise.all([
         workspaceApi.getById('anthology', row.contentItemId, {
@@ -91,13 +117,12 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
     } catch (err) {
       setError(parseError(err, '加载文集详情失败'));
     } finally {
-      setLoading(false);
+      if (!options?.silent) setLoading(false);
     }
   }, [row.contentItemId, row.navId]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadDetail();
+    void Promise.resolve().then(() => loadDetail());
   }, [loadDetail]);
 
   const navIdByContent = useMemo(() => {
@@ -106,64 +131,293 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
     return m;
   }, [childrenNavs]);
 
-  const selectEntry = (entryId: string | null) => {
-    const next = new URLSearchParams(searchParams);
-    if (entryId) next.set('chapter', entryId);
-    else next.delete('chapter');
-    setSearchParams(next, { replace: true });
-  };
+  const selectedEntry = selectedEntryId && detail
+    ? detail.entries.find((e) => e.nodeId === selectedEntryId) ?? null
+    : null;
+  const selectedEntryNodeId = selectedEntry?.nodeId ?? null;
+  const activeContentId = selectedEntry?.nodeId ?? row.contentItemId;
 
-  const handlePublish = async () => {
-    try {
-      await request(`/spaces/anthology/items/${row.contentItemId}/publish`, { method: 'PUT' });
-      banner.success('已发布');
-      await Promise.all([loadDetail(), onReload()]);
-    } catch (err) {
-      banner.error(parseError(err, '发布失败'));
-    }
-  };
-
-  const handleUnpublish = async () => {
-    try {
-      await request(`/spaces/anthology/items/${row.contentItemId}/unpublish`, { method: 'PUT' });
-      banner.success('已取消发布');
-      await Promise.all([loadDetail(), onReload()]);
-    } catch (err) {
-      banner.error(parseError(err, '取消发布失败'));
-    }
-  };
-
-  const handlePublishAll = async () => {
-    try {
-      await request(`/spaces/anthology/items/${row.contentItemId}/publish-all`, { method: 'POST' });
-      banner.success('已发布全部');
-      await Promise.all([loadDetail(), onReload()]);
-    } catch (err) {
-      banner.error(parseError(err, '发布失败'));
-    }
-  };
-
-  const handleCreateEntry = async (payload: NodeSubmitPayload) => {
-    const dto = payload.node as { name: string };
-    try {
-      const created = await structureApi.createNode({
-        name: dto.name,
+  const activeNode = useMemo<StructureNode | null>(() => {
+    if (!detail) return null;
+    if (selectedEntry) {
+      return {
+        id: navIdByContent.get(selectedEntry.nodeId) ?? selectedEntry.nodeId,
+        name: selectedEntry.title || '无标题',
         type: 'DOC',
-        scope: 'anthology',
         parentId: row.navId,
-      });
-      await loadDetail();
-      void onReload();
-      if (created.contentItemId) {
-        /* 条目编辑带 ?at=文集id 让 edit.tsx 算出"返回 = 条目选中态" */
-        window.location.href = `/admin/anthology/${created.contentItemId}/edit?at=${row.contentItemId}`;
+        contentItemId: selectedEntry.nodeId,
+        sortOrder: 0,
+        hasChildren: false,
+        createdAt: selectedEntry.updatedAt,
+        updatedAt: selectedEntry.updatedAt,
+      };
+    }
+    return {
+      id: row.navId,
+      name: detail.title || row.title || '无标题',
+      type: 'DOC',
+      contentItemId: row.contentItemId,
+      sortOrder: 0,
+      hasChildren: detail.entries.length > 0,
+      createdAt: detail.updatedAt,
+      updatedAt: detail.updatedAt,
+    };
+  }, [detail, navIdByContent, row, selectedEntry]);
+
+  const loadEntryDetail = useCallback(async (options?: { silent?: boolean }) => {
+    if (!selectedEntryNodeId) {
+      setEntryDetail(null);
+      setEntryLoading(false);
+      setEntryError('');
+      return;
+    }
+    if (!options?.silent) {
+      setEntryLoading(true);
+      setEntryError('');
+    }
+    try {
+      const d = await request<EntryDetail>(
+        `/spaces/anthology/public/items/${row.contentItemId}/entries/${selectedEntryNodeId}`,
+      );
+      setEntryDetail(d);
+    } catch (err) {
+      setEntryError(parseError(err, '加载章节正文失败'));
+      setEntryDetail(null);
+    } finally {
+      if (!options?.silent) setEntryLoading(false);
+    }
+  }, [row.contentItemId, selectedEntryNodeId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      setPreview(null);
+      setActiveIndex(-1);
+      void loadEntryDetail();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadEntryDetail]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const historyUrl = selectedEntryNodeId
+      ? `/spaces/anthology/items/${row.contentItemId}/entries/${selectedEntryNodeId}/history`
+      : `/spaces/anthology/items/${row.contentItemId}/history`;
+
+    void (async () => {
+      setHistoryLoading(true);
+      try {
+        const [historyResult, draft] = await Promise.all([
+          request<ContentHistoryEntry[]>(historyUrl),
+          workspaceApi.getNodeDraft('anthology', activeContentId),
+        ]);
+        if (cancelled) return;
+        setHistory(historyResult);
+        setDraftPresence(draft ? { exists: true, savedAt: draft.savedAt } : EMPTY_DRAFT);
+      } catch (err) {
+        if (!cancelled) {
+          setHistory([]);
+          setDraftPresence(EMPTY_DRAFT);
+          banner.error(parseError(err, '加载右栏信息失败'));
+        }
+      } finally {
+        if (!cancelled) setHistoryLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeContentId, row.contentItemId, selectedEntryNodeId]);
+
+  const reloadActive = useCallback(async (options?: { silent?: boolean }) => {
+    if (selectedEntryNodeId) {
+      await Promise.all([
+        loadEntryDetail({ silent: options?.silent }),
+        loadDetail({ silent: options?.silent }),
+        onReload(),
+      ]);
+    } else {
+      await Promise.all([loadDetail({ silent: options?.silent }), onReload()]);
+    }
+  }, [loadDetail, loadEntryDetail, onReload, selectedEntryNodeId]);
+
+  const content = useMemo<FormalContentState | null>(() => {
+    if (!detail) return null;
+    if (selectedEntry) {
+      const body = entryDetail?.bodyMarkdown ?? '';
+      const latestVersion = normalizeVersion(
+        selectedEntry.latestVersion,
+        selectedEntry.nodeId,
+        selectedEntry.title,
+      );
+      const publishedVersion = selectedEntry.publishedVersion
+        ? normalizeVersion(selectedEntry.publishedVersion, selectedEntry.nodeId, selectedEntry.title)
+        : selectedEntry.publishedVersionId
+          ? normalizeVersion({ versionId: selectedEntry.publishedVersionId }, selectedEntry.nodeId, selectedEntry.title)
+          : null;
+      return {
+        id: selectedEntry.nodeId,
+        status: publishedVersion ? 'published' : 'committed',
+        latestVersion,
+        publishedVersion,
+        hasUnpublishedChanges: selectedEntry.hasUnpublishedChanges,
+        bodyMarkdown: body,
+        headings: extractMarkdownHeadings(body),
+        updatedAt: entryDetail?.updatedAt ?? selectedEntry.updatedAt,
+      };
+    }
+
+    return {
+      id: row.contentItemId,
+      status: detail.status,
+      latestVersion: normalizeVersion(detail.latestVersion, row.contentItemId, detail.title),
+      publishedVersion: detail.publishedVersion
+        ? normalizeVersion(detail.publishedVersion, row.contentItemId, detail.title)
+        : null,
+      hasUnpublishedChanges: detail.hasUnpublishedChanges,
+      bodyMarkdown: detail.bodyMarkdown,
+      headings: extractMarkdownHeadings(detail.bodyMarkdown),
+      updatedAt: detail.updatedAt ?? row.updatedAt,
+    };
+  }, [detail, entryDetail, row, selectedEntry]);
+
+  const toc = useMemo(
+    () => (preview?.headings ?? content?.headings ?? []).map((h, i) => ({
+      level: h.level,
+      text: h.text,
+      index: i,
+    })),
+    [content?.headings, preview?.headings],
+  );
+
+  const getHeadingEls = useCallback(
+    () => previewRef.current?.querySelectorAll<HTMLElement>('[data-heading-id]'),
+    [],
+  );
+
+  const handlePreviewScroll = useCallback(() => {
+    const container = previewRef.current;
+    const els = getHeadingEls();
+    if (!container || !els || els.length === 0) return;
+    const threshold = container.getBoundingClientRect().top + 50;
+    for (let i = els.length - 1; i >= 0; i--) {
+      if (els[i].getBoundingClientRect().top <= threshold) {
+        setActiveIndex(i);
+        return;
+      }
+    }
+    setActiveIndex(0);
+  }, [getHeadingEls]);
+
+  useEffect(() => {
+    const el = previewRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', handlePreviewScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handlePreviewScroll);
+  }, [handlePreviewScroll]);
+
+  const scrollToHeading = useCallback((index: number) => {
+    const els = getHeadingEls();
+    const container = previewRef.current;
+    if (!els || !els[index] || !container) return;
+    const el = els[index];
+    const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16;
+    container.scrollTo({ top, behavior: 'smooth' });
+
+    el.classList.remove('toc-highlight');
+    void el.offsetWidth;
+    el.classList.add('toc-highlight');
+    el.addEventListener('animationend', () => el.classList.remove('toc-highlight'), { once: true });
+  }, [getHeadingEls]);
+
+  const handleSaveSummary = useCallback(async (summary: string) => {
+    await workspaceApi.patchMeta('anthology', activeContentId, { summary });
+    await reloadActive({ silent: true });
+  }, [activeContentId, reloadActive]);
+
+  const handlePublish = useCallback(async () => {
+    await request(`/spaces/anthology/items/${activeContentId}/publish`, { method: 'PUT' });
+    await reloadActive({ silent: true });
+  }, [activeContentId, reloadActive]);
+
+  const handleUnpublish = useCallback(async () => {
+    await request(`/spaces/anthology/items/${activeContentId}/unpublish`, { method: 'PUT' });
+    await reloadActive({ silent: true });
+  }, [activeContentId, reloadActive]);
+
+  const handlePublishPreview = useCallback(async () => {
+    if (!preview) return;
+    await request(`/spaces/anthology/items/${activeContentId}/publish`, {
+      method: 'PUT',
+      body: JSON.stringify({ versionId: preview.versionId }),
+    });
+    setPreview(null);
+    await reloadActive({ silent: true });
+  }, [activeContentId, preview, reloadActive]);
+
+  const handlePublishAll = useCallback(async () => {
+    await request(`/spaces/anthology/items/${row.contentItemId}/publish-all`, { method: 'POST' });
+    banner.success('已发布全部');
+    await reloadActive({ silent: true });
+  }, [reloadActive, row.contentItemId]);
+
+  const handlePreviewVersion = useCallback(async (versionId: string) => {
+    if (!content) return;
+    if (preview?.versionId === versionId) return;
+    if (versionId === content.latestVersion.versionId) {
+      setPreview(null);
+      return;
+    }
+
+    setPreviewLoading(true);
+    try {
+      if (selectedEntryNodeId) {
+        const d = await request<EntryDetail>(
+          `/spaces/anthology/items/${row.contentItemId}/entries/${selectedEntryNodeId}/versions/${versionId}`,
+        );
+        setPreview({
+          versionId,
+          title: d.title,
+          summary: d.summary ?? '',
+          bodyMarkdown: d.bodyMarkdown,
+          headings: extractMarkdownHeadings(d.bodyMarkdown),
+          committedAt: d.updatedAt,
+        });
+      } else {
+        const d = await request<AnthologyVersionDetail>(
+          `/spaces/anthology/items/${row.contentItemId}/versions/${versionId}`,
+        );
+        setPreview({
+          versionId,
+          title: d.title,
+          summary: d.description,
+          bodyMarkdown: d.bodyMarkdown,
+          headings: extractMarkdownHeadings(d.bodyMarkdown),
+          committedAt: d.updatedAt,
+        });
       }
     } catch (err) {
-      banner.error(parseError(err, '新增章节失败'));
+      banner.error(parseError(err, '加载版本内容失败'));
+    } finally {
+      setPreviewLoading(false);
     }
-  };
+  }, [content, preview?.versionId, row.contentItemId, selectedEntryNodeId]);
 
-  const handleDeleteEntry = async (entry: AdminEntry) => {
+  const handleEditNode = useCallback((node: StructureNode) => {
+    setModal({ open: true, mode: 'edit', node });
+  }, []);
+
+  const handleModalSubmit = useCallback(async (payload: NodeSubmitPayload) => {
+    if (modal.mode !== 'edit' || !modal.node) return;
+    await structureApi.updateNode(modal.node.id, payload.node);
+    await reloadActive();
+  }, [modal.mode, modal.node, reloadActive]);
+
+  const handleDeleteEntry = useCallback(async (entry: AdminEntry) => {
     const navId = navIdByContent.get(entry.nodeId);
     if (!navId) {
       banner.error('找不到该章节的导航节点');
@@ -176,482 +430,152 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
       confirmLabel: '删除',
     });
     if (!ok) return;
-    try {
-      await structureApi.deleteNode(navId);
-      banner.success('已删除');
-      if (selectedEntryId === entry.nodeId) selectEntry(null);
-      await Promise.all([loadDetail(), onReload()]);
-    } catch (err) {
-      banner.error(parseError(err, '删除失败'));
-    }
-  };
+    await structureApi.deleteNode(navId);
+    banner.success('已删除');
+    const next = new URLSearchParams(searchParams);
+    next.delete('chapter');
+    setSearchParams(next, { replace: true });
+    await reloadActive();
+  }, [confirm, navIdByContent, reloadActive, searchParams, setSearchParams]);
 
-  /* loading/error 必须撑满父并居中——父是横向 flex 容器,默认 flex item 宽是内容自然宽,
-   * 直接 return <LoadingState/> 会左对齐 + 切换时位置闪一下。 */
+  const handleDeleteNode = useCallback((node: StructureNode) => {
+    if (node.contentItemId === row.contentItemId) {
+      onDelete();
+      return;
+    }
+    const entry = detail?.entries.find((e) => e.nodeId === node.contentItemId);
+    if (entry) void handleDeleteEntry(entry);
+  }, [detail?.entries, handleDeleteEntry, onDelete, row.contentItemId]);
+
+  const handleMoveConfirm = useCallback(async (targetFolderId: string | null) => {
+    if (!moveTarget) return;
+    await structureApi.updateNode(moveTarget.id, { parentId: targetFolderId });
+    await reloadActive();
+  }, [moveTarget, reloadActive]);
+
   if (loading) return (
     <div className="flex h-full w-full items-center justify-center">
       <LoadingState variant="inline" />
     </div>
   );
-  if (error)
-    return (
-      <div className="flex h-full w-full items-center justify-center p-8">
-        <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>
-      </div>
-    );
-  if (!detail) return null;
+  if (error) return (
+    <div className="flex h-full w-full items-center justify-center p-8">
+      <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>
+    </div>
+  );
+  if (!detail || !activeNode || !content) return null;
 
-  // 视图分流:章节预览 vs 文集概览
-  const selectedEntry = selectedEntryId
-    ? detail.entries.find((e) => e.nodeId === selectedEntryId) ?? null
-    : null;
+  const editUrl = selectedEntry
+    ? `/admin/anthology/${selectedEntry.nodeId}/edit?at=${row.contentItemId}`
+    : `/admin/anthology/${row.contentItemId}/edit`;
+  const latestHistoryEntry = history.find(
+    (entry) => entry.versionId === content.latestVersion.versionId,
+  );
+  const canEditSummary = !!latestHistoryEntry && (latestHistoryEntry.source ?? 'user') === 'user';
 
-  /* Layout 横向三段:
-   *   左主体(中区内容,竖向滚动) | 右版本栏(只在选中章节时出现,与笔记/画廊心智一致)
-   * 文集概览态没有右栏(后端未暴露文集级 history,且 OverviewView 没有"被预览的某版本"概念) */
   return (
-    <div className="flex h-full w-full min-w-0 overflow-hidden">
+    <div className="flex h-full w-full min-w-0 overflow-hidden" style={{ background: 'var(--paper)' }}>
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="flex-1 overflow-y-auto px-10 py-8">
-        {selectedEntry ? (
-          <EntryPreviewView
-            entry={selectedEntry}
-            onEdit={() => {
-              window.location.href = `/admin/anthology/${selectedEntry.nodeId}/edit?at=${row.contentItemId}`;
-            }}
-            onDelete={() => void handleDeleteEntry(selectedEntry)}
-          />
-        ) : (
-          <AnthologyOverviewView
-            row={row}
-            detail={detail}
-            onEditPreface={() => {
-              window.location.href = `/admin/anthology/${row.contentItemId}/edit`;
-            }}
-            onPublish={handlePublish}
-            onUnpublish={handleUnpublish}
-            onPublishAll={handlePublishAll}
-            onDelete={onDelete}
-            onReload={() => void loadDetail()}
-          />
-        )}
+        <div
+          className="flex-1 overflow-y-auto px-10 py-9 max-[520px]:px-4"
+          ref={previewRef}
+        >
+          <div className="mx-auto w-full max-w-[var(--layout-reading-max)]">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeNode.id}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -2 }}
+                transition={{ duration: 0.2, ease: smoothBounce }}
+              >
+                <ContentVersionView
+                  node={activeNode}
+                  content={content}
+                  loading={selectedEntry ? entryLoading : false}
+                  error={selectedEntry ? entryError : ''}
+                  preview={preview}
+                  previewLoading={previewLoading}
+                  canEditSummary={canEditSummary}
+                  onSaveSummary={handleSaveSummary}
+                  onReload={() => reloadActive({ silent: true })}
+                  onPublish={handlePublish}
+                  onUnpublish={handleUnpublish}
+                  onExitPreview={() => setPreview(null)}
+                  onPublishPreview={handlePublishPreview}
+                  onEdit={handleEditNode}
+                  onDelete={handleDeleteNode}
+                  onMoveTo={setMoveTarget}
+                  onPublishAll={!selectedEntry && detail.entries.length > 0 ? handlePublishAll : undefined}
+                />
+              </motion.div>
+            </AnimatePresence>
+          </div>
         </div>
       </div>
 
-      {/* 右栏 — 宽度 261px / 无 border-l,对齐 /admin/notes 右栏(设计语言"无栏线") */}
-      {selectedEntry && (
-        <aside
-          className="flex shrink-0 flex-col"
-          style={{ width: '261px' }}
-        >
-          <EntryVersionsRail
-            anthologyContentItemId={row.contentItemId}
-            entryNodeId={selectedEntry.nodeId}
-            publishedVersionId={selectedEntry.publishedVersionId}
-          />
-        </aside>
-      )}
+      <aside
+        className="flex shrink-0 flex-col overflow-hidden px-5 py-7"
+        style={{ width: 'var(--layout-context)' }}
+      >
+        <FormalSidePanel
+          toc={toc}
+          activeIndex={activeIndex}
+          onScrollToHeading={scrollToHeading}
+          draftPresence={draftPresence}
+          history={history}
+          historyLoading={historyLoading}
+          publishedVersionId={content.publishedVersion?.versionId ?? null}
+          activeVersionId={preview?.versionId ?? null}
+          onEditDraft={() => {
+            window.location.href = editUrl;
+          }}
+          onSelectVersion={handlePreviewVersion}
+        />
+      </aside>
 
       {modal.open && (
         <NodeFormModal
           modal={modal}
           onClose={() => setModal({ open: false, mode: 'create' })}
-          onSubmit={handleCreateEntry}
+          onSubmit={handleModalSubmit}
           scope="anthology"
+        />
+      )}
+      {moveTarget && (
+        <MoveToDialog
+          node={moveTarget}
+          scope="anthology"
+          onConfirm={handleMoveConfirm}
+          onClose={() => setMoveTarget(null)}
         />
       )}
     </div>
   );
 }
 
-/** 章节右栏 — 严格抄笔记 ContentAdmin > FormalSidePanel 三段(大纲/编辑/版本)的视觉与结构。
- *  数据各自简化拉取:大纲暂留空(后续解析章节正文标题再补);编辑段拉 anthology draft;版本段已成熟。
- *  心智与笔记完全一致——uppercase caption、字号、间距、InfoRow/SideLink helpers 全部照抄。 */
-function EntryVersionsRail({
-  anthologyContentItemId, entryNodeId, publishedVersionId,
-}: {
-  anthologyContentItemId: string;
-  entryNodeId: string;
-  publishedVersionId: string | null;
-}) {
-  const [history, setHistory] = useState<ContentHistoryEntry[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(true);
-  const [historyError, setHistoryError] = useState('');
-  const [draftExists, setDraftExists] = useState(false);
-  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
-
-  /* 版本历史 */
-  useEffect(() => {
-    let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setHistoryLoading(true);
-    setHistoryError('');
-    void (async () => {
-      try {
-        const data = await request<ContentHistoryEntry[]>(
-          `/spaces/anthology/items/${anthologyContentItemId}/entries/${entryNodeId}/history`,
-        );
-        if (!cancelled) setHistory(data);
-      } catch (err) {
-        if (!cancelled) setHistoryError(parseError(err, '加载版本历史失败'));
-      } finally {
-        if (!cancelled) setHistoryLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [anthologyContentItemId, entryNodeId]);
-
-  /* 草稿状态(getNodeDraft 后端 200 返回 null = 无草稿) */
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const draft = await workspaceApi.getNodeDraft('anthology', entryNodeId);
-        if (cancelled) return;
-        setDraftExists(!!draft);
-        setDraftSavedAt(draft?.savedAt ?? null);
-      } catch {
-        if (!cancelled) {
-          setDraftExists(false);
-          setDraftSavedAt(null);
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [entryNodeId]);
-
-  const goToEditor = () => {
-    /* 带 ?at=文集id 让编辑器返回时定位到条目选中态 */
-    window.location.href = `/admin/anthology/${entryNodeId}/edit?at=${anthologyContentItemId}`;
+function normalizeVersion(
+  version: Partial<ContentVersion> | null | undefined,
+  fallbackId: string,
+  fallbackTitle: string,
+): ContentVersion {
+  return {
+    versionId: version?.versionId || fallbackId,
+    commitHash: version?.commitHash ?? '',
+    title: version?.title ?? fallbackTitle,
+    summary: version?.summary ?? '',
   };
-
-  return (
-    <div className="flex h-full flex-col overflow-hidden px-5 py-7">
-      {/* 大纲 — flex-1,内部滚动;暂占位"暂无标题"(后续接章节正文 toc 解析) */}
-      <div className="mb-5 flex min-h-0 flex-1 flex-col">
-        <SectionCaption>大纲</SectionCaption>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>暂无标题</p>
-        </div>
-      </div>
-
-      {/* 编辑 — shrink-0,固定高度,显示草稿状态 + 入口链接 */}
-      <div className="mb-5 shrink-0">
-        <SectionCaption>编辑</SectionCaption>
-        {draftExists ? (
-          <div className="space-y-2">
-            <InfoRow label="已有草稿" value="是" />
-            <InfoRow
-              label="上次保存"
-              value={draftSavedAt ? new Date(draftSavedAt).toLocaleString('zh-CN') : '--'}
-            />
-            <div className="flex gap-4 pt-2">
-              <SideLink label="继续编辑 →" primary onClick={goToEditor} />
-            </div>
-          </div>
-        ) : (
-          <>
-            <p className="mb-3.5 text-xs leading-relaxed" style={{ color: 'var(--ink-ghost)' }}>
-              进入编辑器创建草稿
-            </p>
-            <SideLink label="开始编辑 →" primary onClick={goToEditor} />
-          </>
-        )}
-      </div>
-
-      {/* 版本 — flex-1,内部滚动 */}
-      <div className="flex min-h-0 flex-1 flex-col">
-        <SectionCaption>版本</SectionCaption>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {historyLoading ? (
-            <LoadingState variant="inline" />
-          ) : historyError ? (
-            <p className="text-xs" style={{ color: 'var(--danger)' }}>{historyError}</p>
-          ) : history.length === 0 ? (
-            <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>暂无版本</p>
-          ) : (
-            <VersionTimeline
-              history={history}
-              publishedVersionId={publishedVersionId}
-            />
-          )}
-        </div>
-      </div>
-    </div>
-  );
 }
 
-/* ── helpers 抄自 content/index.tsx ────────────────────────────────── */
-
-function SectionCaption({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      className="mb-2.5 shrink-0 text-2xs font-semibold uppercase"
-      style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between py-0.5">
-      <span className="text-xs" style={{ color: 'var(--ink-faded)' }}>{label}</span>
-      <span className="text-xs font-medium" style={{ color: 'var(--ink)' }}>{value}</span>
-    </div>
-  );
-}
-
-/** 顶部操作行的文本链接(对齐笔记 ContentVersionView 的 TextLink):
- *  灰字 + hover 变深,无 bg、无 border。用于"刷新"、"返回最新"等次要操作 */
-function TextLink({
-  label, onClick,
-}: {
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      className="nav-item text-xs transition-colors duration-150"
-      style={{
-        color: 'var(--ink-faded)',
-        background: 'none', border: 'none', cursor: 'pointer',
-        fontFamily: 'inherit', padding: '4px 0',
-      }}
-      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--ink)'; }}
-      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-faded)'; }}
-      onClick={onClick}
-    >
-      {label}
-    </button>
-  );
-}
-
-function SideLink({
-  label, primary, onClick,
-}: {
-  label: string;
-  primary?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      className="text-xs transition-colors duration-150"
-      style={{
-        color: primary ? 'var(--ink)' : 'var(--ink-faded)',
-        fontWeight: primary ? 600 : 400,
-        background: 'none', border: 'none', cursor: 'pointer',
-        fontFamily: 'inherit', padding: '4px 0',
-      }}
-      onClick={onClick}
-    >
-      {label}
-    </button>
-  );
-}
-
-/* ── 视图 1:文集概览 ────────────────────────────────────────── */
-
-function AnthologyOverviewView({
-  row, detail,
-  onEditPreface, onPublish, onUnpublish, onPublishAll, onDelete, onReload,
-}: {
-  row: AnthologyRow;
-  detail: AnthologyAdminDetail;
-  onEditPreface: () => void;
-  onPublish: () => void;
-  onUnpublish: () => void;
-  onPublishAll: () => void;
-  onDelete: () => void;
-  onReload: () => void;
-}) {
-  const updateYmd = new Date(row.updatedAt).toLocaleDateString('zh-CN', {
-    month: 'numeric', day: 'numeric',
-  });
-
-  /* 文集自身的 history 后端未暴露(只有章节级 /entries/:nodeId/history),
-   * 这里暂不挂版本按钮——避免点击 404。后端补 endpoint 后再开。 */
-  return (
-    <>
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-2xl font-medium" style={{ color: 'var(--ink)' }}>
-            {detail.title || '无标题'}
-          </h1>
-          <p className="mt-2 flex items-center gap-2 text-xs" style={{ color: 'var(--ink-faded)' }}>
-            <span>{row.entryCount} 篇</span>
-            <span>·</span>
-            <StatusBadge status={detail.status} hasUnpublishedChanges={detail.hasUnpublishedChanges} />
-            <span>·</span>
-            <span>{updateYmd} 更新</span>
-          </p>
-        </div>
-        {/* 操作组(对齐笔记 ContentVersionView header):刷新文本链接 + ⋯ 菜单 */}
-        <div className="flex shrink-0 items-center gap-4 pt-1">
-          <TextLink label="刷新" onClick={onReload} />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button type="button"
-                className="nav-item rounded-md p-1.5 transition-colors hover:text-[var(--ink)]"
-                style={{ color: 'var(--ink-faded)' }} aria-label="文集操作">
-                <MoreHorizontal size={18} strokeWidth={1.5} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onEditPreface}>
-                <FileEdit size={14} strokeWidth={1.5} className="mr-2" />
-                编辑卷首语
-              </DropdownMenuItem>
-              {detail.status === 'published'
-                ? <DropdownMenuItem onClick={onUnpublish}>取消发布</DropdownMenuItem>
-                : <DropdownMenuItem onClick={onPublish}>发布文集</DropdownMenuItem>}
-              {detail.status === 'published' && (
-                <DropdownMenuItem onClick={onPublishAll}>一键发布全部</DropdownMenuItem>
-              )}
-              <DropdownMenuItem onClick={onDelete} style={{ color: 'var(--danger)' }}>
-                删除文集
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-
-      {/* 简介 / 卷首语正文预览。中区不放章节列表——章节已挪到左栏钻入层。 */}
-      <div className="pt-2">
-        <p className="text-sm leading-relaxed" style={{ color: 'var(--ink-faded)' }}>
-          {detail.description || '暂无简介'}
-        </p>
-        {detail.bodyMarkdown.trim() && (
-          <div className="mt-6">
-            <MarkdownBody markdown={detail.bodyMarkdown} contentItemId={row.contentItemId} />
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
-/* ── 视图 2:章节预览 ────────────────────────────────────────── */
-
-function EntryPreviewView({
-  entry, onEdit, onDelete,
-}: {
-  entry: AdminEntry;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  // 章节正文:再 fetch 一次,因为 toAdminEntryRef 不带正文
-  const [body, setBody] = useState<EntryDetail | null>(null);
-  const [bodyLoading, setBodyLoading] = useState(true);
-  const [bodyError, setBodyError] = useState('');
-
-  /* fetchBody 抽出来:useEffect 首次拉 + 顶部「刷新」按钮再拉 */
-  const fetchBody = useCallback(async () => {
-    setBodyLoading(true);
-    setBodyError('');
-    try {
-      const d = (await workspaceApi.getById('anthology', entry.nodeId, {
-        visibility: 'all',
-      })) as unknown as EntryDetail;
-      setBody(d);
-    } catch (err) {
-      setBodyError(parseError(err, '加载章节正文失败'));
-    } finally {
-      setBodyLoading(false);
-    }
-  }, [entry.nodeId]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void fetchBody();
-  }, [fetchBody]);
-
-  const isPublished = !!entry.publishedVersionId;
-  // commitHash 字段笔记中区有(来自 Snapshot),这里用 publishedVersionId 兜底,
-  // 没发布过则用 nodeId 前 8 位让 pill 仍有形态(语义=该节点 id 的速写,跟笔记 pill 视觉一致)。
-  const pillHash = entry.publishedVersionId ?? entry.nodeId;
-
-  /* 视觉严格抄笔记 ContentVersionView header:
-   *  - 大标题 text-5xl serif bold(用 var(--font-reading) 阅读体)
-   *  - 状态徽章(VersionStatusPill 风格) + 时间
-   *  - 右操作组: 编辑 + ⋯ 菜单
-   *  - 不放面包屑(左栏两段栈已表达层级,跟笔记心智一致——左侧结构面板管层级) */
-  return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <h2
-            className="text-5xl font-bold"
-            style={{ color: 'var(--ink)', fontFamily: 'var(--font-reading)', letterSpacing: '-0.025em' }}
-          >
-            {entry.title || '(空章节)'}
-          </h2>
-          <div className="mt-2 flex items-center gap-2.5">
-            <VersionStatusPill isPublished={isPublished} commitHash={pillHash} />
-            <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>
-              {entry.updatedAt ? new Date(entry.updatedAt).toLocaleString('zh-CN') : '--'}
-            </span>
-          </div>
-          {/* 中区不再放返回入口——想看文集本身,点左栏顶部的文集名(那是用户认知里的"回卷")。
-            *  原 ChevronLeft + 《文集名》面包屑已删。 */}
-        </div>
-        <div className="flex shrink-0 items-center gap-4 pt-1">
-          <TextLink label="刷新" onClick={() => void fetchBody()} />
-          <TextLink label="编辑" onClick={onEdit} />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className="flex h-6 w-6 items-center justify-center rounded-md transition-opacity hover:opacity-70 focus:outline-none data-[state=open]:opacity-100"
-                style={{ color: 'var(--ink-ghost)' }}
-                aria-label="章节操作"
-              >
-                <MoreHorizontal size={14} strokeWidth={1.5} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[120px]">
-              <DropdownMenuItem onClick={onDelete} style={{ color: 'var(--danger)' }}>
-                删除章节
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-
-      {/* 正文 — 不带 border-t 分割(设计语言:无栏线),直接续在 header 后 */}
-      <div className="pt-2">
-        {bodyLoading ? (
-          <LoadingState variant="inline" />
-        ) : bodyError ? (
-          <p className="text-sm" style={{ color: 'var(--danger)' }}>{bodyError}</p>
-        ) : body && body.bodyMarkdown.trim() ? (
-          <MarkdownBody markdown={body.bodyMarkdown} contentItemId={entry.nodeId} />
-        ) : (
-          <p className="py-8 text-center text-xs" style={{ color: 'var(--ink-ghost)' }}>
-            (空章节,点右上「编辑」开始写)
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** 抄笔记 ContentVersionView 的 VersionStatusPill,视觉/字号/圆角完全一致 */
-function VersionStatusPill({ isPublished, commitHash }: { isPublished: boolean; commitHash: string }) {
-  return (
-    <span
-      className="inline-flex items-center gap-[5px] rounded-full px-2.5 py-[3px] text-2xs font-medium"
-      style={{
-        background: isPublished ? 'var(--success-soft)' : 'var(--accent-soft)',
-        color: isPublished ? 'var(--mark-green)' : 'var(--ink-faded)',
-      }}
-    >
-      <span className="h-[5px] w-[5px] rounded-full" style={{ background: 'currentColor' }} />
-      {isPublished ? '已发布' : '已提交'}
-      <span style={{ fontFamily: 'var(--font-mono)', opacity: 0.7 }}>
-        {commitHash.slice(0, 8)}
-      </span>
-    </span>
-  );
+function extractMarkdownHeadings(markdown: string): { level: number; text: string }[] {
+  const headings: { level: number; text: string }[] = [];
+  for (const line of markdown.split('\n')) {
+    const match = /^(#{1,3})\s+(.+?)\s*#*$/.exec(line.trim());
+    if (!match) continue;
+    headings.push({
+      level: match[1].length,
+      text: match[2].trim(),
+    });
+  }
+  return headings;
 }

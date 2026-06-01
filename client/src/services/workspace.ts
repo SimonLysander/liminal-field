@@ -314,6 +314,17 @@ export const workspaceApi = {
       method: 'PUT',
     }),
 
+  /** 轻量更新元数据(摘要/简介等)。notes/anthology 均有静态 meta 路由。 */
+  patchMeta: <T = ContentDetail>(
+    scope: 'notes' | 'anthology',
+    id: string,
+    dto: { summary?: string },
+  ) =>
+    request<T>(`/spaces/${scope}/items/${id}/meta`, {
+      method: 'PATCH',
+      body: JSON.stringify(dto),
+    }),
+
   listAssets: (scope: string, id: string) =>
     request<ListedAsset[]>(`/spaces/${scope}/items/${id}/assets`),
 
@@ -624,4 +635,3 @@ export interface HomeData {
 export const homeApi = {
   get: () => request<HomeData>('/home'),
 };
-

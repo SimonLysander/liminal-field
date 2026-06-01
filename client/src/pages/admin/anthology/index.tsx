@@ -332,7 +332,6 @@ const AnthologyAdmin = () => {
                 <ul className="space-y-1.5">
                   {entries.map((entry) => {
                     const active = entry.nodeId === selectedEntryContentItemId;
-                    const isPublished = !!entry.publishedVersionId;
                     const updateYmd = entry.updatedAt
                       ? new Date(entry.updatedAt).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
                       : '--';
@@ -357,17 +356,11 @@ const AnthologyAdmin = () => {
                           >
                             {entry.title || '无标题'}
                           </div>
-                          {/* 状态点(compact) + M/D 更新 — 紧凑信息行 */}
                           <div
-                            className="mt-1 flex items-center gap-1.5 truncate text-2xs"
+                            className="mt-1 truncate text-2xs"
                             style={{ color: 'var(--ink-ghost)' }}
                           >
-                            <StatusBadge
-                              status={isPublished ? 'published' : 'committed'}
-                              hasUnpublishedChanges={entry.hasUnpublishedChanges}
-                              compact
-                            />
-                            <span>{updateYmd} 更新</span>
+                            {updateYmd} 更新
                           </div>
                         </button>
                       </li>
@@ -389,6 +382,9 @@ const AnthologyAdmin = () => {
                 <ul className="space-y-1">
                   {rows.map((row) => {
                     const active = row.contentItemId === selectedContentItemId;
+                    const updateYmd = row.updatedAt
+                      ? new Date(row.updatedAt).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
+                      : '--';
                     return (
                       <li key={row.contentItemId}>
                         <button
@@ -416,10 +412,7 @@ const AnthologyAdmin = () => {
                           >
                             <span>{row.entryCount} 篇</span>
                             <span>·</span>
-                            <StatusBadge
-                              status={row.status}
-                              hasUnpublishedChanges={row.hasUnpublishedChanges}
-                            />
+                            <span>{updateYmd} 更新</span>
                           </div>
                         </button>
                       </li>
@@ -463,7 +456,12 @@ const AnthologyAdmin = () => {
           {selectedRow ? (
             <AnthologyDetailPanel
               row={selectedRow}
-              onReload={loadList}
+              onReload={async () => {
+                await Promise.all([
+                  loadList(),
+                  loadEntries(selectedRow.contentItemId),
+                ]);
+              }}
               onDelete={() => handleDeleteAnthology(selectedRow)}
             />
           ) : (
@@ -491,56 +489,6 @@ const AnthologyAdmin = () => {
     </>
   );
 };
-
-/* 状态徽章 — 严格遵设计宪法 §3.0/§3.2:
- *   语义信号优先「文字 + 小点」,不糊色块;颜色只剩红/绿(蓝已砍)。
- *   - 草稿        → 灰字「草稿」(默认,无点)
- *   - 已发布      → 小绿点 + 灰字「已发布」(success)
- *   - 有未发布改动 → 小红点 + 灰字「有未发布改动」(danger 语义)
- *   - compact 模式 → 只显示点,无文字(配合 ListRow 卡片副信息使用,节省空间);
- *                   草稿无文字时显示灰点,保持有形可视。 */
-function StatusBadge({ status, hasUnpublishedChanges, compact }: {
-  status: 'committed' | 'published';
-  hasUnpublishedChanges: boolean;
-  compact?: boolean;
-}) {
-  if (compact) {
-    const bg =
-      status !== 'published' ? 'var(--ink-ghost)' :
-      hasUnpublishedChanges ? 'var(--danger)' :
-      'var(--success)';
-    const label =
-      status !== 'published' ? '草稿' :
-      hasUnpublishedChanges ? '有未发布改动' : '已发布';
-    return (
-      <span
-        className="inline-block size-1.5 shrink-0 rounded-full"
-        style={{ background: bg }}
-        title={label}
-        aria-label={label}
-      />
-    );
-  }
-  if (status !== 'published') {
-    return <span style={{ color: 'var(--ink-ghost)' }}>草稿</span>;
-  }
-  if (hasUnpublishedChanges) {
-    return (
-      <span className="inline-flex items-center gap-1" style={{ color: 'var(--ink-faded)' }}>
-        <span className="inline-block size-1.5 rounded-full" style={{ background: 'var(--danger)' }} />
-        有未发布改动
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1" style={{ color: 'var(--ink-faded)' }}>
-      <span className="inline-block size-1.5 rounded-full" style={{ background: 'var(--success)' }} />
-      已发布
-    </span>
-  );
-}
-
-export { StatusBadge };
 
 /* chineseNumeral 已退役(卷宗气韵改卡片视觉后,章节列表不再用中文编号)。 */
 

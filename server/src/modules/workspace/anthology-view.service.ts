@@ -39,6 +39,7 @@ import {
   AnthologyAdminEntryRef,
 } from './dto/anthology-view.dto';
 import { ContentHistoryEntryDto } from '../content/dto/content-history.dto';
+import type { ContentVersionDto } from '../content/dto/content-detail.dto';
 import { EditorDraftRepository } from './editor-draft.repository';
 import { EditorDraft } from './editor-draft.entity';
 import { EditorDraftDto } from './dto/editor-draft.dto';
@@ -172,6 +173,31 @@ export class AnthologyViewService {
 
   // ── 内部辅助 ──────────────────────────────────────────────────────────────
 
+  private toContentVersionDto(
+    version: { versionId?: string; commitHash?: string; title?: string; summary?: string } | null | undefined,
+  ): ContentVersionDto | null {
+    if (!version) return null;
+    return {
+      versionId: version.versionId,
+      commitHash: version.commitHash ?? '',
+      title: version.title ?? '',
+      summary: version.summary ?? '',
+    };
+  }
+
+  private assertMainSnapshotBelongsTo(
+    snapshot: ContentSnapshot,
+    contentItemId: string,
+    versionId: string,
+  ): void {
+    if (
+      snapshot.contentItemId !== contentItemId ||
+      (snapshot.fileName ?? null) !== null
+    ) {
+      throw new NotFoundException(`Version ${versionId} not found`);
+    }
+  }
+
   /**
    * 加载并解析最新的索引 snapshot(容器 main.md),含 title/description 和卷首语 body。
    * 刚创建尚无快照时返回空默认值(不抛异常)。
@@ -203,6 +229,11 @@ export class AnthologyViewService {
     if (!node)
       throw new NotFoundException(`Anthology ${contentItemId} not found`);
     return node;
+  }
+
+  async isAnthologyContainer(contentItemId: string): Promise<boolean> {
+    const node = await this.getAnthologyNode(contentItemId);
+    return !node.parentId;
   }
 
   /**
@@ -354,8 +385,11 @@ export class AnthologyViewService {
    * 文集级发布(上线):把文集容器的 publishedVersion 指向当前最新索引 snapshot。
    * 发布顺序(2026-05-28):文集先上线,再逐条发布条目。
    */
-  async publishAnthology(contentItemId: string): Promise<void> {
-    await this.contentService.publishVersion(contentItemId);
+  async publishAnthology(
+    contentItemId: string,
+    versionId?: string,
+  ): Promise<void> {
+    await this.contentService.publishVersion(contentItemId, versionId);
   }
 
   /**
@@ -399,6 +433,47 @@ export class AnthologyViewService {
    */
   async publishLatest(contentItemId: string): Promise<void> {
     await this.publishAnthologyAndDescendants(contentItemId);
+  }
+
+  /**
+   * 轻量更新文集元数据。
+   *
+   * 文集简介同时存在于 latestVersion.summary 与容器 main.md frontmatter.description。
+   * 为避免刷新后从 snapshot 解析回旧值,这里提交一版新的容器索引快照。
+   */
+  async patchMeta(
+    contentItemId: string,
+    fields: { summary?: string },
+  ): Promise<Awaited<ReturnType<AnthologyViewService['toAdminDetail']>> | { success: true }> {
+    const item = await this.contentRepository.findById(contentItemId);
+    if (!item)
+      throw new NotFoundException(`Anthology ${contentItemId} not found`);
+
+    const node =
+      await this.navigationRepository.findByContentItemId(contentItemId);
+    if (node?.parentId) {
+      await this.contentService.patchMeta(contentItemId, fields);
+      return { success: true };
+    }
+
+    const index = await this.loadIndex(contentItemId);
+    const title = item.latestVersion?.title || index.title;
+    const description = fields.summary ?? item.latestVersion?.summary ?? '';
+
+    await this.contentService.saveContent(contentItemId, {
+      title,
+      summary: description,
+      bodyMarkdown: serializeAnthologyIndex({
+        title,
+        description,
+        body: index.body,
+      }),
+      changeNote: '更新文集简介',
+      status: ContentStatus.committed,
+      action: ContentSaveAction.commit,
+    });
+
+    return this.toAdminDetail(contentItemId);
   }
 
   // ── 阅读端 DTO 组装 ──────────────────────────────────────────────────────
@@ -606,6 +681,7 @@ export class AnthologyViewService {
     if (!snapshot) {
       throw new NotFoundException(`Version ${versionId} not found`);
     }
+    this.assertMainSnapshotBelongsTo(snapshot, nodeId, versionId);
 
     const parsed = parseEntryContent(snapshot.bodyMarkdown);
 
@@ -624,6 +700,7 @@ export class AnthologyViewService {
     return {
       nodeId,
       title: this.entryTitle(entryNode, entryItem),
+      summary: snapshot.summary ?? '',
       date: parsed.date ?? snapshot.createdAt.toISOString().split('T')[0],
       updatedAt: snapshot.createdAt.toISOString(),
       bodyMarkdown: parsed.bodyMarkdown,
@@ -665,6 +742,51 @@ export class AnthologyViewService {
     }));
   }
 
+  async getAnthologyHistory(
+    contentItemId: string,
+  ): Promise<ContentHistoryEntryDto[]> {
+    await this.getAnthologyNode(contentItemId);
+    const snapshots = await this.contentService.listVersionsByFileName(
+      contentItemId,
+      null,
+    );
+    return snapshots.map((snap) => ({
+      versionId: snap.versionId,
+      commitHash: snap.commitHash ?? '',
+      committedAt: snap.createdAt.toISOString(),
+      changeType: 'patch',
+      changeNote: snap.changeNote ?? '',
+      source: snap.source ?? 'user',
+      title: snap.title,
+    }));
+  }
+
+  async getAnthologyByVersion(
+    contentItemId: string,
+    versionId: string,
+  ): Promise<{
+    id: string;
+    title: string;
+    description: string;
+    bodyMarkdown: string;
+    updatedAt: string;
+  }> {
+    await this.getAnthologyNode(contentItemId);
+    const snapshot = await this.snapshotRepository.findByVersionId(versionId);
+    if (!snapshot) {
+      throw new NotFoundException(`Version ${versionId} not found`);
+    }
+    this.assertMainSnapshotBelongsTo(snapshot, contentItemId, versionId);
+    const parsed = parseAnthologyIndex(snapshot.bodyMarkdown);
+    return {
+      id: contentItemId,
+      title: snapshot.title || parsed.title,
+      description: snapshot.summary ?? parsed.description,
+      bodyMarkdown: parsed.body,
+      updatedAt: snapshot.createdAt.toISOString(),
+    };
+  }
+
   // ── 管理端容器视图(暴露给 controller 用的轻量 DTO) ─────────────────────
 
   /**
@@ -675,9 +797,12 @@ export class AnthologyViewService {
     id: string;
     title: string;
     description: string;
+    latestVersion: ContentVersionDto | null;
+    publishedVersion: ContentVersionDto | null;
     bodyMarkdown: string;
     status: 'committed' | 'published';
     hasUnpublishedChanges: boolean;
+    updatedAt: string;
     entries: AnthologyAdminEntryRef[];
   }> {
     const item = await this.contentRepository.findById(contentItemId);
@@ -692,11 +817,14 @@ export class AnthologyViewService {
       id: contentItemId,
       title: item.latestVersion?.title || indexData.title,
       description: indexData.description,
+      latestVersion: this.toContentVersionDto(item.latestVersion),
+      publishedVersion: this.toContentVersionDto(item.publishedVersion),
       bodyMarkdown: indexData.body,
       status: item.publishedVersion ? 'published' : 'committed',
       hasUnpublishedChanges: item.publishedVersion
         ? item.latestVersion?.versionId !== item.publishedVersion.versionId
         : false,
+      updatedAt: item.updatedAt.toISOString(),
       entries: await this.toAdminEntryRefs(children),
     };
   }
@@ -725,6 +853,8 @@ export class AnthologyViewService {
           nodeId,
           title: this.entryTitle(node, item),
           date,
+          latestVersion: this.toContentVersionDto(item?.latestVersion),
+          publishedVersion: this.toContentVersionDto(item?.publishedVersion),
           hasContent: !!snapshot && snapshot.bodyMarkdown.trim().length > 0,
           publishedVersionId,
           hasUnpublishedChanges,

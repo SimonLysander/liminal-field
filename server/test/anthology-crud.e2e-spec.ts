@@ -252,6 +252,37 @@ describe('Anthology CRUD (e2e, Phase 1 page-tree)', () => {
         .expect(200);
       expect(res.body.data.bodyMarkdown).toContain('这是一段卷首语');
     });
+
+    it('PATCH meta 更新简介 → 管理端详情读到新简介且保留卷首语', async () => {
+      const id = await createAnthologyItem(ctx.app, cookie, '简介 inline edit 文集');
+      const PREFACE = '## 卷首\n\n这段卷首语不能丢。';
+
+      await supertest(ctx.app.getHttpServer())
+        .put(`/api/v1/spaces/anthology/items/${id}`)
+        .set('Cookie', cookie)
+        .send({
+          title: '简介 inline edit 文集',
+          bodyMarkdown: PREFACE,
+          changeNote: '写卷首语',
+        })
+        .expect(200);
+
+      const patchRes = await supertest(ctx.app.getHttpServer())
+        .patch(`/api/v1/spaces/anthology/items/${id}/meta`)
+        .set('Cookie', cookie)
+        .send({ summary: '新的文集简介' })
+        .expect(200);
+
+      expect(patchRes.body.data.description).toBe('新的文集简介');
+      expect(patchRes.body.data.bodyMarkdown).toContain('这段卷首语不能丢');
+
+      const detailRes = await supertest(ctx.app.getHttpServer())
+        .get(`/api/v1/spaces/anthology/items/${id}?visibility=all`)
+        .set('Cookie', cookie)
+        .expect(200);
+      expect(detailRes.body.data.description).toBe('新的文集简介');
+      expect(detailRes.body.data.bodyMarkdown).toContain('这段卷首语不能丢');
+    });
   });
 
   // ─── scope 隔离 ─────────────────────────────────────────────────────
