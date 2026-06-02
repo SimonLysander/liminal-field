@@ -92,6 +92,10 @@ export function FloatingToolbarButtons({
 
         <LinkToolbarButton />
       </ToolbarGroup>
+      {/* 用户高亮按钮(WritingHighlightButton)2026-06-02 撤回:
+       *   markdown 持久化层不支持 inline 字色/背景色,刷新即丢;且 Plate 浮动 toolbar
+       *   selection 时序问题导致部分点击不生效。需要等"高亮持久化"专门阶段重做。
+       *   CSS var(--writing-*) 和 design-language.md §3.3 色板定义保留作资产,届时直接复用。 */}
     </>
   );
 }

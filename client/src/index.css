@@ -277,6 +277,21 @@
   --frame-border: rgba(255,255,255,0.12);
   --frame-text: rgba(0,0,0,0.3);
   --caption-color: rgba(0,0,0,0.45);
+
+  /* ── 用户高亮色板(§3.3 唯一允许彩色进正文的入口)— 4 色 + 修辞角色 ──
+   *   朱批红 = 强调 / 关键字
+   *   长春花紫 = 题旨 / 主题词
+   *   灰蓝 = 引述 / 对话
+   *   苔绿 = 注解 / 作者插话
+   *   值用 var,Plate FontColor mark 存 var 引用,暗夜模式自动切深浅版本 */
+  --writing-red:    #B85A4E;
+  --writing-purple: #6667AB;
+  --writing-blue:   #6E8AA0;
+  --writing-green:  #6E8462;
+  --writing-red-bg:    rgba(184, 90, 78, 0.20);
+  --writing-purple-bg: rgba(102, 103, 171, 0.20);
+  --writing-blue-bg:   rgba(110, 138, 160, 0.20);
+  --writing-green-bg:  rgba(110, 132, 98, 0.20);
 }
 
 /* Midnight — dark theme with white accent */
@@ -384,6 +399,16 @@
   --frame-border: rgba(255,255,255,0.06);
   --frame-text: rgba(255,255,255,0.25);
   --caption-color: rgba(255,255,255,0.5);
+
+  /* ── 用户高亮 midnight 版(同 4 色提亮版本,确保暗底可读) ── */
+  --writing-red:    #D67A6E;
+  --writing-purple: #9091CE;
+  --writing-blue:   #8AA6BC;
+  --writing-green:  #8AA078;
+  --writing-red-bg:    rgba(214, 122, 110, 0.22);
+  --writing-purple-bg: rgba(144, 145, 206, 0.22);
+  --writing-blue-bg:   rgba(138, 166, 188, 0.22);
+  --writing-green-bg:  rgba(138, 160, 120, 0.22);
 }
 
 /* ========== Editor Caret ========== */

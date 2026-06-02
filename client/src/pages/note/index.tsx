@@ -1,36 +1,22 @@
 /*
- * NotePage — Article reader with TOC and AI chat
+ * NotePage — 笔记阅读端,URL query 决定渲染哪个子视图(详见 NotePage 注释)。
  *
- * Reading width: max-w-[var(--layout-reading-max)] + px-10（与编辑区阅读宽度一致）。
- *
- * Scroll-to-heading technique:
- *   Headings are rendered with data-heading-id attributes by MarkdownBody.
- *   scrollToHeading() uses getBoundingClientRect() to calculate the target
- *   position relative to the scroll container (not the viewport), then calls
- *   container.scrollTo({ behavior: 'smooth' }). CSS scroll-margin-top (80px)
- *   compensates for sticky headers so headings don't hide behind them.
- *
- * TOC panel: --layout-sidebar，与结构侧栏对齐。
- *   Active heading tracked via scroll spy (passive scroll listener), with a
- *   spring-animated paddingLeft shift for the active item.
- *
- * AI chat FAB: radius-xl (12px) panel, radius-full button. Uses the
- *   ai-fab / ai-chat-panel CSS classes for midnight theme overrides.
+ * Reading width: max-w-[var(--layout-reading-max)] + px-10(与编辑区阅读宽度一致)。
+ * TOC / scroll spy / 滚动定位:共享组件 MarkdownTocPanel,逻辑见组件文档。
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AnimatePresence, motion } from 'motion/react';
+import { motion } from 'motion/react';
 import { banner } from '@/components/ui/banner-api';
 import { smoothBounce } from '@/lib/motion';
 import { notesApi as contentItemsApi } from '@/services/workspace';
 import type { ContentDetail } from '@/services/workspace';
 import { structureApi } from '@/services/structure';
 import MarkdownBody from '@/components/shared/MarkdownBody';
+import { MarkdownTocPanel, type TocEntry } from '@/components/shared/MarkdownTocPanel';
 import { LoadingState } from '@/components/LoadingState';
-import { X, Sparkles } from 'lucide-react';
 import { EmptyState } from '@/components/shared/EmptyState';
-import { useScrollFade } from '@/hooks/use-scroll-fade';
 
 /* ================================================================
  * 阅读端按 URL query 分发(与 Sidebar 同源:URL 是唯一真相):
@@ -128,14 +114,20 @@ function FolderReader({ nodeId }: { nodeId: string }) {
   }
 
   const title = content.publishedVersion?.title ?? content.latestVersion.title ?? '';
+  /* 元信息(reader 类「读完仪式感」三件套:更新于 + 字数 + 阅读时间);与 NoteReader 同规格 */
+  const wordCount = content.bodyMarkdown.length || 0;
+  const readMin = Math.max(1, Math.ceil(wordCount / 400));
+  const displayDate = content.updatedAt
+    ? new Date(content.updatedAt)
+    : content.createdAt ? new Date(content.createdAt) : null;
 
   return (
     <div className="relative flex w-full items-stretch overflow-hidden">
       <div className="flex-1 overflow-y-auto py-12">
         <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 max-[520px]:px-4">
-          {/* 主题标题 — 与 NoteReader 一致的衬线大标题入场 */}
+          {/* 主题标题 — 与 NoteReader 一致的衬线大标题入场,mb-4 跟 NoteReader 对齐(原 mb-10 偏大) */}
           <motion.div
-            className="relative mb-10 text-5xl font-bold leading-snug tracking-tight"
+            className="relative mb-4 text-5xl font-bold leading-snug tracking-tight"
             style={{ fontFamily: 'var(--font-serif)', color: 'var(--ink)' }}
             initial={{ opacity: 0, y: 10, filter: 'blur(4px)' }}
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
@@ -144,16 +136,38 @@ function FolderReader({ nodeId }: { nodeId: string }) {
             {title}
           </motion.div>
 
+          {/* 元信息行(纯墨,§3.3 reader 主体一律纯墨;原 pip-a 雾蓝色条违规已删) */}
+          <motion.p
+            className="mb-10 text-xs"
+            style={{ color: 'var(--ink-ghost)' }}
+            initial={{ opacity: 0, filter: 'blur(3px)' }}
+            animate={{ opacity: 1, filter: 'blur(0px)' }}
+            transition={{ duration: 0.4, delay: 0.2, ease: smoothBounce }}
+          >
+            {displayDate && `更新于 ${displayDate.getFullYear()}/${displayDate.getMonth() + 1}/${displayDate.getDate()} · `}
+            {wordCount > 1000 ? `${(wordCount / 1000).toFixed(1)}k` : wordCount} 字 · {readMin} min
+          </motion.p>
+
           {/* Markdown 正文 — 复用 NoteReader 同款 prose 容器与 MarkdownBody 渲染 */}
           <motion.div
             className="note-prose text-lg leading-[1.9]"
             style={{ color: 'var(--ink-light)' }}
             initial={{ opacity: 0, y: 8, filter: 'blur(4px)' }}
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-            transition={{ duration: 0.5, delay: 0.15, ease: smoothBounce }}
+            transition={{ duration: 0.5, delay: 0.25, ease: smoothBounce }}
           >
             <MarkdownBody markdown={content.bodyMarkdown} contentItemId={content.id} />
           </motion.div>
+
+          {/* 章末收束 — 一束勿忘我(纸艺,§3.3 合规) */}
+          <div className="flex items-center justify-center py-24">
+            <img
+              src="/garden/chapter-end.webp"
+              alt=""
+              className="h-auto w-auto max-h-[60px] select-none"
+              draggable={false}
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -162,17 +176,11 @@ function FolderReader({ nodeId }: { nodeId: string }) {
 
 /* ---------- Article Reader ---------- */
 
-type TocEntry = { level: number; text: string; id: string };
-
 function NoteReader({ id }: { id: string }) {
   const navigate = useNavigate();
   const [content, setContent] = useState<ContentDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeToc, setActiveToc] = useState('');
-  const [aiOpen, setAiOpen] = useState(false);
   const centerRef = useRef<HTMLDivElement>(null);
-  const tocPanelRef = useRef<HTMLDivElement>(null);
-  const aiInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -197,9 +205,9 @@ function NoteReader({ id }: { id: string }) {
   }, [id, navigate]);
 
   /*
-   * TOC 从 API 返回的 headings 字段派生，不再查询 DOM。
-   * id 格式 "heading-N" 与 MarkdownBody 注入的 data-heading-id 一致，
-   * scroll spy / scrollToHeading 直接按此 id 定位 DOM 元素。
+   * TOC 从 API 返回的 headings 字段派生(无需 DOM 查询)。
+   * id 格式 "heading-N" 与 MarkdownBody 注入的 data-heading-id 一致,
+   * MarkdownTocPanel 内部的 scroll spy/scrollToHeading 据此查 DOM。
    */
   const toc = useMemo<TocEntry[]>(() => {
     if (!content?.headings) return [];
@@ -209,69 +217,6 @@ function NoteReader({ id }: { id: string }) {
       id: `heading-${i}`,
     }));
   }, [content]);
-
-  // 大纲列表仅可滚动时才上下渐隐(短列表不被误淡)
-  const tocMask = useScrollFade(tocPanelRef, [toc.length]);
-
-  /*
-   * Scroll spy — 监听滚动确定当前 TOC 高亮位置。
-   * 使用 getBoundingClientRect 而非 offsetTop：offsetTop 相对于 offsetParent
-   * （最近 positioned 祖先），在嵌套结构中不一定是滚动容器，导致定位错乱。
-   * getBoundingClientRect 始终返回视口坐标，不受 DOM 嵌套影响。
-   */
-  /*
-   * Scroll spy 阈值：标题的 getBoundingClientRect().top 必须 <= 容器顶部 + 50px
-   * 才被视为"当前激活"。50px 而非更大的值（如 120px）是为了避免紧邻的子标题
-   * 同时落入阈值范围内，导致点击父标题后高亮跳到子标题。
-   */
-  const handleScroll = useCallback(() => {
-    const container = centerRef.current;
-    if (!container || toc.length === 0) return;
-    const threshold = container.getBoundingClientRect().top + 50;
-    const headingEls = container.querySelectorAll('[data-heading-id]');
-
-    for (let i = headingEls.length - 1; i >= 0; i--) {
-      const el = headingEls[i] as HTMLElement;
-      if (el.getBoundingClientRect().top <= threshold) {
-        setActiveToc(el.getAttribute('data-heading-id') || '');
-        return;
-      }
-    }
-    if (toc[0]) setActiveToc(toc[0].id);
-  }, [toc]);
-
-  useEffect(() => {
-    const el = centerRef.current;
-    if (!el) return;
-    el.addEventListener('scroll', handleScroll, { passive: true });
-    return () => el.removeEventListener('scroll', handleScroll);
-  }, [handleScroll]);
-
-  // TOC active 项变化时，自动滚到可见位置
-  useEffect(() => {
-    if (!activeToc || !tocPanelRef.current) return;
-    const activeEl = tocPanelRef.current.querySelector(`[data-toc-id="${activeToc}"]`);
-    activeEl?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [activeToc]);
-
-  /**
-   * 点击 TOC 条目时滚动到对应标题，并短暂高亮目标标题。
-   * 高亮的意义：相邻标题（如 h2 紧接 h3）间距很小，滚动位移几乎不可感知，
-   * 闪烁效果让用户确认"确实跳到了这里"。
-   */
-  const scrollToHeading = (headingId: string) => {
-    const el = centerRef.current?.querySelector(`[data-heading-id="${headingId}"]`) as HTMLElement | null;
-    if (!el || !centerRef.current) return;
-    const top = el.getBoundingClientRect().top - centerRef.current.getBoundingClientRect().top + centerRef.current.scrollTop - 16;
-
-    centerRef.current.scrollTo({ top, behavior: 'smooth' });
-
-    // 通过 CSS class 触发高亮动画（keyframe toc-flash），不受 React style 管理干扰
-    el.classList.remove('toc-highlight');
-    void el.offsetWidth;
-    el.classList.add('toc-highlight');
-    el.addEventListener('animationend', () => el.classList.remove('toc-highlight'), { once: true });
-  };
 
   /* 标题信息 */
   const title = content?.publishedVersion?.title ?? content?.latestVersion.title ?? '';
@@ -305,16 +250,7 @@ function NoteReader({ id }: { id: string }) {
       {/* Center — article body */}
       <div className="flex-1 overflow-y-auto py-12" ref={centerRef}>
        <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 max-[520px]:px-4">
-        <div className="mb-5">
-          <button
-            className="text-md transition-colors duration-150 hover:text-[var(--ink-faded)]"
-            style={{ color: 'var(--ink-ghost)' }}
-            // 返回上一级(通常是父页),不再写死回根列表
-            onClick={() => navigate(-1)}
-          >
-            ← 返回
-          </button>
-        </div>
+        {/* 返回入口已统一到左 Sidebar 面包屑,中区不再放重复的「← 返回」 */}
 
         {/* 文章标题 — fade+rise 入场 */}
         <motion.div
@@ -330,31 +266,23 @@ function NoteReader({ id }: { id: string }) {
           {title}
         </motion.div>
 
-        {/* 元信息行 */}
-        <motion.div
-          className="mb-10"
+        {/* 元信息行(纯墨,跟 §3.3「reader 主体一律纯墨」对齐;原 pip-a 雾蓝色条违规已删) */}
+        <motion.p
+          className="mb-10 text-xs"
+          style={{ color: 'var(--ink-ghost)' }}
           initial={{ opacity: 0, filter: 'blur(3px)' }}
           animate={{ opacity: 1, filter: 'blur(0px)' }}
           transition={{ duration: 0.4, delay: 0.2, ease: smoothBounce }}
         >
-          <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
-            {displayDate && `更新于 ${displayDate.getFullYear()}/${displayDate.getMonth() + 1}/${displayDate.getDate()} · `}
-            {wordCount > 1000 ? `${(wordCount / 1000).toFixed(1)}k` : wordCount} 字 · {readMin} min
-          </p>
-          {/* 装饰线 — pip-a 雾蓝 */}
-          <motion.span
-            className="mt-4 block h-[2px] rounded-sm"
-            style={{ background: 'var(--pip-a)', opacity: 0.5 }}
-            initial={{ width: 0 }}
-            animate={{ width: 32 }}
-            transition={{ duration: 0.6, delay: 0.3, ease: smoothBounce }}
-          />
-        </motion.div>
+          {displayDate && `更新于 ${displayDate.getFullYear()}/${displayDate.getMonth() + 1}/${displayDate.getDate()} · `}
+          {wordCount > 1000 ? `${(wordCount / 1000).toFixed(1)}k` : wordCount} 字 · {readMin} min
+        </motion.p>
 
         {summary && (
+          /* 题记块:shelf 背景已承担"题记"视觉强调,不再叠 italic(中文字体 italic 抖动且语气过重) */
           <motion.div
             className="mb-8 rounded-lg px-4 py-3 text-lg leading-relaxed"
-            style={{ color: 'var(--ink-faded)', fontStyle: 'italic', background: 'var(--shelf)' }}
+            style={{ color: 'var(--ink-faded)', background: 'var(--shelf)' }}
             initial={{ opacity: 0, y: 8, filter: 'blur(3px)' }}
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
             transition={{ duration: 0.4, delay: 0.15, ease: smoothBounce }}
@@ -374,131 +302,20 @@ function NoteReader({ id }: { id: string }) {
           <MarkdownBody markdown={content.bodyMarkdown} contentItemId={id} />
         </motion.div>
 
-        {/* 文章收束 — 三个墨点，表示阅读结束 */}
-        <div
-          className="flex items-center justify-center gap-2 py-12"
-          style={{ color: 'var(--ink-ghost)', opacity: 0.4 }}
-        >
-          <span className="text-xs">·</span>
-          <span className="text-xs">·</span>
-          <span className="text-xs">·</span>
+        {/* 章末收束 — 一束勿忘我(纸艺,§3.3 合规;花语「记忆」) */}
+        <div className="flex items-center justify-center py-24">
+          <img
+            src="/garden/chapter-end.webp"
+            alt=""
+            className="h-auto w-auto max-h-[60px] select-none"
+            draggable={false}
+          />
         </div>
        </div>
       </div>
 
-      {/* Right — TOC panel（始终预留宽度，避免内容加载后布局抖动） */}
-      <div
-        className="hidden shrink-0 flex-col self-start px-4 md:flex"
-        style={{
-          width: 'var(--layout-sidebar)',
-          // 离屏幕顶留距离(下移到主题按钮下方)
-          marginTop: '8vh',
-        }}
-      >
-        {toc.length > 0 && (
-          <>
-            {/* 标题固定不滚 */}
-            <div
-              className="mb-3 shrink-0 text-2xs font-semibold uppercase tracking-label"
-              style={{ color: 'var(--ink-ghost)' }}
-            >
-              大纲
-            </div>
-            {/* 列表高度跟随内容、超上限才滚;左侧细线从标题下方开始、长度随内容(与编辑器大纲一致) */}
-            <div
-              ref={tocPanelRef}
-              className="overflow-y-auto"
-              style={{
-                maxHeight: '61.8vh',
-                borderLeft: '1px solid var(--separator)',
-                // 仅可滚动时上下边缘渐隐(useScrollFade),短列表不被误淡
-                maskImage: tocMask,
-                WebkitMaskImage: tocMask,
-              }}
-            >
-              {toc.map((item) => (
-                <div
-                  key={item.id}
-                  data-toc-id={item.id}
-                  className="cursor-pointer truncate rounded-lg py-[5px] pr-2 text-sm transition-colors duration-200 hover:bg-[var(--shelf)]"
-                  style={{
-                    // 当前阅读章节 = 长春花紫(进行中,符合 accent 纲领),其余墨灰
-                    color: activeToc === item.id ? 'var(--accent)' : 'var(--ink-faded)',
-                    fontWeight: activeToc === item.id ? 600 : 400,
-                    paddingLeft: `${(item.level - 1) * 10 + 8}px`,
-                  }}
-                  onClick={() => scrollToHeading(item.id)}
-                >
-                  {item.text}
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* AI floating action button */}
-      <div className="absolute bottom-6 right-6 z-10 flex flex-col items-end gap-3">
-        <AnimatePresence>
-          {aiOpen && (
-            <motion.div
-              className="ai-chat-panel flex w-[340px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl"
-              style={{
-                maxHeight: 420,
-                background: 'var(--paper)',
-                boxShadow: 'var(--shadow-xl)',
-              }}
-              initial={{ opacity: 0, y: 12, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 8, scale: 0.97 }}
-              transition={{ duration: 0.18, ease: smoothBounce }}
-            >
-              <div className="flex items-center justify-between px-[18px] pb-3 pt-3.5">
-                <span className="truncate text-md font-semibold" style={{ color: 'var(--ink)' }}>
-                  {title}
-                </span>
-                <button
-                  className="flex h-6 w-6 items-center justify-center rounded-full transition-colors duration-150 hover:bg-[var(--shelf)]"
-                  style={{ color: 'var(--ink-ghost)' }}
-                  onClick={() => setAiOpen(false)}
-                >
-                  <X size={12} strokeWidth={2} />
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto px-[18px] pb-4 pt-2" style={{ minHeight: 140 }}>
-                <div className="px-3 py-8 text-center text-md leading-relaxed" style={{ color: 'var(--ink-ghost)' }}>
-                  对这篇文稿的任何想法，随时问
-                </div>
-              </div>
-              <div className="ai-chat-input-row px-3 pb-3">
-                <input
-                  ref={aiInputRef}
-                  type="text"
-                  className="w-full rounded-full border-none px-3.5 py-2.5 text-md outline-none"
-                  style={{ background: 'var(--paper-dark)', color: 'var(--ink)' }}
-                  placeholder="提问..."
-                  onKeyDown={(e) => e.key === 'Escape' && setAiOpen(false)}
-                />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <button
-          className={`ai-fab flex h-10 w-10 items-center justify-center rounded-full border-none transition-all duration-250 ${aiOpen ? 'active' : ''}`}
-          style={{
-            background: aiOpen ? 'var(--ink)' : 'var(--paper)',
-            color: aiOpen ? 'var(--accent-contrast)' : 'var(--ink-faded)',
-            boxShadow: 'var(--shadow-md)',
-          }}
-          onClick={() => {
-            setAiOpen((v) => !v);
-            if (!aiOpen) setTimeout(() => aiInputRef.current?.focus(), 100);
-          }}
-        >
-          <Sparkles size={16} strokeWidth={2} />
-        </button>
-      </div>
+      {/* Right — TOC panel(共享组件,容器始终预留宽度避免布局抖动) */}
+      <MarkdownTocPanel toc={toc} centerRef={centerRef} />
     </div>
   );
 }

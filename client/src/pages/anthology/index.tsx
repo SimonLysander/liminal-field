@@ -12,7 +12,7 @@
  * 动画沿用 smoothBounce(入场)和 appleEase(次要过渡),与全站一致。
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { appleEase, smoothBounce } from '@/lib/motion';
@@ -23,6 +23,7 @@ import {
   type AnthologyEntryDetail,
 } from '@/services/workspace';
 import MarkdownBody from '@/components/shared/MarkdownBody';
+import { MarkdownTocPanel } from '@/components/shared/MarkdownTocPanel';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { LoadingState } from '@/components/LoadingState';
 
@@ -128,7 +129,8 @@ function BookCover({ item, index }: { item: AnthologyPublicListItem; index: numb
         to={`/anthology?node=${item.id}`}
         className="group block"
       >
-        {/* 封面 — 浅底 + 深色 serif 标题，精装书气质 */}
+        {/* 封面 — 浅底 + 深色 serif 标题,精装书气质。
+            上下 pip-a 装饰线已撤(§3.3 reader 主体一律纯墨;原"标题色条"违规) */}
         <div
           className="flex flex-col items-center justify-center rounded-sm px-5 py-6 transition-all duration-200 ease-out group-hover:-translate-y-1"
           style={{
@@ -138,25 +140,13 @@ function BookCover({ item, index }: { item: AnthologyPublicListItem; index: numb
             border: '0.5px solid var(--separator)',
           }}
         >
-          {/* 装饰线 — 与全站 pip-a 一致 */}
-          <span
-            className="mb-4 block h-[1.5px] w-8 rounded-sm"
-            style={{ background: 'var(--pip-a)', opacity: 0.5 }}
-          />
-
-          {/* 标题 — 居中，大号 serif */}
+          {/* 标题 — 居中,大号 serif,纯墨封面唯一信号 */}
           <div
             className="text-center text-sm font-bold leading-snug"
             style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
           >
             {item.title}
           </div>
-
-          {/* 装饰线 — 标题下对称 */}
-          <span
-            className="mt-4 block h-[1.5px] w-8 rounded-sm"
-            style={{ background: 'var(--pip-a)', opacity: 0.5 }}
-          />
         </div>
 
         {/* 封面下方 meta */}
@@ -178,6 +168,22 @@ function BookCover({ item, index }: { item: AnthologyPublicListItem; index: numb
 function AnthologyOverview({ id }: { id: string }) {
   const [detail, setDetail] = useState<AnthologyPublicDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  // 右栏 markdown headings TOC(仅当卷首语含标题时显示),与 EntryReader 同模式
+  const centerRef = useRef<HTMLDivElement>(null);
+  const [toc, setToc] = useState<Array<{ id: string; text: string; level: number }>>([]);
+  const refreshToc = useCallback(() => {
+    if (!centerRef.current) return;
+    const els = Array.from(
+      centerRef.current.querySelectorAll('[data-heading-id]'),
+    ) as HTMLElement[];
+    setToc(
+      els.map((el) => ({
+        id: el.getAttribute('data-heading-id') || '',
+        text: el.textContent || '',
+        level: parseInt(el.tagName.slice(1), 10) || 1,
+      })),
+    );
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -206,20 +212,13 @@ function AnthologyOverview({ id }: { id: string }) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto py-12">
-      <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 max-[520px]:px-4">
-        {/* 返回按钮 — 与 NoteReader 同风格 */}
-        <div className="mb-5">
-          <Link
-            to="/anthology"
-            className="text-md transition-colors duration-150 hover:text-[var(--ink-faded)]"
-            style={{ color: 'var(--ink-ghost)' }}
-          >
-            ← 文集
-          </Link>
-        </div>
+    /* 三栏:左 navi(全局栏 + 当前文集 sub-nav 篇章列表)/ 中 卷首语正文 / 右 卷首语 markdown headings TOC。
+     *  跨篇跳转走左栏 sub-nav,中区只放正文,右栏目录是当前页正文的标题锚点(卷首语无标题则不显示)。 */
+    <div className="relative flex w-full items-stretch overflow-hidden">
+      <div ref={centerRef} className="flex-1 overflow-y-auto py-12">
+        <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 max-[520px]:px-4">
 
-        {/* 文集标题 — fade+rise+blur 入场，与 NoteReader 一致 */}
+        {/* 文集标题 — 左对齐,跟其他 reader 一致(扉页装饰已撤,Overview 内容够完整不需要 banner) */}
         <motion.h1
           className="mb-4 text-5xl font-bold leading-snug tracking-tight"
           style={{ fontFamily: 'var(--font-serif)', color: 'var(--ink)' }}
@@ -230,26 +229,18 @@ function AnthologyOverview({ id }: { id: string }) {
           {detail.title}
         </motion.h1>
 
-        {/* 元信息 + 装饰线 — 与 NoteReader 同结构 */}
-        <motion.div
-          className="mb-10"
+        {/* 元信息行(纯墨;原 pip-a 雾蓝色条违规已删) */}
+        <motion.p
+          className="mb-10 text-xs"
+          style={{ color: 'var(--ink-ghost)' }}
           initial={{ opacity: 0, filter: 'blur(3px)' }}
           animate={{ opacity: 1, filter: 'blur(0px)' }}
           transition={{ duration: 0.4, delay: 0.2, ease: smoothBounce }}
         >
-          <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
-            {detail.entries.length} 篇
-          </p>
-          <motion.span
-            className="mt-4 block h-[2px] rounded-sm"
-            style={{ background: 'var(--pip-a)', opacity: 0.5 }}
-            initial={{ width: 0 }}
-            animate={{ width: 32 }}
-            transition={{ duration: 0.6, delay: 0.3, ease: smoothBounce }}
-          />
-        </motion.div>
+          {detail.entries.length} 篇
+        </motion.p>
 
-        {/* 描述题记 — 无斜体，与 NoteReader summary 同风格 */}
+        {/* 描述题记 — 与 NoteReader summary 同风格 */}
         {detail.description && (
           <motion.div
             className="mb-8 rounded-lg px-4 py-3 text-lg leading-relaxed"
@@ -262,12 +253,7 @@ function AnthologyOverview({ id }: { id: string }) {
           </motion.div>
         )}
 
-        {/*
-         * 卷首语 — 文集容器节点自身的正文(Phase 1 新增 bodyMarkdown 字段)。
-         * 设计:仅当 bodyMarkdown 非空时渲染整段(空字符串完全跳过,等价原视觉);
-         * 与 NoteReader 同款 MarkdownBody + note-prose 排版,先一个"卷首"小标
-         * 提示这是序章而非条目正文,跟下方目录之间留呼吸空间。
-         */}
+        {/* 卷首语 */}
         {detail.bodyMarkdown && (
           <motion.section
             className="my-12"
@@ -285,79 +271,20 @@ function AnthologyOverview({ id }: { id: string }) {
               className="note-prose text-lg leading-[1.9]"
               style={{ color: 'var(--ink-light)' }}
             >
-              <MarkdownBody markdown={detail.bodyMarkdown} contentItemId={detail.id} />
+              <MarkdownBody
+                markdown={detail.bodyMarkdown}
+                contentItemId={detail.id}
+                onHeadingsMarked={refreshToc}
+              />
             </div>
           </motion.section>
         )}
 
-        {/* 条目目录 */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.25, ease: smoothBounce }}
-        >
-          <div
-            className="mb-3 text-2xs font-semibold uppercase tracking-widest"
-            style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}
-          >
-            目录
-          </div>
-          <ol className="flex flex-col">
-            {detail.entries.map((entry, index) => {
-              const date = entry.date ? new Date(entry.date) : null;
-              return (
-                <li key={entry.nodeId}>
-                  <Link
-                    // Phase 5:URL 切 ?at=&node=,跟 admin 命名一致;Phase 8 起 entry.nodeId 即子 contentItemId
-                    to={`/anthology?at=${id}&node=${entry.nodeId}`}
-                    className="group -mx-2 flex items-baseline gap-4 rounded-lg px-2 py-3.5 transition-colors duration-150 hover:bg-[var(--shelf)]"
-                    style={{ borderBottom: '0.5px solid var(--separator)' }}
-                  >
-                    {/* 序号 */}
-                    <span
-                      className="w-6 shrink-0 text-right text-sm tabular-nums"
-                      style={{ color: 'var(--ink-ghost)' }}
-                    >
-                      {index + 1}
-                    </span>
-
-                    {/* 标题 */}
-                    <span
-                      className="flex-1 text-base font-medium transition-colors duration-150 group-hover:text-[var(--ink)]"
-                      style={{ color: 'var(--ink-light)' }}
-                    >
-                      {entry.title}
-                    </span>
-
-                    {/* 日期 */}
-                    {date && (
-                      <span
-                        className="shrink-0 text-xs tabular-nums"
-                        style={{ color: 'var(--ink-ghost)' }}
-                      >
-                        {date.getFullYear()}/{String(date.getMonth() + 1).padStart(2, '0')}/{String(date.getDate()).padStart(2, '0')}
-                      </span>
-                    )}
-                  </Link>
-                </li>
-              );
-            })}
-          </ol>
-
-          {/* 开始阅读 — 指向第一篇条目(Phase 5:URL 同 ?at=&node=) */}
-          {detail.entries.length > 0 && (
-            <div className="mt-8">
-              <Link
-                to={`/anthology?at=${id}&node=${detail.entries[0].nodeId}`}
-                className="inline-flex items-center gap-1.5 text-md font-medium transition-colors duration-150 hover:text-[var(--ink)]"
-                style={{ color: 'var(--ink-faded)' }}
-              >
-                开始阅读
-              </Link>
-            </div>
-          )}
-        </motion.div>
+        </div>
       </div>
+
+      {/* 右 TOC — 卷首语 markdown 标题锚点,无标题时不渲染 */}
+      <MarkdownTocPanel toc={toc} centerRef={centerRef} />
     </div>
   );
 }
@@ -373,22 +300,36 @@ function EntryReader({ anthologyId, entryNodeId }: { anthologyId: string; entryN
   // 命名澄清:anthologyId=文集容器 contentItemId(URL ?at=);
   // entryNodeId=条目子节点 contentItemId(URL ?node=,Phase 1 后 key==nodeId)。
   const [entry, setEntry] = useState<AnthologyEntryDetail | null>(null);
-  const [anthologyTitle, setAnthologyTitle] = useState('');
   /** 进度信息：当前第几篇 / 共几篇 */
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const [loading, setLoading] = useState(true);
+  /** 右栏 TOC = 当前篇正文的 markdown headings(MarkdownBody 渲染后从 DOM 提取) */
+  const centerRef = useRef<HTMLDivElement>(null);
+  const [toc, setToc] = useState<Array<{ id: string; text: string; level: number }>>([]);
+  const refreshToc = useCallback(() => {
+    if (!centerRef.current) return;
+    const els = Array.from(
+      centerRef.current.querySelectorAll('[data-heading-id]'),
+    ) as HTMLElement[];
+    setToc(
+      els.map((el) => ({
+        id: el.getAttribute('data-heading-id') || '',
+        text: el.textContent || '',
+        level: parseInt(el.tagName.slice(1), 10) || 1,
+      })),
+    );
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
 
-    // 并发拉取：条目正文 + 文集详情（返回按钮标题 + 进度计算）
+    // 并发拉取：条目正文 + 文集详情(用于进度计算)
     void Promise.all([
       anthologyApi.getEntry(anthologyId, entryNodeId),
       anthologyApi.getPublicDetail(anthologyId),
     ]).then(([entryData, detail]) => {
       if (cancelled) return;
       setEntry(entryData);
-      setAnthologyTitle(detail.title);
       // Phase 8 后 entries 列表统一 nodeId 字段,直接定位当前阅读位置
       const idx = detail.entries.findIndex((e) => e.nodeId === entryNodeId);
       setProgress({ current: idx + 1, total: detail.entries.length });
@@ -423,18 +364,13 @@ function EntryReader({ anthologyId, entryNodeId }: { anthologyId: string; entryN
   const readMin = Math.max(1, Math.ceil(wordCount / 400));
 
   return (
-    <div className="flex-1 overflow-y-auto py-12">
-      <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 max-[520px]:px-4">
-        {/* 返回按钮 — 与 NoteReader 同风格，显示文集标题(回到卷宗概览,URL ?node=<anthologyId>) */}
-        <div className="mb-5">
-          <Link
-            to={`/anthology?node=${anthologyId}`}
-            className="text-md transition-colors duration-150 hover:text-[var(--ink-faded)]"
-            style={{ color: 'var(--ink-ghost)' }}
-          >
-            ← {anthologyTitle || '文集'}
-          </Link>
-        </div>
+    /* 三栏对齐笔记心智:左 navi(全局栏,Sidebar 已内嵌篇章子导航)/ 中 正文 / 右 TOC(当前篇正文目录)
+     *  跨篇切换由左 Sidebar 完成;右 TOC = 当前篇 markdown headings 锚点,与笔记 NoteReader 一致 */
+    <div className="relative flex w-full items-stretch overflow-hidden">
+      {/* 中:正文 — centerRef 给右栏 MarkdownTocPanel 用于 querySelector heading + 滚动定位 */}
+      <div ref={centerRef} className="flex-1 overflow-y-auto py-12">
+        <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 max-[520px]:px-4">
+        {/* 返回入口已统一到左 Sidebar 面包屑,中区不再放重复的「← 文集名」 */}
 
         {/* 条目标题 — 与 NoteReader 同规格 */}
         <motion.h1
@@ -447,29 +383,20 @@ function EntryReader({ anthologyId, entryNodeId }: { anthologyId: string; entryN
           {entry.title}
         </motion.h1>
 
-        {/* 元信息 + 装饰线 — 与 NoteReader 同结构、同格式 */}
-        <motion.div
-          className="mb-10"
+        {/* 元信息行(纯墨,§3.3 reader 主体一律纯墨;原 pip-a 雾蓝色条违规已删) */}
+        <motion.p
+          className="mb-10 text-xs"
+          style={{ color: 'var(--ink-ghost)' }}
           initial={{ opacity: 0, filter: 'blur(3px)' }}
           animate={{ opacity: 1, filter: 'blur(0px)' }}
           transition={{ duration: 0.4, delay: 0.2, ease: smoothBounce }}
         >
-          <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
-            {displayDate && `更新于 ${displayDate.getFullYear()}/${displayDate.getMonth() + 1}/${displayDate.getDate()} · `}
-            {wordCount > 1000 ? `${(wordCount / 1000).toFixed(1)}k` : wordCount} 字 · {readMin} min
-            {progress && ` · 第 ${progress.current} / ${progress.total} 篇`}
-          </p>
-          {/* 装饰线 — pip-a 雾蓝，与 NoteReader 同参数 */}
-          <motion.span
-            className="mt-4 block h-[2px] rounded-sm"
-            style={{ background: 'var(--pip-a)', opacity: 0.5 }}
-            initial={{ width: 0 }}
-            animate={{ width: 32 }}
-            transition={{ duration: 0.6, delay: 0.3, ease: smoothBounce }}
-          />
-        </motion.div>
+          {displayDate && `更新于 ${displayDate.getFullYear()}/${displayDate.getMonth() + 1}/${displayDate.getDate()} · `}
+          {wordCount > 1000 ? `${(wordCount / 1000).toFixed(1)}k` : wordCount} 字 · {readMin} min
+          {progress && ` · 第 ${progress.current} / ${progress.total} 篇`}
+        </motion.p>
 
-        {/* 正文 — MarkdownBody 渲染，与 NoteReader 保持一致 */}
+        {/* 正文 — note-prose + MarkdownBody */}
         <motion.div
           className="note-prose text-lg leading-[1.9]"
           style={{ color: 'var(--ink-light)' }}
@@ -477,69 +404,66 @@ function EntryReader({ anthologyId, entryNodeId }: { anthologyId: string; entryN
           animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
           transition={{ duration: 0.5, delay: 0.25, ease: smoothBounce }}
         >
-          <MarkdownBody markdown={entry.bodyMarkdown} />
+          <MarkdownBody markdown={entry.bodyMarkdown} onHeadingsMarked={refreshToc} />
         </motion.div>
 
-        {/* 文章收束 — 三个墨点 */}
-        <div
-          className="flex items-center justify-center gap-2 py-12"
-          style={{ color: 'var(--ink-ghost)', opacity: 0.4 }}
-        >
-          <span className="text-xs">·</span>
-          <span className="text-xs">·</span>
-          <span className="text-xs">·</span>
+        {/* 章末收束 — 一束勿忘我(纸艺,§3.3 合规;花语「记忆」呼应卷宗记忆主题) */}
+        <div className="flex items-center justify-center py-24">
+          <img
+            src="/garden/chapter-end.webp"
+            alt=""
+            className="h-auto w-auto max-h-[60px] select-none"
+            draggable={false}
+          />
         </div>
 
-        {/* 篇章导航 — next 是主动作（full-width 卡片），prev 是次要（文字链接） */}
+        {/* 篇章导航 — 两边对称文字链接(无卡片),书页脚气质:
+              prev 靠左、next 靠右,中间 justify-between 自动平衡;
+              末篇 next 改「回到卷首」(去 Overview 看卷首语),语义比「目录」/「首页」更准 —
+              文集没有独立的"目录页",卷首才是它的根入口。 */}
         <motion.div
-          className="flex flex-col gap-4"
+          className="flex items-center justify-between gap-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.4, delay: 0.4, ease: appleEase }}
         >
-          {/* 主导航：下一篇 或 回到目录（最后一篇时）Phase 5:prev/next.key→nodeId、URL ?at=&node= */}
+          {entry.prev ? (
+            <Link
+              to={`/anthology?at=${anthologyId}&node=${entry.prev.nodeId}`}
+              className="min-w-0 truncate text-sm transition-colors duration-150 hover:text-[var(--ink)]"
+              style={{ color: 'var(--ink-faded)' }}
+            >
+              ← 上一篇 · {entry.prev.title}
+            </Link>
+          ) : (
+            /* 首篇:空占位撑 justify-between,让 next 自然靠右 */
+            <span />
+          )}
           {entry.next ? (
             <Link
               to={`/anthology?at=${anthologyId}&node=${entry.next.nodeId}`}
-              className="group flex flex-col gap-1.5 rounded-lg px-4 py-4 transition-colors duration-150 hover:bg-[var(--shelf)]"
-              style={{ border: '0.5px solid var(--separator)' }}
+              className="min-w-0 truncate text-sm transition-colors duration-150 hover:text-[var(--ink)]"
+              style={{ color: 'var(--ink-faded)' }}
             >
-              <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>下一篇</span>
-              <span
-                className="text-base font-medium transition-colors duration-150 group-hover:text-[var(--ink)]"
-                style={{ color: 'var(--ink-faded)' }}
-              >
-                {progress && `${progress.current + 1}. `}{entry.next.title}
-              </span>
+              下一篇 · {entry.next.title} →
             </Link>
           ) : (
             <Link
               to={`/anthology?node=${anthologyId}`}
-              className="group flex flex-col gap-1.5 rounded-lg px-4 py-4 transition-colors duration-150 hover:bg-[var(--shelf)]"
-              style={{ border: '0.5px solid var(--separator)' }}
+              className="text-sm transition-colors duration-150 hover:text-[var(--ink)]"
+              style={{ color: 'var(--ink-faded)' }}
             >
-              <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>已读完</span>
-              <span
-                className="text-base font-medium transition-colors duration-150 group-hover:text-[var(--ink)]"
-                style={{ color: 'var(--ink-faded)' }}
-              >
-                回到目录
-              </span>
-            </Link>
-          )}
-
-          {/* 次导航：上一篇（文字链接，视觉权重低于主导航） */}
-          {entry.prev && (
-            <Link
-              to={`/anthology?at=${anthologyId}&node=${entry.prev.nodeId}`}
-              className="text-sm transition-colors duration-150 hover:text-[var(--ink-faded)]"
-              style={{ color: 'var(--ink-ghost)' }}
-            >
-              上一篇: {progress && `${progress.current - 1}. `}{entry.prev.title}
+              回到卷首 →
             </Link>
           )}
         </motion.div>
       </div>
+      </div>
+
+      {/* 右 TOC — 当前篇正文的 markdown 标题锚点,跟笔记 NoteReader 一致 */}
+      <MarkdownTocPanel toc={toc} centerRef={centerRef} />
     </div>
   );
 }
+
+/* MarkdownTocPanel 已抽到 components/shared/MarkdownTocPanel,与笔记共用同款 scroll spy/闪烁/渐隐 */

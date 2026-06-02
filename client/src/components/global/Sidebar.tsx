@@ -23,13 +23,9 @@ import { Logo } from '@/components/Logo';
 import { SearchPanel } from '@/components/global/SearchPanel';
 import { structureApi } from '@/services/structure';
 import type { StructureNode } from '@/services/structure';
-import {
-  FileText,
-  Search,
-  Folder,
-  ChevronRight,
-  ChevronLeft,
-} from 'lucide-react';
+import { anthologyApi } from '@/services/workspace';
+import type { AnthologyPublicListItem, AnthologyPublicDetail } from '@/services/workspace';
+import { FileText, Search, ChevronLeft } from 'lucide-react';
 import { type Space, spaces, labels, NavIcons, spaceToPath, pathToSpace } from './nav-spaces';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import { LoadingState } from '@/components/LoadingState';
@@ -57,14 +53,17 @@ type BreadcrumbItem = { id: string; name: string };
 
 function useStructureLevel(parentId: string | undefined) {
   const [nodes, setNodes] = useState<StructureNode[]>([]);
-  const [loading, setLoading] = useState(true);
+  /* SWR 模式(与 useAnthologyLevel 对齐):
+   *   - loaded 只在首次成功 fetch 后翻 true,之后切层不再回 false
+   *   - 切换 parentId 时旧 nodes 保留到新数据到达 → 不闪 LoadingState
+   *   - AnimatePresence 因 motion.div 始终在场而能完整跑 exit+enter(钻入动画) */
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       await Promise.resolve();
       if (cancelled) return;
-      setLoading(true);
 
       const req = parentId
         ? structureApi.getChildren(parentId, { visibility: 'public', scope: 'notes' })
@@ -78,7 +77,7 @@ function useStructureLevel(parentId: string | undefined) {
         // 结构节点加载失败时静默降级为空列表
         if (!cancelled) setNodes([]);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setLoaded(true);
       }
     })();
 
@@ -87,7 +86,66 @@ function useStructureLevel(parentId: string | undefined) {
     };
   }, [parentId]);
 
-  return { nodes, loading };
+  return { nodes, loading: !loaded };
+}
+
+/* ---------- Anthology sub-nav data ----------
+ * 镜像笔记 useStructureLevel:
+ *   - anthologyId=null  → 拉文集列表(根层)
+ *   - anthologyId=cixxx → 拉该文集的篇章列表(钻入层)
+ */
+function useAnthologyLevel(anthologyId: string | null) {
+  const [items, setItems] = useState<
+    Array<{ nodeId: string; title: string }>
+  >([]);
+  /* 钻入态额外返回当前文集标题,给面包屑「← 文集 / <文集名>」用 */
+  const [containerTitle, setContainerTitle] = useState<string | null>(null);
+  /* loaded 只在首次成功 fetch 后翻 true,之后切换 anthologyId 不再 set false →
+   * 后续切换走 stale-while-revalidate:旧 items 留在视图,新数据到达 atomic 替换。
+   * 避免每次切层都闪 LoadingState 一帧。 */
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      try {
+        if (anthologyId) {
+          /* 钻入态:拉该文集的 entries + 标题 */
+          const detail: AnthologyPublicDetail =
+            await anthologyApi.getPublicDetail(anthologyId);
+          if (!cancelled) {
+            setItems(
+              detail.entries.map((e) => ({ nodeId: e.nodeId, title: e.title })),
+            );
+            setContainerTitle(detail.title);
+          }
+        } else {
+          /* 根态:拉文集列表,无 containerTitle */
+          const list: AnthologyPublicListItem[] =
+            await anthologyApi.listPublished();
+          if (!cancelled) {
+            setItems(list.map((a) => ({ nodeId: a.id, title: a.title })));
+            setContainerTitle(null);
+          }
+        }
+      } catch (err) {
+        console.error('[Sidebar] 文集 sub-nav 加载失败:', err);
+        if (!cancelled) {
+          setItems([]);
+          setContainerTitle(null);
+        }
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [anthologyId]);
+
+  return { items, containerTitle, loading: !loaded };
 }
 
 /* ---------- Component ---------- */
@@ -128,6 +186,23 @@ export default function Sidebar() {
   const navExitX = navDirection.current * -20;
   const currentParentId = activeTopicId ?? undefined;
   const { nodes: currentNodes, loading: notesLoading } = useStructureLevel(currentParentId);
+
+  /* 文集 sub-nav 状态:
+   *   /anthology              → 根:列文集
+   *   /anthology?node=cixxx   → 钻入(Overview):列该文集篇章,无当前章节
+   *   /anthology?at=cixxx&node=ciyyy → 钻入(EntryReader):列篇章 + node 高亮 */
+  const anthologyContainerId = active === 'anthology'
+    ? (activeTopicId ?? activeNoteId ?? null)
+    : null;
+  /* at 存在 = EntryReader 态,node 是被高亮的章节;只 node 无 at = Overview 态,不高亮 */
+  const anthologyActiveEntry = active === 'anthology' && activeTopicId
+    ? activeNoteId
+    : null;
+  const {
+    items: anthologyItems,
+    containerTitle: anthologyContainerTitle,
+    loading: anthologyLoading,
+  } = useAnthologyLevel(anthologyContainerId);
 
   /* URL → breadcrumb state 同步（仅用于 UI 展示，不参与节点请求）
    *   /note/:noteId        → 通过 contentItemId 反查完整路径
@@ -289,10 +364,12 @@ export default function Sidebar() {
                 文稿
               </span>
             ) : (
-              /* 有层级 — ← 回退一级 + 路径显示
-               * 1 级: ← 当前文件夹名（点击回根）
-               * 2+ 级: ← … / 直接父级（hover … 弹出完整路径可点击） */
+              /* 钻入态分工(与 anthology 同款语义):
+                   ←        = 回上一级(根 / 上层 folder)
+                   父级名块 = 进父级正文(FolderReader, /note?at=<父>);当前已在父级正文时 active 高亮
+                   2+ 级时中间用 HoverCard 弹完整路径 */
               <div className="flex items-center whitespace-nowrap">
+                {/* ← 回上一级:1 级回根、2+ 级回上一层 */}
                 <span
                   className="shrink-0 cursor-pointer rounded p-0.5 transition-colors duration-150 hover:bg-[var(--shelf)]"
                   style={{ color: 'var(--ink-faded)' }}
@@ -306,17 +383,21 @@ export default function Sidebar() {
                 </span>
                 <div className="flex min-w-0 items-center">
                   {breadcrumb.length === 1 ? (
+                    /* 1 级:父级名块,可点进 FolderReader 看正文,!noteId 时整块 active */
                     <span
-                      className="max-w-[120px] cursor-pointer truncate rounded px-1 py-0.5 text-xs transition-colors duration-150"
-                      style={{ color: 'var(--ink-light)' }}
+                      className="max-w-[120px] cursor-pointer truncate rounded px-1 py-0.5 text-xs transition-colors duration-150 hover:bg-[var(--shelf)]"
+                      style={{
+                        background: !activeNoteId ? 'var(--shelf)' : undefined,
+                        color: !activeNoteId ? 'var(--ink)' : 'var(--ink-light)',
+                        fontWeight: !activeNoteId ? 500 : 400,
+                      }}
                       title={breadcrumb[0].name}
-                      onClick={() => goToBreadcrumb(null)}
+                      onClick={() => navigate(`/note?at=${breadcrumb[0].id}`)}
                     >
                       {breadcrumb[0].name}
                     </span>
                   ) : (
-                    /* 2+ 级：… / 直接父级名
-                     * hover … 用 Radix HoverCard 弹出完整路径 */
+                    /* 2+ 级: … / 末段名;末段同款"父级正文入口"语义 */
                     <>
                       <HoverCard openDelay={200} closeDelay={100}>
                         <HoverCardTrigger asChild>
@@ -337,17 +418,16 @@ export default function Sidebar() {
                           }}
                         >
                           <div
-                            className="flex cursor-pointer items-center gap-2 truncate rounded-lg px-2.5 py-1.5 text-xs transition-colors duration-150 hover:bg-[var(--shelf)]"
+                            className="cursor-pointer truncate rounded-lg px-2.5 py-1.5 text-xs transition-colors duration-150 hover:bg-[var(--shelf)]"
                             style={{ color: 'var(--ink-light)' }}
                             onClick={() => goToBreadcrumb(null)}
                           >
-                            <Folder size={13} strokeWidth={1.5} className="shrink-0" style={{ color: 'var(--ink-ghost)' }} />
                             文稿
                           </div>
                           {breadcrumb.slice(0, -1).map((item, i) => (
                             <div
                               key={item.id}
-                              className="flex cursor-pointer items-center gap-2 truncate rounded-lg py-1.5 text-xs transition-colors duration-150 hover:bg-[var(--shelf)]"
+                              className="cursor-pointer truncate rounded-lg py-1.5 text-xs transition-colors duration-150 hover:bg-[var(--shelf)]"
                               style={{
                                 color: 'var(--ink-light)',
                                 paddingLeft: `${(i + 1) * 10 + 10}px`,
@@ -355,7 +435,6 @@ export default function Sidebar() {
                               }}
                               onClick={() => goToBreadcrumb(i)}
                             >
-                              <Folder size={13} strokeWidth={1.5} className="shrink-0" style={{ color: 'var(--ink-ghost)' }} />
                               {item.name}
                             </div>
                           ))}
@@ -363,8 +442,14 @@ export default function Sidebar() {
                       </HoverCard>
                       <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>/</span>
                       <span
-                        className="max-w-[100px] truncate text-xs"
-                        style={{ color: 'var(--ink-light)' }}
+                        className="max-w-[100px] cursor-pointer truncate rounded px-1 py-0.5 text-xs transition-colors duration-150 hover:bg-[var(--shelf)]"
+                        style={{
+                          background: !activeNoteId ? 'var(--shelf)' : undefined,
+                          color: !activeNoteId ? 'var(--ink)' : 'var(--ink-light)',
+                          fontWeight: !activeNoteId ? 500 : 400,
+                        }}
+                        title={breadcrumb[breadcrumb.length - 1].name}
+                        onClick={() => navigate(`/note?at=${breadcrumb[breadcrumb.length - 1].id}`)}
                       >
                         {breadcrumb[breadcrumb.length - 1].name}
                       </span>
@@ -391,57 +476,151 @@ export default function Sidebar() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: navExitX }}
                 transition={{ duration: 0.15, ease: [0.25, 0.1, 0.25, 1] }}
+                /* space-y-px 给项与项之间 1px 间隙,避免相邻 active/hover 背景块粘连;
+                   保持设计语言要求的"高密度紧凑感",仅为分隔不为留白 */
+                className="space-y-px"
               >
-                {(() => {
-                  let contentIdx = 0;
-                  return currentNodes.map((node) =>
-                    node.type === 'FOLDER' ? (
-                      <div
-                        key={node.id}
-                        className="hover-shelf flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5 transition-all duration-150"
-                        onClick={() => enterFolder(node)}
+                {/* page tree 心智:节点不分 FOLDER/DOC,统一渲染为「页面」。
+                    - FOLDER 点击:enterFolder 钻入下一层(改 ?at,FolderReader 接管渲染 folder 自身正文)
+                    - DOC   点击:跳 /note?at=&node=,NoteReader 渲染叶子正文
+                    高亮规则:DOC 用 contentItemId 与 URL ?node 匹配 active;FOLDER 无 active 态 */}
+                {currentNodes.map((node) => {
+                  const isActive =
+                    !!node.contentItemId && activeNoteId === node.contentItemId;
+                  return (
+                    <div
+                      key={node.id}
+                      className="hover-shelf flex cursor-pointer items-center rounded-lg px-3 py-1.5 transition-all duration-150"
+                      style={{ background: isActive ? 'var(--shelf)' : undefined }}
+                      onClick={() => {
+                        if (node.type === 'FOLDER') {
+                          enterFolder(node);
+                        } else if (node.contentItemId) {
+                          navigate(
+                            currentParentId
+                              ? `/note?at=${currentParentId}&node=${node.contentItemId}`
+                              : `/note?node=${node.contentItemId}`,
+                          );
+                        }
+                      }}
+                    >
+                      <span
+                        className="truncate text-base"
+                        style={{
+                          color: isActive ? 'var(--ink)' : 'var(--ink-light)',
+                          fontWeight: isActive ? 500 : 400,
+                        }}
                       >
-                        <Folder size={14} strokeWidth={1.5} className="shrink-0" style={{ color: 'var(--ink-ghost)' }} />
-                        <span className="truncate text-base" style={{ color: 'var(--ink-light)' }}>{node.name}</span>
-                        {node.hasChildren && (
-                          <ChevronRight size={12} strokeWidth={2} className="shrink-0" style={{ color: 'var(--ink-ghost)' }} />
-                        )}
-                      </div>
-                    ) : node.contentItemId ? (
+                        {node.name}
+                      </span>
+                    </div>
+                  );
+                })}
+              </motion.div>
+              </AnimatePresence>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Sub-nav: Anthology — 镜像笔记钻入式 sub-nav
+        *   根:文集列表(像笔记根级)
+        *   钻入:← 文集 面包屑 + 该文集的篇章列表 + 当前篇高亮 */}
+      {active === 'anthology' && (
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <div className="my-3" />
+
+          {/* 面包屑 — 钻入态分工:
+                ←        = 回上一级(根)
+                父级名块 = 进父级正文(Overview);当前已在父级正文时高亮 var(--shelf) 背景
+              「父级正文」语义:文集自身的卷首语正文页(/anthology?node=cixxx),
+                跟「篇章正文页」并列,都是 page tree 上的节点 */}
+          <div className="mt-3 px-5 pb-2">
+            {!anthologyContainerId ? (
+              /* 根态:section 标题 */
+              <span
+                className="text-2xs font-semibold uppercase"
+                style={{ color: 'var(--ink-ghost)', letterSpacing: '0.06em' }}
+              >
+                文集
+              </span>
+            ) : (
+              <div className="flex items-center whitespace-nowrap">
+                {/* ← 回上一级(目前永远回根,因文集只 1 级钻入) */}
+                <span
+                  className="shrink-0 cursor-pointer rounded p-0.5 transition-colors duration-150 hover:bg-[var(--shelf)]"
+                  style={{ color: 'var(--ink-faded)' }}
+                  onClick={() => navigate('/anthology')}
+                >
+                  <ChevronLeft size={14} strokeWidth={2} />
+                </span>
+                {/* 父级名块:点击 = 进父级正文(Overview);Overview 态时整块 active 高亮 */}
+                <div className="flex min-w-0 items-center">
+                  <span
+                    className="max-w-[120px] cursor-pointer truncate rounded px-1 py-0.5 text-xs transition-colors duration-150 hover:bg-[var(--shelf)]"
+                    style={{
+                      /* anthologyActiveEntry 为 null 表示 URL 无 ?at=,正在看父级正文(Overview) */
+                      background: !anthologyActiveEntry ? 'var(--shelf)' : undefined,
+                      color: !anthologyActiveEntry ? 'var(--ink)' : 'var(--ink-light)',
+                      fontWeight: !anthologyActiveEntry ? 500 : 400,
+                    }}
+                    title={anthologyContainerTitle ?? ''}
+                    onClick={() => navigate(`/anthology?node=${anthologyContainerId}`)}
+                  >
+                    {anthologyContainerTitle ?? ''}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {anthologyLoading ? (
+            <LoadingState variant="inline" />
+          ) : anthologyItems.length === 0 ? (
+            <div className="flex flex-col items-center gap-1.5 px-3 py-6">
+              <FileText size={20} strokeWidth={1.2} style={{ color: 'var(--ink-ghost)', opacity: 0.4 }} />
+              <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>还没有内容</span>
+            </div>
+          ) : (
+            <div className="px-2.5">
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={anthologyContainerId || 'root'}
+                  initial={{ opacity: 0, x: navEnterX }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: navExitX }}
+                  transition={{ duration: 0.15, ease: [0.25, 0.1, 0.25, 1] }}
+                  /* 同 notes:1px 微间距,避免相邻 active/hover 背景块粘连 */
+                  className="space-y-px"
+                >
+                  {anthologyItems.map((item) => {
+                    const isActive =
+                      !!anthologyContainerId &&
+                      anthologyActiveEntry === item.nodeId;
+                    /* 根态:点击 = 进文集 Overview;钻入态:点击 = 进 EntryReader */
+                    const target = anthologyContainerId
+                      ? `/anthology?at=${anthologyContainerId}&node=${item.nodeId}`
+                      : `/anthology?node=${item.nodeId}`;
+                    return (
                       <div
-                        key={node.id}
-                        className="hover-shelf flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5 transition-all duration-150"
-                        style={{ background: activeNoteId === node.contentItemId ? 'var(--shelf)' : undefined }}
-                        onClick={() => navigate(
-                          currentParentId
-                            ? `/note?at=${currentParentId}&node=${node.contentItemId}`
-                            : `/note?node=${node.contentItemId}`,
-                        )}
+                        key={item.nodeId}
+                        className="hover-shelf flex cursor-pointer items-center rounded-lg px-3 py-1.5 transition-all duration-150"
+                        style={{ background: isActive ? 'var(--shelf)' : undefined }}
+                        onClick={() => navigate(target)}
                       >
-                        {/* 序号 — 零补位双位数，等宽排列 */}
-                        <span
-                          className="w-5 shrink-0 text-2xs tabular-nums"
-                          style={{
-                            color: activeNoteId === node.contentItemId ? 'var(--ink-faded)' : 'var(--ink-ghost)',
-                            letterSpacing: '0.02em',
-                          }}
-                        >
-                          {String(++contentIdx).padStart(2, '0')}
-                        </span>
                         <span
                           className="truncate text-base"
                           style={{
-                            color: activeNoteId === node.contentItemId ? 'var(--ink)' : 'var(--ink-light)',
-                            fontWeight: activeNoteId === node.contentItemId ? 500 : 400,
+                            color: isActive ? 'var(--ink)' : 'var(--ink-light)',
+                            fontWeight: isActive ? 500 : 400,
                           }}
                         >
-                          {node.name}
+                          {item.title}
                         </span>
                       </div>
-                    ) : null,
-                  );
-                })()}
-              </motion.div>
+                    );
+                  })}
+                </motion.div>
               </AnimatePresence>
             </div>
           )}

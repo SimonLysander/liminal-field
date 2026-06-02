@@ -51,7 +51,9 @@ describe('AnthologyViewService.publishAnthology', () => {
     const publishVersion = jest.fn().mockResolvedValue(undefined);
     const svc = makeService({ publishVersion });
     await expect(svc.publishAnthology('ci_x')).resolves.toBeUndefined();
-    expect(publishVersion).toHaveBeenCalledWith('ci_x');
+    /* publishAnthology(contentItemId, versionId?) 内部透传两个参数,
+     * jest 严格匹配参数个数,versionId 不传时实参 = undefined。 */
+    expect(publishVersion).toHaveBeenCalledWith('ci_x', undefined);
   });
 });
 
@@ -94,7 +96,9 @@ describe('AnthologyViewService.publishAnthologyAndDescendants', () => {
     await svc.publishAnthologyAndDescendants('ci_anth');
 
     // 容器先发 + 子节点 A 发,子节点 B 跳过(无 latestVersion)
-    expect(publishVersion).toHaveBeenCalledWith('ci_anth');
+    /* 容器走 publishAnthology(ci, versionId?) 双参签名,实参 = (ci, undefined);
+     * 子节点循环里直传单参 publishVersion(ci_a),所以两个 expect 参数形态不同。 */
+    expect(publishVersion).toHaveBeenCalledWith('ci_anth', undefined);
     expect(publishVersion).toHaveBeenCalledWith('ci_a');
     expect(publishVersion).not.toHaveBeenCalledWith('ci_b');
   });
