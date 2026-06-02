@@ -14,7 +14,7 @@
 import { ContentFade, LoadingState } from '@/components/LoadingState';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import type { StructureNode } from '@/services/structure';
-import { ChevronLeft, ChevronRight, FileStack, Folder, Plus, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileStack, FileText, Folder, Plus, RefreshCw } from 'lucide-react';
 import { useCallback, useState } from 'react';
 
 /* ---------- Types ---------- */
@@ -48,7 +48,6 @@ type AdminStructurePanelProps = {
 
 function NodeItem({
   node,
-  contentIndex,
   isSelected,
   isDragging,
   dropTarget,
@@ -59,8 +58,6 @@ function NodeItem({
   onDrop,
 }: {
   node: StructureNode;
-  /** 内容项序号（文件夹不参与计数），null 表示文件夹。 */
-  contentIndex: number | null;
   isSelected: boolean;
   isDragging: boolean;
   dropTarget: DropTarget | null;
@@ -109,24 +106,25 @@ function NodeItem({
         onDrop={onDrop}
         onClick={() => onEnterFolder(node)}
       >
-        {/* 有子节点 = 带层级页面图标;叶子 = 序号 */}
+        {/* 统一用 icon 区分节点类型,跟阅读端 sub-nav 节奏对齐:
+            有子节点 = FileStack 多页(可钻入);叶子 = FileText 单页(可编辑)。
+            原 hasChildren ? icon : 序号 的二分让列表视觉断裂(花卉 01 vs 数学 icon),
+            且 ink-ghost 在 midnight 下对比度极低,icon 几乎隐形。
+            统一颜色到 ink-faded(daylight/midnight 都可见),contentIndex 不再用于显示。 */}
         {hasChildren ? (
           <FileStack
             size={14}
             strokeWidth={1.5}
             className="shrink-0"
-            style={{ color: isSelected ? 'var(--ink)' : 'var(--ink-ghost)' }}
+            style={{ color: isSelected ? 'var(--ink)' : 'var(--ink-faded)' }}
           />
         ) : (
-          <span
-            className="w-5 shrink-0 text-2xs tabular-nums"
-            style={{
-              color: isSelected ? 'var(--ink-faded)' : 'var(--ink-ghost)',
-              letterSpacing: '0.02em',
-            }}
-          >
-            {contentIndex !== null ? String(contentIndex).padStart(2, '0') : ''}
-          </span>
+          <FileText
+            size={14}
+            strokeWidth={1.5}
+            className="shrink-0"
+            style={{ color: isSelected ? 'var(--ink)' : 'var(--ink-faded)' }}
+          />
         )}
 
         <span
@@ -384,13 +382,10 @@ export function AdminStructurePanel({
             </div>
           ) : (
             <div>
-              {(() => {
-                let contentIdx = 0;
-                return nodes.map((node) => (
+              {nodes.map((node) => (
                 <NodeItem
                   key={node.id}
                   node={node}
-                  contentIndex={node.type !== 'FOLDER' && node.contentItemId ? ++contentIdx : null}
                   isSelected={selectedNodeId === node.id}
                   isDragging={draggedNodeId === node.id}
                   dropTarget={dropTarget}
@@ -400,8 +395,7 @@ export function AdminStructurePanel({
                   onDragEnd={handleDragEnd}
                   onDrop={handleDrop}
                 />
-              ));
-              })()}
+              ))}
             </div>
           )}
         </ContentFade>
