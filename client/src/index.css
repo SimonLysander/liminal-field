@@ -570,11 +570,18 @@ body:not(.gallery-immersive)::after {
 ::-webkit-scrollbar { display: none; }
 
 /* 键盘焦点指示:柔和的长春花紫环(替代原 2px 近黑 outline 的生硬"黑框"),
- * 与输入框 focus 的 accent 边同一视觉语言。保留无障碍可见性。 */
+ * 与输入框 focus 的 accent 边同一视觉语言。保留无障碍可见性。
+ *
+ * 注意:这里**绝对不能**写 `border-radius` —— box-shadow 外阴影会自动跟随元素
+ * 自身的 border-radius。一旦在这里强行写死 `border-radius: var(--radius-sm)`,
+ * 所有用了 `rounded-lg / rounded-md` 等更大圆角的可聚焦元素(button、a、卡片)
+ * 一被点击就会被强制 reset 成 6px,**视觉抽动一下**——多次踩坑根因。
+ *
+ * 元素自己没显式 radius 时,ring 会是直角(浏览器原生 outline 行为,可接受)。
+ * 需要圆 ring 又没 radius 的特殊场景,在元素本身加 `rounded-sm` 即可。 */
 :focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
-  border-radius: var(--radius-sm);
 }
 
 /* Radix 浮层(菜单/对话框)打开时会获得焦点,但它们自带 highlighted 高亮,
