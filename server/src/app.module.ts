@@ -13,6 +13,7 @@ import { ImportModule } from './modules/import/import.module';
 import { HomeModule } from './modules/home/home.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { AgentModule } from './modules/agent/agent.module';
+import { SkillModule } from './modules/skill/skill.module';
 import { yamlLoader } from './config/yaml.loader';
 import { StartupDiagnosticsService } from './startup-diagnostics.service';
 
@@ -46,6 +47,7 @@ import { StartupDiagnosticsService } from './startup-diagnostics.service';
     WorkspaceModule,
     ImportModule,
     HomeModule,
+    SkillModule,
     SettingsModule,
     AgentModule,
   ],
