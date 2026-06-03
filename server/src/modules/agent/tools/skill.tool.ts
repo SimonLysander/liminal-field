@@ -60,30 +60,32 @@ export function createSkillTool(opts: CreateSkillToolOpts) {
       }
       const trimmed = name.trim();
 
-      // 三层校验。
+      // 三层校验。错误统一走 toolResult({status}),跟项目其余 17 个工具(search-content /
+      // remember / web-fetch 等)的契约一致;不 throw —— throw 会让 AI SDK 直接把整轮断开,
+      // 而 toolResult({status:'not_found'/'invalid'}) 模型能读到 hint 自我纠偏(换 skill 名 / 提示用户加工具)。
       const skill = await opts.skillService.findByName(trimmed);
       if (!skill) {
         logger.warn(`execute: skill 不存在 name=${trimmed}`);
-        throw new Error(`Skill not found: ${trimmed}`);
+        return toolResult(
+          `Skill not found: ${trimmed}`,
+          '当前可用 skill 见 <available_skills>',
+          { status: 'not_found', name: trimmed },
+        );
       }
-      // ObjectId / string 兼容:findByName 返回的是 Mongoose 文档,_id 可能是 ObjectId。
-      // ObjectId 实例本身有 toHexString,但通用做法用 toString()(ObjectId.prototype.toString
-      // 内部就是 toHexString);避免 String(unknownObject) 的 [object Object] 风险。
-      const rawId = (skill as { _id?: unknown })._id;
+      // ObjectId / string 兼容:findByName 返回的是 Mongoose 文档,_id 是 ObjectId 或 string。
+      // 项目 Mongoose 文档 _id 类型确定是 Types.ObjectId | string,直接 toString() ?? '' 即可,
+      // 无须三层 typeof 嵌套(ObjectId.toString 内部就是 toHexString,等价)。
       const skillIdStr =
-        rawId == null
-          ? ''
-          : typeof rawId === 'string'
-            ? rawId
-            : typeof (rawId as { toString?: () => string }).toString ===
-                'function'
-              ? (rawId as { toString: () => string }).toString()
-              : '';
+        (skill as { _id?: { toString(): string } })._id?.toString() ?? '';
       if (!skillIdStr || !enabledIdSet.has(skillIdStr)) {
         logger.warn(
           `execute: skill 未授权 name=${trimmed} skillId=${skillIdStr} enabledCount=${enabledIdSet.size}`,
         );
-        throw new Error(`Skill not enabled for this agent: ${trimmed}`);
+        return toolResult('该 skill 未在本 agent 授权', undefined, {
+          status: 'invalid',
+          kind: 'not_enabled',
+          name: trimmed,
+        });
       }
       const missing = (skill.requiredTools ?? []).filter(
         (t) => !opts.agentTools.includes(t),
@@ -92,8 +94,15 @@ export function createSkillTool(opts: CreateSkillToolOpts) {
         logger.warn(
           `execute: skill 缺工具 name=${trimmed} missing=${missing.join(',')}`,
         );
-        throw new Error(
-          `Skill ${trimmed} requires tools missing from agent: ${missing.join(', ')}`,
+        return toolResult(
+          'Skill 缺前置工具',
+          `管理员需在 Settings → Agent 配置 → 工具池补上 ${missing.join(', ')}`,
+          {
+            status: 'invalid',
+            kind: 'missing_tools',
+            missing,
+            name: trimmed,
+          },
         );
       }
 

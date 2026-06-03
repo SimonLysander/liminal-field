@@ -67,11 +67,13 @@ describe('SystemConfigService.saveAgentConfig — Skill 校验(Task 0.5)', () =>
     const existing = mkAgent({ tools: ['recall_memory'] });
     mockRepo.get.mockResolvedValue({ agentConfigs: [existing] } as never);
     // 要启用的 skill 需要 web_search
-    mockSkillService.findById.mockResolvedValue({
-      _id: 'sk1',
-      name: 'critic',
-      requiredTools: ['web_search'],
-    } as never);
+    mockSkillService.findByIds.mockResolvedValue([
+      {
+        _id: 'sk1',
+        name: 'critic',
+        requiredTools: ['web_search'],
+      },
+    ] as never);
 
     await expect(
       service.saveAgentConfig('writing-advisor', { enabledSkillIds: ['sk1'] }),
@@ -84,11 +86,13 @@ describe('SystemConfigService.saveAgentConfig — Skill 校验(Task 0.5)', () =>
     const { service, mockRepo, mockSkillService } = createMocks();
     const existing = mkAgent({ tools: ['web_search', 'recall_memory'] });
     mockRepo.get.mockResolvedValue({ agentConfigs: [existing] } as never);
-    mockSkillService.findById.mockResolvedValue({
-      _id: 'sk1',
-      name: 'critic',
-      requiredTools: ['web_search'],
-    } as never);
+    mockSkillService.findByIds.mockResolvedValue([
+      {
+        _id: 'sk1',
+        name: 'critic',
+        requiredTools: ['web_search'],
+      },
+    ] as never);
 
     await service.saveAgentConfig('writing-advisor', {
       enabledSkillIds: ['sk1'],
@@ -110,7 +114,7 @@ describe('SystemConfigService.saveAgentConfig — Skill 校验(Task 0.5)', () =>
     const { service, mockRepo, mockSkillService } = createMocks();
     const existing = mkAgent();
     mockRepo.get.mockResolvedValue({ agentConfigs: [existing] } as never);
-    mockSkillService.findById.mockResolvedValue(null);
+    mockSkillService.findByIds.mockResolvedValue([] as never);
 
     await expect(
       service.saveAgentConfig('writing-advisor', {
@@ -126,7 +130,7 @@ describe('SystemConfigService.saveAgentConfig — Skill 校验(Task 0.5)', () =>
 
     await service.saveAgentConfig('writing-advisor', { enabled: false });
 
-    expect(mockSkillService.findById).not.toHaveBeenCalled();
+    expect(mockSkillService.findByIds).not.toHaveBeenCalled();
     expect(mockRepo.patch).toHaveBeenCalled();
   });
 });
@@ -139,11 +143,13 @@ describe('SystemConfigService.saveAgentConfig — agent 改 tools 自动清理�
       enabledSkillIds: ['sk1'],
     });
     mockRepo.get.mockResolvedValue({ agentConfigs: [existing] } as never);
-    mockSkillService.findById.mockResolvedValue({
-      _id: 'sk1',
-      name: 'critic',
-      requiredTools: ['web_search'],
-    } as never);
+    mockSkillService.findByIds.mockResolvedValue([
+      {
+        _id: 'sk1',
+        name: 'critic',
+        requiredTools: ['web_search'],
+      },
+    ] as never);
 
     // 用户只改 tools(去掉 web_search),没传 enabledSkillIds
     const result = await service.saveAgentConfig('writing-advisor', {
@@ -173,11 +179,13 @@ describe('SystemConfigService.saveAgentConfig — agent 改 tools 自动清理�
       enabledSkillIds: ['sk1'],
     });
     mockRepo.get.mockResolvedValue({ agentConfigs: [existing] } as never);
-    mockSkillService.findById.mockResolvedValue({
-      _id: 'sk1',
-      name: 'critic',
-      requiredTools: ['web_search'],
-    } as never);
+    mockSkillService.findByIds.mockResolvedValue([
+      {
+        _id: 'sk1',
+        name: 'critic',
+        requiredTools: ['web_search'],
+      },
+    ] as never);
 
     const result = await service.saveAgentConfig('writing-advisor', {
       tools: ['web_search', 'recall_memory', 'sub_agent'], // 加工具,不移除
@@ -200,7 +208,7 @@ describe('SystemConfigService.saveAgentConfig — agent 改 tools 自动清理�
       enabledSkillIds: ['sk-ghost'],
     });
     mockRepo.get.mockResolvedValue({ agentConfigs: [existing] } as never);
-    mockSkillService.findById.mockResolvedValue(null);
+    mockSkillService.findByIds.mockResolvedValue([] as never);
 
     const result = await service.saveAgentConfig('writing-advisor', {
       tools: ['recall_memory'],

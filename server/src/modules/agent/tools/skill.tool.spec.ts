@@ -2,10 +2,12 @@
  * skill.tool 单测 —— 三层校验 + body 直注。
  *
  * 测试用例(spec §5.2):
- * 1. skill 不存在 → throw not_found
- * 2. skill 存在但 agent 未启用 → throw not_enabled(防御:配置层应该挡住)
+ * 1. skill 不存在 → 返回 toolResult({status:'not_found'})
+ * 2. skill 存在但 agent 未启用 → 返回 toolResult({status:'invalid', kind:'not_enabled'})
  * 3. skill 启用 + agent 工具齐备 → 返回含 body 的 ToolResult JSON
- * 4. skill.requiredTools 不在 agentTools(配置漂移)→ throw requires
+ * 4. skill.requiredTools 不在 agentTools(配置漂移)→ 返回 toolResult({status:'invalid', kind:'missing_tools'})
+ *
+ * 错误契约:从 throw 改成 toolResult({status}),跟项目其余工具一致(2026-06-03 review)。
  *
  * 注意:AI SDK v6 工具的 execute 是函数,需要把 input + 一个空的 options 传进去。
  */
@@ -49,29 +51,45 @@ describe('createSkillTool', () => {
     ...over,
   });
 
-  it('skill 不存在 → throw not found', async () => {
+  // 小工具:把 toolResult 返回的 JSON 字符串解出来,只看 meta.status / detail / summary
+  function parseResult(raw: string): {
+    summary: string;
+    detail?: string;
+    meta?: {
+      status?: string;
+      kind?: string;
+      missing?: string[];
+      name?: string;
+    };
+  } {
+    return JSON.parse(raw) as ReturnType<typeof parseResult>;
+  }
+
+  it('skill 不存在 → status=not_found', async () => {
     const findByName = jest.fn().mockResolvedValue(null);
     const tool = createSkillTool({
       skillService: makeSkillService(findByName) as unknown as SkillService,
       enabledSkillIds: ['sk1'],
       agentTools: ['web_search'],
     });
-    await expect(invoke(tool, { name: 'unknown' })).rejects.toThrow(
-      /not found/i,
-    );
+    const result = parseResult(await invoke(tool, { name: 'unknown' }));
+    expect(result.meta?.status).toBe('not_found');
+    expect(result.meta?.name).toBe('unknown');
+    expect(result.summary).toMatch(/not found/i);
     expect(findByName).toHaveBeenCalledWith('unknown');
   });
 
-  it('skill 存在但 agent 未启用 → throw not enabled', async () => {
+  it('skill 存在但 agent 未启用 → status=invalid, kind=not_enabled', async () => {
     const findByName = jest.fn().mockResolvedValue(mkSkill());
     const tool = createSkillTool({
       skillService: makeSkillService(findByName) as unknown as SkillService,
       enabledSkillIds: [], // 空启用列表 → 即便 skill 存在也拒
       agentTools: ['web_search'],
     });
-    await expect(invoke(tool, { name: 'critic' })).rejects.toThrow(
-      /not enabled/i,
-    );
+    const result = parseResult(await invoke(tool, { name: 'critic' }));
+    expect(result.meta?.status).toBe('invalid');
+    expect(result.meta?.kind).toBe('not_enabled');
+    expect(result.meta?.name).toBe('critic');
   });
 
   it('skill 启用且工具齐备 → 返回含 body 的 ToolResult', async () => {
@@ -89,15 +107,17 @@ describe('createSkillTool', () => {
     expect(result).toContain('严格批评');
   });
 
-  it('skill.requiredTools 不在 agentTools → throw requires(sanity 防御漂移)', async () => {
+  it('skill.requiredTools 不在 agentTools → status=invalid, kind=missing_tools(sanity 防御漂移)', async () => {
     const findByName = jest.fn().mockResolvedValue(mkSkill()); // requires web_search
     const tool = createSkillTool({
       skillService: makeSkillService(findByName) as unknown as SkillService,
       enabledSkillIds: ['sk1'],
-      agentTools: [], // 漂移:配置时该挡住,但 sanity 还是 throw
+      agentTools: [], // 漂移:配置时该挡住,这里防御性返 invalid
     });
-    await expect(invoke(tool, { name: 'critic' })).rejects.toThrow(
-      /requires.*web_search/i,
-    );
+    const result = parseResult(await invoke(tool, { name: 'critic' }));
+    expect(result.meta?.status).toBe('invalid');
+    expect(result.meta?.kind).toBe('missing_tools');
+    expect(result.meta?.missing).toEqual(['web_search']);
+    expect(result.detail).toMatch(/web_search/);
   });
 });

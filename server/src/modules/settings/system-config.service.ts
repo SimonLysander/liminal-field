@@ -627,10 +627,13 @@ export class SystemConfigService implements OnModuleInit {
    * 遍历 agent.enabledSkillIds,凡 skill.requiredTools 不再 ⊆ agent.tools 的从列表移除。
    *
    * 直接 mutate 传入的 agent.enabledSkillIds(已是 saveAgentConfig 中的 merged 引用)。
-   * 已被删的 skill(findById null)也丢弃,但 cleanup 事件链通常已先把它清掉,
+   * 已被删的 skill(Mongo 查不到)也丢弃,但 cleanup 事件链通常已先把它清掉,
    * 这里只是兜底(防止事件丢失)。
    *
    * 返回被清理掉的 skill 信息列表,供前端 toast 展示用户警告。
+   *
+   * 性能:用 findByIds 一次批量拉(替代 N 次串行 findById),配 enabledSkillIds 可能上 10
+   * 时差距明显;findByIds 已在 SkillRepository 提供。
    */
   private async autoCleanupOrphanSkills(
     agent: AgentEntryConfig,
@@ -638,11 +641,17 @@ export class SystemConfigService implements OnModuleInit {
     const skillIds = agent.enabledSkillIds ?? [];
     if (!skillIds.length) return [];
 
+    // 一次批量拉(避免 N+1):内存里按 id Map 校验
+    const found = await this.skillService.findByIds(skillIds);
+    const byId = new Map(
+      found.map((s) => [String((s as { _id?: unknown })._id), s]),
+    );
+
     const cleaned: Array<{ agent: string; skillName: string }> = [];
     const kept: string[] = [];
 
     for (const skillId of skillIds) {
-      const skill = await this.skillService.findById(skillId);
+      const skill = byId.get(skillId);
       if (!skill) {
         // skill 已被删 → 直接丢弃(无 displayName 可报,记日志即可)
         this.logger.warn(
@@ -672,14 +681,20 @@ export class SystemConfigService implements OnModuleInit {
    * 违反则抛 BadRequestException(400),整个保存动作 reject。
    *
    * spec §4.3 关键约束 + Task 0.5 实现。
-   * 未实现自动清理(Task 0.7 加),目前调用方需保证传入合规的 enabledSkillIds。
+   *
+   * 性能:同 autoCleanupOrphanSkills,一次 findByIds 批量拉,避免 N 次串行 findById。
    */
   private async validateEnabledSkills(agent: AgentEntryConfig): Promise<void> {
     const skillIds = agent.enabledSkillIds ?? [];
     if (!skillIds.length) return;
 
+    const found = await this.skillService.findByIds(skillIds);
+    const byId = new Map(
+      found.map((s) => [String((s as { _id?: unknown })._id), s]),
+    );
+
     for (const skillId of skillIds) {
-      const skill = await this.skillService.findById(skillId);
+      const skill = byId.get(skillId);
       if (!skill) {
         throw new BadRequestException(
           `Agent ${agent.key} 启用了不存在的 skill: ${skillId}`,
