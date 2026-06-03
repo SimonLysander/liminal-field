@@ -131,6 +131,90 @@ describe('SystemConfigService.saveAgentConfig — Skill 校验(Task 0.5)', () =>
   });
 });
 
+describe('SystemConfigService.saveAgentConfig — agent 改 tools 自动清理孤儿 skill(Task 0.7)', () => {
+  it('改 tools 移除了某 skill 依赖的工具 → 自动从 enabledSkillIds 移除该 skill', async () => {
+    const { service, mockRepo, mockSkillService } = createMocks();
+    const existing = mkAgent({
+      tools: ['web_search', 'recall_memory'],
+      enabledSkillIds: ['sk1'],
+    });
+    mockRepo.get.mockResolvedValue({ agentConfigs: [existing] } as never);
+    mockSkillService.findById.mockResolvedValue({
+      _id: 'sk1',
+      name: 'critic',
+      requiredTools: ['web_search'],
+    } as never);
+
+    // 用户只改 tools(去掉 web_search),没传 enabledSkillIds
+    const result = await service.saveAgentConfig('writing-advisor', {
+      tools: ['recall_memory'],
+    });
+
+    // sk1 被自动剔除
+    expect(mockRepo.patch).toHaveBeenCalledWith({
+      agentConfigs: [
+        expect.objectContaining({
+          key: 'writing-advisor',
+          tools: ['recall_memory'],
+          enabledSkillIds: [],
+        }),
+      ],
+    });
+    // 返回 cleaned 信息供前端展示
+    expect(result.cleaned).toEqual([
+      { agent: 'writing-advisor', skillName: 'critic' },
+    ]);
+  });
+
+  it('改 tools 但所有 skill 依赖仍满足 → enabledSkillIds 不动,cleaned 为空', async () => {
+    const { service, mockRepo, mockSkillService } = createMocks();
+    const existing = mkAgent({
+      tools: ['web_search', 'recall_memory'],
+      enabledSkillIds: ['sk1'],
+    });
+    mockRepo.get.mockResolvedValue({ agentConfigs: [existing] } as never);
+    mockSkillService.findById.mockResolvedValue({
+      _id: 'sk1',
+      name: 'critic',
+      requiredTools: ['web_search'],
+    } as never);
+
+    const result = await service.saveAgentConfig('writing-advisor', {
+      tools: ['web_search', 'recall_memory', 'sub_agent'], // 加工具,不移除
+    });
+
+    expect(mockRepo.patch).toHaveBeenCalledWith({
+      agentConfigs: [
+        expect.objectContaining({
+          enabledSkillIds: ['sk1'], // 保留
+        }),
+      ],
+    });
+    expect(result.cleaned).toEqual([]);
+  });
+
+  it('改 tools 但 skill 已被删 → 兜底丢弃 + 不进 cleaned 返回(无可读 displayName)', async () => {
+    const { service, mockRepo, mockSkillService } = createMocks();
+    const existing = mkAgent({
+      tools: ['web_search'],
+      enabledSkillIds: ['sk-ghost'],
+    });
+    mockRepo.get.mockResolvedValue({ agentConfigs: [existing] } as never);
+    mockSkillService.findById.mockResolvedValue(null);
+
+    const result = await service.saveAgentConfig('writing-advisor', {
+      tools: ['recall_memory'],
+    });
+
+    expect(mockRepo.patch).toHaveBeenCalledWith({
+      agentConfigs: [
+        expect.objectContaining({ enabledSkillIds: [] }),
+      ],
+    });
+    expect(result.cleaned).toEqual([]); // 兜底清理,但不报告(skill 无名)
+  });
+});
+
 describe('SystemConfigService.cleanupSkillReferences — 删 Skill 级联清理(Task 0.6)', () => {
   it('删 skill 后,所有 agentConfig.enabledSkillIds 里该 id 都被移除', async () => {
     const { service, mockRepo } = createMocks();

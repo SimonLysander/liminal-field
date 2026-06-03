@@ -560,16 +560,24 @@ export class SystemConfigService implements OnModuleInit {
    * 保存 agent 入口配置（upsert by key）。
    * key 已存在则合并更新，不存在则追加到数组末尾。
    *
-   * Skill 关联校验(spec §4.3,Task 0.5):
-   * - 合并后的最终 entry,所有 enabledSkillIds 对应 skill.requiredTools 必须 ⊆ entry.tools
-   * - 任意一处违反 → 整批 reject 400(写入前抛,不污染库)
+   * Skill 关联校验/清理(spec §4.3,Task 0.5/0.7):
+   * 两条路径根据 input 字段意图分流:
    *
-   * 返回值约定(Task 0.7):未实现自动清理时无信息,Task 0.7 加入 cleaned 列表。
+   *   1. input.enabledSkillIds 显式提供
+   *      → 严格 validate;skill 不存在或 requiredTools 缺工具 → 400 BadRequest
+   *      → 语义:用户在 UI 管 skill 列表,缺工具的不该让他启用,给个明确报错
+   *
+   *   2. input.enabledSkillIds undefined,只改 tools 等其他字段
+   *      → 跑 autoCleanupOrphanSkills 自动剔除因 tools 变化而失效的 skill 引用
+   *      → 语义:用户改 tools 时,前置依赖的 skill 自动孤儿化是合理的非破坏行为
+   *      → 返回 cleaned 列表(后续给前端展示警告 toast,Phase 3 接 UI)
+   *
+   * 返回:{ cleaned } —— autoCleanup 触发的孤儿 skill 列表;走严格校验路径时为 []。
    */
   async saveAgentConfig(
     key: string,
     input: Partial<Omit<AgentEntryConfig, 'key'>>,
-  ): Promise<void> {
+  ): Promise<{ cleaned: Array<{ agent: string; skillName: string }> }> {
     const config = await this.repo.get();
     const existing = config?.agentConfigs ?? [];
     const idx = existing.findIndex((c) => c.key === key);
@@ -599,12 +607,64 @@ export class SystemConfigService implements OnModuleInit {
       existing.push(merged);
     }
 
-    // 校验:合并后的 enabledSkillIds 必须满足 skill.requiredTools ⊆ merged.tools
-    // 违反则 throw,patch 不发生,库不被污染
-    await this.validateEnabledSkills(merged);
+    let cleaned: Array<{ agent: string; skillName: string }> = [];
+
+    if (input.enabledSkillIds !== undefined) {
+      // 路径 1:用户显式管 skill 列表 → 严格 validate
+      await this.validateEnabledSkills(merged);
+    } else {
+      // 路径 2:用户只改 tools 等其他字段 → 自动清理孤儿 skill
+      cleaned = await this.autoCleanupOrphanSkills(merged);
+    }
 
     await this.repo.patch({ agentConfigs: existing });
     this.logger.log(`Agent config saved: ${key}`);
+    return { cleaned };
+  }
+
+  /**
+   * 自动清理孤儿 skill(Task 0.7):
+   * 遍历 agent.enabledSkillIds,凡 skill.requiredTools 不再 ⊆ agent.tools 的从列表移除。
+   *
+   * 直接 mutate 传入的 agent.enabledSkillIds(已是 saveAgentConfig 中的 merged 引用)。
+   * 已被删的 skill(findById null)也丢弃,但 cleanup 事件链通常已先把它清掉,
+   * 这里只是兜底(防止事件丢失)。
+   *
+   * 返回被清理掉的 skill 信息列表,供前端 toast 展示用户警告。
+   */
+  private async autoCleanupOrphanSkills(
+    agent: AgentEntryConfig,
+  ): Promise<Array<{ agent: string; skillName: string }>> {
+    const skillIds = agent.enabledSkillIds ?? [];
+    if (!skillIds.length) return [];
+
+    const cleaned: Array<{ agent: string; skillName: string }> = [];
+    const kept: string[] = [];
+
+    for (const skillId of skillIds) {
+      const skill = await this.skillService.findById(skillId);
+      if (!skill) {
+        // skill 已被删 → 直接丢弃(无 displayName 可报,记日志即可)
+        this.logger.warn(
+          `agent ${agent.key} 持有已删除 skill 引用 ${skillId},兜底清理`,
+        );
+        continue;
+      }
+      const allRequiredPresent = (skill.requiredTools ?? []).every((t) =>
+        agent.tools.includes(t),
+      );
+      if (allRequiredPresent) {
+        kept.push(skillId);
+      } else {
+        cleaned.push({ agent: agent.key, skillName: skill.name });
+        this.logger.warn(
+          `agent ${agent.key} 移除工具导致 skill ${skill.name} 自动 disable`,
+        );
+      }
+    }
+
+    agent.enabledSkillIds = kept;
+    return cleaned;
   }
 
   /**
