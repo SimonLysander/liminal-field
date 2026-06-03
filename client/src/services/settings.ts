@@ -317,7 +317,7 @@ export const settingsApi = {
   getOwnerProfile: () =>
     request<OwnerProfile>('/settings/owner-profile'),
 
-  saveOwnerProfile: (data: { name?: string; bio?: string }) =>
+  saveOwnerProfile: (data: { name?: string; birthday?: string; bio?: string }) =>
     request<{ success: boolean }>('/settings/owner-profile', {
       method: 'PUT',
       body: JSON.stringify(data),

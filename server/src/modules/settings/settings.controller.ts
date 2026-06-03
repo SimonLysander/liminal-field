@@ -44,6 +44,7 @@ import {
   SystemConfigService,
   SettingsConfigView,
 } from './system-config.service';
+import type { AgentEntryConfig } from './system-config.entity';
 import { KbRemoteDto } from './dto/settings.dto';
 import {
   applyKbGitTokenToGithubHttps,
@@ -305,7 +306,9 @@ export class SettingsController {
 
   @Put('owner-profile')
   async saveOwnerProfile(
-    @Body() dto: { name?: string; bio?: string },
+    // F12: 漏了 birthday(下游 entity 与 service 都已支持),补齐;
+    // 不补的话前端 PUT 的 birthday 会被 NestJS 按字段白名单剥离静默丢。
+    @Body() dto: { name?: string; birthday?: string; bio?: string },
   ): Promise<{ success: boolean }> {
     await this.systemConfigService.saveOwnerProfile(dto);
     return { success: true };
@@ -340,28 +343,15 @@ export class SettingsController {
    * 保存 agent 入口配置（upsert by key）。
    * key 匹配则更新，不存在则新增。
    *
-   * 注：enabledSkillIds 是 Phase 0/1 引入的 Skill 授权字段——
-   *   类型签名必须显式列出，否则 NestJS DTO 会按字段白名单剥离，
-   *   导致前端 PUT 的 enabledSkillIds 静默丢失（Phase 1 review 发现）。
+   * 类型同源(2026-06-03 review F4-b):body 用 `Partial<Omit<AgentEntryConfig, 'key'>>`,
+   * 不再手抄 14 字段——以前手抄漏了 enabledSkillIds(Phase 1 review 发现),
+   * 一漏字段 NestJS DTO 会按白名单剥离,前端 PUT 静默丢失。改类型同源后杜绝。
    */
   @Put('agent-configs/:key')
   async saveAgentConfig(
     @Param('key') key: string,
     @Body()
-    dto: {
-      name?: string;
-      description?: string;
-      enabled?: boolean;
-      systemPrompt?: string;
-      tools?: string[];
-      tier?: string;
-      providerId?: string;
-      flashProviderId?: string;
-      standardProviderId?: string;
-      thinkProviderId?: string;
-      visionProviderId?: string;
-      enabledSkillIds?: string[];
-    },
+    dto: Partial<Omit<AgentEntryConfig, 'key'>>,
   ): Promise<{
     success: boolean;
     cleaned: Array<{ agent: string; skillName: string }>;

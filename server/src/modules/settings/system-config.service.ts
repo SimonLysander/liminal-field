@@ -51,17 +51,14 @@ export interface SettingsConfigView {
     activeProviderId: string;
     aiSystemPrompt: string;
   };
-  /** Agent 入口配置列表 */
+  /**
+   * Agent 入口配置列表。
+   * 类型同源 AgentEntryConfig(2026-06-03 review F4-c):以前手抄子集,
+   * 漏了 4 个 providerId + enabledSkillIds,前端拿不到只能再请求 getAgentConfigs。
+   * 全字段直接透出(无敏感),前端按需消费。
+   */
   agent: {
-    configs: Array<{
-      key: string;
-      name: string;
-      description: string;
-      enabled: boolean;
-      systemPrompt: string;
-      tools: string[];
-      tier: string;
-    }>;
+    configs: AgentEntryConfig[];
   };
   /** 所有者身份信息 */
   owner: {
@@ -260,17 +257,10 @@ export class SystemConfigService implements OnModuleInit {
         activeProviderId: config?.activeAiProviderId || '',
         aiSystemPrompt: config?.aiSystemPrompt || '',
       },
-      // Agent 入口配置：直接返回完整数据（无敏感字段，无需脱敏）
+      // Agent 入口配置:类型同源 AgentEntryConfig(F4-c),直接整条透出无脱敏。
+      // 不再手抄字段子集 —— 避免漏字段(以前漏了 4 providerId + enabledSkillIds)。
       agent: {
-        configs: (config?.agentConfigs ?? []).map((c) => ({
-          key: c.key,
-          name: c.name,
-          description: c.description,
-          enabled: c.enabled,
-          systemPrompt: c.systemPrompt,
-          tools: c.tools,
-          tier: c.tier,
-        })),
+        configs: config?.agentConfigs ?? [],
       },
       // 所有者身份信息
       owner: {
