@@ -324,6 +324,10 @@ export class SettingsController {
   /**
    * 保存 agent 入口配置（upsert by key）。
    * key 匹配则更新，不存在则新增。
+   *
+   * 注：enabledSkillIds 是 Phase 0/1 引入的 Skill 授权字段——
+   *   类型签名必须显式列出，否则 NestJS DTO 会按字段白名单剥离，
+   *   导致前端 PUT 的 enabledSkillIds 静默丢失（Phase 1 review 发现）。
    */
   @Put('agent-configs/:key')
   async saveAgentConfig(
@@ -341,6 +345,7 @@ export class SettingsController {
       standardProviderId?: string;
       thinkProviderId?: string;
       visionProviderId?: string;
+      enabledSkillIds?: string[];
     },
   ): Promise<{ success: boolean }> {
     await this.systemConfigService.saveAgentConfig(key, dto);
