@@ -914,14 +914,20 @@ textarea.composer-input:focus {
 .focus-border:focus { border-color: var(--spine-strong); box-shadow: var(--shadow-sm); }
 .polaroid-frame:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
 
-/* 按压反馈 — button 类元素 :active 加内陷阴影 + 微缩放。
- * nav-item 和 list-item 不加 scale 避免布局抖动。 */
+/* 按压反馈 — button 类元素 :active 只加内陷阴影,**不要** transform: scale。
+ *
+ * 历史:之前同时加了 `transform: scale(0.975)` 想做微反馈,但 button selector
+ * 是按 element type 触发的,小按钮上感知阈值之下(32px 缩到 31.2px),
+ * 大尺寸卡片 / 整行可点 button 上则明显抖动(60px 缩到 58.5px,且伴随邻居挪位),
+ * 用户反复反馈"卡片样式都有缩放抽动"——根因就是这条规则一刀切到所有 button。
+ *
+ * 注释里之前已经写了"nav-item 和 list-item 不加 scale",但 selector 只 exclude
+ * 了 `.nav-item`,`.list-item` 漏写。这说明 opt-out 路线靠开发者记得加 class
+ * 已经失败过——直接把 scale 拿掉,反馈只靠内陷阴影 + 各按钮自己的 hover 颜色。 */
 button:active:not(:disabled):not(.nav-item),
 [role="button"]:active:not(.nav-item) {
   box-shadow: var(--shadow-inset);
-  transform: scale(0.975);
-  transition: transform var(--duration-fast) var(--ease-spring),
-              box-shadow var(--duration-fast) var(--ease-out);
+  transition: box-shadow var(--duration-fast) var(--ease-out);
 }
 
 /* hover/active overlay — 全局可点击元素的悬停/按下反馈 */
