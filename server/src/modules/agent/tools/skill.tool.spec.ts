@@ -16,9 +16,7 @@ import type { SkillService } from '../../skill/skill.service';
 function makeSkillService(
   findByName: jest.Mock,
 ): jest.Mocked<Pick<SkillService, 'findByName'>> {
-  return { findByName } as unknown as jest.Mocked<
-    Pick<SkillService, 'findByName'>
-  >;
+  return { findByName };
 }
 
 // 调用 tool.execute 的薄包装:AI SDK 的 execute 期待 (input, options) 签名,
@@ -28,14 +26,14 @@ async function invoke(
   input: { name: string },
 ): Promise<string> {
   // tool 类型是 AI SDK 的 Tool;execute 接 (input, options) → 返回字符串(toolResult)。
-  return (await (
+  return await (
     tool as unknown as {
       execute: (
         input: unknown,
         options: { toolCallId: string; messages: unknown[] },
       ) => Promise<string>;
     }
-  ).execute(input, { toolCallId: 't1', messages: [] })) as string;
+  ).execute(input, { toolCallId: 't1', messages: [] });
 }
 
 describe('createSkillTool', () => {

@@ -38,7 +38,8 @@ export function createSkillTool(opts: CreateSkillToolOpts) {
       properties: {
         name: {
           type: 'string',
-          description: 'Skill 的 slug(如 "critic"、"polisher"),从 <available_skills> 取',
+          description:
+            'Skill 的 slug(如 "critic"、"polisher"),从 <available_skills> 取',
         },
       },
       required: ['name'],
@@ -58,7 +59,18 @@ export function createSkillTool(opts: CreateSkillToolOpts) {
         throw new Error(`Skill not found: ${trimmed}`);
       }
       // ObjectId / string 兼容:findByName 返回的是 Mongoose 文档,_id 可能是 ObjectId。
-      const skillIdStr = String((skill as { _id?: unknown })._id ?? '');
+      // ObjectId 实例本身有 toHexString,但通用做法用 toString()(ObjectId.prototype.toString
+      // 内部就是 toHexString);避免 String(unknownObject) 的 [object Object] 风险。
+      const rawId = (skill as { _id?: unknown })._id;
+      const skillIdStr =
+        rawId == null
+          ? ''
+          : typeof rawId === 'string'
+            ? rawId
+            : typeof (rawId as { toString?: () => string }).toString ===
+                'function'
+              ? (rawId as { toString: () => string }).toString()
+              : '';
       if (!skillIdStr || !enabledIdSet.has(skillIdStr)) {
         throw new Error(`Skill not enabled for this agent: ${trimmed}`);
       }

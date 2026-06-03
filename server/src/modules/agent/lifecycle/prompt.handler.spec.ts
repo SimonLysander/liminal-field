@@ -262,7 +262,9 @@ describe('PromptHandler.buildSystemPrompt', () => {
       }) as unknown as Skill;
 
     it('enabledSkills 为空或未传 → 不注入 <available_skills>', () => {
-      const empty = handler.buildSystemPrompt(baseParams({ enabledSkills: [] }));
+      const empty = handler.buildSystemPrompt(
+        baseParams({ enabledSkills: [] }),
+      );
       expect(empty).not.toContain('<available_skills>');
 
       const missing = handler.buildSystemPrompt(baseParams());
@@ -277,9 +279,7 @@ describe('PromptHandler.buildSystemPrompt', () => {
       expect(out).toContain('<available_skills>');
       expect(out).toContain('name: critic');
       expect(out).toContain('description: 挑稿子结构与逻辑问题');
-      expect(out).toContain(
-        'when_to_use: 用户说"批评"/"挑毛病"/"严点说"时',
-      );
+      expect(out).toContain('when_to_use: 用户说"批评"/"挑毛病"/"严点说"时');
       // —— 关键红线:body 永远不能进 system prompt(只在 Skill 工具 tool_result 注入)
       expect(out).not.toContain(skill.body);
       expect(out).not.toContain('严厉方法论 body 内容');
@@ -289,12 +289,12 @@ describe('PromptHandler.buildSystemPrompt', () => {
       const out = handler.buildSystemPrompt(
         baseParams({
           enabledSkills: [
-            mkSkill({ name: 'critic' } as Partial<Skill>),
+            mkSkill({ name: 'critic' }),
             mkSkill({
               name: 'polisher',
               description: '润色字句',
               whenToUse: '用户求润色时',
-            } as Partial<Skill>),
+            }),
           ],
         }),
       );
