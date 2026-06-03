@@ -130,6 +130,8 @@ export class AgentLifecycle {
       entrySystemPrompt?: string;
       allowedTools?: string[];
       tier?: string;
+      /** 本 agent 启用的 Skill _id 列表(AgentEntryConfig.enabledSkillIds 直传) */
+      enabledSkillIds?: string[];
     },
   ): Promise<{
     systemPrompt: string;
@@ -185,10 +187,12 @@ export class AgentLifecycle {
     });
 
     // allowedTools 为空时使用全部工具；有白名单时按白名单过滤
+    // enabledSkillIds 非空时叠加挂 Skill 工具(独立于 allowedTools 白名单)
     const tools = this.tools.assemble(
       dto.entryContext,
       aiConfig.allowedTools,
       aiConfig.tier,
+      aiConfig.enabledSkillIds,
     );
 
     return { systemPrompt, tools };

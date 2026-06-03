@@ -49,6 +49,8 @@ import { ToolUseListener } from './listeners/tool-use.listener';
 import { ContentModule } from '../content/content.module';
 import { WorkspaceModule } from '../workspace/workspace.module';
 import { SettingsModule } from '../settings/settings.module';
+// SkillModule:暴露 SkillService 供 ToolAssembler / PromptHandler 注入(Skill 工具 + <available_skills>)
+import { SkillModule } from '../skill/skill.module';
 
 @Module({
   imports: [
@@ -66,6 +68,7 @@ import { SettingsModule } from '../settings/settings.module';
     ContentModule,
     WorkspaceModule,
     SettingsModule,
+    SkillModule,
   ],
   controllers: [AgentController],
   providers: [

@@ -51,6 +51,9 @@ import { createWebFetchTool } from '../tools/web-fetch.tool';
 import { createWebFetchProviderFromEnv } from '../tools/web-fetch-provider';
 import { AgentSessionRepository } from '../session/agent-session.repository';
 import { AgentMemoryRepository } from '../memory/agent-memory.repository';
+// Skill 工具:agent.enabledSkillIds 非空时自动挂载,通过 SkillService 按 name 调起。
+import { SkillService } from '../../skill/skill.service';
+import { createSkillTool } from '../tools/skill.tool';
 import type { DocumentContext } from '../tools/get-current-document.tool';
 
 export interface EntryContext {
@@ -76,6 +79,8 @@ export class ToolAssembler {
     private readonly memoryRepo: AgentMemoryRepository,
     // 2026-05-30 event log:recall/search 工具改读 observations
     private readonly observationRepo: AgentMemoryObservationRepository,
+    // Skill 池(agent skills):agent 启用 skill 时按 name 调起、注入 body 作 tool_result
+    private readonly skillService: SkillService,
   ) {}
 
   /**
@@ -90,6 +95,9 @@ export class ToolAssembler {
     entryContext: EntryContext,
     allowedTools?: string[],
     tier?: string,
+    // Agent 启用的 Skill _id 列表(AgentEntryConfig.enabledSkillIds);非空时挂 Skill 工具。
+    // 跟 web_search lifecycle 同款:配置驱动,无配置无工具,模型看不到自然不会调。
+    enabledSkillIds?: string[],
   ): Record<string, any> {
     const memoryKey = entryContext.agentInstanceKey ?? entryContext.sessionKey;
     // 工具接 getter(与 createGetCurrentDraftTool/createProposeDocumentRewriteTool 签名对齐)。
@@ -193,6 +201,23 @@ export class ToolAssembler {
             ),
           )
         : rawTools;
+
+    // Skill 工具叠加(不受 allowedTools 白名单影响):
+    //   agent 启用 skill 是单独维度的授权(enabledSkillIds 非空 → 必须能调起 Skill),
+    //   跟 tools 白名单(用户手动勾选哪些底层工具)互不交叉。
+    // 闭包传 enabledSkillIds + agentTools(=allowedTools 或全工具集 keys),
+    // tool 内部按这两个做防御性 sanity 校验。
+    if (enabledSkillIds && enabledSkillIds.length > 0) {
+      const agentTools =
+        allowedTools && allowedTools.length > 0
+          ? allowedTools
+          : Object.keys(rawTools);
+      filteredTools['Skill'] = createSkillTool({
+        skillService: this.skillService,
+        enabledSkillIds,
+        agentTools,
+      });
+    }
 
     return filteredTools;
   }

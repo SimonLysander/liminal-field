@@ -100,6 +100,9 @@ export class AgentService {
       entrySystemPrompt: agentConfig?.systemPrompt,
       allowedTools: agentConfig?.tools,
       tier,
+      // agent skills:启用的 Skill _id 列表透传给 lifecycle,prompt 注入 <available_skills> +
+      //   tool.assembler 挂 Skill 工具(配置驱动,空列表 → 两者都不动)
+      enabledSkillIds: agentConfig?.enabledSkillIds,
     });
 
     // 5. 组装喂模型的"最近原文"。后端权威上下文:历史从 agent_sessions 读(按 token
