@@ -83,6 +83,7 @@ export class SkillService {
     // 幂等:找不到不抛(场景:并发删 / 重试);删除后发事件触发级联清理
     this.logger.debug(`deleting skill id=${id}`);
     await this.repo.deleteById(id);
-    this.eventBus.emit(SKILL_DELETED_EVENT, { skillId: id } as SkillDeletedEvent);
+    const payload: SkillDeletedEvent = { skillId: id };
+    this.eventBus.emit(SKILL_DELETED_EVENT, payload);
   }
 }

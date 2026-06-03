@@ -207,9 +207,7 @@ describe('SystemConfigService.saveAgentConfig — agent 改 tools 自动清理�
     });
 
     expect(mockRepo.patch).toHaveBeenCalledWith({
-      agentConfigs: [
-        expect.objectContaining({ enabledSkillIds: [] }),
-      ],
+      agentConfigs: [expect.objectContaining({ enabledSkillIds: [] })],
     });
     expect(result.cleaned).toEqual([]); // 兜底清理,但不报告(skill 无名)
   });

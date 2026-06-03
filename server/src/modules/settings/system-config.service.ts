@@ -674,9 +674,7 @@ export class SystemConfigService implements OnModuleInit {
    * spec §4.3 关键约束 + Task 0.5 实现。
    * 未实现自动清理(Task 0.7 加),目前调用方需保证传入合规的 enabledSkillIds。
    */
-  private async validateEnabledSkills(
-    agent: AgentEntryConfig,
-  ): Promise<void> {
+  private async validateEnabledSkills(agent: AgentEntryConfig): Promise<void> {
     const skillIds = agent.enabledSkillIds ?? [];
     if (!skillIds.length) return;
 
