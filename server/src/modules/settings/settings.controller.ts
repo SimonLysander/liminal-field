@@ -347,9 +347,17 @@ export class SettingsController {
       visionProviderId?: string;
       enabledSkillIds?: string[];
     },
-  ): Promise<{ success: boolean }> {
-    await this.systemConfigService.saveAgentConfig(key, dto);
-    return { success: true };
+  ): Promise<{
+    success: boolean;
+    cleaned: Array<{ agent: string; skillName: string }>;
+  }> {
+    // 透传 service 返回的 cleaned 列表 — 前端在用户改 tools 时若触发
+    // autoCleanupOrphanSkills,需要 toast 告知哪些 skill 被自动 disable。
+    const { cleaned } = await this.systemConfigService.saveAgentConfig(
+      key,
+      dto,
+    );
+    return { success: true, cleaned };
   }
 
   /** 删除 agent 入口配置（by key） */

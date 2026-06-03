@@ -19,6 +19,9 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { settingsApi } from '@/services/settings';
 import type { AgentConfig } from '@/services/settings';
+import { skillsApi } from '@/services/skills';
+import type { Skill } from '@/services/skills';
+import { ChipSelector } from '@/components/shared/ChipSelector';
 // AgentCard 内部仍用 SettingsUI 原子,下一轮 #145 收编时统一
 import {
   FieldLabel,
@@ -39,19 +42,17 @@ const TIER_OPTIONS = [
   { value: 'think', label: '深思（复杂推理）' },
 ] as const;
 
-/**
- * 常用工具预设列表，供用户点击快速添加。
- * 实际可用工具以 agent 服务注册的为准，此处仅辅助录入。
- */
-// ── 子组件：工具列表编辑器(checkbox 池子勾选) ──────────────────────
+// ── 子组件：工具列表编辑器(ChipSelector 化) ──────────────────────
 
 /**
- * ToolsEditor — 从可用工具池(availableTools)勾选 checkbox。
+ * ToolsEditor — 从可用工具池里 chip 多选。
  *
- * #141 重构(2026-05-30):此前是自由 input + 添加按钮,允许用户输入任意字符串
- * (拼错会成毒数据,agent 启动时静默忽略)。改成 checkbox 列表,工具池由后端
- * GET /settings/agent-configs/available-tools 提供。老数据若有不在池中的
- * 工具(已下线)→ 显示为红字"已下线"+ 移除按钮供清理。
+ * 演化:
+ *  - #141(2026-05-30):自由 input → checkbox 列表(防拼错产毒数据)
+ *  - Phase 3(2026-06-03):checkbox → ChipSelector(替代「捞」感,统一项目 chip 风格)
+ *
+ * 老数据残留(不在池中的工具,通常是被下线了):用 disabledReason 标注,
+ * 仍可作为已选 chip 显示,× 可清理 — 不可在 popover 重新添加。
  */
 function ToolsEditor({
   tools,
@@ -64,74 +65,103 @@ function ToolsEditor({
   onChange: (tools: string[]) => void;
   disabled: boolean;
 }) {
-  const toggle = (tool: string) => {
-    if (tools.includes(tool)) {
-      onChange(tools.filter((t) => t !== tool));
-    } else {
-      onChange([...tools, tool]);
-    }
-  };
-  // 池空时不标红"已下线"——空池=endpoint 加载失败/未生效,不是真下线,误报会把所有工具
-  // 都标成下线(实测 dev server stale 时全栈截图全红)。只有池**非空**且工具不在池中
-  // 才算真下线。
+  // 池非空时检测孤儿(老数据存的工具已从池里下线);池空通常是 API 失败,不算真下线
   const orphanTools =
     availableTools.length > 0
       ? tools.filter((t) => !availableTools.includes(t))
       : [];
 
-  return (
-    <div className="space-y-1.5">
-      {/* 池中工具 checkbox */}
-      {availableTools.map((tool) => {
-        const checked = tools.includes(tool);
-        return (
-          <label
-            key={tool}
-            className="flex items-center gap-2 cursor-pointer"
-            style={{ opacity: disabled ? 0.5 : 1 }}
-          >
-            <input
-              type="checkbox"
-              checked={checked}
-              disabled={disabled}
-              onChange={() => toggle(tool)}
-              className="h-3.5 w-3.5 cursor-pointer accent-current"
-              style={{ accentColor: 'var(--accent)' }}
-            />
-            <span
-              className="text-xs font-mono"
-              style={{ color: checked ? 'var(--ink)' : 'var(--ink-faded)' }}
-            >
-              {tool}
-            </span>
-          </label>
-        );
-      })}
+  // ChipSelector 的 available 必须包含 selected,否则 popover 会过滤;
+  // 把 orphan 合并进 available 表面上"已下线"也能展示成 chip。
+  const mergedAvailable = Array.from(
+    new Set([...availableTools, ...orphanTools]),
+  );
 
-      {/* 老数据残留:不在池中的工具(已下线,标红供清理) */}
-      {orphanTools.length > 0 && (
-        <div className="mt-2 pt-2" style={{ borderTop: '0.5px solid var(--separator)' }}>
-          {orphanTools.map((tool) => (
-            <div
-              key={tool}
-              className="flex items-center gap-2 text-xs font-mono py-0.5"
-              style={{ color: 'var(--mark-red)' }}
-            >
-              <span>⚠ {tool}(已下线,建议移除)</span>
-              {!disabled && (
-                <button
-                  type="button"
-                  onClick={() => toggle(tool)}
-                  className="text-xs underline opacity-80 hover:opacity-100"
-                  style={{ color: 'var(--mark-red)' }}
-                >
-                  移除
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+  return (
+    <div
+      className="space-y-2"
+      style={{ opacity: disabled ? 0.5 : 1, pointerEvents: disabled ? 'none' : undefined }}
+    >
+      <ChipSelector
+        selected={tools}
+        available={mergedAvailable}
+        onAdd={(t) => onChange([...tools, t])}
+        onRemove={(t) => onChange(tools.filter((x) => x !== t))}
+        renderMeta={(t) => (orphanTools.includes(t) ? '已下线' : undefined)}
+      />
+    </div>
+  );
+}
+
+// ── 子组件:技能授权 section(spec §6.3) ────────────────────────
+
+/**
+ * SkillsSection — 给单个 agent 授权使用 skill 的 ChipSelector。
+ *
+ * 设计要点:
+ *  - available = 全局 skills(传入),selected = agent.enabledSkillIds
+ *  - groupBy 把 skill 分「可添加 / 不可添加」(看 skill.requiredTools 是否 ⊆ agent.tools)
+ *  - disabledReason 列出缺哪些工具,在 popover 项上 tooltip 提示
+ *  - chip 副标记列出该 skill 需要的工具,提醒用户依赖关系
+ *  - 前端硬校验:加 skill 前看依赖是否齐(后端也会校验,这里是防御深度)
+ */
+function SkillsSection({
+  selected,
+  skills,
+  agentTools,
+  onChange,
+  disabled,
+}: {
+  selected: string[];
+  skills: Skill[];
+  agentTools: string[];
+  onChange: (ids: string[]) => void;
+  disabled: boolean;
+}) {
+  if (skills.length === 0) {
+    return (
+      <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
+        还没有技能。可去「技能」tab 创建一个。
+      </p>
+    );
+  }
+
+  const skillsById = new Map(skills.map((s) => [s._id, s]));
+  const availableIds = skills.map((s) => s._id);
+
+  const missingTools = (skillId: string): string[] => {
+    const skill = skillsById.get(skillId);
+    if (!skill) return [];
+    return skill.requiredTools.filter((t) => !agentTools.includes(t));
+  };
+
+  return (
+    <div
+      style={{ opacity: disabled ? 0.5 : 1, pointerEvents: disabled ? 'none' : undefined }}
+    >
+      <ChipSelector
+        selected={selected}
+        available={availableIds}
+        renderLabel={(id) => skillsById.get(id)?.displayName ?? id}
+        renderMeta={(id) => {
+          const reqs = skillsById.get(id)?.requiredTools ?? [];
+          return reqs.length > 0 ? `需 ${reqs.join(', ')}` : undefined;
+        }}
+        groupBy={(id) =>
+          missingTools(id).length === 0 ? '可添加' : '不可添加'
+        }
+        disabledReason={(id) => {
+          const miss = missingTools(id);
+          return miss.length > 0 ? `缺工具: ${miss.join(', ')}` : undefined;
+        }}
+        onAdd={(id) => {
+          // 前端硬校验:防止 disabledReason 被绕过(理论上 ChipSelector 已经挡)
+          if (missingTools(id).length > 0) return;
+          onChange([...selected, id]);
+        }}
+        onRemove={(id) => onChange(selected.filter((x) => x !== id))}
+        addLabel="+ 授权技能"
+      />
     </div>
   );
 }
@@ -148,12 +178,15 @@ function AgentCard({
   agent,
   providers,
   availableTools,
+  skills,
   onSave,
   onDelete,
 }: {
   agent: AgentConfig;
   providers: { id: string; name: string }[];
   availableTools: string[];
+  /** 全局 skill 列表(spec §6.3),用来展示技能授权 chip + 校验 */
+  skills: Skill[];
   onSave: (updated: Partial<AgentConfig>) => Promise<void>;
   onDelete?: () => Promise<void>;
 }) {
@@ -178,6 +211,7 @@ function AgentCard({
       standardProviderId: agent.standardProviderId,
       thinkProviderId: agent.thinkProviderId,
       visionProviderId: agent.visionProviderId,
+      enabledSkillIds: [...(agent.enabledSkillIds ?? [])],
     });
     setEditing(true);
   };
@@ -457,6 +491,32 @@ function AgentCard({
             </div>
           </div>
 
+          {/* 技能授权 — spec §6.3
+            * available 分「可添加 / 不可添加」组,disabledReason 提示缺哪些工具。
+            * 注意:把 enabledSkillIds 显式带进 draft 才会触发后端严格 validate 路径。 */}
+          <div>
+            <FieldLabel>
+              授权使用的技能
+              <span
+                className="ml-1.5 font-normal text-xs"
+                style={{ color: 'var(--ink-ghost)' }}
+              >
+                依赖工具齐备才能添加
+              </span>
+            </FieldLabel>
+            <div className="mt-1.5">
+              <SkillsSection
+                selected={draft.enabledSkillIds ?? []}
+                skills={skills}
+                agentTools={draft.tools ?? []}
+                onChange={(ids) =>
+                  setDraft((d) => ({ ...d, enabledSkillIds: ids }))
+                }
+                disabled={saving}
+              />
+            </div>
+          </div>
+
           {/* 自定义 system prompt */}
           <div>
             <FieldLabel>
@@ -507,6 +567,8 @@ export function AgentTab() {
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [providers, setProviders] = useState<{ id: string; name: string }[]>([]);
   const [availableTools, setAvailableTools] = useState<string[]>([]);
+  // Phase 3:全局 skill 列表,给 SkillsSection 展示 chip + 校验依赖
+  const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
 
   // AI 自定义指令(system prompt)2026-05-31 从 IntegrationTab 挪到这里
@@ -518,10 +580,11 @@ export function AgentTab() {
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
-    const [agentsRes, configRes, toolsRes] = await Promise.allSettled([
+    const [agentsRes, configRes, toolsRes, skillsRes] = await Promise.allSettled([
       settingsApi.getAgentConfigs(),
       settingsApi.getConfig(),
       settingsApi.getAvailableTools(),
+      skillsApi.list(),
     ]);
     if (agentsRes.status === 'fulfilled') {
       setAgents(agentsRes.value);
@@ -538,6 +601,11 @@ export function AgentTab() {
     if (toolsRes.status === 'fulfilled') {
       setAvailableTools(toolsRes.value);
     }
+    // skill 列表拉失败不报错(技能 tab 是后引入的能力,不阻塞 agent 配置基本流);
+    // 拉成功才覆盖 setSkills,失败保持原值(空 → SkillsSection 显示「还没有技能」提示)
+    if (skillsRes.status === 'fulfilled') {
+      setSkills(skillsRes.value);
+    }
     setLoading(false);
   }, []);
 
@@ -548,11 +616,22 @@ export function AgentTab() {
 
   const handleSave = async (key: string, updated: Partial<AgentConfig>) => {
     try {
-      await settingsApi.saveAgentConfig(key, updated);
-      banner.success('Agent 配置已保存');
+      const result = await settingsApi.saveAgentConfig(key, updated);
+      // 后端 autoCleanupOrphanSkills 触发了 → 告诉用户哪些 skill 因工具变化被自动 disable
+      // spec §6.3 + Task 0.7 链路:服务端返 cleaned 列表,UI 透出来
+      if (result.cleaned && result.cleaned.length > 0) {
+        const names = result.cleaned
+          .map((c) => `「${c.skillName}」`)
+          .join('、');
+        banner.info(`工具变化导致 ${names} 自动取消授权`);
+      } else {
+        banner.success('Agent 配置已保存');
+      }
       await loadData(true);
-    } catch {
-      banner.error('保存失败,请重试');
+    } catch (err) {
+      // 后端 400(skill 依赖校验失败等)→ 直接展示 message
+      const msg = err instanceof Error ? err.message : '保存失败,请重试';
+      banner.error(msg);
       throw new Error('save failed');
     }
   };
@@ -666,6 +745,7 @@ export function AgentTab() {
                 agent={agent}
                 providers={providers}
                 availableTools={availableTools}
+                skills={skills}
                 onSave={(updated) => handleSave(agent.key, updated)}
                 onDelete={undefined}
               />

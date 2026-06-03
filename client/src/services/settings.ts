@@ -302,9 +302,18 @@ export const settingsApi = {
   getAvailableTools: () =>
     request<string[]>('/settings/agent-configs/available-tools'),
 
-  /** 保存 agent 入口配置（upsert by key） */
+  /**
+   * 保存 agent 入口配置（upsert by key）。
+   *
+   * cleaned 列表(spec §6.3):用户改 tools 但没显式动 enabledSkillIds 时,
+   * 后端会自动剔除因工具缺失而失效的 skill,把列表传回让前端 toast 告知。
+   * 显式管 enabledSkillIds 走严格 validate 路径,cleaned 总是 []。
+   */
   saveAgentConfig: (key: string, data: Partial<Omit<AgentConfig, 'key'>>) =>
-    request<{ success: boolean }>(`/settings/agent-configs/${key}`, {
+    request<{
+      success: boolean;
+      cleaned: Array<{ agent: string; skillName: string }>;
+    }>(`/settings/agent-configs/${key}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
