@@ -26,11 +26,14 @@ import {
   renameBusinessSession,
   type BusinessSessionSummary,
 } from '@/services/agent';
+import { skillsApi, type Skill } from '@/services/skills';
+import { settingsApi } from '@/services/settings';
 import {
   AiReferenceComposer,
   type AiReferenceComposerHandle,
 } from './AiReferenceComposer';
 import { MessageList } from './MessageList';
+import { SkillSlashPopover } from './SkillSlashPopover';
 import { TaskChecklist } from './TaskChecklist';
 import {
   useAdvisorChat,
@@ -296,6 +299,61 @@ export function AdvisorSidebar({
 
   const isEmpty = composerEmpty;
 
+  // ── Skill slash autocomplete(Phase 4 Task 4.1)──────────────────
+  // 当前 agent 已启用 skills:从 settings.agentConfigs[agentKey].enabledSkillIds 推出。
+  // 加载策略:挂载时一次性拉(全局 skills + 当前 agent 配置),AgentTab 改 enabledSkills
+  // 时不会自动反映 —— 这是可接受的小代价(slash 不是关键操作链,用户进 Settings 改配置
+  // 后随便关掉 advisor 重开就同步)。
+  const [allSkills, setAllSkills] = useState<Skill[]>([]);
+  const [agentEnabledSkillIds, setAgentEnabledSkillIds] = useState<string[]>([]);
+  const [composerText, setComposerText] = useState('');
+  const [slashOpen, setSlashOpen] = useState(false);
+
+  useEffect(() => {
+    // 并行拉 skills 全集 + agent 配置;失败不影响 advisor 主链路,只是 slash 不可用。
+    let aborted = false;
+    Promise.all([skillsApi.list(), settingsApi.getAgentConfigs()])
+      .then(([skills, configs]) => {
+        if (aborted) return;
+        setAllSkills(skills);
+        const agentConfig = configs.find((c) => c.key === agentKey);
+        setAgentEnabledSkillIds(agentConfig?.enabledSkillIds ?? []);
+      })
+      .catch((error) => {
+        // 加载失败:slash 浮层不出即可,不报红
+        console.warn('[advisor] skills 加载失败,slash autocomplete 不可用', error);
+      });
+    return () => {
+      aborted = true;
+    };
+  }, [agentKey]);
+
+  // 当前 agent 已启用 skills 列表(过滤掉已删但配置残留的)
+  const enabledSkills = useMemo(
+    () => allSkills.filter((s) => agentEnabledSkillIds.includes(s._id)),
+    [allSkills, agentEnabledSkillIds],
+  );
+
+  // 文本变化时:判断是否以 / 开头(忽略前导空白),决定浮层开关。
+  const handleComposerTextChange = useCallback((text: string) => {
+    setComposerText(text);
+    // 触发条件:文本去掉两侧空白后以 / 开头,且空白前不混内容(防 "hi /foo" 误触)。
+    // 实际上 Plate composer 删干净再敲 / 就是首字符,稳定。
+    const trimmed = text.trimStart();
+    setSlashOpen(trimmed.startsWith('/'));
+  }, []);
+
+  // 选中 skill → composer 替换 + 关浮层 + 重新聚焦末尾
+  const handlePickSkill = useCallback((skillName: string) => {
+    composerRef.current?.replaceSlashCommand(skillName);
+    setSlashOpen(false);
+    composerRef.current?.focusEnd();
+  }, []);
+
+  const handleCloseSlash = useCallback(() => {
+    setSlashOpen(false);
+  }, []);
+
   return (
     // h-full:在笔记 grid 里等价于行 stretch(无变化);在文集条目 flex 容器里据此撑满高度
     <div className="flex h-full flex-col overflow-hidden">
@@ -457,8 +515,19 @@ export function AdvisorSidebar({
         </div>
       )}
 
-      {/* 输入区 */}
-      <div className="shrink-0 px-3 pb-4 pt-2">
+      {/* 输入区。relative 容器是 Skill slash 浮层的定位锚:浮层 absolute bottom-full
+          会贴 composer 上沿弹出。 */}
+      <div className="relative shrink-0 px-3 pb-4 pt-2">
+        {/* Skill slash 浮层 — 锚定 composer 上沿。skills 空时组件自身返回 null,无开销。 */}
+        <div className="absolute bottom-full left-3 right-3">
+          <SkillSlashPopover
+            open={slashOpen}
+            skills={enabledSkills}
+            query={composerText}
+            onPick={handlePickSkill}
+            onClose={handleCloseSlash}
+          />
+        </div>
         {/* focus 反馈作用在整个容器(输入框真正的边界),contenteditable 负责 inline 引用 token */}
         <div
           className="advisor-composer flex items-end gap-2 rounded-xl px-3 py-2 transition-shadow"
@@ -476,6 +545,7 @@ export function AdvisorSidebar({
             disabled={isStreaming}
             onRemoveSelection={onRemoveSelectionAttachment}
             onEmptyChange={setComposerEmpty}
+            onTextChange={handleComposerTextChange}
             onSubmit={() => {
               if (!composerRef.current?.isEmpty() && !isStreaming) handleSend();
             }}

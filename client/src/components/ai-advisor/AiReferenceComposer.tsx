@@ -20,6 +20,7 @@ import type {
   AnchorPayload,
 } from '@/pages/admin/lib/live-chat-selection';
 import { Editor } from '@/components/ui/editor';
+import { replaceSlashTokenInText } from './slash-text-utils';
 
 const REFERENCE_TYPE = 'chat_reference';
 
@@ -73,6 +74,18 @@ export interface AiReferenceComposerHandle {
   readAndClear: () => ComposerPayload;
   isEmpty: () => boolean;
   focusEnd: () => void;
+  /**
+   * Skill slash autocomplete 用:把 composer 当前文本里"以 / 开头的那段(到首个空白前)"
+   * 替换为 `/skillName `(尾随空格),保留之后用户已经输入的内容。
+   *
+   * 设计:
+   *   原文 `/cri 这段写得怎么样?` + replaceSlashCommand('critic')
+   *   → `/critic 这段写得怎么样?`
+   * 没找到 slash 段(理论上浮层不该弹) → 保险起见在最前插入 `/skillName `。
+   *
+   * 引用 token(chip)是 void inline 节点,不会进 plain text,自然不受影响。
+   */
+  replaceSlashCommand: (skillName: string) => void;
 }
 
 interface AiReferenceComposerProps {
@@ -81,6 +94,11 @@ interface AiReferenceComposerProps {
   onEmptyChange?: (empty: boolean) => void;
   onRemoveSelection?: (id: string) => void;
   onSubmit?: () => void;
+  /**
+   * 纯文本变化回调(Skill slash autocomplete 用):上层据此判 / 开头并显隐浮层。
+   * 只传文本(不含 chip 引用),回调里别做重计算 —— 上层用 useCallback 稳引用即可。
+   */
+  onTextChange?: (text: string) => void;
 }
 
 const ReferenceTokenPlugin = createPlatePlugin({
@@ -97,7 +115,7 @@ export const AiReferenceComposer = forwardRef<
   AiReferenceComposerHandle,
   AiReferenceComposerProps
 >(function AiReferenceComposer(
-  { disabled, selections, onEmptyChange, onRemoveSelection, onSubmit },
+  { disabled, selections, onEmptyChange, onRemoveSelection, onSubmit, onTextChange },
   ref,
 ) {
   const insertedIdsRef = useRef<Set<string>>(new Set());
@@ -136,6 +154,20 @@ export const AiReferenceComposer = forwardRef<
       },
       isEmpty: () => isComposerEmpty(editor.children),
       focusEnd: () => focusComposerEnd(editor),
+      replaceSlashCommand: (skillName: string) => {
+        // Skill slash 选中:把首段 slash token 替换成 `/skillName `,光标移末尾。
+        // 简化处理 —— 拿当前纯文本算出新文本,reset 编辑器再插。
+        // (Plate 文档编辑器不能这样粗放,但 advisor composer 只有单段 p + chips,reset 安全)
+        const currentText = readComposerText(editor.children);
+        const replacement = replaceSlashTokenInText(currentText, skillName);
+        editor.tf.reset();
+        // 重新插入新文本(reset 后是空段落,直接 insertText 即可)
+        focusComposerEnd(editor);
+        editor.tf.insertText(replacement);
+        // chips 不需要重插:reset 已清,父组件本就维护 selections 状态,
+        // 下一次 selections useEffect 会重新插入 chip token(若有引用)。
+        onEmptyChange?.(replacement.trim().length === 0);
+      },
     }),
     [editor, onEmptyChange],
   );
@@ -178,7 +210,10 @@ export const AiReferenceComposer = forwardRef<
       }
     }
     onEmptyChange?.(isComposerEmpty(editor.children));
-  }, [editor, onEmptyChange, onRemoveSelection]);
+    // Skill slash autocomplete:推纯文本给上层,据此判 `/xxx` 弹浮层。
+    // 读 plain text 跳过引用 token,跟 readAndClear 同源,语义一致。
+    onTextChange?.(readComposerText(editor.children));
+  }, [editor, onEmptyChange, onRemoveSelection, onTextChange]);
 
   const editableProps = useMemo(
     () => ({
