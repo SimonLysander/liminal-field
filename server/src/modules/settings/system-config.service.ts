@@ -560,19 +560,22 @@ export class SystemConfigService implements OnModuleInit {
    * 保存 agent 入口配置（upsert by key）。
    * key 已存在则合并更新，不存在则追加到数组末尾。
    *
-   * Skill 关联校验/清理(spec §4.3,Task 0.5/0.7):
-   * 两条路径根据 input 字段意图分流:
+   * Skill 关联校验/清理(spec §4.3,Task 0.5/0.7 + 2026-06-03 review F3):
+   * 路径不再按 input.enabledSkillIds 是否提供分流,而是统一:
    *
-   *   1. input.enabledSkillIds 显式提供
-   *      → 严格 validate;skill 不存在或 requiredTools 缺工具 → 400 BadRequest
-   *      → 语义:用户在 UI 管 skill 列表,缺工具的不该让他启用,给个明确报错
+   *   1. 先 autoCleanupOrphanSkills —— 用最新 merged.tools 把因工具变化而失效的
+   *      skill 自动剔除;cleaned 透回前端做 toast。
+   *   2. 再 validateEnabledSkills —— 对清理后剩下的列表跑严格校验;通常此时全合规
+   *      (cleanup 已把孤儿去掉),只有用户显式启用了一个不存在的 skill 才会 400。
    *
-   *   2. input.enabledSkillIds undefined,只改 tools 等其他字段
-   *      → 跑 autoCleanupOrphanSkills 自动剔除因 tools 变化而失效的 skill 引用
-   *      → 语义:用户改 tools 时,前置依赖的 skill 自动孤儿化是合理的非破坏行为
-   *      → 返回 cleaned 列表(后续给前端展示警告 toast,Phase 3 接 UI)
+   * 这样无论前端怎么传(只改 tools / 同时改 tools+enabledSkillIds / 只改 enabledSkillIds),
+   * spec §6.3 的 cleanup UX 都可达;前端不必再做 diff 决定是否要带 enabledSkillIds。
    *
-   * 返回:{ cleaned } —— autoCleanup 触发的孤儿 skill 列表;走严格校验路径时为 []。
+   * 写库时机:cleanup + validate 全通过后才 patch;校验失败抛 400,merged 不入库。
+   * 用函数式 next = [...existing] 构造而非 mutate existing[idx],避免任何一步抛错时
+   * existing 数组已被改坏(下次 repo.get 拿到的 in-memory cache 可能受影响)。
+   *
+   * 返回:{ cleaned } —— autoCleanup 触发的孤儿 skill 列表。
    */
   async saveAgentConfig(
     key: string,
@@ -586,7 +589,6 @@ export class SystemConfigService implements OnModuleInit {
     if (idx >= 0) {
       // 更新已有条目:只覆盖传入字段
       merged = { ...existing[idx], ...input, key };
-      existing[idx] = merged;
     } else {
       // 新增条目,补齐默认值(含 enabledSkillIds 默认 [])
       merged = {
@@ -604,20 +606,22 @@ export class SystemConfigService implements OnModuleInit {
         visionProviderId: input.visionProviderId ?? '',
         enabledSkillIds: input.enabledSkillIds ?? [],
       };
-      existing.push(merged);
     }
 
-    let cleaned: Array<{ agent: string; skillName: string }> = [];
+    // 1. 先 cleanup:把因 tools 变化失效的 skill 引用剔除(直接 mutate merged.enabledSkillIds)
+    const cleaned = await this.autoCleanupOrphanSkills(merged);
 
-    if (input.enabledSkillIds !== undefined) {
-      // 路径 1:用户显式管 skill 列表 → 严格 validate
-      await this.validateEnabledSkills(merged);
-    } else {
-      // 路径 2:用户只改 tools 等其他字段 → 自动清理孤儿 skill
-      cleaned = await this.autoCleanupOrphanSkills(merged);
-    }
+    // 2. 再 validate:对清理后剩余的列表跑严格校验。
+    //    cleanup 后通常都合规;若前端传了一个"不存在的" skillId,这里仍 400(语义清晰)。
+    await this.validateEnabledSkills(merged);
 
-    await this.repo.patch({ agentConfigs: existing });
+    // 3. 全通过 → 函数式构造 next 数组,patch 写库。失败抛 400 时 existing 未被 mutate。
+    const next =
+      idx >= 0
+        ? existing.map((c, i) => (i === idx ? merged : c))
+        : [...existing, merged];
+
+    await this.repo.patch({ agentConfigs: next });
     this.logger.log(`Agent config saved: ${key}`);
     return { cleaned };
   }
@@ -726,26 +730,43 @@ export class SystemConfigService implements OnModuleInit {
    *   - 直接走 repo.patch,跳过 saveAgentConfig 的 validateEnabledSkills
    *     —— 移除引用是减法,移除后 enabledSkillIds 必然合规
    *
+   * 错误处理(2026-06-03 review F2):
+   *   - 整个 handler 包 try-catch:EventEmitter 是 fire-and-forget,
+   *     handler 抛出会变 unhandledRejection,污染进程;且 SkillService.delete 已经返回,
+   *     回滚为时已晚(skill 实体已不在库里)。所以只 logger.error 带 stack + skillId,
+   *     不 rethrow。
+   *   - 真出问题(Mongo 瞬时挂掉)→ 日志告警 + 监控,运维去处理;数据不一致下次 agent 配置
+   *     保存时,autoCleanupOrphanSkills 会再清一遍兜底。
+   *
    * spec §9「enabledSkill 引用 deleted skill」风险应对。
    */
   @OnEvent(SKILL_DELETED_EVENT)
   async cleanupSkillReferences(event: SkillDeletedEvent): Promise<void> {
-    const config = await this.repo.get();
-    if (!config?.agentConfigs?.length) return;
+    try {
+      const config = await this.repo.get();
+      if (!config?.agentConfigs?.length) return;
 
-    let touchedAgents = 0;
-    const next = config.agentConfigs.map((agent) => {
-      const ids = agent.enabledSkillIds ?? [];
-      const filtered = ids.filter((id) => id !== event.skillId);
-      if (filtered.length === ids.length) return agent;
-      touchedAgents += 1;
-      return { ...agent, enabledSkillIds: filtered };
-    });
+      let touchedAgents = 0;
+      const next = config.agentConfigs.map((agent) => {
+        const ids = agent.enabledSkillIds ?? [];
+        const filtered = ids.filter((id) => id !== event.skillId);
+        if (filtered.length === ids.length) return agent;
+        touchedAgents += 1;
+        return { ...agent, enabledSkillIds: filtered };
+      });
 
-    if (touchedAgents > 0) {
-      await this.repo.patch({ agentConfigs: next });
-      this.logger.log(
-        `skill ${event.skillId} 引用从 ${touchedAgents} 个 agent 自动清理`,
+      if (touchedAgents > 0) {
+        await this.repo.patch({ agentConfigs: next });
+        this.logger.log(
+          `skill ${event.skillId} 引用从 ${touchedAgents} 个 agent 自动清理`,
+        );
+      }
+    } catch (err) {
+      // fire-and-forget handler:这里不 rethrow,否则会变 unhandledRejection。
+      // 带 stack + skillId 供排错;兜底由后续 saveAgentConfig.autoCleanup 兜住。
+      this.logger.error(
+        `cleanupSkillReferences 失败 skillId=${event.skillId}: 该 skill 引用可能未从 agent 配置清除`,
+        err instanceof Error ? err.stack : String(err),
       );
     }
   }
