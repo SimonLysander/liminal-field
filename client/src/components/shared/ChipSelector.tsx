@@ -30,7 +30,7 @@ interface Props<T = string> {
   groupBy?: (item: T) => string;
   /** 返回 string 时项不可选,tooltip 显示原因 */
   disabledReason?: (item: T) => string | undefined;
-  addLabel?: string; // 默认「+ 添加」
+  addLabel?: string; // 默认「添加」(图标已含 +,文字别再带)
 }
 
 export function ChipSelector<T extends string>({
@@ -42,7 +42,7 @@ export function ChipSelector<T extends string>({
   renderMeta,
   groupBy,
   disabledReason,
-  addLabel = '+ 添加',
+  addLabel = '添加',
 }: Props<T>) {
   const [open, setOpen] = useState(false);
 
