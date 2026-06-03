@@ -273,9 +273,20 @@ function PhotoCarousel({
         width: frameSize.width,
         display: 'inline-flex',
         flexDirection: 'column',
-        boxShadow: '0 22px 80px rgba(0,0,0,0.28)',
+        // 多层环境光 + 纸面边缘反光,让相框跟 blur 背景融合(不再"漂浮黑卡"感)
+        // 物理意图:照片镶嵌在 blur 背景里,边缘有同色光晕向外柔和扩散;
+        // 顶部 inset 高光模拟纸面反光(纸艺设计语言)。
+        // 视觉:横图饱满感不变;竖图/方图两侧 blur 留白看起来像"照片色彩自然延伸",
+        //       不再被硬阴影切割成"卡片 + 空缺"。
+        boxShadow: [
+          'inset 0 1px 0 rgba(255,255,255,0.25)',  // 顶部纸面反光
+          'inset 0 -1px 0 rgba(0,0,0,0.04)',       // 底部细微凹陷
+          '0 0 0 1px rgba(0,0,0,0.06)',            // 4 边均匀环境暗边
+          '0 0 80px 10px rgba(255,255,255,0.04)',  // 外缘柔光晕(向 blur 渗透)
+          '0 8px 40px rgba(0,0,0,0.12)',           // 极轻地心引力阴影
+        ].join(', '),
         overflow: 'hidden',
-        background: 'rgba(255,255,255,0.06)',
+        background: 'rgba(255,255,250,0.04)',     // 极淡米色,跟纸艺一致
       }}
     >
       {/* 图片区:明确尺寸(比例×视口),图片 contain 铺满,不塌陷 */}
