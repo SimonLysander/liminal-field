@@ -31,6 +31,13 @@ export interface AgentConfig {
   standardProviderId: string;
   thinkProviderId: string;
   visionProviderId: string;
+
+  /**
+   * 该 agent 启用的 Skill ID 列表(spec 2026-06-03)。
+   * 后端配置时硬校验 skill.requiredTools ⊆ tools,违反 → 400。
+   * 删 Skill / 移除 tool 时由后端 SystemConfigService 自动清理。
+   */
+  enabledSkillIds: string[];
 }
 
 /** 全量配置（脱敏，只含用户通过 UI 管理的字段） */
