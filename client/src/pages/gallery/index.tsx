@@ -53,20 +53,6 @@ function PhotoFrameBar({
   photoCount: number;
   onNavigate: (dir: number) => void;
 }) {
-  // 窄容器(竖图)时三栏挤不下,dots 翻页挪到第二行:
-  // 阈值 600px = 横图单行宽松;竖图切两行,EXIF + 日期单行,dots 独占第二行。
-  // Hooks 必须在 conditional return 之前(React rules-of-hooks)。
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [isNarrow, setIsNarrow] = useState(false);
-  useEffect(() => {
-    if (!containerRef.current || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(([entry]) => {
-      setIsNarrow(entry.contentRect.width < 600);
-    });
-    ro.observe(containerRef.current);
-    return () => ro.disconnect();
-  }, []);
-
   const t = photo.tags;
 
   /* 格式化文件大小（旧数据可能无 size） */
@@ -103,8 +89,10 @@ function PhotoFrameBar({
     flexShrink: 0,
   });
 
-  // 窄态:dots 单独第二行,EXIF + 日期独占第一行(两栏 grid);
-  // 宽态:三栏 EXIF | dots | 日期 单行。
+  // 容器查询驱动两态布局:见 index.css 的 .gallery-frame-bar 系列规则。
+  // 宽态(容器 > 999px):三栏单行 EXIF | dots | 日期;
+  // 窄态(容器 ≤ 999px):两栏 EXIF | 日期,dots 独占第二行。
+  // CSS-only,任何 viewport / 任何容器宽自适应,无 JS state / 阈值魔数。
   const dotsBlock = hasDots ? (
     <>
       <button
@@ -143,16 +131,8 @@ function PhotoFrameBar({
   ) : null;
 
   return (
-    <div ref={containerRef} style={{ width: '100%', fontFamily: FRAME_FONT, fontSize: 'clamp(10.5px, 0.58vw, 13px)', letterSpacing: '0.03em', color: 'rgba(45,45,45,0.76)', lineHeight: 1 }}>
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: isNarrow ? 'minmax(0, 1fr) auto' : 'minmax(0, 1fr) auto minmax(0, 1fr)',
-        alignItems: 'center',
-        width: '100%',
-        padding: 'clamp(3px, 0.25vw, 6px) clamp(12px, 0.8vw, 18px)',
-      }}
-    >
+    <div className="gallery-frame-bar" style={{ fontFamily: FRAME_FONT, fontSize: 'clamp(10.5px, 0.58vw, 13px)', letterSpacing: '0.03em', color: 'rgba(45,45,45,0.76)', lineHeight: 1 }}>
+    <div className="gallery-frame-bar-row">
       {/* 左:大小 + 分辨率 + 曝光参数 + 焦距 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(10px, 0.75vw, 16px)', overflow: 'hidden', minWidth: 0, justifySelf: 'start' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, flexShrink: 0, color: 'rgba(45,45,45,0.34)', letterSpacing: '0.12em' }}>
@@ -167,12 +147,10 @@ function PhotoFrameBar({
         ))}
       </div>
 
-      {/* 中:‹ dots › 翻页导航 — 窄态时挪到第二行 */}
-      {!isNarrow && (
-        <div style={{ justifySelf: 'center', display: 'flex', alignItems: 'center', gap: 8 }}>
-          {dotsBlock}
-        </div>
-      )}
+      {/* 中:‹ dots › 翻页导航 — 容器查询 .gallery-frame-bar-dots-inline 窄态自动 display:none */}
+      <div className="gallery-frame-bar-dots-inline">
+        {dotsBlock}
+      </div>
 
       {/* 右:拍摄日期 */}
       <div style={{ justifySelf: 'end' }}>
@@ -184,17 +162,10 @@ function PhotoFrameBar({
       </div>
     </div>
 
-    {/* 窄态第二行:dots 居中,无分割线 + 紧凑 padding */}
-    {isNarrow && hasDots && (
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 8,
-          padding: '2px 0 4px',
-        }}
-      >
+    {/* 窄态第二行:dots 居中(.gallery-frame-bar-dots-row 默认 display:none,
+        @container query 在窄态自动 display:flex) */}
+    {hasDots && (
+      <div className="gallery-frame-bar-dots-row">
         {dotsBlock}
       </div>
     )}
@@ -280,13 +251,13 @@ function getCenterFrameSize(
   // Sidebar 180 + ArcTimeline 120 = 300,扣掉的可用区按 94% 算最大宽
   if (!ratio) {
     return {
-      width: 'min(calc(80vw - 300px), calc(96vh))',
-      height: 'min(calc(80vw - 300px), calc(96vh))',
+      width: 'min(calc(80vw - 300px), calc(88vh))',
+      height: 'min(calc(80vw - 300px), calc(88vh))',
     };
   }
   return {
-    width: `min(calc(94vw - 300px), 1880px, calc((96vh) * ${ratio}))`,
-    height: `min(calc(96vh), calc((94vw - 300px) / ${ratio}), calc(1880px / ${ratio}))`,
+    width: `min(calc(94vw - 300px), 1880px, calc((88vh) * ${ratio}))`,
+    height: `min(calc(88vh), calc((94vw - 300px) / ${ratio}), calc(1880px / ${ratio}))`,
   };
 }
 

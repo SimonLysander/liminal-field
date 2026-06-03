@@ -1217,3 +1217,39 @@ body.gallery-immersive aside {
   .grow-loop .gs-seed, .grow-loop .gs-bud, .grow-loop .gs-half, .grow-loop .gs-bloom { animation: none; }
 }
 
+
+/* ────────────────────────────────────────────────────────
+ * Gallery PhotoFrameBar — 容器查询响应式布局
+ *
+ * 用 CSS-only @container query 让白条根据自身宽度自适应,不依赖 JS
+ * ResizeObserver + 阈值魔数(早期实现因字号 vw / 容器宽 px 维度不对齐,
+ * 14 寸阈值 600 在 27 寸全屏失效;改成 @container 后任何 viewport 通杀)。
+ *
+ * 默认:三栏 grid「EXIF | dots | 日期」单行(横图够宽)。
+ * 容器 ≤ 999px:两栏 grid「EXIF | 日期」+ dots 独占第二行(竖图自适应)。
+ * ──────────────────────────────────────────────────────── */
+.gallery-frame-bar {
+  container-type: inline-size;
+  container-name: gallery-frame-bar;
+  width: 100%;
+}
+.gallery-frame-bar-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  padding: clamp(3px, 0.25vw, 6px) clamp(12px, 0.8vw, 18px);
+}
+.gallery-frame-bar-dots-inline { justify-self: center; display: flex; align-items: center; gap: 8px; }
+.gallery-frame-bar-dots-row { display: none; }
+
+@container gallery-frame-bar (max-width: 999px) {
+  .gallery-frame-bar-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .gallery-frame-bar-dots-inline { display: none; }
+  .gallery-frame-bar-dots-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 2px 0 4px;
+  }
+}
