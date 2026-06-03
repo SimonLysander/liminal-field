@@ -20,7 +20,7 @@
  *   └── BottomBar          — 底部相册信息条（占位）
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
@@ -53,6 +53,20 @@ function PhotoFrameBar({
   photoCount: number;
   onNavigate: (dir: number) => void;
 }) {
+  // 窄容器(竖图)时三栏挤不下,dots 翻页挪到第二行:
+  // 阈值 600px = 横图单行宽松;竖图切两行,EXIF + 日期单行,dots 独占第二行。
+  // Hooks 必须在 conditional return 之前(React rules-of-hooks)。
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isNarrow, setIsNarrow] = useState(false);
+  useEffect(() => {
+    if (!containerRef.current || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(([entry]) => {
+      setIsNarrow(entry.contentRect.width < 600);
+    });
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, []);
+
   const t = photo.tags;
 
   /* 格式化文件大小（旧数据可能无 size） */
@@ -89,19 +103,54 @@ function PhotoFrameBar({
     flexShrink: 0,
   });
 
+  // 窄态:dots 单独第二行,EXIF + 日期独占第一行(两栏 grid);
+  // 宽态:三栏 EXIF | dots | 日期 单行。
+  const dotsBlock = hasDots ? (
+    <>
+      <button
+        onClick={atStart ? undefined : () => onNavigate(-1)}
+        style={chevron(atStart)}
+        onMouseEnter={atStart ? undefined : (e) => { e.currentTarget.style.color = 'rgba(45,45,45,0.85)'; }}
+        onMouseLeave={atStart ? undefined : (e) => { e.currentTarget.style.color = 'rgba(45,45,45,0.5)'; }}
+        aria-label="上一张"
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+        {Array.from({ length: photoCount }, (_, i) => (
+          <div
+            key={i}
+            style={{
+              width: i === photoIdx ? 16 : 5,
+              height: 5,
+              borderRadius: i === photoIdx ? 3 : '50%',
+              background: i === photoIdx ? 'rgba(45,45,45,0.7)' : 'rgba(45,45,45,0.22)',
+              transition: 'all 0.25s',
+            }}
+          />
+        ))}
+      </div>
+      <button
+        onClick={atEnd ? undefined : () => onNavigate(1)}
+        style={chevron(atEnd)}
+        onMouseEnter={atEnd ? undefined : (e) => { e.currentTarget.style.color = 'rgba(45,45,45,0.85)'; }}
+        onMouseLeave={atEnd ? undefined : (e) => { e.currentTarget.style.color = 'rgba(45,45,45,0.5)'; }}
+        aria-label="下一张"
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+    </>
+  ) : null;
+
   return (
+    <div ref={containerRef} style={{ width: '100%', fontFamily: FRAME_FONT, fontSize: 'clamp(10.5px, 0.58vw, 13px)', letterSpacing: '0.03em', color: 'rgba(45,45,45,0.76)', lineHeight: 1 }}>
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: '1fr auto 1fr',
+        gridTemplateColumns: isNarrow ? 'minmax(0, 1fr) auto' : 'minmax(0, 1fr) auto minmax(0, 1fr)',
         alignItems: 'center',
         width: '100%',
-        padding: 'clamp(6px, 0.4vw, 9px) clamp(14px, 0.9vw, 20px)',
-        fontFamily: FRAME_FONT,
-        fontSize: 'clamp(10.5px, 0.58vw, 13px)',
-        letterSpacing: '0.03em',
-        color: 'rgba(45,45,45,0.76)',
-        lineHeight: 1,
+        padding: 'clamp(3px, 0.25vw, 6px) clamp(12px, 0.8vw, 18px)',
       }}
     >
       {/* 左:大小 + 分辨率 + 曝光参数 + 焦距 */}
@@ -118,45 +167,12 @@ function PhotoFrameBar({
         ))}
       </div>
 
-      {/* 中:‹ dots › 翻页导航,屏幕居中 */}
-      <div style={{ justifySelf: 'center', display: 'flex', alignItems: 'center', gap: 8 }}>
-        {hasDots && (
-          <>
-            <button
-              onClick={atStart ? undefined : () => onNavigate(-1)}
-              style={chevron(atStart)}
-              onMouseEnter={atStart ? undefined : (e) => { e.currentTarget.style.color = 'rgba(45,45,45,0.85)'; }}
-              onMouseLeave={atStart ? undefined : (e) => { e.currentTarget.style.color = 'rgba(45,45,45,0.5)'; }}
-              aria-label="上一张"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-            </button>
-            <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-              {Array.from({ length: photoCount }, (_, i) => (
-                <div
-                  key={i}
-                  style={{
-                    width: i === photoIdx ? 16 : 5,
-                    height: 5,
-                    borderRadius: i === photoIdx ? 3 : '50%',
-                    background: i === photoIdx ? 'rgba(45,45,45,0.7)' : 'rgba(45,45,45,0.22)',
-                    transition: 'all 0.25s',
-                  }}
-                />
-              ))}
-            </div>
-            <button
-              onClick={atEnd ? undefined : () => onNavigate(1)}
-              style={chevron(atEnd)}
-              onMouseEnter={atEnd ? undefined : (e) => { e.currentTarget.style.color = 'rgba(45,45,45,0.85)'; }}
-              onMouseLeave={atEnd ? undefined : (e) => { e.currentTarget.style.color = 'rgba(45,45,45,0.5)'; }}
-              aria-label="下一张"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-            </button>
-          </>
-        )}
-      </div>
+      {/* 中:‹ dots › 翻页导航 — 窄态时挪到第二行 */}
+      {!isNarrow && (
+        <div style={{ justifySelf: 'center', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {dotsBlock}
+        </div>
+      )}
 
       {/* 右:拍摄日期 */}
       <div style={{ justifySelf: 'end' }}>
@@ -166,6 +182,22 @@ function PhotoFrameBar({
           </span>
         )}
       </div>
+    </div>
+
+    {/* 窄态第二行:dots 居中,无分割线 + 紧凑 padding */}
+    {isNarrow && hasDots && (
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+          padding: '2px 0 4px',
+        }}
+      >
+        {dotsBlock}
+      </div>
+    )}
     </div>
   );
 }
@@ -221,23 +253,40 @@ function ProgressiveImage({
  * 宝丽来白条作为自然 flow 子元素紧贴图片下方，不再绝对定位叠压。
  */
 /**
- * 单图相框尺寸:用 EXIF 比例算 CSS min(),不依赖图片加载 → 加载时也不塌陷、贴合照片。
- * 预留白条约 44px 高;无比例信息时给稳健方形上限兜底。
+ * 单图相框尺寸:用图片实际显示比例算 CSS min(),让容器跟 img 严格同宽,杜绝两侧露出
+ * 容器 background 浮层(白条也跟图片同宽)。
+ * 白条改 absolute 浮在图片底部(用户接受白条覆盖图片底部一段),所以 height 不再扣白条。
+ * 留 4vh 底部呼吸空间防止贴屏幕边。
+ *
+ * 比例来源优先级:
+ *   1. naturalAspect — img 加载后浏览器渲染的真实显示比例(orientation-aware,无误差)
+ *   2. EXIF tags.width/height — 首屏占位用,避免 img 加载前布局塌陷
+ *   3. 都没有 → 稳健方形上限兜底
+ *
+ * 历史踩坑:之前只用 EXIF tags,常见 EXIF orientation=6 竖图(物理 6048×4032 → 显示
+ * 4032×6048)按横图比例算 frameSize,容器宽 ≠ img 实际宽,两侧露出浅色浮层,白条
+ * 也比图片宽。改用 naturalAspect 后任何 EXIF 情形都能自适应。
  */
-function getCenterFrameSize(photo: GalleryPhoto): { width: string; height: string } {
-  const w = Number.parseFloat(photo.tags.width ?? '');
-  const h = Number.parseFloat(photo.tags.height ?? '');
-  const ratio = Number.isFinite(w) && Number.isFinite(h) && h > 0 ? w / h : null;
+function getCenterFrameSize(
+  photo: GalleryPhoto,
+  naturalAspect?: number | null,
+): { width: string; height: string } {
+  let ratio: number | null = naturalAspect ?? null;
+  if (!ratio) {
+    const w = Number.parseFloat(photo.tags.width ?? '');
+    const h = Number.parseFloat(photo.tags.height ?? '');
+    ratio = Number.isFinite(w) && Number.isFinite(h) && h > 0 ? w / h : null;
+  }
   // Sidebar 180 + ArcTimeline 120 = 300,扣掉的可用区按 94% 算最大宽
   if (!ratio) {
     return {
-      width: 'min(calc(80vw - 300px), calc(96vh - 44px))',
-      height: 'min(calc(80vw - 300px), calc(96vh - 44px))',
+      width: 'min(calc(80vw - 300px), calc(96vh))',
+      height: 'min(calc(80vw - 300px), calc(96vh))',
     };
   }
   return {
-    width: `min(calc(94vw - 300px), 1880px, calc((96vh - 44px) * ${ratio}))`,
-    height: `min(calc(96vh - 44px), calc((94vw - 300px) / ${ratio}), calc(1880px / ${ratio}))`,
+    width: `min(calc(94vw - 300px), 1880px, calc((96vh) * ${ratio}))`,
+    height: `min(calc(96vh), calc((94vw - 300px) / ${ratio}), calc(1880px / ${ratio}))`,
   };
 }
 
@@ -250,9 +299,18 @@ function PhotoCarousel({
   photoIdx: number;
   onNavigate: (dir: number) => void;
 }) {
+  // 当前图片真实显示比例(浏览器自动 orientation 处理后);img onLoad 回调写入。
+  // photoIdx 切换时 reset 为 null,下张图先用 EXIF 占位(getCenterFrameSize 兜底),
+  // 等 img 加载完拿到 naturalSize 后精确调整。这样杜绝"EXIF 错→容器宽于 img→两侧
+  // 露出 background 浮层"的整类问题(竖图/orientation 错/EXIF 缺/像素裁剪偏差)。
+  const [naturalAspect, setNaturalAspect] = useState<number | null>(null);
+  // photoIdx 变就 reset naturalAspect,下张图片先用 EXIF 占位,等 onLoad 再精确调整。
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- 切换照片时主动 reset,不是派生 state
+  useEffect(() => { setNaturalAspect(null); }, [photoIdx]);
+
   if (photos.length === 0) return null;
   const photo = photos[photoIdx];
-  const frameSize = getCenterFrameSize(photo);
+  const frameSize = getCenterFrameSize(photo, naturalAspect);
   // 预加载相邻 ±2 张的预览图:单图视图没有了 coverflow 邻图预载,显式预热缓存,
   // 切换即时显示、避免老图淡出后新图未就绪露出的黑屏。
   const neighbors = [photoIdx - 2, photoIdx - 1, photoIdx + 1, photoIdx + 2].filter(
@@ -273,20 +331,9 @@ function PhotoCarousel({
         width: frameSize.width,
         display: 'inline-flex',
         flexDirection: 'column',
-        // 多层环境光 + 纸面边缘反光,让相框跟 blur 背景融合(不再"漂浮黑卡"感)
-        // 物理意图:照片镶嵌在 blur 背景里,边缘有同色光晕向外柔和扩散;
-        // 顶部 inset 高光模拟纸面反光(纸艺设计语言)。
-        // 视觉:横图饱满感不变;竖图/方图两侧 blur 留白看起来像"照片色彩自然延伸",
-        //       不再被硬阴影切割成"卡片 + 空缺"。
-        boxShadow: [
-          'inset 0 1px 0 rgba(255,255,255,0.25)',  // 顶部纸面反光
-          'inset 0 -1px 0 rgba(0,0,0,0.04)',       // 底部细微凹陷
-          '0 0 0 1px rgba(0,0,0,0.06)',            // 4 边均匀环境暗边
-          '0 0 80px 10px rgba(255,255,255,0.04)',  // 外缘柔光晕(向 blur 渗透)
-          '0 8px 40px rgba(0,0,0,0.12)',           // 极轻地心引力阴影
-        ].join(', '),
+        boxShadow: '0 22px 80px rgba(0,0,0,0.28)',
         overflow: 'hidden',
-        background: 'rgba(255,255,250,0.04)',     // 极淡米色,跟纸艺一致
+        background: 'rgba(255,255,255,0.06)',
       }}
     >
       {/* 图片区:明确尺寸(比例×视口),图片 contain 铺满,不塌陷 */}
@@ -299,6 +346,7 @@ function PhotoCarousel({
             previewSrc={photo.url}
             originalSrc={photo.originalUrl}
             alt={photo.caption || photo.fileName}
+            onNaturalSize={(w, h) => h > 0 && setNaturalAspect(w / h)}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -312,13 +360,16 @@ function PhotoCarousel({
         </AnimatePresence>
       </div>
 
-      {/* 宝丽来白条 — 自然 flow 在图下方;三栏 EXIF | dots | 日期 */}
+      {/* 宝丽来白条 — absolute 浮在图片底部,半透明米色让底部图片色调透出来。
+          用户接受白条覆盖图片底部一段(不再独立占用相框 height),换来:
+          ① 相框总高 = 图片 height,不会贴屏幕底边;② 白条紧凑不臃肿。 */}
       <div
         style={{
-          flexShrink: 0,
-          display: 'flex', alignItems: 'center', minHeight: 40,
-          background: 'linear-gradient(to bottom, rgba(255,255,250,0.96), rgba(255,255,250,0.88))',
-          borderTop: '1px solid rgba(45,45,45,0.08)',
+          position: 'absolute',
+          left: 0, right: 0, bottom: 0,
+          display: 'flex', alignItems: 'center',
+          background: 'linear-gradient(to bottom, rgba(255,255,250,0.78), rgba(255,255,250,0.88))',
+          backdropFilter: 'blur(8px)',
         }}
       >
         <PhotoFrameBar photo={photo} photoIdx={photoIdx} photoCount={photos.length} onNavigate={onNavigate} />
