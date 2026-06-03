@@ -24,7 +24,7 @@
  * - 服务器返 stale → 模型基于返回的 currentMarkdown 重生成 newMarkdown + 最新 bodyHash 重试
  * - <outline> 给模型轻量结构感（定位用户口中"哪一段"），但不替代正文读取
  */
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { AgentMemory } from '../memory/agent-memory.entity';
 import type { AgentMemoryObservation } from '../memory/agent-memory-observation.entity';
 import type { Skill } from '../../skill/skill.entity';
@@ -106,6 +106,8 @@ export interface BuildSystemPromptParams {
 
 @Injectable()
 export class PromptHandler {
+  private readonly logger = new Logger(PromptHandler.name);
+
   buildSystemPrompt(params: BuildSystemPromptParams): string {
     const sections: string[] = [];
     const owner = params.ownerProfile;
@@ -150,6 +152,11 @@ export class PromptHandler {
         .join('\n\n');
       sections.push(
         `<available_skills>\n你有以下技能(方法论)可调用。识别到对应场景时,调 Skill 工具传 name 获取完整方法论指引。\n\n${items}\n</available_skills>`,
+      );
+      // 关键链路打点(CLAUDE.md「日志准则」):注入了哪些 skill 名称,方便排查
+      // 「模型为啥没调 Skill / 调错了 Skill」类问题。
+      this.logger.debug(
+        `buildSystemPrompt: 注入 <available_skills>(${params.enabledSkills.length} 个: ${params.enabledSkills.map((s) => s.name).join(', ')})`,
       );
     }
 

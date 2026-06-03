@@ -21,7 +21,7 @@
  * 注意：AI SDK v6 的 tool() 返回对象带 `parameters` 字段，
  * 但 streamText 内部读的是 `inputSchema`，需手动桥接。
  */
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ContentService } from '../../content/content.service';
 import { NoteViewService } from '../../workspace/note-view.service';
 import { AnthologyViewService } from '../../workspace/anthology-view.service';
@@ -67,6 +67,10 @@ export interface EntryContext {
 
 @Injectable()
 export class ToolAssembler {
+  // 关键链路打点(CLAUDE.md「日志准则」):入参摘要 + 关键分支 + 结果摘要
+  // LOG_LEVEL 控制开关,生产默认收(NestJS 默认 log/error/warn 开,debug 关)。
+  private readonly logger = new Logger(ToolAssembler.name);
+
   constructor(
     private readonly contentService: ContentService,
     private readonly noteViewService: NoteViewService,
@@ -217,6 +221,13 @@ export class ToolAssembler {
         enabledSkillIds,
         agentTools,
       });
+      this.logger.debug(
+        `assemble: 挂 Skill 工具(enabledSkillIds=${enabledSkillIds.length} 个,agentTools=${agentTools.length} 个)`,
+      );
+    } else {
+      this.logger.debug(
+        'assemble: 无 enabledSkillIds,Skill 工具不挂(模型看不到自然不调)',
+      );
     }
 
     return filteredTools;

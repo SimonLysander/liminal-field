@@ -12,9 +12,14 @@
  *
  * spec: docs/superpowers/specs/2026-06-03-agent-skills-design.md §5.2
  */
+import { Logger } from '@nestjs/common';
 import { tool, jsonSchema } from 'ai';
 import { toolResult } from './tool-result';
 import type { SkillService } from '../../skill/skill.service';
+
+// 模块级 logger:tool() 工厂返回 plain config,无 class 容器;NestJS Logger 可在 module
+// scope 使用("SkillTool" 是日志前缀,跟 ToolAssembler/PromptHandler 对应)。
+const logger = new Logger('SkillTool');
 
 export interface CreateSkillToolOpts {
   /** SkillService 实例;tool 仅用其只读方法(findByName)。 */
@@ -45,6 +50,8 @@ export function createSkillTool(opts: CreateSkillToolOpts) {
       required: ['name'],
     }),
     execute: async ({ name }: { name: string }) => {
+      logger.debug(`execute: 收到调用 name=${JSON.stringify(name)}`);
+
       // 入参基本校验:空 name 直接返 invalid,不必触底层查询。
       if (typeof name !== 'string' || name.trim().length === 0) {
         return toolResult('Skill name 不能为空', undefined, {
@@ -56,6 +63,7 @@ export function createSkillTool(opts: CreateSkillToolOpts) {
       // 三层校验。
       const skill = await opts.skillService.findByName(trimmed);
       if (!skill) {
+        logger.warn(`execute: skill 不存在 name=${trimmed}`);
         throw new Error(`Skill not found: ${trimmed}`);
       }
       // ObjectId / string 兼容:findByName 返回的是 Mongoose 文档,_id 可能是 ObjectId。
@@ -72,12 +80,18 @@ export function createSkillTool(opts: CreateSkillToolOpts) {
               ? (rawId as { toString: () => string }).toString()
               : '';
       if (!skillIdStr || !enabledIdSet.has(skillIdStr)) {
+        logger.warn(
+          `execute: skill 未授权 name=${trimmed} skillId=${skillIdStr} enabledCount=${enabledIdSet.size}`,
+        );
         throw new Error(`Skill not enabled for this agent: ${trimmed}`);
       }
       const missing = (skill.requiredTools ?? []).filter(
         (t) => !opts.agentTools.includes(t),
       );
       if (missing.length > 0) {
+        logger.warn(
+          `execute: skill 缺工具 name=${trimmed} missing=${missing.join(',')}`,
+        );
         throw new Error(
           `Skill ${trimmed} requires tools missing from agent: ${missing.join(', ')}`,
         );
@@ -85,6 +99,9 @@ export function createSkillTool(opts: CreateSkillToolOpts) {
 
       // 通过校验 → 返回 body(整段正文)。summary 给前端 UI 行内展示,detail 是模型读的方法论。
       const summary = `Skill · ${trimmed}`;
+      logger.debug(
+        `execute: 命中 name=${trimmed} bodyLength=${(skill.body ?? '').length}`,
+      );
       return toolResult(summary, skill.body, {
         status: 'ok',
         skillName: trimmed,
