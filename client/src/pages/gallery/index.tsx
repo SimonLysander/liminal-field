@@ -482,14 +482,13 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
 // ─── BlurBackground ───────────────────────────────────────────────────────────
 
 /**
- * 全屏模糊背景 — 参考 Apple Music 多层叠加方案（简化版）
+ * 全屏模糊背景 — 照片原色大幅模糊作沉浸底
  *
- * 层 1：照片模糊 + brightness(0.85) 轻压 + saturate(1.2) 提色
- * 层 2：暗色蒙版 rgba(0,0,0,0.05) 几乎不可见，仅作 0.5% 安全垫
+ * 演化:0.55+0.3 → 0.85+0.05 → 1.0(不压暗,删蒙版)
+ * 原 Apple Music 多层 + 蒙版兜底"纯白照片白字可读"过度防御 — 实测时间轴 / 侧栏
+ * 灰字在任何 blur 底上都可读,蒙版无收益但全场景压暗。直接拆掉。
  *
- * 数值取舍：上一版 0.55+0.3 两道压暗叠加过暗，模糊照片色细节看不出（用户口径"啥也看不见"）。
- * 调到 0.85+0.05 让 blur 照片色彩漫开来,主图周围仍是柔和深色调而非黑底,氛围沉浸但不压抑。
- * 纯白照片白字可读性靠 brightness 0.85 单层兜底已足；蒙版极轻做兜底安全垫。
+ * saturate 1.2 维持模糊照片色彩鲜活感(blur 会自然降低视觉饱和,提一档补回)。
  */
 function BlurBackground({ photoUrl }: { photoUrl: string | null }) {
   return createPortal(
@@ -502,27 +501,17 @@ function BlurBackground({ photoUrl }: { photoUrl: string | null }) {
           backgroundImage: photoUrl ? `url(${photoUrl})` : 'none',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
-          filter: 'blur(18px) brightness(0.85) saturate(1.2)',
+          filter: 'blur(18px) saturate(1.2)',
           transition: 'background-image 0.3s',
         }}
       />
-      {/* 层 2：暗色蒙版兜底 */}
-      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.05)' }} />
       {/*
-        层 3:径向 vignette。
-        主图按 aspect ratio 算尺寸,几乎不可能正好填满可见区,左右总有 gap。
-        这层让边缘永远渐黑——任意 viewport / 任意比例下,Sidebar / ArcTimeline
-        之间露出的 BlurBackground 都被压暗,亮场景下也看不到"灰条"。
-        中心 50% 区透明保留沉浸感,外圈渐进到 65% 黑。
+        历史:之前还叠了 rgba(0,0,0,0.05) 全幅蒙版 + radial vignette(0% 透明 →
+        65% rgba(0,0,0,0.45) → 100% rgba(0,0,0,0.75))三层压暗;
+        实测 vignette 把屏幕边缘 blur 区域压到几乎全黑,失去 blur 的"照片色彩漫出"本意,
+        用户反复反馈"啥也看不见"的真凶。Sidebar / ArcTimeline 灰字在任何 blur 底上都可读,
+        vignette 是过度防御。删两层,只保留照片大幅 blur + saturate 提色作沉浸底。
       */}
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background:
-            'radial-gradient(ellipse 60% 70% at center, transparent 0%, rgba(0,0,0,0.45) 65%, rgba(0,0,0,0.75) 100%)',
-        }}
-      />
     </div>,
     document.body,
   );
