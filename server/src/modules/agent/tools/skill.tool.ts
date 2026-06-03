@@ -36,7 +36,7 @@ export function createSkillTool(opts: CreateSkillToolOpts) {
 
   return tool({
     description:
-      '调用一个已注册的 Skill(技能/方法论)。传 name(slug)即可,系统会把对应的方法论正文注入对话作为下一步行动指引。' +
+      'load_skill:加载一个已注册的技能(方法论)。传 name(slug)即可,系统会把对应的方法论正文注入对话作为下一步行动指引。' +
       '只在 <available_skills> 列出的 name 才可用,未列出的不要尝试。',
     inputSchema: jsonSchema<{ name: string }>({
       type: 'object',
@@ -98,7 +98,9 @@ export function createSkillTool(opts: CreateSkillToolOpts) {
       }
 
       // 通过校验 → 返回 body(整段正文)。summary 给前端 UI 行内展示,detail 是模型读的方法论。
-      const summary = `Skill · ${trimmed}`;
+      // 用 displayName(中文名)不带 "Skill ·" 前缀:前端 ToolCallCard 工具名已经显"技能",
+      // 行内最终展示为「✨ 技能 · <displayName>」,避免 "Skill · Skill · critic" 重复。
+      const summary = skill.displayName || trimmed;
       logger.debug(
         `execute: 命中 name=${trimmed} bodyLength=${(skill.body ?? '').length}`,
       );

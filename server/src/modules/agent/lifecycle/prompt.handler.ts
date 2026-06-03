@@ -142,7 +142,7 @@ export class PromptHandler {
 
     // ——— 可用 Skills(技能/方法论池) ———
     // 轻量元数据(name + description + when_to_use)。body 永不出现在这里——spec §5.1 红线,单测保护。
-    // body 只在 agent 调 Skill 工具时作为 tool_result 注入对话,按需载入。
+    // body 只在 agent 调 load_skill 工具时作为 tool_result 注入对话,按需载入。
     if (params.enabledSkills && params.enabledSkills.length > 0) {
       const items = params.enabledSkills
         .map(
@@ -151,10 +151,10 @@ export class PromptHandler {
         )
         .join('\n\n');
       sections.push(
-        `<available_skills>\n你有以下技能(方法论)可调用。识别到对应场景时,调 Skill 工具传 name 获取完整方法论指引。\n\n${items}\n</available_skills>`,
+        `<available_skills>\n你有以下技能(方法论)可调用。识别到对应场景时,调 load_skill 工具传 name 获取完整方法论指引。\n\n${items}\n</available_skills>`,
       );
       // 关键链路打点(CLAUDE.md「日志准则」):注入了哪些 skill 名称,方便排查
-      // 「模型为啥没调 Skill / 调错了 Skill」类问题。
+      // 「模型为啥没调 load_skill / 调错了 skill」类问题。
       this.logger.debug(
         `buildSystemPrompt: 注入 <available_skills>(${params.enabledSkills.length} 个: ${params.enabledSkills.map((s) => s.name).join(', ')})`,
       );

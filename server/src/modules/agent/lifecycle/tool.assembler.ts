@@ -216,7 +216,7 @@ export class ToolAssembler {
         allowedTools && allowedTools.length > 0
           ? allowedTools
           : Object.keys(rawTools);
-      filteredTools['Skill'] = createSkillTool({
+      filteredTools['load_skill'] = createSkillTool({
         skillService: this.skillService,
         enabledSkillIds,
         agentTools,

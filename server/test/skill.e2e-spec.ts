@@ -7,8 +7,8 @@
  * 3. AgentLifecycle.onBeforeChat 拼装 system prompt + tools:
  *    a) systemPrompt 含 <available_skills> 且列出 skill name/description/whenToUse
  *    b) systemPrompt 绝不含 skill.body(spec §5.1 红线)
- *    c) tools 字典含 'Skill' key(tool.assembler 自动挂载)
- * 4. 关闭兜底:enabledSkillIds 为空时,既无 <available_skills> 也无 Skill 工具
+ *    c) tools 字典含 'load_skill' key(tool.assembler 自动挂载)
+ * 4. 关闭兜底:enabledSkillIds 为空时,既无 <available_skills> 也无 load_skill 工具
  *
  * 为什么不真聊 chat API:LLM 接口需要复杂 mock(OpenAI compatible 协议 + streamText 内部)。
  * 改聚焦在 onBeforeChat 拼装钩子上 —— 这正是 Phase 1 改动的归宿,validate 拼装契约即可。
@@ -112,13 +112,13 @@ describe('Agent Skills 后端拼装链路 (E2E)', () => {
     expect(systemPrompt).not.toContain(SKILL_BODY);
     expect(systemPrompt).not.toContain('CRITIC_METHODOLOGY_BODY');
 
-    // c) tools 字典含 'Skill' key —— tool.assembler 检测 enabledSkillIds 非空自动挂载
-    expect(tools).toHaveProperty('Skill');
-    expect(typeof tools.Skill).toBe('object');
+    // c) tools 字典含 'load_skill' key —— tool.assembler 检测 enabledSkillIds 非空自动挂载
+    expect(tools).toHaveProperty('load_skill');
+    expect(typeof tools.load_skill).toBe('object');
   });
 
   // ─── 步骤 4: 兜底 —— 关闭 enabledSkillIds 后干净 ─────────────────
-  it('enabledSkillIds 空 → 既无 <available_skills>,也无 Skill 工具', async () => {
+  it('enabledSkillIds 空 → 既无 <available_skills>,也无 load_skill 工具', async () => {
     const dto = {
       entryContext: { sessionKey: 'test-session-empty' },
       agentKey: AGENT_KEY,
@@ -133,7 +133,7 @@ describe('Agent Skills 后端拼装链路 (E2E)', () => {
     });
 
     expect(systemPrompt).not.toContain('<available_skills>');
-    expect(tools).not.toHaveProperty('Skill');
+    expect(tools).not.toHaveProperty('load_skill');
   });
 
   // ─── 步骤 5: Skill tool 闭环 —— findByName 路径 ──────────────────

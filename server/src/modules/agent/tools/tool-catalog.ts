@@ -459,8 +459,9 @@ export const TOOL_CATALOG: Record<string, ToolMeta> = {
   },
 
   // ── 技能(Phase 1 新增)──
-  Skill: {
-    displayName: '调技能',
+  // slug 用 snake_case 跟项目其他工具一致(原本 PascalCase Skill 是设计债,已修)
+  load_skill: {
+    displayName: '加载技能',
     summary: '加载某个技能的方法论全文',
     detail:
       'Agent 在 system prompt 看到 <available_skills> 后,需要调起某个 skill 时调用本工具,工具返回 skill body(完整方法论)注入到对话上下文。三层校验:skill 存在 + agent 启用 + 必需工具齐备。',

@@ -41,6 +41,7 @@ describe('createSkillTool', () => {
   const mkSkill = (over: Partial<Record<string, unknown>> = {}) => ({
     _id: 'sk1',
     name: 'critic',
+    displayName: '严格批评',
     description: '挑稿子问题',
     whenToUse: '用户求严评',
     body: '严厉批评方法论 body 内容',
@@ -82,8 +83,10 @@ describe('createSkillTool', () => {
     });
     const result = await invoke(tool, { name: 'critic' });
     // toolResult 返 JSON 字符串,body 进 detail 字段;contain 检查不在乎包装层。
+    // summary 是 skill.displayName(中文名);前端 ToolCallCard 工具名已显「加载技能」,
+    // 不在 summary 重复 "Skill · " 前缀。
     expect(result).toContain('body 内容');
-    expect(result).toContain('Skill · critic');
+    expect(result).toContain('严格批评');
   });
 
   it('skill.requiredTools 不在 agentTools → throw requires(sanity 防御漂移)', async () => {
