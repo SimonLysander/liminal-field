@@ -128,12 +128,15 @@ export default function SettingsPage() {
                           : 'text-[var(--ink-faded)] hover:bg-[var(--hover-overlay)] hover:text-[var(--ink)]'
                       }`}
                     >
-                      {/* 选中态背景 — spring 滑动指示器(28px 高、rounded-sm 紧凑) */}
+                      {/* 选中态背景 — spring 滑动指示器(28px 高、rounded-sm 紧凑)。
+                          用 --paper-shadow 而不是 --shelf,因为 hover bg(--hover-overlay)
+                          跟 --shelf 都是 4% 黑同色,会撞色看起来"两个都选中";
+                          paper-shadow 是不透明深一档,跟 hover 拉开层级 */}
                       {active && (
                         <motion.div
                           layoutId="settings-tab-indicator"
                           className="absolute inset-0 rounded-sm"
-                          style={{ background: 'var(--shelf)' }}
+                          style={{ background: 'var(--paper-shadow)' }}
                           transition={{
                             type: 'spring',
                             stiffness: 400,

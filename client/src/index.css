@@ -893,21 +893,20 @@ textarea.composer-input:focus {
 .focus-border:focus { border-color: var(--spine-strong); box-shadow: var(--shadow-sm); }
 .polaroid-frame:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
 
-/* 按压反馈 — button 类元素 :active 只加内陷阴影,**不要** transform: scale。
+/* button :active 不加任何视觉反馈。
  *
- * 历史:之前同时加了 `transform: scale(0.975)` 想做微反馈,但 button selector
- * 是按 element type 触发的,小按钮上感知阈值之下(32px 缩到 31.2px),
- * 大尺寸卡片 / 整行可点 button 上则明显抖动(60px 缩到 58.5px,且伴随邻居挪位),
- * 用户反复反馈"卡片样式都有缩放抽动"——根因就是这条规则一刀切到所有 button。
+ * 历史踩坑链(全部已删):
+ *   1. transform: scale(0.975) — 大卡片"按下缩放抽动",一刀切到所有 button 中招
+ *   2. box-shadow: var(--shadow-inset) 内陷阴影 — 模拟"按下凹陷",但视觉上
+ *      在元素顶部边缘画一道暗线,跟项目纸墨克制气质冲突,用户反馈"上面出来
+ *      一根线"
  *
- * 注释里之前已经写了"nav-item 和 list-item 不加 scale",但 selector 只 exclude
- * 了 `.nav-item`,`.list-item` 漏写。这说明 opt-out 路线靠开发者记得加 class
- * 已经失败过——直接把 scale 拿掉,反馈只靠内陷阴影 + 各按钮自己的 hover 颜色。 */
-button:active:not(:disabled):not(.nav-item),
-[role="button"]:active:not(.nav-item) {
-  box-shadow: var(--shadow-inset);
-  transition: box-shadow var(--duration-fast) var(--ease-out);
-}
+ * 按下反馈由别的层接管:
+ *   - hover 阶段的 bg 反馈(--hover-overlay)
+ *   - click 后的状态切换(motion 滑动 / dialog 打开 / loading 出现 等)
+ *   这两层已经足够让用户感知到"点击发生了",不需要 :active 自己再加视觉。
+ *
+ * 这跟项目设计语言一致:走纸面克制路线,反馈靠"状态变化"而非"按压动效"。 */
 
 /* hover/active overlay — 全局可点击元素的悬停/按下反馈 */
 .hover-overlay:hover  { background: var(--hover-overlay); }
