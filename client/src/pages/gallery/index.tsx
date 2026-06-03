@@ -481,19 +481,15 @@ function ArcTimeline({ albums, currentIdx, onSelect }: ArcTimelineProps) {
 
 // ─── BlurBackground ───────────────────────────────────────────────────────────
 
-/*
- * 全屏模糊背景：将当前照片放大 160% 并大幅高斯模糊，营造沉浸式氛围。
- * 亮度由 --blur-brightness CSS 变量控制，日间 0.85、午夜 0.2。
- * key={photoUrl} 驱动 motion.img 的 enter 动画，每次照片切换淡入新背景。
- */
 /**
  * 全屏模糊背景 — 参考 Apple Music 多层叠加方案（简化版）
  *
- * 层 1：照片模糊 + brightness(0.55) 压暗 + saturate(1.2) 提色
- * 层 2：暗色蒙版 rgba(0,0,0,0.3) 兜底极端场景（纯白照片）
+ * 层 1：照片模糊 + brightness(0.85) 轻压 + saturate(1.2) 提色
+ * 层 2：暗色蒙版 rgba(0,0,0,0.05) 几乎不可见，仅作 0.5% 安全垫
  *
- * 双保险：filter 压暗解决 90% 场景，蒙版兜底剩余 10%。
- * 即使纯白照片，叠加后也足够暗，白色文字始终可读。
+ * 数值取舍：上一版 0.55+0.3 两道压暗叠加过暗，模糊照片色细节看不出（用户口径"啥也看不见"）。
+ * 调到 0.85+0.05 让 blur 照片色彩漫开来,主图周围仍是柔和深色调而非黑底,氛围沉浸但不压抑。
+ * 纯白照片白字可读性靠 brightness 0.85 单层兜底已足；蒙版极轻做兜底安全垫。
  */
 function BlurBackground({ photoUrl }: { photoUrl: string | null }) {
   return createPortal(
@@ -506,12 +502,12 @@ function BlurBackground({ photoUrl }: { photoUrl: string | null }) {
           backgroundImage: photoUrl ? `url(${photoUrl})` : 'none',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
-          filter: 'blur(18px) brightness(0.55) saturate(1.2)',
+          filter: 'blur(18px) brightness(0.85) saturate(1.2)',
           transition: 'background-image 0.3s',
         }}
       />
       {/* 层 2：暗色蒙版兜底 */}
-      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)' }} />
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.05)' }} />
       {/*
         层 3:径向 vignette。
         主图按 aspect ratio 算尺寸,几乎不可能正好填满可见区,左右总有 gap。
