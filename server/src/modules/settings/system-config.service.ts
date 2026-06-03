@@ -644,6 +644,39 @@ export class SystemConfigService implements OnModuleInit {
     return config?.agentConfigs?.find((c) => c.key === key) ?? null;
   }
 
+  /**
+   * 监听 Skill 删除事件,清除所有 agentConfigs.enabledSkillIds 里对该 skill 的引用。
+   *
+   * 解耦设计(Task 0.6):
+   *   - SkillService 删完 emit 'skill.deleted'(EventEmitter2 全局总线)
+   *   - 这里监听处理,避免 SkillModule <-> SettingsModule 双向 import 循环
+   *   - 直接走 repo.patch,跳过 saveAgentConfig 的 validateEnabledSkills
+   *     —— 移除引用是减法,移除后 enabledSkillIds 必然合规
+   *
+   * spec §9「enabledSkill 引用 deleted skill」风险应对。
+   */
+  @OnEvent(SKILL_DELETED_EVENT)
+  async cleanupSkillReferences(event: SkillDeletedEvent): Promise<void> {
+    const config = await this.repo.get();
+    if (!config?.agentConfigs?.length) return;
+
+    let touchedAgents = 0;
+    const next = config.agentConfigs.map((agent) => {
+      const ids = agent.enabledSkillIds ?? [];
+      const filtered = ids.filter((id) => id !== event.skillId);
+      if (filtered.length === ids.length) return agent;
+      touchedAgents += 1;
+      return { ...agent, enabledSkillIds: filtered };
+    });
+
+    if (touchedAgents > 0) {
+      await this.repo.patch({ agentConfigs: next });
+      this.logger.log(
+        `skill ${event.skillId} 引用从 ${touchedAgents} 个 agent 自动清理`,
+      );
+    }
+  }
+
   /** 删除 agent 入口配置（by key） */
   async deleteAgentConfig(key: string): Promise<void> {
     const config = await this.repo.get();

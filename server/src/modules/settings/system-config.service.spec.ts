@@ -130,3 +130,44 @@ describe('SystemConfigService.saveAgentConfig — Skill 校验(Task 0.5)', () =>
     expect(mockRepo.patch).toHaveBeenCalled();
   });
 });
+
+describe('SystemConfigService.cleanupSkillReferences — 删 Skill 级联清理(Task 0.6)', () => {
+  it('删 skill 后,所有 agentConfig.enabledSkillIds 里该 id 都被移除', async () => {
+    const { service, mockRepo } = createMocks();
+    const agentA = mkAgent({ key: 'a', enabledSkillIds: ['sk1', 'sk2'] });
+    const agentB = mkAgent({ key: 'b', enabledSkillIds: ['sk1'] });
+    const agentC = mkAgent({ key: 'c', enabledSkillIds: ['sk3'] }); // 不涉及
+    mockRepo.get.mockResolvedValue({
+      agentConfigs: [agentA, agentB, agentC],
+    } as never);
+
+    await service.cleanupSkillReferences({ skillId: 'sk1' });
+
+    expect(mockRepo.patch).toHaveBeenCalledWith({
+      agentConfigs: [
+        expect.objectContaining({ key: 'a', enabledSkillIds: ['sk2'] }),
+        expect.objectContaining({ key: 'b', enabledSkillIds: [] }),
+        expect.objectContaining({ key: 'c', enabledSkillIds: ['sk3'] }),
+      ],
+    });
+  });
+
+  it('没有 agent 引用该 skill → 不写库(避免无意义 patch)', async () => {
+    const { service, mockRepo } = createMocks();
+    const agentA = mkAgent({ enabledSkillIds: ['sk-other'] });
+    mockRepo.get.mockResolvedValue({ agentConfigs: [agentA] } as never);
+
+    await service.cleanupSkillReferences({ skillId: 'sk1' });
+
+    expect(mockRepo.patch).not.toHaveBeenCalled();
+  });
+
+  it('agentConfigs 为空 → 直接 return,不查不写', async () => {
+    const { service, mockRepo } = createMocks();
+    mockRepo.get.mockResolvedValue({ agentConfigs: [] } as never);
+
+    await service.cleanupSkillReferences({ skillId: 'sk1' });
+
+    expect(mockRepo.patch).not.toHaveBeenCalled();
+  });
+});
