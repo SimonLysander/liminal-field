@@ -10,6 +10,7 @@
  */
 import { PromptHandler, type BuildSystemPromptParams } from './prompt.handler';
 import type { AgentMemory } from '../memory/agent-memory.entity';
+import type { Skill } from '../../skill/skill.entity';
 
 // 构造最小记忆对象:buildSystemPrompt 只读 title/content,其余字段无关,故安全 cast。
 const mem = (title: string, content: string): AgentMemory =>
@@ -245,6 +246,64 @@ describe('PromptHandler.buildSystemPrompt', () => {
     // 严格递增 = 顺序正确
     const sorted = [...order].sort((a, b) => a - b);
     expect(order).toEqual(sorted);
+  });
+
+  describe('<available_skills> 注入(spec §5.1)', () => {
+    // 构造 minimal Skill fixture:formatAvailableSkills 只读 name/description/whenToUse/body
+    const mkSkill = (over: Partial<Skill> = {}): Skill =>
+      ({
+        name: 'critic',
+        displayName: '批评家',
+        description: '挑稿子结构与逻辑问题',
+        whenToUse: '用户说"批评"/"挑毛病"/"严点说"时',
+        body: '严厉方法论 body 内容 — 这段绝不能进 system prompt',
+        requiredTools: [],
+        ...over,
+      }) as unknown as Skill;
+
+    it('enabledSkills 为空或未传 → 不注入 <available_skills>', () => {
+      const empty = handler.buildSystemPrompt(baseParams({ enabledSkills: [] }));
+      expect(empty).not.toContain('<available_skills>');
+
+      const missing = handler.buildSystemPrompt(baseParams());
+      expect(missing).not.toContain('<available_skills>');
+    });
+
+    it('enabledSkills 非空 → 注入 name/description/when_to_use,但 body 绝不进 system prompt', () => {
+      const skill = mkSkill();
+      const out = handler.buildSystemPrompt(
+        baseParams({ enabledSkills: [skill] }),
+      );
+      expect(out).toContain('<available_skills>');
+      expect(out).toContain('name: critic');
+      expect(out).toContain('description: 挑稿子结构与逻辑问题');
+      expect(out).toContain(
+        'when_to_use: 用户说"批评"/"挑毛病"/"严点说"时',
+      );
+      // —— 关键红线:body 永远不能进 system prompt(只在 Skill 工具 tool_result 注入)
+      expect(out).not.toContain(skill.body);
+      expect(out).not.toContain('严厉方法论 body 内容');
+    });
+
+    it('多个 skill 全部列出,顺序按数组顺序', () => {
+      const out = handler.buildSystemPrompt(
+        baseParams({
+          enabledSkills: [
+            mkSkill({ name: 'critic' } as Partial<Skill>),
+            mkSkill({
+              name: 'polisher',
+              description: '润色字句',
+              whenToUse: '用户求润色时',
+            } as Partial<Skill>),
+          ],
+        }),
+      );
+      expect(out).toContain('name: critic');
+      expect(out).toContain('name: polisher');
+      expect(out.indexOf('name: critic')).toBeLessThan(
+        out.indexOf('name: polisher'),
+      );
+    });
   });
 
   it('不泄露产品名或模型名', () => {

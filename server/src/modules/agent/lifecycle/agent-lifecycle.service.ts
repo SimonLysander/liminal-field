@@ -31,6 +31,7 @@ import { AgentSessionRepository } from '../session/agent-session.repository';
 import { AnthologyViewService } from '../../workspace/anthology-view.service';
 import { MemoryViewService } from '../memory/memory-view.service';
 import { AgentMemoryObservationRepository } from '../memory/agent-memory-observation.repository';
+import { SkillService } from '../../skill/skill.service';
 import { sliceSessionPage } from './session-pagination';
 import type { AgentChatDto } from '../dto/agent-chat.dto';
 
@@ -59,6 +60,8 @@ export class AgentLifecycle {
     private readonly viewService: MemoryViewService,
     // 2026-05-30 续:onBeforeChat 读 current_view 注入 <memories_index>
     private readonly observationRepo: AgentMemoryObservationRepository,
+    // agent skills:onBeforeChat 时按 enabledSkillIds 查 Skill 实体,注入 <available_skills>
+    private readonly skillService: SkillService,
   ) {}
 
   /**
@@ -140,17 +143,25 @@ export class AgentLifecycle {
     // agentKey = 草稿级 agent 实例标识；sessionKey 只表示当前业务聊天。
     const agentKey =
       dto.entryContext.agentInstanceKey ?? dto.entryContext.sessionKey;
-    // 并行加载:user 记忆全文(降级) + ownerProfile + sessionMem + 当前画像 + 最近 N 条原始
-    const [coreMemories, ownerProfile, sessionMem, currentView, recentObs] =
-      await Promise.all([
-        this.memory.loadCore(),
-        this.systemConfigService.getOwnerProfile(),
-        agentKey
-          ? this.memoryRepo.findSession(agentKey)
-          : Promise.resolve(null),
-        this.observationRepo.findCurrentView(),
-        this.observationRepo.findRecent(RECENT_OBSERVATIONS_LIMIT),
-      ]);
+    // 并行加载:user 记忆全文(降级) + ownerProfile + sessionMem + 当前画像 + 最近 N 条原始 + 启用 Skills
+    const [
+      coreMemories,
+      ownerProfile,
+      sessionMem,
+      currentView,
+      recentObs,
+      enabledSkills,
+    ] = await Promise.all([
+      this.memory.loadCore(),
+      this.systemConfigService.getOwnerProfile(),
+      agentKey ? this.memoryRepo.findSession(agentKey) : Promise.resolve(null),
+      this.observationRepo.findCurrentView(),
+      this.observationRepo.findRecent(RECENT_OBSERVATIONS_LIMIT),
+      // 配置驱动:无启用列表 → 不查;有列表 → 一次批量拉,Skill 数量通常 ≤10,无分页负担
+      aiConfig.enabledSkillIds && aiConfig.enabledSkillIds.length > 0
+        ? this.skillService.findByIds(aiConfig.enabledSkillIds)
+        : Promise.resolve([]),
+    ]);
 
     // tasks 从 session 记忆记录取(替代旧 AgentSession.tasks);content 注入对话脉络
     const tasks = (sessionMem?.tasks as Array<Record<string, unknown>>) ?? [];
@@ -184,6 +195,8 @@ export class AgentLifecycle {
       customSystemPrompt: aiConfig.aiSystemPrompt,
       entrySystemPrompt: aiConfig.entrySystemPrompt,
       tasks,
+      // agent skills:轻量元数据进 prompt;body 永不进(在 Skill 工具 tool_result 才载入)
+      enabledSkills,
     });
 
     // allowedTools 为空时使用全部工具；有白名单时按白名单过滤

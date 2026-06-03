@@ -27,6 +27,7 @@
 import { Injectable } from '@nestjs/common';
 import type { AgentMemory } from '../memory/agent-memory.entity';
 import type { AgentMemoryObservation } from '../memory/agent-memory-observation.entity';
+import type { Skill } from '../../skill/skill.entity';
 import { extractHeadings } from '../tools/markdown.utils';
 
 /**
@@ -95,6 +96,12 @@ export interface BuildSystemPromptParams {
   entrySystemPrompt?: string;
   /** 当前会话的写作计划(注入让模型看得到自己的清单,可用 write_tasks 整体改写) */
   tasks?: Array<Record<string, unknown>>;
+  /**
+   * 本 agent 启用的 Skill 列表(已查出实体);lifecycle 在 onBeforeChat 并行加载时
+   * 把 enabledSkillIds 解析成 Skill[] 传进来。注入 <available_skills> 块的轻量元数据
+   * (name + description + when_to_use),body 永不进 system prompt(spec §5.1 红线)。
+   */
+  enabledSkills?: Skill[];
 }
 
 @Injectable()
@@ -130,6 +137,21 @@ export class PromptHandler {
 - 需要外部事实/引用/资料时调 web_search(若可用);用户贴 URL 让你读、或 web_search 后想读全文,调 web_fetch。只在写作或回答真需要外部依据时用,**不要为闲聊瞎调**,凭训练数据能答就直接答
 - 发现值得长期记住的信息,随手 remember(context 会重置,没记的会丢)
 </tools>`);
+
+    // ——— 可用 Skills(技能/方法论池) ———
+    // 轻量元数据(name + description + when_to_use)。body 永不出现在这里——spec §5.1 红线,单测保护。
+    // body 只在 agent 调 Skill 工具时作为 tool_result 注入对话,按需载入。
+    if (params.enabledSkills && params.enabledSkills.length > 0) {
+      const items = params.enabledSkills
+        .map(
+          (s) =>
+            `- name: ${s.name}\n  description: ${s.description}\n  when_to_use: ${s.whenToUse}`,
+        )
+        .join('\n\n');
+      sections.push(
+        `<available_skills>\n你有以下技能(方法论)可调用。识别到对应场景时,调 Skill 工具传 name 获取完整方法论指引。\n\n${items}\n</available_skills>`,
+      );
+    }
 
     // 4. ——— 记忆索引(2026-05-30 event log 架构,#150 续)———
     // 双层:① 派生画像(综合全量 observations,LLM 写)+ ② 最近 N 条原始(史书格式)
