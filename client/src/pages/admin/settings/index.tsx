@@ -120,10 +120,13 @@ export default function SettingsPage() {
                       key={tab.id}
                       type="button"
                       onClick={() => setActiveTab(tab.id)}
-                      className="relative flex h-7 items-center gap-2 rounded-sm px-3 text-left text-md"
-                      style={{
-                        color: active ? 'var(--ink)' : 'var(--ink-faded)',
-                      }}
+                      // 三态:默认(透明 + ink-faded)→ hover(浅 overlay + ink)→ selected(shelf bg + ink)
+                      // active 时不加 hover bg 防叠色;color 用 className 表达让 hover utility 能 override
+                      className={`relative flex h-7 items-center gap-2 rounded-sm px-3 text-left text-md transition-colors duration-100 ${
+                        active
+                          ? 'text-[var(--ink)]'
+                          : 'text-[var(--ink-faded)] hover:bg-[var(--hover-overlay)] hover:text-[var(--ink)]'
+                      }`}
                     >
                       {/* 选中态背景 — spring 滑动指示器(28px 高、rounded-sm 紧凑) */}
                       {active && (

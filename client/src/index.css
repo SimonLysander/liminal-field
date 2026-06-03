@@ -569,43 +569,22 @@ body:not(.gallery-immersive)::after {
 * { scrollbar-width: none; }
 ::-webkit-scrollbar { display: none; }
 
-/* 键盘焦点指示:柔和的长春花紫环(替代原 2px 近黑 outline 的生硬"黑框"),
- * 与输入框 focus 的 accent 边同一视觉语言。保留无障碍可见性。
+/* 键盘焦点指示:完全不显示视觉环。
  *
- * 注意:这里**绝对不能**写 `border-radius` —— box-shadow 外阴影会自动跟随元素
- * 自身的 border-radius。一旦在这里强行写死 `border-radius: var(--radius-sm)`,
- * 所有用了 `rounded-lg / rounded-md` 等更大圆角的可聚焦元素(button、a、卡片)
- * 一被点击就会被强制 reset 成 6px,**视觉抽动一下**——多次踩坑根因。
+ * 历史:之前用 box-shadow 长春花紫 ring 做无障碍焦点提示,但实际表现是:
+ *   - 鼠标点击 button 之后,浏览器把焦点留在按钮上,ring 一直显示
+ *   - 在浅色纸面上视觉读起来像「凹槽 / 被按下陷进去」,跟真正的 active 指示器
+ *     (active background)叠在一起,管理员误以为有两个选中态
+ *   - 用户多次踩坑(本次 + 历史上给 Radix 浮层、bare input 各加过豁免规则)
  *
- * 元素自己没显式 radius 时,ring 会是直角(浏览器原生 outline 行为,可接受)。
- * 需要圆 ring 又没 radius 的特殊场景,在元素本身加 `rounded-sm` 即可。 */
+ * 决定全局删 ring。outline: none 仍要保留,否则浏览器默认蓝色 outline 出来更难看。
+ *
+ * 代价:键盘 tab 用户失去焦点 visual,无障碍可访问性变弱。如果未来要恢复,
+ * 把 `box-shadow: 0 0 0 2px <accent ring>` 加回来,豁免规则(Radix 浮层 / bare
+ * input / 自带 active indicator 的 tab 等)参考 git history(commit
+ * d7ee9eb、0c43b78、48af6cc 等)。 */
 :focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
-}
-
-/* Radix 浮层(菜单/对话框)打开时会获得焦点,但它们自带 highlighted 高亮,
- * 不需要外层 focus 环——否则整张菜单卡片外圈一道"大边框"。
- * 同理浮层【触发按钮】(aria-haspopup="menu",如 ··· 下拉):菜单关闭后 Radix 把焦点交回
- * 触发器,会残留一圈长春花紫环看着像 bug;菜单本身就是它的反馈,触发器不需要 focus 环。
- * 注:此规则必须放在这条全局未分层 :focus-visible 里——Tailwind v4 的 focus-visible:shadow-none
- * 工具类在 @layer utilities 内,永远压不过未分层的全局规则,只能在源头收。 */
-[role="menu"]:focus-visible,
-[role="menuitem"]:focus-visible,
-[role="dialog"]:focus-visible,
-[role="alertdialog"]:focus-visible,
-[aria-haspopup="menu"]:focus-visible {
-  box-shadow: none;
-}
-
-/* "裸 input"——视觉上没有自带边框,被自定义外框(focus-within 给反馈)包裹。
- * 全局 :focus-visible 默认 2px accent ring 会落到 input 上,跟外框 ring 叠成
- * "框中框"。在源头收一次:input 上 data-input-bare="true" 就跳过全局 ring。
- * Tailwind v4 utilities 在 @layer 里,永远压不过这条未分层全局规则——所以
- * 必须在 CSS 源头排除,不能靠 focus-visible:shadow-none class。 */
-input[data-input-bare]:focus-visible,
-textarea[data-input-bare]:focus-visible {
-  box-shadow: none;
 }
 
 /* Heading scroll offset — compensate for sticky toolbars/headers */
