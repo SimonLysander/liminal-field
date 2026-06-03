@@ -1,10 +1,21 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import simpleGit from 'simple-git';
 import {
   applyKbGitTokenToGithubHttps,
   redactKbRemoteUrlForLog,
 } from '../../common/kb-remote-url';
 import { ContentRepoService } from '../content/content-repo.service';
+import {
+  SkillService,
+  SKILL_DELETED_EVENT,
+  type SkillDeletedEvent,
+} from '../skill/skill.service';
 import { SystemConfigRepository } from './system-config.repository';
 import type { AgentEntryConfig } from './system-config.entity';
 
@@ -125,11 +136,15 @@ export class SystemConfigService implements OnModuleInit {
     standardProviderId: '',
     thinkProviderId: '',
     visionProviderId: '',
+    enabledSkillIds: [],
   };
 
   constructor(
     private readonly repo: SystemConfigRepository,
     private readonly contentRepoService: ContentRepoService,
+    // SkillService:配置 agent 时硬校验 skill.requiredTools ⊆ agent.tools(spec §4.3),
+    // 同时 saveAgentConfig 前自动清理因 tool 移除而失效的 enabledSkillIds(Task 0.7)。
+    private readonly skillService: SkillService,
   ) {}
 
   /**
@@ -162,6 +177,7 @@ export class SystemConfigService implements OnModuleInit {
             standardProviderId: '',
             thinkProviderId: '',
             visionProviderId: '',
+            enabledSkillIds: [],
           },
           { ...SystemConfigService.GALLERY_CAPTION_ENTRY },
         ] as AgentEntryConfig[],
@@ -543,6 +559,12 @@ export class SystemConfigService implements OnModuleInit {
   /**
    * 保存 agent 入口配置（upsert by key）。
    * key 已存在则合并更新，不存在则追加到数组末尾。
+   *
+   * Skill 关联校验(spec §4.3,Task 0.5):
+   * - 合并后的最终 entry,所有 enabledSkillIds 对应 skill.requiredTools 必须 ⊆ entry.tools
+   * - 任意一处违反 → 整批 reject 400(写入前抛,不污染库)
+   *
+   * 返回值约定(Task 0.7):未实现自动清理时无信息,Task 0.7 加入 cleaned 列表。
    */
   async saveAgentConfig(
     key: string,
@@ -552,12 +574,14 @@ export class SystemConfigService implements OnModuleInit {
     const existing = config?.agentConfigs ?? [];
     const idx = existing.findIndex((c) => c.key === key);
 
+    let merged: AgentEntryConfig;
     if (idx >= 0) {
-      // 更新已有条目：只覆盖传入字段
-      existing[idx] = { ...existing[idx], ...input, key };
+      // 更新已有条目:只覆盖传入字段
+      merged = { ...existing[idx], ...input, key };
+      existing[idx] = merged;
     } else {
-      // 新增条目，补齐默认值
-      existing.push({
+      // 新增条目,补齐默认值(含 enabledSkillIds 默认 [])
+      merged = {
         key,
         name: input.name ?? key,
         description: input.description ?? '',
@@ -570,11 +594,48 @@ export class SystemConfigService implements OnModuleInit {
         standardProviderId: input.standardProviderId ?? '',
         thinkProviderId: input.thinkProviderId ?? '',
         visionProviderId: input.visionProviderId ?? '',
-      });
+        enabledSkillIds: input.enabledSkillIds ?? [],
+      };
+      existing.push(merged);
     }
+
+    // 校验:合并后的 enabledSkillIds 必须满足 skill.requiredTools ⊆ merged.tools
+    // 违反则 throw,patch 不发生,库不被污染
+    await this.validateEnabledSkills(merged);
 
     await this.repo.patch({ agentConfigs: existing });
     this.logger.log(`Agent config saved: ${key}`);
+  }
+
+  /**
+   * 校验 agent.enabledSkillIds 里每个 skill 的 requiredTools 必须 ⊆ agent.tools。
+   * 违反则抛 BadRequestException(400),整个保存动作 reject。
+   *
+   * spec §4.3 关键约束 + Task 0.5 实现。
+   * 未实现自动清理(Task 0.7 加),目前调用方需保证传入合规的 enabledSkillIds。
+   */
+  private async validateEnabledSkills(
+    agent: AgentEntryConfig,
+  ): Promise<void> {
+    const skillIds = agent.enabledSkillIds ?? [];
+    if (!skillIds.length) return;
+
+    for (const skillId of skillIds) {
+      const skill = await this.skillService.findById(skillId);
+      if (!skill) {
+        throw new BadRequestException(
+          `Agent ${agent.key} 启用了不存在的 skill: ${skillId}`,
+        );
+      }
+      const missing = (skill.requiredTools ?? []).filter(
+        (t) => !agent.tools.includes(t),
+      );
+      if (missing.length > 0) {
+        throw new BadRequestException(
+          `Agent ${agent.key} 启用的 skill "${skill.name}" 缺工具: ${missing.join(', ')}`,
+        );
+      }
+    }
   }
 
   /** 按 key 查找 agent 入口配置（供 AgentService 调用） */

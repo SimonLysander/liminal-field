@@ -60,6 +60,20 @@ export class AgentEntryConfig {
 
   @prop({ trim: true, default: '' })
   visionProviderId!: string;
+
+  /**
+   * 启用的 Skill ID 列表(引用 Skills collection ObjectId,以字符串持久化)。
+   *
+   * 写入语义(spec §4.2 §4.3):
+   *   - 保存时硬校验 skill.requiredTools ⊆ this.tools,违反 → 400(SettingsService)
+   *   - 默认 [],对未启用 skill 的 agent 行为完全透明
+   *
+   * 级联清理:
+   *   - 删除 Skill 时由 SkillService 发 skill.deleted 事件,SettingsService 监听清引用
+   *   - 移除 agent 工具时,依赖该工具的 skill 自动从 enabledSkillIds 清除(Task 0.7)
+   */
+  @prop({ type: () => [String], default: [] })
+  enabledSkillIds!: string[];
 }
 
 /**

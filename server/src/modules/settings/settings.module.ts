@@ -12,6 +12,9 @@ import { OssModule } from '../oss/oss.module';
 // WorkspaceModule:PublishAllService 需要 AnthologyViewService。无循环依赖
 // (WorkspaceModule 不 import SettingsModule)。
 import { WorkspaceModule } from '../workspace/workspace.module';
+// SkillModule:SystemConfigService 保存 agentConfigs 时校验 skill.requiredTools ⊆ agent.tools,
+// 同时监听 skill.deleted 事件级联清理 enabledSkillIds 引用(Task 0.5 / 0.6)。
+import { SkillModule } from '../skill/skill.module';
 import { SystemConfig } from './system-config.entity';
 // EditorDraft / AgentMemory:LocalResetService 经 forFeature 直接持有其 model,
 // 用于「清空本地」时连带清草稿与 session 记忆(不能 import AgentModule——它已 import 本模块,会循环)。
@@ -33,6 +36,7 @@ import { SettingsController } from './settings.controller';
     NavigationModule,
     OssModule,
     WorkspaceModule,
+    SkillModule,
   ],
   controllers: [SettingsController],
   providers: [
