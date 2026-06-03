@@ -41,13 +41,34 @@ export interface AgentConfig {
 }
 
 /**
+ * 工具参数(catalog 子结构)。
+ * 字段含义见后端 server/src/modules/agent/tools/tool-catalog.ts。
+ */
+export interface ToolParam {
+  name: string;
+  type: string;
+  required: boolean;
+  description: string;
+}
+
+/**
  * 工具元数据(GET /agent-configs/tool-catalog 返回项)。
  * 真相在后端 server/src/modules/agent/tools/tool-catalog.ts。
+ *
+ * 字段:
+ *   - displayName  chip 短名(空间小,不超 6 字)
+ *   - summary      chip 副标 / 一行说明(不超 25 字)
+ *   - detail       工具页展开后的段落
+ *   - params       输入参数列表
+ *   - returns      返回结果格式
  */
 export interface ToolCatalogEntry {
   name: string;
   displayName: string;
-  description: string;
+  summary: string;
+  detail: string;
+  params: ToolParam[];
+  returns: string;
 }
 
 /** 全量配置（脱敏，只含用户通过 UI 管理的字段） */

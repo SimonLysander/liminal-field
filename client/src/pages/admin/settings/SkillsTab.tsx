@@ -254,7 +254,7 @@ function SkillForm({
           selected={draft.requiredTools ?? []}
           available={availableTools}
           renderLabel={(t) => toolCatalog[t]?.displayName ?? t}
-          renderMeta={(t) => toolCatalog[t]?.description}
+          renderMeta={(t) => toolCatalog[t]?.summary}
           onAdd={(t) =>
             setDraft((d) => ({
               ...d,

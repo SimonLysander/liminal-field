@@ -92,7 +92,7 @@ function ToolsEditor({
         onRemove={(t) => onChange(tools.filter((x) => x !== t))}
         renderLabel={(t) => toolCatalog[t]?.displayName ?? t}
         renderMeta={(t) =>
-          orphanTools.includes(t) ? '已下线' : toolCatalog[t]?.description
+          orphanTools.includes(t) ? '已下线' : toolCatalog[t]?.summary
         }
       />
     </div>
