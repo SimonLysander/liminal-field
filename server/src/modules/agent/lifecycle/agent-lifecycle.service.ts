@@ -143,15 +143,14 @@ export class AgentLifecycle {
     // agentKey = 草稿级 agent 实例标识；sessionKey 只表示当前业务聊天。
     const agentKey =
       dto.entryContext.agentInstanceKey ?? dto.entryContext.sessionKey;
-    // 并行加载:user 记忆全文(降级) + ownerProfile + sessionMem + 当前画像 + 最近 N 条原始 + 启用 Skills
-    const [
-      coreMemories,
-      ownerProfile,
-      sessionMem,
-      currentView,
-      recentObs,
-      enabledSkills,
-    ] = await Promise.all([
+
+    // 2026-06-03 review F9:nice-to-have 数据用 allSettled 降级,不让单点拉失败
+    // 把整轮对话拖垮。这里六项都是非阻塞数据:
+    //   - coreMemories / ownerProfile / sessionMem / currentView / recentObs:画像 + 脉络,
+    //     缺了 prompt 仍可构建(标题降级或空字符串)
+    //   - enabledSkills:缺了 <available_skills> 块不出,模型看不到不调 load_skill,优雅降级
+    // 必备数据(document / gallery)来自 dto.entryContext,已在调用层校验,不在这里拉。
+    const settled = await Promise.allSettled([
       this.memory.loadCore(),
       this.systemConfigService.getOwnerProfile(),
       agentKey ? this.memoryRepo.findSession(agentKey) : Promise.resolve(null),
@@ -162,6 +161,36 @@ export class AgentLifecycle {
         ? this.skillService.findByIds(aiConfig.enabledSkillIds)
         : Promise.resolve([]),
     ]);
+
+    // 取值 + 失败降级 + warn 日志。值类型显式 cast 出 Promise.all 等价签名。
+    const pick = <T>(idx: number, fallback: T, name: string): T => {
+      const r = settled[idx];
+      if (r.status === 'fulfilled') return r.value as T;
+      this.logger.warn(
+        `onBeforeChat: ${name} 加载失败,降级使用 fallback: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`,
+      );
+      return fallback;
+    };
+    const coreMemories = pick<Awaited<ReturnType<typeof this.memory.loadCore>>>(
+      0,
+      [],
+      'coreMemories',
+    );
+    const ownerProfile = pick<
+      Awaited<ReturnType<typeof this.systemConfigService.getOwnerProfile>>
+    >(1, { name: '', birthday: '', bio: '' }, 'ownerProfile');
+    const sessionMem = pick<Awaited<
+      ReturnType<typeof this.memoryRepo.findSession>
+    > | null>(2, null, 'sessionMem');
+    const currentView = pick<Awaited<
+      ReturnType<typeof this.observationRepo.findCurrentView>
+    > | null>(3, null, 'currentView');
+    const recentObs = pick<
+      Awaited<ReturnType<typeof this.observationRepo.findRecent>>
+    >(4, [], 'recentObs');
+    const enabledSkills = pick<
+      Awaited<ReturnType<typeof this.skillService.findByIds>>
+    >(5, [], 'enabledSkills');
 
     // tasks 从 session 记忆记录取(替代旧 AgentSession.tasks);content 注入对话脉络
     const tasks = (sessionMem?.tasks as Array<Record<string, unknown>>) ?? [];

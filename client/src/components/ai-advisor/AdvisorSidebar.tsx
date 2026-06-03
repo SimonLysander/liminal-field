@@ -321,7 +321,11 @@ export function AdvisorSidebar({
       })
       .catch((error) => {
         // 加载失败:slash 浮层不出即可,不报红
-        console.warn('[advisor] skills 加载失败,slash autocomplete 不可用', error);
+        // TODO: 项目 client logger 封装未落地,先用 console.warn,见 CLAUDE.md 日志准则
+        console.warn(
+          '[advisor] skills 加载失败,slash autocomplete 不可用',
+          error,
+        );
       });
     return () => {
       aborted = true;

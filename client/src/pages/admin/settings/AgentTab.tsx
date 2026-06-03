@@ -110,6 +110,9 @@ function ToolsEditor({
  *  - disabledReason 列出缺哪些工具,在 popover 项上 tooltip 提示
  *  - chip 副标记列出该 skill 需要的工具,提醒用户依赖关系
  *  - 前端硬校验:加 skill 前看依赖是否齐(后端也会校验,这里是防御深度)
+ *
+ * 2026-06-03 review F6:增加 loadError 信号 —— 父层 skillsApi.list 失败时
+ * 透传进来,显示「加载失败」而非「还没有技能」的误导文案。
  */
 function SkillsSection({
   selected,
@@ -118,6 +121,7 @@ function SkillsSection({
   toolCatalog,
   onChange,
   disabled,
+  loadError,
 }: {
   selected: string[];
   skills: Skill[];
@@ -126,13 +130,17 @@ function SkillsSection({
   toolCatalog: Record<string, ToolCatalogEntry>;
   onChange: (ids: string[]) => void;
   disabled: boolean;
+  /** F6: 技能列表加载失败 → 文案区分"空"vs"加载失败" */
+  loadError?: boolean;
 }) {
   // 给副标 / disabledReason 用的「slug → 中文名」简写
   const labelOf = (slug: string) => toolCatalog[slug]?.displayName ?? slug;
   if (skills.length === 0) {
     return (
       <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
-        还没有技能。可去「技能」tab 创建一个。
+        {loadError
+          ? '技能列表加载失败,请刷新重试'
+          : '还没有技能。可去「技能」tab 创建一个。'}
       </p>
     );
   }
@@ -191,6 +199,7 @@ function AgentCard({
   availableTools,
   toolCatalog,
   skills,
+  skillsLoadError,
   onSave,
   onDelete,
 }: {
@@ -201,7 +210,13 @@ function AgentCard({
   toolCatalog: Record<string, ToolCatalogEntry>;
   /** 全局 skill 列表(spec §6.3),用来展示技能授权 chip + 校验 */
   skills: Skill[];
-  onSave: (updated: Partial<AgentConfig>) => Promise<void>;
+  /** F6: 技能列表加载失败信号,透到 SkillsSection 区分"空"vs"加载失败" */
+  skillsLoadError?: boolean;
+  /**
+   * 保存回调:返回 boolean 让子组件知道是否成功(true=退编辑态,false=保留)。
+   * 错误由父层通过 banner 提示,子组件不必再 try-catch。
+   */
+  onSave: (updated: Partial<AgentConfig>) => Promise<boolean>;
   onDelete?: () => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
@@ -254,29 +269,24 @@ function AgentCard({
     setEditing(false);
   };
 
+  // F7 重构(2026-06-03 review):父层 handleSave 已 banner 消化错误,子层不再 try-catch。
+  // 旧代码父层 throw new Error('save failed') 唯一作用就是给子层 catch 吞,完全多余。
+  // 改成父层不 throw、子层不 catch:成功才 setEditing(false),失败保留编辑态 + saving=false。
   const handleSave = async () => {
     setSaving(true);
-    try {
-      await onSave(draft);
+    const ok = await onSave(draft);
+    setSaving(false);
+    if (ok) {
       setEditing(false);
       setDraft({});
-    } catch {
-      // 错误由父层通过 banner 提示，此处只重置状态
-    } finally {
-      setSaving(false);
     }
   };
 
   const handleDelete = onDelete
     ? async () => {
         setDeleting(true);
-        try {
-          await onDelete();
-        } catch {
-          // 同上
-        } finally {
-          setDeleting(false);
-        }
+        await onDelete();
+        setDeleting(false);
       }
     : undefined;
 
@@ -529,6 +539,7 @@ function AgentCard({
                   setDraft((d) => ({ ...d, enabledSkillIds: ids }))
                 }
                 disabled={saving}
+                loadError={skillsLoadError}
               />
             </div>
           </div>
@@ -587,6 +598,8 @@ export function AgentTab() {
   const [toolCatalog, setToolCatalog] = useState<Record<string, ToolCatalogEntry>>({});
   // Phase 3:全局 skill 列表,给 SkillsSection 展示 chip + 校验依赖
   const [skills, setSkills] = useState<Skill[]>([]);
+  // F6: 技能列表加载失败信号,让 SkillsSection 显示"加载失败"而非误导的"还没有技能"
+  const [skillsLoadError, setSkillsLoadError] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // AI 自定义指令(system prompt)2026-05-31 从 IntegrationTab 挪到这里
@@ -605,9 +618,12 @@ export function AgentTab() {
       settingsApi.getToolCatalog(),
       skillsApi.list(),
     ]);
+    // F6 重构(2026-06-03 review):每个 reject 都至少 console.warn,
+    // 错误信号给到用户(agents banner / skills loadError 区分文案 / 其余降级 + warn)。
     if (agentsRes.status === 'fulfilled') {
       setAgents(agentsRes.value);
     } else {
+      console.warn('[AgentTab] getAgentConfigs failed', agentsRes.reason);
       banner.error('加载 Agent 配置失败');
     }
     if (configRes.status === 'fulfilled') {
@@ -616,20 +632,30 @@ export function AgentTab() {
       );
       setAiSystemPrompt(configRes.value.ai.aiSystemPrompt ?? '');
       setOriginalPrompt(configRes.value.ai.aiSystemPrompt ?? '');
+    } else {
+      console.warn('[AgentTab] getConfig failed', configRes.reason);
     }
     if (toolsRes.status === 'fulfilled') {
       setAvailableTools(toolsRes.value);
+    } else {
+      console.warn('[AgentTab] getAvailableTools failed', toolsRes.reason);
     }
     // catalog 拉失败 fallback 到空表(ChipSelector 自然 fallback 显 slug,不破)
     if (catalogRes.status === 'fulfilled') {
       setToolCatalog(
         Object.fromEntries(catalogRes.value.map((e) => [e.name, e])),
       );
+    } else {
+      console.warn('[AgentTab] getToolCatalog failed', catalogRes.reason);
     }
     // skill 列表拉失败不报错(技能 tab 是后引入的能力,不阻塞 agent 配置基本流);
-    // 拉成功才覆盖 setSkills,失败保持原值(空 → SkillsSection 显示「还没有技能」提示)
+    // 失败时 setSkillsLoadError 让 SkillsSection 显示"加载失败"而非"还没有技能"
     if (skillsRes.status === 'fulfilled') {
       setSkills(skillsRes.value);
+      setSkillsLoadError(false);
+    } else {
+      console.warn('[AgentTab] skillsApi.list failed', skillsRes.reason);
+      setSkillsLoadError(true);
     }
     setLoading(false);
   }, []);
@@ -639,7 +665,12 @@ export function AgentTab() {
     void loadData();
   }, [loadData]);
 
-  const handleSave = async (key: string, updated: Partial<AgentConfig>) => {
+  const handleSave = async (
+    key: string,
+    updated: Partial<AgentConfig>,
+  ): Promise<boolean> => {
+    // F7 重构:父层捕获错误 + banner,返回 boolean 让子层判断退编辑态。
+    // 不再 throw 给子层 catch(子层 catch 全删,父层是唯一错误消化点)。
     try {
       const result = await settingsApi.saveAgentConfig(key, updated);
       // 后端 autoCleanupOrphanSkills 触发了 → 告诉用户哪些 skill 因工具变化被自动 disable
@@ -653,11 +684,12 @@ export function AgentTab() {
         banner.success('Agent 配置已保存');
       }
       await loadData(true);
+      return true;
     } catch (err) {
       // 后端 400(skill 依赖校验失败等)→ 直接展示 message
       const msg = err instanceof Error ? err.message : '保存失败,请重试';
       banner.error(msg);
-      throw new Error('save failed');
+      return false;
     }
   };
 
@@ -668,8 +700,10 @@ export function AgentTab() {
       await settingsApi.saveAiSystemPrompt(aiSystemPrompt);
       setOriginalPrompt(aiSystemPrompt);
       banner.success('自定义指令已保存');
-    } catch {
-      banner.error('保存失败');
+    } catch (err) {
+      // F7 重构:空 catch 改成透传后端 message(如 400 校验错),不再吞成"保存失败"。
+      const msg = err instanceof Error ? err.message : '保存失败';
+      banner.error(msg);
     } finally {
       setSavingPrompt(false);
     }
@@ -772,6 +806,7 @@ export function AgentTab() {
                 availableTools={availableTools}
                 toolCatalog={toolCatalog}
                 skills={skills}
+                skillsLoadError={skillsLoadError}
                 onSave={(updated) => handleSave(agent.key, updated)}
                 onDelete={undefined}
               />
