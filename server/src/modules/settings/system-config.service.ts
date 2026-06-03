@@ -550,22 +550,34 @@ export class SystemConfigService implements OnModuleInit {
    * 保存 agent 入口配置（upsert by key）。
    * key 已存在则合并更新，不存在则追加到数组末尾。
    *
-   * Skill 关联校验/清理(spec §4.3,Task 0.5/0.7 + 2026-06-03 review F3):
-   * 路径不再按 input.enabledSkillIds 是否提供分流,而是统一:
+   * Skill 关联校验/清理(spec §4.3 + §6.3,Task 0.5/0.7 + 2026-06-03 review F3 收紧):
    *
-   *   1. 先 autoCleanupOrphanSkills —— 用最新 merged.tools 把因工具变化而失效的
-   *      skill 自动剔除;cleaned 透回前端做 toast。
-   *   2. 再 validateEnabledSkills —— 对清理后剩下的列表跑严格校验;通常此时全合规
-   *      (cleanup 已把孤儿去掉),只有用户显式启用了一个不存在的 skill 才会 400。
+   * 分两条路径,**取决于 input.enabledSkillIds 是否提供**(undefined 还是显式数组):
    *
-   * 这样无论前端怎么传(只改 tools / 同时改 tools+enabledSkillIds / 只改 enabledSkillIds),
-   * spec §6.3 的 cleanup UX 都可达;前端不必再做 diff 决定是否要带 enabledSkillIds。
+   * 【路径 A】input.enabledSkillIds === undefined
+   *   用户没动 enabledSkillIds 这个字段(通常只改 tools / name 等)。
+   *   整套 existing.enabledSkillIds 走 autoCleanup:tools 改了可能孤儿化,静默剔除,
+   *   cleaned 透回让前端 toast。不做 strict validate(用户没主动 opt-in 新 skill)。
+   *
+   * 【路径 B】input.enabledSkillIds 提供了(包括空数组 — 视作"用户在管理这个列表")
+   *   把 input.enabledSkillIds 拆成两个子集:
+   *     - inherited = input ∩ existing.enabledSkillIds (用户没删的旧 skill)
+   *     - added     = input \ existing.enabledSkillIds (本次新加 — 用户主动 opt-in)
+   *   分别处理:
+   *     - inherited 走 autoCleanup:tools 也可能跟着改,旧 skill 可能孤儿化,
+   *       静默剔除 + cleaned 透回(行为同路径 A)。
+   *     - added     走 strict validate:不存在 / 缺工具 → 400 BadRequest。
+   *       用户主动加的不合规必须让他看见(spec §6.3 — 不静默吞 added 的问题)。
+   *   最终 enabledSkillIds = cleanedInherited ∪ validatedAdded。
+   *
+   *   顺序:**先 validate added 再 cleanup inherited**。added 不合规时直接抛 400,
+   *   inherited 也不会被处理,merged 也不入库 — 行为干净。
    *
    * 写库时机:cleanup + validate 全通过后才 patch;校验失败抛 400,merged 不入库。
-   * 用函数式 next = [...existing] 构造而非 mutate existing[idx],避免任何一步抛错时
+   * 用函数式 next = existing.map(...) 构造而非 mutate existing[idx],避免任何一步抛错时
    * existing 数组已被改坏(下次 repo.get 拿到的 in-memory cache 可能受影响)。
    *
-   * 返回:{ cleaned } —— autoCleanup 触发的孤儿 skill 列表。
+   * 返回:{ cleaned } —— autoCleanup 触发的孤儿 skill 列表(给前端 toast)。
    */
   async saveAgentConfig(
     key: string,
@@ -574,11 +586,15 @@ export class SystemConfigService implements OnModuleInit {
     const config = await this.repo.get();
     const existing = config?.agentConfigs ?? [];
     const idx = existing.findIndex((c) => c.key === key);
+    // 在 merge 前留住"用户传入的 enabledSkillIds 原始值",分流靠它
+    // (merge 后 merged.enabledSkillIds 就丢了"input 是否提供过"这一信号)
+    const existingEntry = idx >= 0 ? existing[idx] : null;
+    const existingSkillIds = existingEntry?.enabledSkillIds ?? [];
 
     let merged: AgentEntryConfig;
-    if (idx >= 0) {
+    if (existingEntry) {
       // 更新已有条目:只覆盖传入字段
-      merged = { ...existing[idx], ...input, key };
+      merged = { ...existingEntry, ...input, key };
     } else {
       // 新增条目,补齐默认值(含 enabledSkillIds 默认 [])
       merged = {
@@ -598,18 +614,49 @@ export class SystemConfigService implements OnModuleInit {
       };
     }
 
-    // 1. 先 cleanup:把因 tools 变化失效的 skill 引用剔除(直接 mutate merged.enabledSkillIds)
-    const cleaned = await this.autoCleanupOrphanSkills(merged);
+    // 分流:input 是否显式传了 enabledSkillIds
+    let cleaned: Array<{ agent: string; skillName: string }>;
+    if (input.enabledSkillIds === undefined) {
+      // 路径 A:用户没动 enabledSkillIds → 全套老列表走 autoCleanup(tools 可能改了)
+      // merged.enabledSkillIds 此时 === existingEntry.enabledSkillIds(或新建时 [])
+      cleaned = await this.autoCleanupOrphanSkills(merged);
+    } else {
+      // 路径 B:用户在管理这个列表 → 拆 inherited/added 区分对待
+      const existingSet = new Set(existingSkillIds);
+      // 去重(用户偶尔传重复 id);保序按 input 原顺序
+      const seen = new Set<string>();
+      const dedupedInput: string[] = [];
+      for (const id of input.enabledSkillIds) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+        dedupedInput.push(id);
+      }
+      const inherited = dedupedInput.filter((id) => existingSet.has(id));
+      const added = dedupedInput.filter((id) => !existingSet.has(id));
 
-    // 2. 再 validate:对清理后剩余的列表跑严格校验。
-    //    cleanup 后通常都合规;若前端传了一个"不存在的" skillId,这里仍 400(语义清晰)。
-    await this.validateEnabledSkills(merged);
+      // 先 validate added(不合规直接 400,inherited 不必处理,merged 不入库)
+      if (added.length > 0) {
+        await this.validateSkillsStrict(merged, added);
+      }
 
-    // 3. 全通过 → 函数式构造 next 数组,patch 写库。失败抛 400 时 existing 未被 mutate。
-    const next =
-      idx >= 0
-        ? existing.map((c, i) => (i === idx ? merged : c))
-        : [...existing, merged];
+      // 再 cleanup inherited:tools 也可能跟着改,旧 skill 可能孤儿化,静默剔除
+      let cleanedInherited: string[] = inherited;
+      cleaned = [];
+      if (inherited.length > 0) {
+        // 临时把 merged.enabledSkillIds 设为 inherited 跑 cleanup,拿回 kept + cleaned
+        merged.enabledSkillIds = inherited;
+        cleaned = await this.autoCleanupOrphanSkills(merged);
+        cleanedInherited = merged.enabledSkillIds; // cleanup 内部已 mutate
+      }
+
+      // 合并最终列表:cleanedInherited(剔掉孤儿)+ added(已严格校验)
+      merged.enabledSkillIds = [...cleanedInherited, ...added];
+    }
+
+    // 全通过 → 函数式构造 next 数组,patch 写库。失败抛 400 时 existing 未被 mutate。
+    const next = existingEntry
+      ? existing.map((c, i) => (i === idx ? merged : c))
+      : [...existing, merged];
 
     await this.repo.patch({ agentConfigs: next });
     this.logger.log(`Agent config saved: ${key}`);
@@ -671,15 +718,23 @@ export class SystemConfigService implements OnModuleInit {
   }
 
   /**
-   * 校验 agent.enabledSkillIds 里每个 skill 的 requiredTools 必须 ⊆ agent.tools。
-   * 违反则抛 BadRequestException(400),整个保存动作 reject。
+   * 对 added 子集做严格校验:skill 必须存在 且 requiredTools ⊆ agent.tools。
+   * 违反 → 400 BadRequest,保存动作整体 reject。
    *
-   * spec §4.3 关键约束 + Task 0.5 实现。
+   * 用途:saveAgentConfig 路径 B 中,用户本次主动新加(opt-in)的 skill 必须合规;
+   * 不存在或缺工具不能静默吞,要让用户在 UI 看到 toast/对话框(spec §6.3)。
    *
-   * 性能:同 autoCleanupOrphanSkills,一次 findByIds 批量拉,避免 N 次串行 findById。
+   * 跟旧的 validateEnabledSkills 的差别:
+   *   - 旧:校验 agent.enabledSkillIds 整集 → 把"老 skill 因 tools 改而孤儿"也一并 400,
+   *         体验差(用户没动 skill 还被卡)。
+   *   - 新:只校验 added 子集(本次新加) → inherited 那些孤儿走 autoCleanup 静默剔除。
+   *
+   * 性能:一次 findByIds 批量拉,避免 N 次串行。
    */
-  private async validateEnabledSkills(agent: AgentEntryConfig): Promise<void> {
-    const skillIds = agent.enabledSkillIds ?? [];
+  private async validateSkillsStrict(
+    agent: AgentEntryConfig,
+    skillIds: string[],
+  ): Promise<void> {
     if (!skillIds.length) return;
 
     const found = await this.skillService.findByIds(skillIds);

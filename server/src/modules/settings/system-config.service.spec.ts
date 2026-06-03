@@ -59,13 +59,14 @@ function mkAgent(overrides: Partial<AgentEntryConfig> = {}): AgentEntryConfig {
   };
 }
 
-describe('SystemConfigService.saveAgentConfig — Skill 校验(Task 0.5 + F3 合并)', () => {
-  it('启用 skill 但 agent 缺工具 → cleanup 剔除 + cleaned 透回,不再 400', async () => {
-    // F3 路径合并后:cleanup 先跑把孤儿剔掉,validate 看到空列表通过。
-    // 语义变化:老 Task 0.5 是 400 拒;新逻辑友好剔除 + 前端 toast 告知"缺工具"。
-    // 前端 SkillsSection 还有 disabledReason 在 popover 上挡用户(不会点出来这条路径)。
+describe('SystemConfigService.saveAgentConfig — Skill 校验(Task 0.5 + F3 收紧两路径)', () => {
+  // ── 路径 B(added 子集)— added 全合规 / added 不合规 / added 不存在 ──
+
+  it('case 4:input 全 added 且全合规 → validate 通过,cleaned 为空,写库', async () => {
+    // 路径 B:existing.enabledSkillIds=[], input.enabledSkillIds=['sk1'](全 added)
+    // sk1 存在且 requiredTools ⊆ agent.tools → validate 通过,cleaned 空。
     const { service, mockRepo, mockSkillService } = createMocks();
-    const existing = mkAgent({ tools: ['recall_memory'] });
+    const existing = mkAgent({ tools: ['web_search', 'recall_memory'] });
     mockRepo.get.mockResolvedValue({ agentConfigs: [existing] } as never);
     mockSkillService.findByIds.mockResolvedValue([
       {
@@ -79,30 +80,7 @@ describe('SystemConfigService.saveAgentConfig — Skill 校验(Task 0.5 + F3 合
       enabledSkillIds: ['sk1'],
     });
 
-    expect(result.cleaned).toEqual([
-      { agent: 'writing-advisor', skillName: 'critic' },
-    ]);
-    expect(mockRepo.patch).toHaveBeenCalledWith({
-      agentConfigs: [expect.objectContaining({ enabledSkillIds: [] })],
-    });
-  });
-
-  it('启用 skill 且 agent 工具齐备 → 通过 + 写库', async () => {
-    const { service, mockRepo, mockSkillService } = createMocks();
-    const existing = mkAgent({ tools: ['web_search', 'recall_memory'] });
-    mockRepo.get.mockResolvedValue({ agentConfigs: [existing] } as never);
-    mockSkillService.findByIds.mockResolvedValue([
-      {
-        _id: 'sk1',
-        name: 'critic',
-        requiredTools: ['web_search'],
-      },
-    ] as never);
-
-    await service.saveAgentConfig('writing-advisor', {
-      enabledSkillIds: ['sk1'],
-    });
-
+    expect(result.cleaned).toEqual([]);
     expect(mockRepo.patch).toHaveBeenCalledWith(
       expect.objectContaining({
         agentConfigs: expect.arrayContaining([
@@ -115,26 +93,48 @@ describe('SystemConfigService.saveAgentConfig — Skill 校验(Task 0.5 + F3 合
     );
   });
 
-  it('启用的 skill 不存在 → cleanup 兜底丢弃 + cleaned 空(无 displayName 不报)', async () => {
-    // F3 路径合并后:不存在的 skillId 落到 cleanup 的"已删 skill"分支,
-    // 静默丢弃 + warn 日志,cleaned 不带这条(没 displayName 可显)。
-    // 这种 case 实际上前端 chip 选择器只让选已存在的,不会走到这里。
+  it('case 6:input 全 added 但缺工具 → 400 BadRequest(用户主动 opt-in 不合规要让看到)', async () => {
+    // F3 收紧:added 是用户本次主动新加的,不静默吞 — skill 缺工具直接 400。
+    // 错误信息含 skill name 和 missing tools,前端可弹对话框。
     const { service, mockRepo, mockSkillService } = createMocks();
-    const existing = mkAgent();
+    const existing = mkAgent({ tools: ['recall_memory'] }); // 没有 web_search
+    mockRepo.get.mockResolvedValue({ agentConfigs: [existing] } as never);
+    mockSkillService.findByIds.mockResolvedValue([
+      {
+        _id: 'sk1',
+        name: 'critic',
+        requiredTools: ['web_search'],
+      },
+    ] as never);
+
+    await expect(
+      service.saveAgentConfig('writing-advisor', {
+        enabledSkillIds: ['sk1'],
+      }),
+    ).rejects.toThrow(/critic.*web_search/);
+    expect(mockRepo.patch).not.toHaveBeenCalled();
+  });
+
+  it('case 5:input 全 added 但 skill 不存在 → 400 BadRequest(含 skillId)', async () => {
+    // F3 收紧:added 主动 opt-in,skill 不存在不能静默吞,直接 400。
+    // 错误信息含被点的 skillId,告诉用户哪个 skill 找不到。
+    const { service, mockRepo, mockSkillService } = createMocks();
+    const existing = mkAgent({ tools: ['web_search', 'recall_memory'] });
     mockRepo.get.mockResolvedValue({ agentConfigs: [existing] } as never);
     mockSkillService.findByIds.mockResolvedValue([] as never);
 
-    const result = await service.saveAgentConfig('writing-advisor', {
-      enabledSkillIds: ['nope'],
-    });
-
-    expect(result.cleaned).toEqual([]);
-    expect(mockRepo.patch).toHaveBeenCalledWith({
-      agentConfigs: [expect.objectContaining({ enabledSkillIds: [] })],
-    });
+    await expect(
+      service.saveAgentConfig('writing-advisor', {
+        enabledSkillIds: ['ghost-id'],
+      }),
+    ).rejects.toThrow(/ghost-id/);
+    expect(mockRepo.patch).not.toHaveBeenCalled();
   });
 
-  it('enabledSkillIds 为空 → 不查 skill 直接通过(默认行为透明)', async () => {
+  // ── 路径 A(没传 enabledSkillIds)/ 路径 B(空数组、混合)边界 ──
+
+  it('case 1:input 没传 enabledSkillIds(只改 enabled)→ existing 走 autoCleanup,不查 skill', async () => {
+    // 路径 A 触发:existing.enabledSkillIds=[] 时 cleanup 直接 short-circuit,不查 findByIds。
     const { service, mockRepo, mockSkillService } = createMocks();
     const existing = mkAgent();
     mockRepo.get.mockResolvedValue({ agentConfigs: [existing] } as never);
@@ -143,6 +143,106 @@ describe('SystemConfigService.saveAgentConfig — Skill 校验(Task 0.5 + F3 合
 
     expect(mockSkillService.findByIds).not.toHaveBeenCalled();
     expect(mockRepo.patch).toHaveBeenCalled();
+  });
+
+  it('case 2:input 显式 enabledSkillIds=[] → 不 cleanup 也不 validate,直接 [] + cleaned=[]', async () => {
+    // 路径 B 但 inherited=[] + added=[] → 两条分支都跳过,enabledSkillIds=[] 落库。
+    // 关键:不该误查 skill(existing 哪怕有内容也不查 — 用户清空了)。
+    const { service, mockRepo, mockSkillService } = createMocks();
+    const existing = mkAgent({ enabledSkillIds: ['sk-old'] });
+    mockRepo.get.mockResolvedValue({ agentConfigs: [existing] } as never);
+
+    const result = await service.saveAgentConfig('writing-advisor', {
+      enabledSkillIds: [],
+    });
+
+    expect(result.cleaned).toEqual([]);
+    expect(mockSkillService.findByIds).not.toHaveBeenCalled();
+    expect(mockRepo.patch).toHaveBeenCalledWith({
+      agentConfigs: [expect.objectContaining({ enabledSkillIds: [] })],
+    });
+  });
+
+  // ── 路径 B 的混合 case 7 / case 8 ──
+
+  it('case 7:混合 inherited(孤儿)+ added(不合规)→ added 先 400,inherited 不静默吞', async () => {
+    // F3 收紧关键:added 不合规先挡 — 不能因为 inherited 有孤儿就把 added 的问题盖住。
+    // 期望抛 BadRequest(含 added 那条 skill 的 name + missing),merged 不入库。
+    const { service, mockRepo, mockSkillService } = createMocks();
+    const existing = mkAgent({
+      tools: ['web_search', 'recall_memory'],
+      enabledSkillIds: ['sk-old'], // 老 skill,inherited 候选
+    });
+    mockRepo.get.mockResolvedValue({ agentConfigs: [existing] } as never);
+    // findByIds 只对 added (['sk-new']) 调用 —— inherited 的 cleanup 阶段不会走到。
+    mockSkillService.findByIds.mockResolvedValue([
+      {
+        _id: 'sk-new',
+        name: 'bad-add',
+        requiredTools: ['missing_tool'], // agent 没这个工具
+      },
+    ] as never);
+
+    await expect(
+      service.saveAgentConfig('writing-advisor', {
+        tools: ['recall_memory'], // 改 tools 让 sk-old 孤儿化
+        enabledSkillIds: ['sk-old', 'sk-new'], // sk-old 是 inherited 孤儿,sk-new 是 added 不合规
+      }),
+    ).rejects.toThrow(/bad-add.*missing_tool/);
+    expect(mockRepo.patch).not.toHaveBeenCalled();
+  });
+
+  it('case 8:混合 inherited(孤儿)+ added(全合规)→ cleanup 静默清孤儿 + added 入库', async () => {
+    // 路径 B 的"好"分支:added 全过 validate,inherited 中孤儿被 cleanup 静默剔除,
+    // cleaned 透回给前端 toast 提醒"这个老 skill 因为工具变化被自动关了"。
+    // 最终 enabledSkillIds = [keptInherited..., added...]
+    const { service, mockRepo, mockSkillService } = createMocks();
+    const existing = mkAgent({
+      tools: ['web_search', 'recall_memory'],
+      enabledSkillIds: ['sk-keep', 'sk-orphan'],
+    });
+    mockRepo.get.mockResolvedValue({ agentConfigs: [existing] } as never);
+    // saveAgentConfig 会调 findByIds 两次:一次校验 added,一次 cleanup inherited
+    mockSkillService.findByIds
+      // 第 1 次:validateSkillsStrict 校验 added=['sk-new']
+      .mockResolvedValueOnce([
+        {
+          _id: 'sk-new',
+          name: 'new-skill',
+          requiredTools: ['recall_memory'], // 合规
+        },
+      ] as never)
+      // 第 2 次:autoCleanupOrphanSkills 跑 inherited=['sk-keep','sk-orphan']
+      .mockResolvedValueOnce([
+        {
+          _id: 'sk-keep',
+          name: 'keeper',
+          requiredTools: ['recall_memory'], // 合规,保留
+        },
+        {
+          _id: 'sk-orphan',
+          name: 'orphan',
+          requiredTools: ['web_search'], // 不在新 tools 里,会被清
+        },
+      ] as never);
+
+    const result = await service.saveAgentConfig('writing-advisor', {
+      tools: ['recall_memory'], // 去掉 web_search → sk-orphan 孤儿化
+      enabledSkillIds: ['sk-keep', 'sk-orphan', 'sk-new'],
+    });
+
+    expect(result.cleaned).toEqual([
+      { agent: 'writing-advisor', skillName: 'orphan' },
+    ]);
+    expect(mockRepo.patch).toHaveBeenCalledWith({
+      agentConfigs: [
+        expect.objectContaining({
+          tools: ['recall_memory'],
+          // sk-keep(inherited 保留)+ sk-new(added 合规)
+          enabledSkillIds: ['sk-keep', 'sk-new'],
+        }),
+      ],
+    });
   });
 });
 
@@ -231,11 +331,10 @@ describe('SystemConfigService.saveAgentConfig — agent 改 tools 自动清理�
     expect(result.cleaned).toEqual([]); // 兜底清理,但不报告(skill 无名)
   });
 
-  it('显式 enabledSkillIds 同时改 tools → 先 cleanup 再 validate(F3 路径合并)', async () => {
-    // 2026-06-03 review F3:saveAgentConfig 不再按 input.enabledSkillIds 分流。
-    // 显式带 enabledSkillIds 同时改 tools 的场景下:
-    //   - 老逻辑只走 validate → 因 sk1 缺 web_search 而 400
-    //   - 新逻辑先 cleanup 把 sk1 剔掉 → validate 空列表 → 通过 + cleaned 透回
+  it('case 3:input 全 inherited(没新增)同时改 tools → inherited 走 cleanup,无 validate', async () => {
+    // F3 收紧后的路径 B - case 3:input.enabledSkillIds 全是 existing 的子集(没主动新加),
+    // 这些 skill 走 autoCleanup 而非 strict validate(因为它们不是用户本次主动 opt-in)。
+    // sk1 inherited 但 tools 变化致孤儿 → 静默剔除 + cleaned 透回,不 400。
     const { service, mockRepo, mockSkillService } = createMocks();
     const existing = mkAgent({
       tools: ['web_search', 'recall_memory'],
@@ -252,7 +351,7 @@ describe('SystemConfigService.saveAgentConfig — agent 改 tools 自动清理�
 
     const result = await service.saveAgentConfig('writing-advisor', {
       tools: ['recall_memory'], // 去掉 web_search
-      enabledSkillIds: ['sk1'], // 显式带 sk1(老路径会 400)
+      enabledSkillIds: ['sk1'], // sk1 ⊆ existing.enabledSkillIds → 全 inherited
     });
 
     expect(mockRepo.patch).toHaveBeenCalledWith({
