@@ -49,6 +49,10 @@ import {
   applyKbGitTokenToGithubHttps,
   redactKbRemoteUrlForLog,
 } from '../../common/kb-remote-url';
+import {
+  listToolCatalog,
+  type ToolCatalogEntry,
+} from '../agent/tools/tool-catalog';
 
 /**
  * AI 提供商预设（baseUrl 由后端维护，前端只传 provider id）。
@@ -319,6 +323,17 @@ export class SettingsController {
   @Get('agent-configs/available-tools')
   getAvailableTools(): string[] {
     return this.systemConfigService.getAvailableTools();
+  }
+
+  /**
+   * 返回工具元数据全集(给人看的中文名 + 一句话用途)。
+   * 前端 ChipSelector 用它做 slug → displayName 翻译;
+   * SkillsTab requiredTools 副标也走它显示中文。
+   * 单一真相源是 server/src/modules/agent/tools/tool-catalog.ts。
+   */
+  @Get('agent-configs/tool-catalog')
+  getToolCatalog(): ToolCatalogEntry[] {
+    return listToolCatalog();
   }
 
   /**

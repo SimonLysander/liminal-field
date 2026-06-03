@@ -40,6 +40,16 @@ export interface AgentConfig {
   enabledSkillIds: string[];
 }
 
+/**
+ * 工具元数据(GET /agent-configs/tool-catalog 返回项)。
+ * 真相在后端 server/src/modules/agent/tools/tool-catalog.ts。
+ */
+export interface ToolCatalogEntry {
+  name: string;
+  displayName: string;
+  description: string;
+}
+
 /** 全量配置（脱敏，只含用户通过 UI 管理的字段） */
 export interface SettingsConfigView {
   sync: {
@@ -298,9 +308,17 @@ export const settingsApi = {
   getAgentConfigs: () =>
     request<AgentConfig[]>('/settings/agent-configs'),
 
-  /** 获取可用工具池(供 AgentTab UI 渲染 checkbox 列表) */
+  /** 获取可用工具池(slug 白名单,决定 UI 上能勾选哪些) */
   getAvailableTools: () =>
     request<string[]>('/settings/agent-configs/available-tools'),
+
+  /**
+   * 获取工具元数据全集(slug → 中文名 + 描述)。
+   * UI 用它做 ChipSelector 的 renderLabel/renderMeta 翻译,
+   * 找不到的 slug fallback 回原 slug(老数据/未登记的工具不破)。
+   */
+  getToolCatalog: () =>
+    request<ToolCatalogEntry[]>('/settings/agent-configs/tool-catalog'),
 
   /**
    * 保存 agent 入口配置（upsert by key）。

@@ -39,6 +39,7 @@ import { ChipSelector } from '@/components/shared/ChipSelector';
 import { skillsApi } from '@/services/skills';
 import type { Skill, CreateSkillInput } from '@/services/skills';
 import { settingsApi } from '@/services/settings';
+import type { ToolCatalogEntry } from '@/services/settings';
 import {
   FieldLabel,
   TextInput,
@@ -73,12 +74,15 @@ const EMPTY_DRAFT: CreateSkillInput = {
 function SkillForm({
   initial,
   availableTools,
+  toolCatalog,
   onSubmit,
   onCancel,
   saving,
 }: {
   initial?: Skill;
   availableTools: string[];
+  /** slug → 中文名/描述,UI 显示用 */
+  toolCatalog: Record<string, ToolCatalogEntry>;
   onSubmit: (input: CreateSkillInput) => void;
   onCancel: () => void;
   saving: boolean;
@@ -249,6 +253,8 @@ function SkillForm({
         <ChipSelector
           selected={draft.requiredTools ?? []}
           available={availableTools}
+          renderLabel={(t) => toolCatalog[t]?.displayName ?? t}
+          renderMeta={(t) => toolCatalog[t]?.description}
           onAdd={(t) =>
             setDraft((d) => ({
               ...d,
@@ -279,13 +285,17 @@ function SkillForm({
 /** 单行 Skill 视觉:displayName + name 副标 + description + 操作按钮(明确而不整行点击) */
 function SkillRow({
   skill,
+  toolCatalog,
   onEdit,
   onDelete,
 }: {
   skill: Skill;
+  /** 副标列工具时翻译 slug,找不到 fallback */
+  toolCatalog: Record<string, ToolCatalogEntry>;
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const labelOf = (slug: string) => toolCatalog[slug]?.displayName ?? slug;
   return (
     <div
       className="flex items-center gap-3 rounded-lg px-4 py-3"
@@ -318,7 +328,7 @@ function SkillRow({
             className="mt-1 truncate text-2xs"
             style={{ color: 'var(--ink-ghost)' }}
           >
-            需要: {skill.requiredTools.join(', ')}
+            需要: {skill.requiredTools.map(labelOf).join('、')}
           </p>
         )}
       </div>
@@ -357,6 +367,8 @@ function SkillRow({
 export function SkillsTab() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [availableTools, setAvailableTools] = useState<string[]>([]);
+  // slug → 中文名/描述 查找表(找不到 fallback 显 slug,不破老数据)
+  const [toolCatalog, setToolCatalog] = useState<Record<string, ToolCatalogEntry>>({});
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Skill | null>(null);
   const [creating, setCreating] = useState(false);
@@ -366,9 +378,10 @@ export function SkillsTab() {
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
-    const [skillsRes, toolsRes] = await Promise.allSettled([
+    const [skillsRes, toolsRes, catalogRes] = await Promise.allSettled([
       skillsApi.list(),
       settingsApi.getAvailableTools(),
+      settingsApi.getToolCatalog(),
     ]);
     if (skillsRes.status === 'fulfilled') {
       setSkills(skillsRes.value);
@@ -377,6 +390,11 @@ export function SkillsTab() {
     }
     if (toolsRes.status === 'fulfilled') {
       setAvailableTools(toolsRes.value);
+    }
+    if (catalogRes.status === 'fulfilled') {
+      setToolCatalog(
+        Object.fromEntries(catalogRes.value.map((e) => [e.name, e])),
+      );
     }
     setLoading(false);
   }, []);
@@ -466,6 +484,7 @@ export function SkillsTab() {
             <SkillRow
               key={skill._id}
               skill={skill}
+              toolCatalog={toolCatalog}
               onEdit={() => setEditing(skill)}
               onDelete={() => setConfirmingDelete(skill)}
             />
@@ -494,6 +513,7 @@ export function SkillsTab() {
           </DialogHeader>
           <SkillForm
             availableTools={availableTools}
+            toolCatalog={toolCatalog}
             onSubmit={(input) => void handleCreate(input)}
             onCancel={() => setCreating(false)}
             saving={saving}
@@ -517,6 +537,7 @@ export function SkillsTab() {
             <SkillForm
               initial={editing}
               availableTools={availableTools}
+              toolCatalog={toolCatalog}
               onSubmit={(input) => void handleUpdate(input)}
               onCancel={() => setEditing(null)}
               saving={saving}

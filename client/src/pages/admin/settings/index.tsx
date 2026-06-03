@@ -18,6 +18,7 @@ import {
   Bot,
   User,
   Sparkles,
+  Wrench,
 } from 'lucide-react';
 import Topbar from '@/components/global/Topbar';
 import { SyncTab } from './SyncTab';
@@ -27,11 +28,13 @@ import { SecurityTab } from './SecurityTab';
 import { AgentTab } from './AgentTab';
 import { OwnerTab } from './OwnerTab';
 import { SkillsTab } from './SkillsTab';
+import { ToolsTab } from './ToolsTab';
 
 type TabId =
   | 'owner'
   | 'security'
   | 'agent'
+  | 'tools'
   | 'skills'
   | 'integration'
   | 'sync'
@@ -63,7 +66,9 @@ const TAB_GROUPS: TabGroup[] = [
       { id: 'sync', label: '同步', icon: RefreshCw },
       { id: 'integration', label: '集成', icon: Puzzle },
       { id: 'agent', label: 'Agent', icon: Bot },
-      // 技能跟 Agent 同组:agent 通过 skill 调方法论,语义最贴(spec §6.2)
+      // 工具 / 技能跟 Agent 同组:agent 用工具、调技能,语义堆叠
+      // 顺序 agent → tools → skills:从「调度者」往「能力」走,概念由近及远
+      { id: 'tools', label: '工具', icon: Wrench },
       { id: 'skills', label: '技能', icon: Sparkles },
     ],
   },
@@ -162,6 +167,7 @@ export default function SettingsPage() {
                 {activeTab === 'integration' && <IntegrationTab />}
                 {activeTab === 'security' && <SecurityTab />}
                 {activeTab === 'agent' && <AgentTab />}
+                {activeTab === 'tools' && <ToolsTab />}
                 {activeTab === 'skills' && <SkillsTab />}
               </motion.div>
             </AnimatePresence>

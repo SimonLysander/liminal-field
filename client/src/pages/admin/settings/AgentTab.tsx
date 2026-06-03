@@ -18,7 +18,7 @@ import { banner } from '@/components/ui/banner-api';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { settingsApi } from '@/services/settings';
-import type { AgentConfig } from '@/services/settings';
+import type { AgentConfig, ToolCatalogEntry } from '@/services/settings';
 import { skillsApi } from '@/services/skills';
 import type { Skill } from '@/services/skills';
 import { ChipSelector } from '@/components/shared/ChipSelector';
@@ -57,11 +57,14 @@ const TIER_OPTIONS = [
 function ToolsEditor({
   tools,
   availableTools,
+  toolCatalog,
   onChange,
   disabled,
 }: {
   tools: string[];
   availableTools: string[];
+  /** slug → 中文名/描述,显示用(找不到 fallback 显 slug,不破老数据) */
+  toolCatalog: Record<string, ToolCatalogEntry>;
   onChange: (tools: string[]) => void;
   disabled: boolean;
 }) {
@@ -87,7 +90,10 @@ function ToolsEditor({
         available={mergedAvailable}
         onAdd={(t) => onChange([...tools, t])}
         onRemove={(t) => onChange(tools.filter((x) => x !== t))}
-        renderMeta={(t) => (orphanTools.includes(t) ? '已下线' : undefined)}
+        renderLabel={(t) => toolCatalog[t]?.displayName ?? t}
+        renderMeta={(t) =>
+          orphanTools.includes(t) ? '已下线' : toolCatalog[t]?.description
+        }
       />
     </div>
   );
@@ -109,15 +115,20 @@ function SkillsSection({
   selected,
   skills,
   agentTools,
+  toolCatalog,
   onChange,
   disabled,
 }: {
   selected: string[];
   skills: Skill[];
   agentTools: string[];
+  /** 翻译 skill.requiredTools 副标里的工具 slug 用 */
+  toolCatalog: Record<string, ToolCatalogEntry>;
   onChange: (ids: string[]) => void;
   disabled: boolean;
 }) {
+  // 给副标 / disabledReason 用的「slug → 中文名」简写
+  const labelOf = (slug: string) => toolCatalog[slug]?.displayName ?? slug;
   if (skills.length === 0) {
     return (
       <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
@@ -145,14 +156,14 @@ function SkillsSection({
         renderLabel={(id) => skillsById.get(id)?.displayName ?? id}
         renderMeta={(id) => {
           const reqs = skillsById.get(id)?.requiredTools ?? [];
-          return reqs.length > 0 ? `需 ${reqs.join(', ')}` : undefined;
+          return reqs.length > 0 ? `需 ${reqs.map(labelOf).join('、')}` : undefined;
         }}
         groupBy={(id) =>
           missingTools(id).length === 0 ? '可添加' : '不可添加'
         }
         disabledReason={(id) => {
           const miss = missingTools(id);
-          return miss.length > 0 ? `缺工具: ${miss.join(', ')}` : undefined;
+          return miss.length > 0 ? `缺工具: ${miss.map(labelOf).join('、')}` : undefined;
         }}
         onAdd={(id) => {
           // 前端硬校验:防止 disabledReason 被绕过(理论上 ChipSelector 已经挡)
@@ -160,7 +171,7 @@ function SkillsSection({
           onChange([...selected, id]);
         }}
         onRemove={(id) => onChange(selected.filter((x) => x !== id))}
-        addLabel="+ 授权技能"
+        addLabel="授权技能"
       />
     </div>
   );
@@ -178,6 +189,7 @@ function AgentCard({
   agent,
   providers,
   availableTools,
+  toolCatalog,
   skills,
   onSave,
   onDelete,
@@ -185,6 +197,8 @@ function AgentCard({
   agent: AgentConfig;
   providers: { id: string; name: string }[];
   availableTools: string[];
+  /** slug → 中文名/描述 查找表(找不到 fallback 显 slug) */
+  toolCatalog: Record<string, ToolCatalogEntry>;
   /** 全局 skill 列表(spec §6.3),用来展示技能授权 chip + 校验 */
   skills: Skill[];
   onSave: (updated: Partial<AgentConfig>) => Promise<void>;
@@ -485,6 +499,7 @@ function AgentCard({
               <ToolsEditor
                 tools={draft.tools ?? []}
                 availableTools={availableTools}
+                toolCatalog={toolCatalog}
                 onChange={(tools) => setDraft((d) => ({ ...d, tools }))}
                 disabled={saving}
               />
@@ -509,6 +524,7 @@ function AgentCard({
                 selected={draft.enabledSkillIds ?? []}
                 skills={skills}
                 agentTools={draft.tools ?? []}
+                toolCatalog={toolCatalog}
                 onChange={(ids) =>
                   setDraft((d) => ({ ...d, enabledSkillIds: ids }))
                 }
@@ -567,6 +583,8 @@ export function AgentTab() {
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [providers, setProviders] = useState<{ id: string; name: string }[]>([]);
   const [availableTools, setAvailableTools] = useState<string[]>([]);
+  // 工具 slug → 中文名/描述 的查找表,UI 显示用(slug 不在表里时 fallback 回 slug)
+  const [toolCatalog, setToolCatalog] = useState<Record<string, ToolCatalogEntry>>({});
   // Phase 3:全局 skill 列表,给 SkillsSection 展示 chip + 校验依赖
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
@@ -580,10 +598,11 @@ export function AgentTab() {
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
-    const [agentsRes, configRes, toolsRes, skillsRes] = await Promise.allSettled([
+    const [agentsRes, configRes, toolsRes, catalogRes, skillsRes] = await Promise.allSettled([
       settingsApi.getAgentConfigs(),
       settingsApi.getConfig(),
       settingsApi.getAvailableTools(),
+      settingsApi.getToolCatalog(),
       skillsApi.list(),
     ]);
     if (agentsRes.status === 'fulfilled') {
@@ -600,6 +619,12 @@ export function AgentTab() {
     }
     if (toolsRes.status === 'fulfilled') {
       setAvailableTools(toolsRes.value);
+    }
+    // catalog 拉失败 fallback 到空表(ChipSelector 自然 fallback 显 slug,不破)
+    if (catalogRes.status === 'fulfilled') {
+      setToolCatalog(
+        Object.fromEntries(catalogRes.value.map((e) => [e.name, e])),
+      );
     }
     // skill 列表拉失败不报错(技能 tab 是后引入的能力,不阻塞 agent 配置基本流);
     // 拉成功才覆盖 setSkills,失败保持原值(空 → SkillsSection 显示「还没有技能」提示)
@@ -745,6 +770,7 @@ export function AgentTab() {
                 agent={agent}
                 providers={providers}
                 availableTools={availableTools}
+                toolCatalog={toolCatalog}
                 skills={skills}
                 onSave={(updated) => handleSave(agent.key, updated)}
                 onDelete={undefined}

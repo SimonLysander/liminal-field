@@ -18,6 +18,7 @@ vi.mock('@/services/settings', () => ({
     getAgentConfigs: vi.fn(),
     getConfig: vi.fn(),
     getAvailableTools: vi.fn(),
+    getToolCatalog: vi.fn().mockResolvedValue([]),
     saveAgentConfig: vi.fn(),
     saveAiSystemPrompt: vi.fn(),
   },

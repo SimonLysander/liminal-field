@@ -27,6 +27,7 @@ vi.mock('@/services/skills', () => ({
 vi.mock('@/services/settings', () => ({
   settingsApi: {
     getAvailableTools: vi.fn(),
+    getToolCatalog: vi.fn().mockResolvedValue([]),
   },
 }));
 
