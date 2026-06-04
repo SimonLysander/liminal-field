@@ -185,34 +185,27 @@ export class SystemConfigService implements OnModuleInit {
         '预置 writing-advisor + gallery-caption-writer agent 配置已写入',
       );
     } else {
-      // 补齐新增工具：已有配置可能缺少后来新加的工具
-      const allTools = SystemConfigService.WRITING_ADVISOR_TOOLS;
+      // 退役工具清理：只删"确已下线、代码里已无对应工厂"的死工具名,不碰用户的有效选择。
+      //
+      // 2026-06-04 起**不再"补齐新增工具"**:旧逻辑把"用户主动删掉的工具"当成"缺失",
+      // 每次启动 push 回去并写库 —— 等于重启就偷偷撤销用户的删除(排查改稿停用时定位的真坑:
+      // 用户删 propose_document_rewrite,一部署重启又被补回)。代价是新工具不再自动下发到已有
+      // agent,改由管理员在工具池 UI 手动勾选 —— 既然已有工具池 UI,自动补回本就该退役。
       const wa = config?.agentConfigs?.find((c) => c.key === 'writing-advisor');
       if (wa) {
         // 退役的 v2 工具名：rewrite_selection(Task 8 前已删)、rewrite_reference/rewrite_document(Task 9 退役)
-        const v2ToolsToRemove = [
+        const retiredTools = [
           'rewrite_selection',
           'rewrite_reference',
           'rewrite_document',
         ];
-        const beforeTools = wa.tools;
-        wa.tools = wa.tools.filter((t) => !v2ToolsToRemove.includes(t));
-        const removedOldTools = beforeTools.filter((t) =>
-          v2ToolsToRemove.includes(t),
-        );
-        const removedOldTool = removedOldTools.length > 0;
-        const missing = allTools.filter((t) => !wa.tools.includes(t));
-        if (missing.length > 0 || removedOldTool) {
-          wa.tools.push(...missing);
+        const removed = wa.tools.filter((t) => retiredTools.includes(t));
+        if (removed.length > 0) {
+          wa.tools = wa.tools.filter((t) => !retiredTools.includes(t));
           await this.repo.patch({ agentConfigs: config.agentConfigs });
-          if (missing.length > 0) {
-            this.logger.log(`writing-advisor 补齐工具: ${missing.join(', ')}`);
-          }
-          if (removedOldTool) {
-            this.logger.log(
-              `writing-advisor 移除旧工具: ${removedOldTools.join(', ')}`,
-            );
-          }
+          this.logger.log(
+            `writing-advisor 清理退役工具: ${removed.join(', ')}`,
+          );
         }
       }
 
