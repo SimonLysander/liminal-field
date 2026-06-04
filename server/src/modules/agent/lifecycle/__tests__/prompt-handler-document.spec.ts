@@ -64,7 +64,7 @@ describe('PromptHandler <document> 注入硬化(v3)', () => {
     expect(out).not.toContain('这是机密正文');
   });
 
-  it('<tools> + <instructions> 引导先调 get_current_draft 拿 bodyHash', () => {
+  it('<tools> 仍引导调 get_current_draft 读正文', () => {
     const out = handler.buildSystemPrompt({
       ...base,
       document: {
@@ -74,10 +74,11 @@ describe('PromptHandler <document> 注入硬化(v3)', () => {
       },
     });
     expect(out).toContain('get_current_draft');
-    expect(out).toContain('bodyHash');
+    // 改稿停用(2026-06-04):bodyHash 仅为 propose_document_rewrite 强校验服务,已随改稿一并移除
+    expect(out).not.toContain('bodyHash');
   });
 
-  it('工具纪律提到 propose_document_rewrite(单工具)', () => {
+  it('改稿停用:prompt 不再提 propose_document_rewrite,改为"没有改写正文能力"', () => {
     const out = handler.buildSystemPrompt({
       ...base,
       document: {
@@ -86,6 +87,8 @@ describe('PromptHandler <document> 注入硬化(v3)', () => {
         bodyMarkdown: '正文。',
       },
     });
-    expect(out).toContain('propose_document_rewrite');
+    // 2026-06-04 改稿能力整体停用:工具不装配,prompt 也不应再指示模型调它
+    expect(out).not.toContain('propose_document_rewrite');
+    expect(out).toContain('没有直接改写文稿正文的能力');
   });
 });

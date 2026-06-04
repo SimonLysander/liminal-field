@@ -36,6 +36,12 @@ import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
 // edit-session 现仅保留 ReferenceRegistry（渲染层读取历史 references 用于 chip 展示）
 // createEditSession / isEditConfirmation / isReferenceEditRequest 已随 v2 send 逻辑一并删除
 
+// 2026-06-04 改稿(propose-edit)能力整体停用(用户要求)。
+// 后端已不再装配 propose_document_rewrite 工具,模型不会发起改稿;这里再设一道前端开关:
+// 置 false → 改稿提议计算恒返回空 → 审批条/红绿 diff/逐块按钮等整条改稿 UI 全部失活,
+// 历史会话里残留的旧改稿 tool_call 也不会再拉起伪审批。要恢复:置 true + 后端取消注释。
+const PROPOSE_EDIT_ENABLED = false;
+
 export type Tier = 'flash' | 'standard' | 'think';
 
 const TIER_NEXT: Record<Tier, Tier> = {
@@ -265,6 +271,8 @@ export function useAdvisorChat({
   // resolved-store 用全局 localStorage 持久化(callId 全局唯一,无需 per-session)。
   const v3ProposalsByCallId = useMemo<Record<string, Proposal>>(() => {
     const result: Record<string, Proposal> = {};
+    // 改稿能力停用(2026-06-04):恒返回空,整条前端改稿链路失活
+    if (!PROPOSE_EDIT_ENABLED) return result;
     if (!getEditorChildren || !getEditor) return result;
 
     const resolvedSet = readResolved();

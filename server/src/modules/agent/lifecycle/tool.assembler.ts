@@ -10,7 +10,7 @@
  * - list_knowledge_base：列出知识库内容目录（ls/tree：看有哪些）
  * - read_document_content：读取单篇文档完整正文
  * - get_current_draft：获取当前编辑文档
- * - propose_document_rewrite：提议改稿（有 document 时挂）
+ * - propose_document_rewrite：提议改稿（2026-06-04 用户要求整体停用，已注释不装配）
  * - web_search：联网搜索（配了 TAVILY_API_KEY 等才挂；未配优雅降级）
  * - web_fetch：读 URL 全文（Jina Reader，免 key 总挂）
  * 2026-05-30 起 remember / forget 已从主 agent 工具集移除(event log 架构):
@@ -40,7 +40,8 @@ import { createSearchMemoriesTool } from '../tools/search-memories.tool';
 import { createSubAgentTool } from '../tools/sub-agent.tool';
 import { createWriteTasksTool } from '../tools/write-tasks.tool';
 import { createReadConversationHistoryTool } from '../tools/read-conversation-history.tool';
-import { createProposeDocumentRewriteTool } from '../tools/propose-document-rewrite.tool';
+// 2026-06-04 改稿能力停用:工厂不再使用,导入一并注释(恢复时取消注释)
+// import { createProposeDocumentRewriteTool } from '../tools/propose-document-rewrite.tool';
 import { createGetGalleryDraftTool } from '../tools/get-gallery-draft.tool';
 import { createViewPhotosTool } from '../tools/view-photos.tool';
 import { createProposeCaptionTool } from '../tools/propose-caption.tool';
@@ -172,13 +173,16 @@ export class ToolAssembler {
             ),
           }
         : {}),
-      // v3:单工具,模型自由编辑;前端做 diff 与 hunk 审批
-      ...(entryContext.document
-        ? {
-            propose_document_rewrite:
-              createProposeDocumentRewriteTool(getDocument),
-          }
-        : {}),
+      // 2026-06-04 改稿(propose-edit)能力整体停用(用户要求):工具不再装配,
+      // 模型拿不到 propose_document_rewrite,自然不会发起改稿。前端改稿 UI 同步失活
+      // (use-advisor-chat PROPOSE_EDIT_ENABLED=false)。要恢复:取消下面注释 +
+      // system-config WRITING_ADVISOR_TOOLS 加回 + prompt.handler 改稿指引加回 + 前端开关置 true。
+      // ...(entryContext.document
+      //   ? {
+      //       propose_document_rewrite:
+      //         createProposeDocumentRewriteTool(getDocument),
+      //     }
+      //   : {}),
       // 文集子节点场景(contentItemId 形如 `${anthologyId}:${nodeId}`)才挂:读同集其它子节点
       ...(entryContext.document?.contentItemId.includes(':')
         ? {

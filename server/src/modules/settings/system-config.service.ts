@@ -100,8 +100,10 @@ export class SystemConfigService implements OnModuleInit {
     'sub_agent',
     'write_tasks',
     'read_conversation_history',
-    // v3:单工具纯管道,前端做 diff 与 hunk 审批(替代 v2 rewrite_* 工具)
-    'propose_document_rewrite',
+    // 2026-06-04 改稿(propose_document_rewrite)能力整体停用(用户要求):
+    // 从默认工具集移除 → 不再随启动 refill 补回、不再出现在工具池(getAvailableTools)。
+    // 恢复:加回 'propose_document_rewrite' + tool.assembler 取消注释 + prompt.handler 改稿指引 + 前端开关。
+    // 'propose_document_rewrite',
     // 联网能力:web_search(Tavily/Serper/...)+ web_fetch(Jina Reader/...)
     // 装配层会按 .env 是否配 key 实际挂载(没 key 时 web_search 自动不挂)
     'web_search',

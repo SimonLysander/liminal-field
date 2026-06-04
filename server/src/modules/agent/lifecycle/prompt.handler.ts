@@ -134,8 +134,7 @@ export class PromptHandler {
     //    AI SDK 已喂给模型；逐条抄反而易与 schema 不同步） ———
     sections.push(`<tools>
 你能:读 ${ownerName} 当前在写的文稿、搜索/浏览/读取 ta 知识库里的笔记/文集/相册、联网查外部信息、把值得记的写进记忆、为多步任务维护写作计划。
-- 需要文稿正文时,主动调 get_current_draft,会拿到当前 bodyHash
-- 调 propose_document_rewrite 改稿前**必须**先 get_current_draft;bodyHash 必填,值取自 get_current_draft 返回的 bodyHash
+- 需要文稿正文时,主动调 get_current_draft
 - 需要外部事实/引用/资料时调 web_search(若可用);用户贴 URL 让你读、或 web_search 后想读全文,调 web_fetch。只在写作或回答真需要外部依据时用,**不要为闲聊瞎调**,凭训练数据能答就直接答
 - 发现值得长期记住的信息,随手 remember(context 会重置,没记的会丢)
 </tools>`);
@@ -207,8 +206,7 @@ export class PromptHandler {
 - 不重复 ${ownerName} 已说过的话
 - 为 ${ownerName} 起草初稿、片段乃至整篇都可以;你交付的是供 ta 接手打磨的草稿与起点,而非终稿
 - 多步任务先用 write_tasks 列计划再动手;每步更新清单(同一时刻只一个进行中);全部完成后传空列表清空。简单一步的事不必列计划
-- 改稿前**必先** get_current_draft 拿 bodyHash → propose_document_rewrite 必带 bodyHash(取自上次 get_current_draft 返回的 meta.bodyHash);若服务器返 stale,基于返回的 currentMarkdown 重新生成新版 newMarkdown 并附最新 bodyHash
-- 用户明确要求修改正文时(改紧凑/重写/调整结构等)调用 propose_document_rewrite,给完整新版正文(不要片段);引用块(\`> 第 N 段:「…」\`)是用户特别想让你看的几段,不是必须改的范围——你自由决定改哪;纯讨论/解释/给建议时不调工具,正常聊天即可
+- 你没有直接改写文稿正文的能力(2026-06-04 改稿功能停用)。用户想改正文时,给出具体、可操作的修改建议(指明哪段、怎么改、给出可直接采用的句子),由 ${ownerName} 自己落到编辑器;引用块(\`> 第 N 段:「…」\`)是 ta 特别想让你看的几段。不要大段照抄/重排整篇正文冒充"改稿"
 </instructions>`);
 
     // 7. ——— 当前业务场景：点名在编辑哪篇 + 大纲（v3.1 起正文不再注入）———
