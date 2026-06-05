@@ -1,3 +1,6 @@
+# 生产域名:apex 提供服务,www 永久跳 apex(SEO 单一规范域名)。
+# SITE_DOMAIN 由 .env 注入(生产=lux-stirring.space;未配时回退 localhost)。
+# Caddy 自动申请 Let's Encrypt 证书 + HTTP→HTTPS 跳转,零配置。
 {$SITE_DOMAIN:localhost} {
     # Caddy 默认会去掉 Accept-Encoding 让上游不压缩(便于改 header),
     # 然后自己重新压。不显式 encode 就会裸传——2.4MB bundle 实测 8s
@@ -6,4 +9,10 @@
     encode zstd gzip
 
     reverse_proxy client:80
+}
+
+# www 子域永久 301 到 apex(规范域名唯一,利于 SEO)。
+# SITE_DOMAIN=localhost 时 www.localhost 也成立,无副作用。
+www.{$SITE_DOMAIN:localhost} {
+    redir https://{$SITE_DOMAIN:localhost}{uri} permanent
 }
