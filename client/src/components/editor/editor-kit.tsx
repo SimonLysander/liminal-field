@@ -20,6 +20,7 @@ import { LinkKit } from './plugins/link-kit';
 import { ListKit } from './plugins/list-kit';
 import { MarkdownKit } from './plugins/markdown-kit';
 import { MathKit } from './plugins/math-kit';
+import { PasteCleanupKit } from './plugins/paste-cleanup-kit';
 import { MediaKit } from './plugins/media-kit';
 import { SlashKit } from './plugins/slash-kit';
 import { TableKit } from './plugins/table-kit';
@@ -39,6 +40,7 @@ export const EditorKit = [
   ...FontKit,
   ...MathKit,
   ...MarkdownKit,
+  ...PasteCleanupKit,
   ...SlashKit,
 
   /* ⌘+Enter 跳出代码块/引用等嵌套结构，在后面插入新段落 */
