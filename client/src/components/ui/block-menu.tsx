@@ -6,6 +6,9 @@
  *   - 顶层项：Turn into / Duplicate / Insert above / Insert below / Delete
  *   - Turn into 是 Popover 二级（点开换 content）
  * 颜色说明：删除按钮用 var(--danger)（项目中等价 --ink-warn，源于 --mark-red）
+ *
+ * 注意：工厂函数 createBlockMenuNodeWrapper 已移至 block-menu-kit.tsx（私有），
+ * 此文件只导出 BlockMenu 组件，满足 react-refresh/only-export-components。
  */
 'use client';
 
@@ -22,35 +25,12 @@ import {
 import type { Path, TElement } from 'platejs';
 import { useEditorRef } from 'platejs/react';
 
-import type { PlateElementProps } from 'platejs/react';
-
 import { getBlockType } from '@/components/editor/transforms';
 import { BlockMenuTurnInto } from './block-menu-turn-into';
 
 interface Props {
   blockPath: Path;
   blockNode: TElement;
-}
-
-/**
- * BlockMenuNodeWrapper — 顶层块的 group 外壳，供 block-menu-kit.ts 的 aboveNodes 回调使用。
- * 接受固定的 blockPath / blockNode，返回一个渲染函数（符合 RenderNodeWrapperFunction 签名）。
- */
-export function createBlockMenuNodeWrapper(blockPath: Path, blockNode: TElement) {
-  return function BlockMenuNodeWrapperInner({ children }: PlateElementProps) {
-    return (
-      <div className="group relative">
-        {/* 定位到块左侧，contentEditable=false 避免编辑器把点击当文本操作 */}
-        <div
-          className="absolute -left-7 top-1 select-none"
-          contentEditable={false}
-        >
-          <BlockMenu blockPath={blockPath} blockNode={blockNode} />
-        </div>
-        {children}
-      </div>
-    );
-  };
 }
 
 export function BlockMenu({ blockPath, blockNode }: Props) {

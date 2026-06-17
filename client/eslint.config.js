@@ -34,7 +34,6 @@ export default defineConfig([
             'DEFAULT_COLORS',
             'mediaResizeHandleVariants',
             'readComposerPayload',
-            'createBlockMenuNodeWrapper',
           ],
         },
       ],
