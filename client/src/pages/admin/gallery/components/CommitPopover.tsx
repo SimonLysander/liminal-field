@@ -26,11 +26,15 @@ export function CommitPopover({ children, onSubmit }: CommitPopoverProps) {
     if (next) setNote('');
   };
 
+  // 必填：trim 后空就拦住。之前用 `note.trim() || '提交'` 静默兜底，
+  // 会让用户提交一堆全是"提交"的版本记录，毫无信息量。改成 disabled
+  // 按钮 + Enter 守卫，跟 CommitForm 范式一致。
+  const canSubmit = note.trim().length > 0 && !submitting;
   const handleSubmit = async () => {
-    if (submitting) return;
+    if (!canSubmit) return;
     setSubmitting(true);
     try {
-      await onSubmit(note.trim() || '提交');
+      await onSubmit(note.trim());
       setOpen(false);
     } catch {
       // commit 失败由内部 toast 提示
@@ -60,7 +64,7 @@ export function CommitPopover({ children, onSubmit }: CommitPopoverProps) {
           <Button variant="ghost" size="sm" type="button" onClick={() => setOpen(false)}>
             取消
           </Button>
-          <Button variant="primary" size="sm" type="button" disabled={submitting} onClick={() => void handleSubmit()}>
+          <Button variant="primary" size="sm" type="button" disabled={!canSubmit} onClick={() => void handleSubmit()}>
             {submitting ? '提交中…' : '提交'}
           </Button>
         </div>

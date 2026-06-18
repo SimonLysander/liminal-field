@@ -1,12 +1,18 @@
 'use client';
 
-import { CodeBlockRules } from '@platejs/code-block';
+import {
+  CodeBlockRules,
+  indentCodeLine,
+  outdentCodeLine,
+} from '@platejs/code-block';
 import {
   CodeBlockPlugin,
   CodeLinePlugin,
   CodeSyntaxPlugin,
 } from '@platejs/code-block/react';
 import { common, createLowlight } from 'lowlight';
+import type { TElement } from 'platejs';
+import { KEYS } from 'platejs';
 
 import {
   CodeBlockElement,
@@ -23,6 +29,25 @@ export const CodeBlockKit = [
     node: { component: CodeBlockElement },
     options: { lowlight },
     shortcuts: { toggle: { keys: 'mod+alt+8' } },
+    handlers: {
+      // Tab / Shift+Tab 在代码块内 → 2 空格缩进 / 反缩进，
+      // 不让浏览器默认 Tab 切焦点跳出编辑器。
+      onKeyDown: ({ editor, event }) => {
+        if (event.key !== 'Tab') return;
+        const codeLine = editor.api.node<TElement>({
+          match: { type: editor.getType(KEYS.codeLine) },
+        });
+        if (!codeLine) return;
+        const codeBlock = editor.api.node<TElement>({
+          match: { type: editor.getType(KEYS.codeBlock) },
+        });
+        if (!codeBlock) return;
+        event.preventDefault();
+        const opts = { codeBlock, codeLine };
+        if (event.shiftKey) outdentCodeLine(editor, opts);
+        else indentCodeLine(editor, { ...opts, indentDepth: 2 });
+      },
+    },
   }),
   CodeLinePlugin.withComponent(CodeLineElement),
   CodeSyntaxPlugin.withComponent(CodeSyntaxLeaf),

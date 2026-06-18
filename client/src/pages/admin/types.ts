@@ -133,7 +133,7 @@ export const EMPTY_DRAFT_EDITOR_STATE: DraftEditorState = {
   title: '',
   summary: '',
   bodyMarkdown: '',
-  changeNote: '更新内容',
+  changeNote: '',
   changeType: 'patch',
 };
 
@@ -173,7 +173,7 @@ export function toDraftEditorStateFromDetail(
     title: detail.latestVersion.title,
     summary: detail.latestVersion.summary,
     bodyMarkdown: resolveAssetsForEditor(detail.bodyMarkdown, detail.id),
-    changeNote: '更新内容',
+    changeNote: '',
     changeType: 'patch',
   };
 }

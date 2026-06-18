@@ -48,7 +48,7 @@ export function CodeBlockElement(props: PlateElementProps<TCodeBlockElement>) {
               variant="ghost"
               className="size-6 text-xs"
               onClick={() => formatCodeBlock(editor, { element })}
-              title="Format code"
+              title="格式化代码"
             >
               <BracesIcon className="!size-3.5 text-muted-foreground" />
             </Button>
@@ -125,9 +125,9 @@ function CodeBlockCombobox() {
             className="h-9"
             value={searchValue}
             onValueChange={(value) => setSearchValue(value)}
-            placeholder="Search language..."
+            placeholder="搜索语言..."
           />
-          <CommandEmpty>No language found.</CommandEmpty>
+          <CommandEmpty>没有匹配的语言</CommandEmpty>
 
           <CommandList className="h-[344px] overflow-y-auto">
             <CommandGroup>
@@ -170,28 +170,43 @@ function CopyButton({
 >) {
   const [hasCopied, setHasCopied] = React.useState(false);
 
+  // 1.5s 后回到 Copy；只在 hasCopied=true 时 schedule，避免初次 mount 也跑一遍。
   React.useEffect(() => {
-    setTimeout(() => {
-      setHasCopied(false);
-    }, 2000);
+    if (!hasCopied) return;
+    const t = window.setTimeout(() => setHasCopied(false), 1500);
+    return () => window.clearTimeout(t);
   }, [hasCopied]);
 
   return (
     <Button
+      aria-label={hasCopied ? '已复制' : '复制'}
+      title={hasCopied ? '已复制' : '复制全部代码'}
       onClick={() => {
         void navigator.clipboard.writeText(
-          typeof value === 'function' ? value() : value
+          typeof value === 'function' ? value() : value,
         );
         setHasCopied(true);
       }}
       {...props}
     >
-      <span className="sr-only">Copy</span>
-      {hasCopied ? (
-        <CheckIcon className="!size-3" />
-      ) : (
-        <CopyIcon className="!size-3" />
-      )}
+      {/* Copy / Check 图标重叠同一格 + opacity 渐变，按钮宽度不变。
+       *  之前试过加 "已复制" 文案 + 滑入动画 —— 文案撑宽按钮把语言选择器
+       *  挤重叠。撤回，反馈靠图标切换 + title tooltip 表达。 */}
+      <span className="relative inline-flex items-center">
+        <CopyIcon
+          className={cn(
+            '!size-3 transition-opacity duration-150',
+            hasCopied ? 'opacity-0' : 'opacity-100',
+          )}
+        />
+        <CheckIcon
+          className={cn(
+            '!size-3 absolute left-0 top-0 transition-opacity duration-150',
+            hasCopied ? 'opacity-100' : 'opacity-0',
+          )}
+          style={{ color: 'var(--accent)' }}
+        />
+      </span>
     </Button>
   );
 }

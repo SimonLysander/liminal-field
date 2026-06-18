@@ -8,8 +8,10 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
       <input
         type={type}
         className={cn(
-          // Notion 紧凑:高 28、圆角小、透明淡底,focus 走全局 1px accent 细边,hover 浮淡底
-          "flex h-7 w-full rounded-sm border border-transparent bg-[var(--shelf)] px-2.5 text-md transition-colors placeholder:text-[var(--ink-ghost)] hover:bg-[var(--hover-overlay)] focus:bg-[var(--paper)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40",
+          // 紧凑表单 input：idle bg-shelf 浅灰；hover / focus 由全局 input
+          // 视觉规范驱动 (hover-overlay → accent-soft)，不在 class 里重复，
+          // 避免局部覆盖全局规范、保持所有 input 视觉统一。
+          "flex h-7 w-full rounded-sm border border-transparent bg-[var(--shelf)] px-2.5 text-md transition-colors placeholder:text-[var(--ink-ghost)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40",
           className
         )}
         ref={ref}

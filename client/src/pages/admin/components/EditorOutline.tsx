@@ -38,7 +38,12 @@ export function EditorOutline({
 
   return (
     <div className="flex shrink-0 flex-col self-start px-3 pt-2">
-      {/* 列表高度跟随内容、超上限才滚;左侧细线 = 标题列表的"书脊",从顶起、长度随内容。
+      {/* 列表高度跟随内容、超上限才滚;细线 = 标题列表的"书脊",从顶起、长度随内容。
+          编辑端大纲在左栏，书脊放在列表**右侧**(borderRight) —— 结构上形成
+          [大纲 | 线 | 编辑器]，线指向编辑器内容；与展示端右栏大纲 borderLeft
+          (结构 [正文 | 线 | 大纲]) 互为镜像，"书脊朝内容"的语义保持一致。
+          之前用 borderLeft 直接把同一份样式照搬到左栏，导致线贴在窗口最左缘
+          像一根孤零零的装饰条，视觉失锚。
           空状态不画线:没有标题就没有结构可代表;且占位文案的 py-6 会把书脊撑到 ~65px,
           让一条线浮在一行小字旁(线包住的是 padding 不是文字),显得突兀 —— 故仅有标题时才画。 */}
       <nav
@@ -46,7 +51,7 @@ export function EditorOutline({
         className="overflow-y-auto"
         style={{
           maxHeight: '61.8vh',
-          borderLeft: hasHeadings ? '1px solid var(--separator)' : 'none',
+          borderRight: hasHeadings ? '1px solid var(--separator)' : 'none',
           maskImage: mask,
           WebkitMaskImage: mask,
         }}

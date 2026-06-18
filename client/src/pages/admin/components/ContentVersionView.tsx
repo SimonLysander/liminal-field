@@ -201,11 +201,10 @@ export const ContentVersionView = ({
                     <DropdownMenuSeparator />
                   </>
                 )}
-                {onEdit && (
-                  <DropdownMenuItem onClick={() => onEdit(node)}>
-                    重命名
-                  </DropdownMenuItem>
-                )}
+                {/* "重命名"已下线：文档节点的标题 = 文档版本管理对象，
+                    唯一入口是编辑器 → commit → 后端同步 node.name。这里出现
+                    "重命名"按钮会跳过版本管理、绕开同步链路，造成双心智割裂。
+                    onEdit prop 保留（接口稳定，容器节点仍可能用到），UI 不再渲染。 */}
                 {onMoveTo && (
                   <DropdownMenuItem onClick={() => onMoveTo(node)}>
                     移动到...

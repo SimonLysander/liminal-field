@@ -37,14 +37,30 @@ const CommandInput = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.Input>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.Input>
 >(({ className, ...props }, ref) => (
-  <div className="flex items-center border-b px-3" cmdk-input-wrapper="">
-    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+  <div
+    className="flex items-center gap-2 px-3"
+    cmdk-input-wrapper=""
+    /* 分隔线用项目 separator 色 0.5px，避免 border-b 默认黑边和外层 popover 的圆角边混淆 */
+    style={{ borderBottom: '0.5px solid var(--separator)' }}
+  >
+    <Search className="h-4 w-4 shrink-0" style={{ color: 'var(--ink-ghost)' }} />
     <CommandPrimitive.Input
       ref={ref}
       className={cn(
-        "flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
-        className
+        // 跟 SearchPanel(全局 ⌘K) 一致：透明底 + 项目 placeholder 色，
+        // 无 border / 无 ring / caret 用 accent。
+        // 显式 inline style border:none + boxShadow:none 绕开浏览器 user-agent
+        // input :focus 默认蓝紫 ring（Tailwind 的 outline-none 在某些浏览器对
+        // box-shadow 形式的 focus indicator 不够，必须 inline 覆盖）。
+        'flex h-9 w-full bg-transparent text-sm outline-none placeholder:text-[var(--ink-ghost)] disabled:cursor-not-allowed disabled:opacity-50',
+        className,
       )}
+      style={{
+        color: 'var(--ink)',
+        caretColor: 'var(--accent)',
+        border: 'none',
+        boxShadow: 'none',
+      }}
       {...props}
     />
   </div>

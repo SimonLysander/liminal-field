@@ -28,7 +28,7 @@ export const AudioElement = withHOC(
             <CaptionTextarea
               className="h-20"
               readOnly={readOnly}
-              placeholder="Write a caption..."
+              placeholder="说明（可选）"
             />
           </Caption>
         </figure>
