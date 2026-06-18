@@ -7,6 +7,8 @@
 export interface PublicTopic {
   id: string;
   name: string;
+  /** 一句话专栏定位，用于目录页列表行副标题 */
+  tagline: string;
   description: string;
   sourceCount: number;
   cronLabel: string;
@@ -26,12 +28,17 @@ export interface MockReport {
   topicId: string;
   date: string; // ISO
   picks: MockPick[];
+  /** 期号（1-based，决定展示"第 N 期"；接 API 后由服务端提供） */
+  issueNumber: number;
+  /** 本期编辑标题（可选，无则默认"本期精选"） */
+  headline?: string;
 }
 
 export const MOCK_TOPICS: PublicTopic[] = [
   {
     id: 'ci_topic_ai001',
     name: 'AI 应用发展',
+    tagline: '大模型 / Agent 框架 / 产品形态 / 行业动向',
     description: '关注大模型应用、agent 框架、产品形态、行业资讯',
     sourceCount: 3,
     cronLabel: '每天更新',
@@ -41,6 +48,7 @@ export const MOCK_TOPICS: PublicTopic[] = [
   {
     id: 'ci_topic_photo02',
     name: '摄影活动举办',
+    tagline: '国内外摄影展 / 比赛 / 工作坊 / 新书发布',
     description: '关注国内外摄影展、比赛、工作坊、新书发布',
     sourceCount: 2,
     cronLabel: '每周更新',
@@ -50,6 +58,7 @@ export const MOCK_TOPICS: PublicTopic[] = [
   {
     id: 'ci_topic_writing',
     name: '写作 · 叙事 · 文学',
+    tagline: '创作技艺 / 叙事理论 / 文学评论 / 出版动态',
     description: '关注创作技艺、叙事理论、文学评论、出版动态',
     sourceCount: 4,
     cronLabel: '每 3 天更新',
@@ -94,12 +103,12 @@ const AI_PICKS_POOL: MockPick[][] = [
 ];
 
 export const MOCK_REPORTS: MockReport[] = [
-  // ci_topic_ai001：5 份（6/14-6/18 每天一份）
-  { id: 'ci_report_001', topicId: 'ci_topic_ai001', date: '2026-06-18T08:00:00Z', picks: AI_PICKS_POOL[0] },
-  { id: 'ci_report_002', topicId: 'ci_topic_ai001', date: '2026-06-17T08:00:00Z', picks: AI_PICKS_POOL[1] },
-  { id: 'ci_report_003', topicId: 'ci_topic_ai001', date: '2026-06-16T08:00:00Z', picks: AI_PICKS_POOL[2] },
-  { id: 'ci_report_004', topicId: 'ci_topic_ai001', date: '2026-06-15T08:00:00Z', picks: AI_PICKS_POOL[3] },
-  { id: 'ci_report_005', topicId: 'ci_topic_ai001', date: '2026-06-14T08:00:00Z', picks: AI_PICKS_POOL[4] },
+  // ci_topic_ai001：5 份（6/14-6/18 每天一份，issueNumber 倒序：5=最新）
+  { id: 'ci_report_001', topicId: 'ci_topic_ai001', date: '2026-06-18T08:00:00Z', picks: AI_PICKS_POOL[0], issueNumber: 5, headline: 'Claude 4.7、Codex 接班人与 Agent 框架战场' },
+  { id: 'ci_report_002', topicId: 'ci_topic_ai001', date: '2026-06-17T08:00:00Z', picks: AI_PICKS_POOL[1], issueNumber: 4, headline: 'Gemini 实时视频 + 批量 API 成本评测' },
+  { id: 'ci_report_003', topicId: 'ci_topic_ai001', date: '2026-06-16T08:00:00Z', picks: AI_PICKS_POOL[2], issueNumber: 3, headline: 'Cursor 1.0 正式发布：从辅助到 Agent 范式' },
+  { id: 'ci_report_004', topicId: 'ci_topic_ai001', date: '2026-06-15T08:00:00Z', picks: AI_PICKS_POOL[3], issueNumber: 2, headline: '上下文管理策略与推理模型降价潮' },
+  { id: 'ci_report_005', topicId: 'ci_topic_ai001', date: '2026-06-14T08:00:00Z', picks: AI_PICKS_POOL[4], issueNumber: 1 },
   // ci_topic_photo02：2 份
   {
     id: 'ci_report_p01',
@@ -109,6 +118,17 @@ export const MOCK_REPORTS: MockReport[] = [
       { title: '第十届北京国际摄影周征稿截止延期通知', source: '摄影世界', url: 'https://example.com/p1', snippet: '主办方宣布截稿日期延至 7 月 15 日，面向全球摄影师开放投稿...' },
       { title: 'PhotoShanghai 2026 参展艺术家公布', source: '艺术中国', url: 'https://example.com/p2', snippet: '今年聚焦「城市与自然」主题，来自 28 国的 120 位摄影师参与...' },
     ],
+    issueNumber: 2,
+    headline: '北京摄影周延期 + PhotoShanghai 艺术家公布',
+  },
+  {
+    id: 'ci_report_p02',
+    topicId: 'ci_topic_photo02',
+    date: '2026-06-10T09:00:00Z',
+    picks: [
+      { title: 'PHOTOFAIRS Shanghai 2026 开幕在即', source: '艺术圈', url: 'https://example.com/p3', snippet: '展会聚焦新兴亚洲影像创作者，将于 6 月 20 日开幕...' },
+    ],
+    issueNumber: 1,
   },
   // ci_topic_writing：0 份（空态）
 ];

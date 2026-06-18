@@ -1,69 +1,31 @@
 /**
- * /digest — 公开端「精选」事项列表页。
+ * /digest — 精选刊目录页。
  *
- * 展示所有已配置的采集事项，每卡点击进 /digest/:topicId 查看历史报告流。
- * 本页纯 mock 数据，不接 API（task #38 再接真实后端）。
+ * 期刊范式：报头（刊名 + 卷次）+ 栏目目录列表。
+ * 每个事项 = 一个专栏条目（单行，不用卡片网格），整行可点击进 /digest/:topicId。
+ * 本页纯 mock 数据（./mock-data），不接 API（task #38 再接）。
  */
 import { Link } from 'react-router-dom';
-import { Sparkles, Rss, Calendar, ChevronRight } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { motion } from 'motion/react';
-import { smoothBounce, appleEase } from '@/lib/motion';
-
-/* ================================================================
- * 类型 & Mock 数据
- * ================================================================ */
-
-interface PublicTopic {
-  id: string;
-  name: string;
-  description: string;
-  sourceCount: number;
-  cronLabel: string;
-  lastReportAt: string; // ISO
-  lastReportHits: number;
-}
-
-const MOCK_TOPICS: PublicTopic[] = [
-  {
-    id: 'ci_topic_ai001',
-    name: 'AI 应用发展',
-    description: '关注大模型应用、agent 框架、产品形态、行业资讯',
-    sourceCount: 3,
-    cronLabel: '每天更新',
-    lastReportAt: '2026-06-18T08:00:00Z',
-    lastReportHits: 5,
-  },
-  {
-    id: 'ci_topic_photo02',
-    name: '摄影活动举办',
-    description: '关注国内外摄影展、比赛、工作坊、新书发布',
-    sourceCount: 2,
-    cronLabel: '每周更新',
-    lastReportAt: '2026-06-17T09:00:00Z',
-    lastReportHits: 2,
-  },
-  {
-    id: 'ci_topic_writing',
-    name: '写作 · 叙事 · 文学',
-    description: '关注创作技艺、叙事理论、文学评论、出版动态',
-    sourceCount: 4,
-    cronLabel: '每 3 天更新',
-    lastReportAt: '2026-06-15T00:00:00Z',
-    lastReportHits: 8,
-  },
-];
+import { appleEase } from '@/lib/motion';
+import { MOCK_TOPICS, MOCK_REPORTS } from './mock-data';
+import type { PublicTopic } from './mock-data';
 
 /* ================================================================
  * 工具函数
  * ================================================================ */
 
-/** 把 ISO 日期转成"X 天前"的口语化描述 */
 function daysAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
   if (days === 0) return '今天';
   if (days === 1) return '昨天';
   return `${days} 天前`;
+}
+
+function reportCount(topicId: string): number {
+  return MOCK_REPORTS.filter((r) => r.topicId === topicId).length;
 }
 
 /* ================================================================
@@ -73,114 +35,146 @@ function daysAgo(iso: string): string {
 export default function DigestPublicPage() {
   return (
     <div className="flex-1 overflow-y-auto" style={{ background: 'var(--paper)' }}>
-      <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 py-12 max-[520px]:px-4">
+      <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 py-16 max-[520px]:px-5">
 
-        {/* 页面标题区 */}
-        <motion.div
-          className="mb-3 flex items-center gap-3"
-          initial={{ opacity: 0, y: 12 }}
+        {/* ── 报头区 ── */}
+        <motion.header
+          className="mb-12"
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: smoothBounce }}
+          transition={{ duration: 0.45, ease: appleEase }}
         >
-          <Sparkles size={26} strokeWidth={1.5} style={{ color: 'var(--accent)' }} />
+          {/* 卷次行：small caps */}
+          <p
+            className="mb-4 text-xs uppercase tracking-[0.22em]"
+            style={{ color: 'var(--ink-ghost)' }}
+          >
+            Vol. 1 · 2026
+          </p>
+
+          {/* 刊名 */}
           <h1
-            className="text-4xl font-bold"
+            className="mb-3 text-5xl font-bold leading-none tracking-tight"
             style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
           >
-            精选
+            DIGEST · 精选
           </h1>
-        </motion.div>
 
-        <motion.p
-          className="mb-10 text-base"
-          style={{ color: 'var(--ink-ghost)' }}
+          {/* tagline */}
+          <p
+            className="mb-8 text-xs uppercase tracking-[0.18em]"
+            style={{ color: 'var(--ink-faded)' }}
+          >
+            选订自定 · AI 替你筛过 · 周期出刊
+          </p>
+
+          {/* 报头下方粗横线 */}
+          <div style={{ borderBottom: '2px solid var(--ink)' }} />
+        </motion.header>
+
+        {/* ── 栏目目录 ── */}
+        <motion.section
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 0.4, delay: 0.1, ease: appleEase }}
+          transition={{ duration: 0.4, delay: 0.15, ease: appleEase }}
         >
-          我关心的话题，每天替我筛选一份精选 — 自动采集 + AI 判定 + Aurora 追问。
-        </motion.p>
-
-        {/* 事项列表：单列纵向，每条占整行 — 像 newsletter / feed 流，
-            不用双列 grid（用户反馈双列不舒服，单列更聚焦阅读节奏）。 */}
-        {MOCK_TOPICS.length === 0 ? (
-          <EmptyTopics />
-        ) : (
-          <motion.div
-            className="flex flex-col gap-4"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.4, delay: 0.15, ease: appleEase }}
+          {/* 目录标签行 */}
+          <p
+            className="mb-6 text-xs uppercase tracking-[0.22em]"
+            style={{ color: 'var(--ink-ghost)' }}
           >
-            {MOCK_TOPICS.map((topic, i) => (
-              <TopicCard key={topic.id} topic={topic} index={i} />
-            ))}
-          </motion.div>
-        )}
+            本期专栏
+          </p>
+
+          {MOCK_TOPICS.length === 0 ? (
+            <EmptyTopics />
+          ) : (
+            <div className="flex flex-col">
+              {MOCK_TOPICS.map((topic, i) => (
+                <TopicRow key={topic.id} topic={topic} index={i} />
+              ))}
+            </div>
+          )}
+        </motion.section>
+
+        {/* ── 版权页尾 ── */}
+        <motion.footer
+          className="mt-20 text-center"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.4, delay: 0.35, ease: appleEase }}
+        >
+          <div
+            className="mb-8"
+            style={{ borderTop: '0.5px solid var(--separator)' }}
+          />
+          <p
+            className="text-xs uppercase tracking-[0.18em]"
+            style={{ color: 'var(--ink-ghost)' }}
+          >
+            由 Aurora 协作维护 · 由你订阅
+          </p>
+        </motion.footer>
+
       </div>
     </div>
   );
 }
 
 /* ================================================================
- * TopicCard — 单个事项卡片
+ * TopicRow — 单个栏目条目（行式，非卡片）
  * ================================================================ */
 
-function TopicCard({ topic, index }: { topic: PublicTopic; index: number }) {
+function TopicRow({ topic, index }: { topic: PublicTopic; index: number }) {
+  const count = reportCount(topic.id);
+
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, delay: 0.05 * index, ease: appleEase }}
+      transition={{ duration: 0.3, delay: 0.06 * index, ease: appleEase }}
     >
       <Link
         to={`/digest/${topic.id}`}
-        className="group flex flex-col gap-3 rounded-xl p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
-        style={{
-          background: 'var(--shelf)',
-          border: '0.5px solid var(--separator)',
-        }}
+        className="group flex items-baseline justify-between gap-6 py-6 transition-colors duration-150"
+        style={{ borderBottom: '0.5px solid var(--separator)' }}
       >
-        {/* 事项名 */}
-        <h2
-          className="text-2xl font-bold leading-snug"
-          style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
-        >
-          {topic.name}
-        </h2>
-
-        {/* 描述 */}
-        <p className="text-sm leading-relaxed" style={{ color: 'var(--ink-faded)' }}>
-          {topic.description}
-        </p>
-
-        {/* meta 行 */}
-        <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-          <span className="flex items-center gap-1">
-            <Rss size={12} strokeWidth={1.5} />
-            {topic.sourceCount} 个信息源
-          </span>
-          <span>·</span>
-          <span className="flex items-center gap-1">
-            <Calendar size={12} strokeWidth={1.5} />
-            {topic.cronLabel}
-          </span>
-          <span>·</span>
-          <span>最近 {daysAgo(topic.lastReportAt)}</span>
+        {/* 左侧：栏目名 + 副标题 */}
+        <div className="min-w-0 flex-1">
+          <h2
+            className="text-2xl font-bold leading-snug transition-colors duration-150 group-hover:opacity-80"
+            style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
+          >
+            {topic.name}
+          </h2>
+          <p
+            className="mt-1.5 text-sm leading-relaxed"
+            style={{ color: 'var(--ink-ghost)' }}
+          >
+            {topic.tagline}
+          </p>
         </div>
 
-        {/* 底部：命中数 chip + 箭头 */}
-        <div className="flex items-center justify-between">
-          <span
-            className="rounded-full px-2.5 py-0.5 text-xs font-medium"
-            style={{ background: 'var(--paper)', color: 'var(--ink-faded)', border: '0.5px solid var(--separator)' }}
-          >
-            最近一份 {topic.lastReportHits} 条精选
-          </span>
+        {/* 右侧：meta + 箭头 */}
+        <div className="flex shrink-0 items-center gap-4">
+          <div className="text-right">
+            <p
+              className="text-xs uppercase tracking-[0.16em]"
+              style={{ color: 'var(--ink-ghost)' }}
+            >
+              {count} 期
+            </p>
+            <p
+              className="mt-0.5 text-xs"
+              style={{ color: 'var(--ink-ghost)' }}
+            >
+              {daysAgo(topic.lastReportAt)}更新
+            </p>
+          </div>
           <ChevronRight
-            size={16}
+            size={15}
             strokeWidth={1.5}
-            className="transition-transform duration-150 group-hover:translate-x-0.5"
+            className="transition-transform duration-150 group-hover:translate-x-1"
             style={{ color: 'var(--ink-ghost)' }}
           />
         </div>
@@ -189,14 +183,22 @@ function TopicCard({ topic, index }: { topic: PublicTopic; index: number }) {
   );
 }
 
+/* ================================================================
+ * EmptyTopics
+ * ================================================================ */
+
 function EmptyTopics() {
   return (
     <div
-      className="flex flex-col items-center justify-center gap-3 rounded-xl py-24"
-      style={{ background: 'var(--shelf)', color: 'var(--ink-ghost)' }}
+      className="py-24 text-center"
+      style={{ borderTop: '0.5px solid var(--separator)', borderBottom: '0.5px solid var(--separator)' }}
     >
-      <Sparkles size={32} strokeWidth={1.5} />
-      <p className="text-base font-medium">还没有发布的事项</p>
+      <p
+        className="text-xs uppercase tracking-[0.18em]"
+        style={{ color: 'var(--ink-ghost)' }}
+      >
+        暂无专栏
+      </p>
     </div>
   );
 }
