@@ -170,25 +170,30 @@ function CopyButton({
 >) {
   const [hasCopied, setHasCopied] = React.useState(false);
 
+  // 1.5s 后回到 Copy；只在 hasCopied=true 时 schedule，避免初次 mount 也跑一遍。
   React.useEffect(() => {
-    setTimeout(() => {
-      setHasCopied(false);
-    }, 2000);
+    if (!hasCopied) return;
+    const t = window.setTimeout(() => setHasCopied(false), 1500);
+    return () => window.clearTimeout(t);
   }, [hasCopied]);
 
   return (
     <Button
+      aria-label={hasCopied ? '已复制' : '复制'}
       onClick={() => {
         void navigator.clipboard.writeText(
-          typeof value === 'function' ? value() : value
+          typeof value === 'function' ? value() : value,
         );
         setHasCopied(true);
       }}
       {...props}
     >
-      <span className="sr-only">Copy</span>
       {hasCopied ? (
-        <CheckIcon className="!size-3" />
+        <>
+          <CheckIcon className="!size-3" />
+          {/* "已复制" 浮现 1.5s，给用户明确反馈而非只切图标 */}
+          <span className="ml-1 text-xs">已复制</span>
+        </>
       ) : (
         <CopyIcon className="!size-3" />
       )}

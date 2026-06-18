@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, Sun, Moon, Trash2, MoreHorizontal } from 'lucide-react';
+import { ChevronLeft, Sun, Moon, Trash2, MoreHorizontal, Keyboard } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,6 +28,8 @@ import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
 import type { ChatSelectionAttachment } from '@/pages/admin/lib/live-chat-selection';
 import { EditorOutline } from './EditorOutline';
 import { CommitForm } from './CommitForm';
+import { KeyboardShortcutsDialog } from '@/components/ui/keyboard-shortcuts-dialog';
+import { useKeyboardShortcutsDialog } from '@/hooks/use-keyboard-shortcuts-dialog';
 import type { BaseDraftState, DraftEditorController } from '../lib/use-draft-editor';
 
 /** 顾问栏注入:启用开关 + 会话/文档标识(title/正文由布局从 editor.state 实时取) */
@@ -58,6 +60,8 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
   advisor,
 }: ProseDraftEditorProps<TState>) {
   const { theme, setTheme } = useTheme();
+  // ⌘+/ 切换快捷键 cheatsheet 浮层（hook 内部挂全局 keydown）
+  const shortcutsDialog = useKeyboardShortcutsDialog();
   // Cursor 式 add-to-chat:拖选只产生选区;点击浮动工具栏「添加到聊天」后才写入这里。
   // 保存 live range attachment:chip 展示初始 preview;发送/高亮时读取当前 range。
   const [chatSelections, setChatSelections] = useState<ChatSelectionAttachment[]>([]);
@@ -165,6 +169,10 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
       }}
     >
       <ThresholdOverlay visible={editor.committing} label="正在提交版本..." />
+      <KeyboardShortcutsDialog
+        open={shortcutsDialog.open}
+        onOpenChange={shortcutsDialog.setOpen}
+      />
 
       {/* ── Row 1: 三栏各自独立顶栏(均 52px,无 borderBottom,跟 Notion 派对齐)──
           [1,1] 大纲栏顶栏:返回按钮 + "大纲" label —— 返回挂这里 = 真窗口左上角
@@ -195,6 +203,11 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
           type="text"
           value={editor.state.title}
           onChange={(e) => editor.setField('title', e.target.value as TState['title'])}
+          onBlur={() => {
+            // 标题失焦立即落盘（silent 不弹保存 toast）：避免依赖 1.5s
+            // debounce 期间用户切走 tab 时标题未持久化。
+            if (editor.isDirty) void editor.saveDraft({ silent: true });
+          }}
           placeholder={titlePlaceholder}
           className="input-ghost min-w-0 flex-1 truncate text-sm font-medium placeholder:text-[var(--ink-ghost)]"
           style={{ color: 'var(--ink-faded)' }}
@@ -323,6 +336,23 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => shortcutsDialog.setOpen(true)}
+                  className="gap-2"
+                >
+                  <Keyboard />
+                  <span className="flex-1">快捷键</span>
+                  <span
+                    className="font-mono text-xs"
+                    style={{ color: 'var(--ink-faded)' }}
+                  >
+                    {/[Mm]ac|iPhone|iPad/.test(
+                      typeof navigator !== 'undefined' ? navigator.platform : '',
+                    )
+                      ? '⌘ /'
+                      : 'Ctrl /'}
+                  </span>
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => void editor.discardDraft()}
                   className="text-[var(--danger)] focus:bg-[color-mix(in_srgb,var(--danger)_9%,transparent)] [&_svg]:text-[var(--danger)]"

@@ -88,14 +88,28 @@ export function useDraftEditor<TState extends BaseDraftState>(adapter: DraftEdit
   /** 安全返回:有 app 内上一页就回退,否则去兜底路径(直接打开/刷新时 navigate(-1) 会退到坏页)。
    *  hard refresh(列表用 window.location.href 跳进编辑页,导致 history 重置 → location.key='default')
    *  的情况:再用 document.referrer 兜一层,避免 fallbackPath 丢钻入位置(admin ?at= 没了就回根列表)。
-   *  referer 只接受同源 + /admin/ 列表页(排除 /edit 防循环)。 */
+   *  referer 只接受同源 + /admin/ 列表页(排除 /edit 防循环)。
+   *
+   *  isDirty 时先 confirm 一下避免误操作（localStorage 兜底，技术上不丢字，
+   *  但有改动还没存到服务端用户可能希望先 ⌘S）。 */
+  const isDirtyRef = useRef(false);
   const goBack = useCallback(() => {
-    if (location.key !== 'default') {
-      navigate(-1);
-      return;
-    }
-    navigate(resolveBackPath(adapterRef.current.fallbackPath));
-  }, [location.key, navigate]);
+    void (async () => {
+      if (isDirtyRef.current) {
+        const ok = await confirm({
+          title: '有未保存的改动',
+          message: '草稿已自动保存在本地，服务端版本可能还是旧的。要离开吗？',
+          confirmLabel: '离开',
+        });
+        if (!ok) return;
+      }
+      if (location.key !== 'default') {
+        navigate(-1);
+        return;
+      }
+      navigate(resolveBackPath(adapterRef.current.fallbackPath));
+    })();
+  }, [confirm, location.key, navigate]);
 
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false); // 是否成功加载过内容(用于区分"加载失败"全屏错误 vs 加载后保存类错误条)
@@ -307,6 +321,10 @@ export function useDraftEditor<TState extends BaseDraftState>(adapter: DraftEdit
     try {
       await adapterRef.current.discard();
       clearLocalDraft(); // 已丢弃,清本地草稿
+      // 主动清 isDirty + ref,避免 goBack 看到 dirty 又弹一次"有未保存改动"
+      // confirm（discardDraft 自身已经 confirm 过丢弃了）
+      setIsDirty(false);
+      isDirtyRef.current = false;
       goBack();
     } catch (discardError) {
       setError(parseError(discardError, labels?.discardError ?? '丢弃失败'));
@@ -324,6 +342,21 @@ export function useDraftEditor<TState extends BaseDraftState>(adapter: DraftEdit
     window.addEventListener('keydown', handleKeydown);
     return () => window.removeEventListener('keydown', handleKeydown);
   }, [saveDraft]);
+
+  // 离开页面（关 tab / 刷新 / 关浏览器）时 beforeunload 提示。
+  // localStorage 即时镜像兜底，技术上不会丢字；但 1.5s debounce 窗口内
+  // 服务端版本是旧的，提示让用户体感更安全（也提醒"有改动还没存"）。
+  // 同时镜像 isDirty 到 ref，给上面 goBack 用（避免 isDirty 进 useCallback deps
+  // 让 goBack identity 每次 setIsDirty 都变 → re-render advisor / 编辑器栏）。
+  useEffect(() => {
+    isDirtyRef.current = isDirty;
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
 
   // local-first:每次改动即时镜像到 localStorage(零延迟,崩溃/刷新也不丢字)
   useEffect(() => {
