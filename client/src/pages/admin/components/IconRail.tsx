@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { FileText, Image, BookOpen, RefreshCw, LogOut, Settings, Search } from 'lucide-react';
+import { FileText, Image, BookOpen, RefreshCw, LogOut, Settings, Search, Sparkles } from 'lucide-react';
 import { authApi } from '@/services/auth';
 import { resetAuth } from '@/App';
 import { Logo } from '@/components/Logo';
@@ -22,6 +22,8 @@ const NAV_ITEMS = [
   { path: '/admin/notes', icon: FileText, label: '笔记管理' },
   { path: '/admin/anthology', icon: BookOpen, label: '文集管理' },
   { path: '/admin/gallery', icon: Image, label: '画廊管理' },
+  // 智能小应用·自动信息收集（/admin/sources 是它的子页，前缀匹配自动高亮）
+  { path: '/admin/digest', icon: Sparkles, label: '智能采集' },
   { path: '/admin/settings', icon: Settings, label: '设置' },
 ] as const;
 
