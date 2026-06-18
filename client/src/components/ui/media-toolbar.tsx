@@ -5,13 +5,9 @@ import * as React from 'react';
 import type { WithRequiredKey } from 'platejs';
 
 import {
-  FloatingMedia as FloatingMediaPrimitive,
-  FloatingMediaStore,
-  useFloatingMediaValue,
   useImagePreviewValue,
 } from '@platejs/media/react';
-import { cva } from 'class-variance-authority';
-import { Link, Trash2Icon } from 'lucide-react';
+import { Trash2Icon } from 'lucide-react';
 import {
   useEditorRef,
   useEditorSelector,
@@ -22,34 +18,29 @@ import {
   useSelected,
 } from 'platejs/react';
 
-import { Button, buttonVariants } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 import {
   Popover,
   PopoverAnchor,
   PopoverContent,
 } from '@/components/ui/popover';
-import { Separator } from '@/components/ui/separator';
 
 import { CaptionButton } from './caption';
 
-const inputVariants = cva(
-  'flex h-[28px] w-full rounded-md border-none bg-transparent px-1.5 py-1 text-base placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-transparent md:text-sm'
-);
-
-export function MediaToolbar({
-  children,
-  plugin,
-}: {
+/* plugin 参数保留：未来若重新引入 embed/video 节点需要它来标识浮层归属。
+ * 当前实现没用，故意不在 destructure 里取，避免 eslint no-unused-vars。 */
+export function MediaToolbar(props: {
   children: React.ReactNode;
   plugin: WithRequiredKey;
 }) {
+  const { children } = props;
   const editor = useEditorRef();
   const readOnly = useReadOnly();
   const selected = useSelected();
   const isFocusedLast = useFocusedLast();
   const selectionCollapsed = useEditorSelector(
     (editor) => !editor.api.isExpanded(),
-    []
+    [],
   );
   const isImagePreviewOpen = useImagePreviewValue('isOpen', editor.id);
   const open =
@@ -58,18 +49,14 @@ export function MediaToolbar({
     selected &&
     selectionCollapsed &&
     !isImagePreviewOpen;
-  const isEditing = useFloatingMediaValue('isEditing');
-
-  React.useEffect(() => {
-    if (!open && isEditing) {
-      FloatingMediaStore.set('isEditing', false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
 
   const element = useElement();
   const { props: buttonProps } = useRemoveNodeButton({ element });
 
+  // 去掉 "Edit link"：项目图片/文件都是上传到自家 MinIO/OSS，src 固定不会变；
+  // editor-kit 注释明确"只注册 image + file"，video/embed 死代码，
+  // 不需要给用户改 src URL 的入口。
+  // 留 "说明"（caption）和"删除"两个操作。
   return (
     <Popover open={open} modal={false}>
       <PopoverAnchor>{children}</PopoverAnchor>
@@ -78,39 +65,14 @@ export function MediaToolbar({
         className="w-auto p-1"
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        {isEditing ? (
-          <div className="flex w-[330px] flex-col">
-            <div className="flex items-center">
-              <div className="flex items-center pr-1 pl-2 text-muted-foreground">
-                <Link className="size-4" />
-              </div>
-
-              <FloatingMediaPrimitive.UrlInput
-                className={inputVariants()}
-                placeholder="Paste the embed link..."
-                options={{ plugin }}
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="box-content flex items-center">
-            <FloatingMediaPrimitive.EditButton
-              className={buttonVariants({ size: 'sm', variant: 'ghost' })}
-            >
-              Edit link
-            </FloatingMediaPrimitive.EditButton>
-
-            <CaptionButton size="sm" variant="ghost">
-              Caption
-            </CaptionButton>
-
-            <Separator orientation="vertical" className="mx-1 h-6" />
-
-            <Button size="sm" variant="ghost" {...buttonProps}>
-              <Trash2Icon />
-            </Button>
-          </div>
-        )}
+        <div className="box-content flex items-center gap-1">
+          <CaptionButton size="sm" variant="ghost">
+            说明
+          </CaptionButton>
+          <Button size="sm" variant="ghost" {...buttonProps}>
+            <Trash2Icon />
+          </Button>
+        </div>
       </PopoverContent>
     </Popover>
   );

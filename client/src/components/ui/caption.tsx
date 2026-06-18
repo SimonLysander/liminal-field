@@ -44,17 +44,24 @@ export function Caption({
 }
 
 export function CaptionTextarea(
-  props: React.ComponentProps<typeof CaptionTextareaPrimitive>
+  props: React.ComponentProps<typeof CaptionTextareaPrimitive>,
 ) {
   return (
     <CaptionTextareaPrimitive
       {...props}
       className={cn(
-        'mt-2 w-full resize-none border-none bg-inherit p-0 font-[inherit] text-inherit',
+        // 视觉上跟正文区分：
+        //   - text-xs（12px）vs 正文 ~16px → 一眼小一号
+        //   - --ink-ghost 灰色 vs 正文 --ink → 弱化对比
+        //   - text-center 居中 vs 正文左对齐 → 排版上独立
+        //   - mt-1.5 顶部小留白 → 跟图片之间有节奏
+        'mt-1.5 w-full resize-none border-none bg-transparent p-0 text-xs',
+        'text-center placeholder:text-[var(--ink-ghost)]',
         'focus:outline-none focus:[&::placeholder]:opacity-0',
-        'text-center print:placeholder:text-transparent',
-        props.className
+        'print:placeholder:text-transparent',
+        props.className,
       )}
+      style={{ color: 'var(--ink-ghost)', ...props.style }}
     />
   );
 }
