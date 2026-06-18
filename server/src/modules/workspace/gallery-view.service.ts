@@ -878,6 +878,21 @@ export class GalleryViewService {
       action: ContentSaveAction.commit,
     });
 
+    // 2.5 同步 navigation node.name = 最新标题。
+    //   画廊每条动态在 admin 树/列表上展示的是 node.name —— 必须跟编辑器
+    //   里改的 title 一致。文档节点的树上重命名入口已下线，唯一改名路径
+    //   是这里。设计与 noteViewService.saveContent / workspaceService.update
+    //   通用路径对齐。title 空串时不动（兜底，正常 dto.title 必填）。
+    if (dto.title) {
+      const navNode =
+        await this.navigationRepository.findByContentItemId(contentItemId);
+      if (navNode) {
+        await this.navigationRepository.update(navNode._id.toString(), {
+          name: dto.title,
+        });
+      }
+    }
+
     // 3. OSS 内部拷贝到永久位置（同步，确保返回 DTO 时 URL 可访问）
     await this.minioService.promoteDraftAssets(contentItemId).catch(() => {});
 
