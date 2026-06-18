@@ -157,13 +157,18 @@ const TreeNodeItem = ({
               <Plus size={12} strokeWidth={2} />
             </button>
           )}
-          <button
-            className="rounded-md px-1 py-0.5 text-2xs transition-colors duration-100 hover:bg-[var(--shelf)]"
-            style={{ color: 'var(--ink-ghost)' }}
-            onClick={(e) => { e.stopPropagation(); onEdit(node); }}
-          >
-            ✎
-          </button>
+          {/* 文档节点（contentItemId 非空）不暴露树上重命名：
+              改名等于改文档标题，唯一入口是编辑器 → commit → 后端同步 node.name。
+              避免双入口让"标题"心智割裂 + 漏版本记录。容器节点（纯目录名，无版本管理）保留 ✎。 */}
+          {!node.contentItemId && (
+            <button
+              className="rounded-md px-1 py-0.5 text-2xs transition-colors duration-100 hover:bg-[var(--shelf)]"
+              style={{ color: 'var(--ink-ghost)' }}
+              onClick={(e) => { e.stopPropagation(); onEdit(node); }}
+            >
+              ✎
+            </button>
+          )}
           <button
             className="rounded-md px-1 py-0.5 text-2xs transition-colors duration-100 hover:bg-[var(--shelf)]"
             style={{ color: 'var(--mark-red)' }}

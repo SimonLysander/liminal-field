@@ -5,6 +5,7 @@ import { ContentRepoService } from '../../content/content-repo.service';
 import { ContentGitService } from '../../content/content-git.service';
 import { OssService } from '../../oss/oss.service';
 import { EditorDraftRepository } from '../editor-draft.repository';
+import { NavigationRepository } from '../../navigation/navigation.repository';
 
 describe('NoteViewService', () => {
   let service: NoteViewService;
@@ -13,6 +14,7 @@ describe('NoteViewService', () => {
   let contentGitService: jest.Mocked<ContentGitService>;
   let editorDraftRepository: jest.Mocked<EditorDraftRepository>;
   let minioService: jest.Mocked<OssService>;
+  let navigationRepository: jest.Mocked<NavigationRepository>;
 
   beforeEach(() => {
     contentService = {
@@ -48,12 +50,18 @@ describe('NoteViewService', () => {
       moveDraftAssetsToDisk: jest.fn(),
     } as unknown as jest.Mocked<OssService>;
 
+    navigationRepository = {
+      findByContentItemId: jest.fn(),
+      update: jest.fn(),
+    } as unknown as jest.Mocked<NavigationRepository>;
+
     service = new NoteViewService(
       contentService,
       contentRepoService,
       contentGitService,
       editorDraftRepository,
       minioService,
+      navigationRepository,
     );
   });
 
@@ -142,6 +150,69 @@ describe('NoteViewService', () => {
 
       expect(result).toBe(expected);
       expect(contentService.saveContent).toHaveBeenCalledWith('ci_1', dto);
+    });
+
+    /* commit 时把 dto.title 镜像回 navigation node.name —— 让 admin 树/列表
+       显示的节点名跟最新提交的内容标题保持一致（文档节点重命名入口已下线，
+       唯一改名路径是编辑器→commit→这里同步）。 */
+    it('action=commit 且 title 非空时同步 navigation node.name', async () => {
+      const dto = {
+        title: '新标题',
+        summary: 'S',
+        status: 'committed',
+        bodyMarkdown: 'B',
+        changeNote: 'N',
+        action: 'commit',
+      } as any;
+      minioService.moveDraftAssetsToDisk.mockResolvedValue([]);
+      contentService.saveContent.mockResolvedValue({ id: 'ci_1' } as any);
+      navigationRepository.findByContentItemId.mockResolvedValue({
+        _id: { toString: () => 'nav_1' },
+      } as any);
+
+      await service.saveContent('ci_1', dto);
+
+      expect(navigationRepository.findByContentItemId).toHaveBeenCalledWith(
+        'ci_1',
+      );
+      expect(navigationRepository.update).toHaveBeenCalledWith('nav_1', {
+        name: '新标题',
+      });
+    });
+
+    it('action 非 commit 时不触碰 navigation', async () => {
+      const dto = {
+        title: 'T',
+        summary: 'S',
+        status: 'draft',
+        bodyMarkdown: 'B',
+        changeNote: 'N',
+        action: 'save',
+      } as any;
+      minioService.moveDraftAssetsToDisk.mockResolvedValue([]);
+      contentService.saveContent.mockResolvedValue({ id: 'ci_1' } as any);
+
+      await service.saveContent('ci_1', dto);
+
+      expect(navigationRepository.findByContentItemId).not.toHaveBeenCalled();
+      expect(navigationRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('navigation 节点不存在时静默跳过同步（不抛错）', async () => {
+      const dto = {
+        title: 'T',
+        action: 'commit',
+        status: 'committed',
+        bodyMarkdown: 'B',
+        changeNote: 'N',
+        summary: 'S',
+      } as any;
+      minioService.moveDraftAssetsToDisk.mockResolvedValue([]);
+      contentService.saveContent.mockResolvedValue({ id: 'ci_1' } as any);
+      navigationRepository.findByContentItemId.mockResolvedValue(null);
+
+      await expect(service.saveContent('ci_1', dto)).resolves.toBeDefined();
+      expect(navigationRepository.update).not.toHaveBeenCalled();
     });
   });
 

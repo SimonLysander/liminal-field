@@ -30,6 +30,8 @@ import { SaveDraftDto } from './dto/save-draft.dto';
 import { UploadedAssetDto, ListedAssetDto } from './dto/uploaded-asset.dto';
 import { EditorDraft } from './editor-draft.entity';
 import { EditorDraftRepository } from './editor-draft.repository';
+import { NavigationRepository } from '../navigation/navigation.repository';
+import { ContentSaveAction } from '../content/dto/save-content.dto';
 
 /**
  * 给 notes bodyMarkdown 加上 frontmatter（只有 title 字段）。
@@ -109,6 +111,7 @@ export class NoteViewService {
     private readonly contentGitService: ContentGitService,
     private readonly editorDraftRepository: EditorDraftRepository,
     private readonly minioService: OssService,
+    private readonly navigationRepository: NavigationRepository,
   ) {}
 
   /** 发布最新版本(供一键发布全部 publish-all 统一派发;实现 ScopePublisher)。 */
@@ -214,6 +217,21 @@ export class NoteViewService {
     // 5. commit 成功后清理 MinIO 草稿资源
     if (materialized.length > 0) {
       await this.minioService.deleteDraftAssets(id);
+    }
+
+    // 6. commit 时把文档标题镜像回 navigation node.name —— 让 admin 树/列表
+    //    显示的节点名跟最新提交的内容标题保持一致。设计上：node.name 是
+    //    "当前版本内容标题在导航树的投影"，文档节点的重命名入口已下线，
+    //    唯一改名路径是编辑器→commit→这里同步。只在 commit（而非 draft）
+    //    时同步，保证名字变更也是版本节点（参见 workspace.service.update
+    //    通用路径的同样实现）。
+    if (dto.action === ContentSaveAction.commit && dto.title) {
+      const navNode = await this.navigationRepository.findByContentItemId(id);
+      if (navNode) {
+        await this.navigationRepository.update(navNode._id.toString(), {
+          name: dto.title,
+        });
+      }
     }
 
     return result;
