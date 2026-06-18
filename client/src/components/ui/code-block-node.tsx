@@ -48,7 +48,7 @@ export function CodeBlockElement(props: PlateElementProps<TCodeBlockElement>) {
               variant="ghost"
               className="size-6 text-xs"
               onClick={() => formatCodeBlock(editor, { element })}
-              title="Format code"
+              title="格式化代码"
             >
               <BracesIcon className="!size-3.5 text-muted-foreground" />
             </Button>
@@ -125,9 +125,9 @@ function CodeBlockCombobox() {
             className="h-9"
             value={searchValue}
             onValueChange={(value) => setSearchValue(value)}
-            placeholder="Search language..."
+            placeholder="搜索语言..."
           />
-          <CommandEmpty>No language found.</CommandEmpty>
+          <CommandEmpty>没有匹配的语言</CommandEmpty>
 
           <CommandList className="h-[344px] overflow-y-auto">
             <CommandGroup>

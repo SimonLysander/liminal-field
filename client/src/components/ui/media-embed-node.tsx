@@ -125,7 +125,7 @@ export const MediaEmbedElement = withHOC(
             </Resizable>
 
             <Caption style={{ width }} align={align}>
-              <CaptionTextarea placeholder="Write a caption..." />
+              <CaptionTextarea placeholder="说明（可选）" />
             </Caption>
           </figure>
 

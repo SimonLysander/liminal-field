@@ -104,7 +104,7 @@ export function LinkFloatingToolbar({
 
         <FloatingLinkUrlInput
           className={inputVariants()}
-          placeholder="Paste link"
+          placeholder="链接地址"
           data-plate-focus
         />
       </div>
@@ -115,7 +115,7 @@ export function LinkFloatingToolbar({
         </div>
         <input
           className={inputVariants()}
-          placeholder="Text to display"
+          placeholder="显示文字"
           data-plate-focus
           {...textInputProps}
         />
@@ -132,7 +132,7 @@ export function LinkFloatingToolbar({
         type="button"
         {...editButtonProps}
       >
-        Edit link
+        编辑
       </button>
 
       <Separator orientation="vertical" />
@@ -147,6 +147,7 @@ export function LinkFloatingToolbar({
           variant: 'ghost',
         })}
         type="button"
+        title="移除链接"
         {...unlinkButtonProps}
       >
         <Unlink width={18} />
@@ -196,7 +197,7 @@ function LinkOpenButton() {
       onMouseOver={(e) => {
         e.stopPropagation();
       }}
-      aria-label="Open link in a new tab"
+      aria-label="在新标签页打开链接"
       target="_blank"
     >
       <ExternalLink width={18} />
