@@ -670,22 +670,22 @@ pre code {
 
   a { color: inherit; text-decoration: none; }
 
-  /* 透明文本输入：看起来像纯文本，点击可编辑。用于顶栏标题等场景。 */
-  .input-ghost {
-    border: none;
-    outline: none;
-    background: transparent;
-    box-shadow: none;
-    font: inherit;
-    color: inherit;
-    /* 留内边距:聚焦出现边框/底色时文字不贴边 */
-    padding: 2px 8px;
-  }
-  .input-ghost:focus {
-    border: none;
-    outline: none;
-    box-shadow: none;
-  }
+}
+
+/* 透明文本输入：看起来像纯文本，点击可编辑。用于顶栏标题等场景。
+ * idle 透明（看起来像纯文本）。hover/focus 底色变化由文件下方的全局 input
+ * 视觉规范统一驱动，本 class 只负责 idle 视觉 + 圆角/内边距/transition。
+ */
+.input-ghost {
+  border: none;
+  outline: none;
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  color: inherit;
+  padding: 2px 8px;
+  border-radius: 4px;
+  transition: background-color 120ms ease;
 }
 
 /*
@@ -841,11 +841,32 @@ body.theme-transitioning [data-slate-leaf] {
   50%      { transform: scale(1.06) rotate(2deg);  opacity: 1; }
 }
 
-/* 表单输入框 focus — 单层 accent 细边(去掉原 3px 柔光环,见 design-language 输入框定稿) */
-input:not([type="checkbox"]):not([type="radio"]):focus,
+/* 全局 input 视觉规范（"统一全站心智"）：
+ *   idle  —— 各 input 自定（透明 / shelf 浅灰，按场景定）
+ *   hover —— hover-overlay (4% 黑)
+ *   focus —— hover-overlay (同灰，靠 caret 闪烁做编辑态区分)
+ *
+ * 决策：hover 与 focus 同色。理由：
+ *   1. 项目其他交互（按钮、菜单项、列表项）"被悬浮/被激活"都用 hover-overlay
+ *      4% 黑灰；input 不能在这条主线之外另立色调（曾试 paper 白、accent-soft
+ *      淡紫都被用户驳回——心智不该到处跳色）
+ *   2. focus 比 hover 多 caret 闪烁、键盘可输入两条天然反馈，再加色变冗余
+ *   3. 旧规范 1px accent ring 跟外层圆角/边框容易撞成"框中框"，一并退役
+ *
+ * textarea 走 :focus-within 容器级提示（chat composer / advisor composer），
+ * 不入此规范；只保留 outline:none。
+ *
+ * 局部 input（.input-ghost / Input 组件 / .metadata-input / SearchPanel）的
+ * :hover/:focus background 规则已撤回，统一由此规范驱动。
+ */
+input:not([type="checkbox"]):not([type="radio"]):hover,
+input:not([type="checkbox"]):not([type="radio"]):focus {
+  background: var(--hover-overlay);
+  outline: none;
+  box-shadow: none;
+}
 textarea:focus {
   outline: none;
-  box-shadow: 0 0 0 1px var(--accent);
 }
 
 /* Agent 全页输入框:focus 环提到外层盒子(见 .tsx focus-within),
@@ -1095,9 +1116,10 @@ textarea.composer-input:focus {
 }
 .metadata-input:focus,
 .metadata-input:focus-visible {
-  background: var(--shelf) !important;
+  /* focus 底色对齐全局 input 规范（hover-overlay 4% 黑灰），
+   * !important 是为压住 .metadata-input 上面带 !important 的 transparent 起态。 */
+  background: var(--hover-overlay) !important;
   outline: none !important;
-  ring: none !important;
   box-shadow: none !important;
 }
 
