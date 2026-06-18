@@ -8,6 +8,10 @@ import { LinkFloatingToolbar } from '@/components/ui/link-toolbar';
 
 export const LinkKit = [
   LinkPlugin.configure({
+    options: {
+      // ⌘+K 弹链接 input 浮层（选中文字时自动以选中段为锚）
+      triggerFloatingLinkHotkeys: 'mod+k',
+    },
     inputRules: [
       LinkRules.markdown(),
       // paste variant 撤回（"选中文字 + ⌘V 粘贴 URL → 自动加链接"）：

@@ -180,6 +180,7 @@ function CopyButton({
   return (
     <Button
       aria-label={hasCopied ? '已复制' : '复制'}
+      title={hasCopied ? '已复制' : '复制全部代码'}
       onClick={() => {
         void navigator.clipboard.writeText(
           typeof value === 'function' ? value() : value,
@@ -188,15 +189,24 @@ function CopyButton({
       }}
       {...props}
     >
-      {hasCopied ? (
-        <>
-          <CheckIcon className="!size-3" />
-          {/* "已复制" 浮现 1.5s，给用户明确反馈而非只切图标 */}
-          <span className="ml-1 text-xs">已复制</span>
-        </>
-      ) : (
-        <CopyIcon className="!size-3" />
-      )}
+      {/* Copy / Check 图标重叠同一格 + opacity 渐变，按钮宽度不变。
+       *  之前试过加 "已复制" 文案 + 滑入动画 —— 文案撑宽按钮把语言选择器
+       *  挤重叠。撤回，反馈靠图标切换 + title tooltip 表达。 */}
+      <span className="relative inline-flex items-center">
+        <CopyIcon
+          className={cn(
+            '!size-3 transition-opacity duration-150',
+            hasCopied ? 'opacity-0' : 'opacity-100',
+          )}
+        />
+        <CheckIcon
+          className={cn(
+            '!size-3 absolute left-0 top-0 transition-opacity duration-150',
+            hasCopied ? 'opacity-100' : 'opacity-0',
+          )}
+          style={{ color: 'var(--accent)' }}
+        />
+      </span>
     </Button>
   );
 }

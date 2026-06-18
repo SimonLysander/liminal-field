@@ -19,6 +19,7 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
 import { useTheme } from '@/hooks/use-theme';
+import { useOnlineStatus } from '@/hooks/use-online-status';
 import { LoadingState } from '@/components/LoadingState';
 import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
 import { DraftAssetProvider } from '@/contexts/DraftAssetContext';
@@ -62,6 +63,8 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
   const { theme, setTheme } = useTheme();
   // ⌘+/ 切换快捷键 cheatsheet 浮层（hook 内部挂全局 keydown）
   const shortcutsDialog = useKeyboardShortcutsDialog();
+  // 离线时给保存状态加"等待联网"指示（本地 localStorage 已镜像，不会丢字）
+  const online = useOnlineStatus();
   // Cursor 式 add-to-chat:拖选只产生选区;点击浮动工具栏「添加到聊天」后才写入这里。
   // 保存 live range attachment:chip 展示初始 preview;发送/高亮时读取当前 range。
   const [chatSelections, setChatSelections] = useState<ChatSelectionAttachment[]>([]);
@@ -278,19 +281,36 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
         // 正常态:标题已挪到大纲栏,这里只剩自动保存 + 保存/提交/主题/⋯ 全部右对齐
         <div className="flex min-w-0 items-center justify-end px-4">
           <div className="flex shrink-0 items-center gap-1.5">
-            <span className="mr-1 inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-              {editor.isAutosaving && (
-                <span
-                  className="size-1.5 shrink-0 animate-pulse rounded-full [animation-duration:1.2s]"
-                  style={{ background: 'var(--accent)' }}
-                  aria-hidden
-                />
+            <span
+              className="mr-1 inline-flex items-center gap-1.5 text-xs"
+              style={{ color: 'var(--ink-ghost)' }}
+              title={!online ? '当前离线，草稿已在本地保留，联网后会自动同步' : undefined}
+            >
+              {!online ? (
+                /* 离线：黄色静止点 + "等待联网"。优先于保存中提示，
+                 * 即使 1.5s debounce 触发了 saveDraft 也会立即失败，提示更准确。*/
+                <>
+                  <span
+                    className="size-1.5 shrink-0 rounded-full"
+                    style={{ background: 'var(--mark-yellow, #d4a017)' }}
+                    aria-hidden
+                  />
+                  等待联网
+                </>
+              ) : editor.isAutosaving ? (
+                <>
+                  <span
+                    className="size-1.5 shrink-0 animate-pulse rounded-full [animation-duration:1.2s]"
+                    style={{ background: 'var(--accent)' }}
+                    aria-hidden
+                  />
+                  保存中…
+                </>
+              ) : editor.lastSavedAt ? (
+                `已自动保存 ${new Date(editor.lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
+              ) : (
+                ''
               )}
-              {editor.isAutosaving
-                ? '保存中…'
-                : editor.lastSavedAt
-                  ? `已自动保存 ${new Date(editor.lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
-                  : ''}
             </span>
             {editor.autosaveError && (
               <span className="text-xs" style={{ color: 'var(--mark-red)' }}>{editor.autosaveError}</span>

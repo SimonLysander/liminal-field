@@ -52,6 +52,7 @@ const GROUPS: Group[] = [
       { label: '斜体', keys: '⌘ + I' },
       { label: '下划线', keys: '⌘ + U' },
       { label: '行内代码', keys: '⌘ + E' },
+      { label: '链接', keys: '⌘ + K' },
       { label: '删除线', keys: '⌘ + Shift + X' },
       { label: '高亮', keys: '⌘ + Shift + H' },
       { label: '上标 / 下标', keys: '⌘ + . / ⌘ + ,' },
