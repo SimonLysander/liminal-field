@@ -34,8 +34,24 @@ import { StartupDiagnosticsService } from './startup-diagnostics.service';
         const pass = config.get<string>('mongo.password');
         const db = config.get<string>('mongo.database');
         const authSource = config.get<string>('mongo.options.authSource');
+        // 本地（无 auth mongo）与线上（root admin/changeme）兼容：
+        // user/pass 缺省时拼无认证 URI。mongoose 客户端 URI 里带 user:pass 会发 SASL 握手，
+        // 而 mongo 容器不启 auth 时会拒绝握手 → 必须从 URI 里把 user:pass 也去掉。
+        // user 和 pass 必须成对出现，单边缺会造成无 auth URI 撞上 auth-required mongo,
+        // 错误现场远离根因；提前 throw 让 misconfig 在启动阶段就暴露。
+        if (Boolean(user) !== Boolean(pass)) {
+          throw new Error(
+            'Mongo config: MONGO_USER 和 MONGO_PASSWORD 必须同时提供或同时缺省',
+          );
+        }
+        const hasAuth = Boolean(user && pass);
+        const userInfo = hasAuth ? `${user}:${encodeURIComponent(pass!)}@` : '';
+        // 防御 authSource 缺省：hasAuth 但 yaml/env 漏配 authSource → URI 会拼出
+        // `?authSource=undefined` 这种字面量，silent 失败。这里 fallback 走无 query 段。
+        const authQuery =
+          hasAuth && authSource ? `?authSource=${authSource}` : '';
         return {
-          uri: `mongodb://${user}:${pass}@${host}:${port}/${db}?authSource=${authSource}`,
+          uri: `mongodb://${userInfo}${host}:${port}/${db}${authQuery}`,
         };
       },
     }),
