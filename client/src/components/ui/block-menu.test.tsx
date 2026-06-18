@@ -47,6 +47,10 @@ const mockEditor = vi.hoisted(() => ({
   tf: {
     insertNodes: vi.fn(),
     removeNodes: vi.fn(),
+    // focus 是新增依赖：BlockMenu 的 handler 在 transform 前调 editor.tf.focus()
+    // 把焦点还回编辑器，让 PlateEditor.setBody 的 isUserEdit 判断通过 →
+    // 触发 setIsDirty → 自动保存。没有它转换 / 复制 / 插入 / 删除全部不存盘。
+    focus: vi.fn(),
   },
 }));
 

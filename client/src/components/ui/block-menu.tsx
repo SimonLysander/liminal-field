@@ -94,7 +94,14 @@ export function BlockMenu({
     setView('main');
   };
 
+  /* 每个 handler 先 editor.tf.focus() 再 transform：popover 打开时焦点
+   * 跑去 popover 内部 button，PlateEditor.setBody 的 isUserEdit 判断会
+   * 看 document.activeElement 是否在 [data-slate-editor] 内 — 不在 →
+   * 返回 false → 不 setIsDirty(true) → 不触发自动保存。块菜单的
+   * 转换 / 复制 / 插入 / 删除如果不先把焦点还给编辑器，所有改动都
+   * 不会落盘（用户刷新后内容回到上次保存版本，看似"自动保存挂了"）。 */
   const handleDuplicate = () => {
+    editor.tf.focus();
     const cloned = structuredClone(blockNode);
     const nextPath = [...blockPath];
     nextPath[nextPath.length - 1] = (nextPath[nextPath.length - 1] as number) + 1;
@@ -103,11 +110,13 @@ export function BlockMenu({
   };
 
   const handleDelete = () => {
+    editor.tf.focus();
     editor.tf.removeNodes({ at: blockPath });
     close();
   };
 
   const handleInsertAbove = () => {
+    editor.tf.focus();
     editor.tf.insertNodes({ type: 'p', children: [{ text: '' }] } as TElement, {
       at: blockPath,
     });
@@ -115,6 +124,7 @@ export function BlockMenu({
   };
 
   const handleInsertBelow = () => {
+    editor.tf.focus();
     const nextPath = [...blockPath];
     nextPath[nextPath.length - 1] = (nextPath[nextPath.length - 1] as number) + 1;
     editor.tf.insertNodes(
