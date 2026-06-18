@@ -1,42 +1,18 @@
 /**
  * /digest/:topicId/:reportId — 单期阅读页。
  *
- * 期刊范式：报头（期号 + 日期 + 衬线大标题）+ picks markdown 正文 + 右栏 Aurora 占位。
- * MarkdownBody 不改，只在外层容器加子选择器 className 影响 h2 字体（[&_h2] 前缀）。
- * 本页纯 mock 数据（./mock-data），不接 API（task #38 再接）。
+ * 真报纸版面：
+ * - 头条：整宽 + 巨型标题 + dropcap 首字放大 + 双栏正文
+ * - 次条：1px 黑横线分隔 + 标题 + 双栏正文
+ * - 无 MarkdownBody（改用结构化 mock 数据直接渲染）
+ * - 右栏：Aurora 追问占位（无 icon，纯排版）
+ * - 正文 paragraphs 为空时 fallback 为"简讯"layout
  */
-import { useCallback, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Lock, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
-import { appleEase, smoothBounce } from '@/lib/motion';
-import MarkdownBody from '@/components/shared/MarkdownBody';
-import { MarkdownTocPanel } from '@/components/shared/MarkdownTocPanel';
+import { appleEase } from '@/lib/motion';
 import { MOCK_TOPICS, MOCK_REPORTS } from './mock-data';
-import type { MockReport, MockPick } from './mock-data';
-
-/* ================================================================
- * Markdown 构造
- * picks 拼成 markdown 正文，H2 = 条目标题（供 TOC 提取）。
- * ================================================================ */
-
-function buildMarkdown(report: MockReport): string {
-  const lines: string[] = [];
-
-  report.picks.forEach((pick: MockPick, i: number) => {
-    lines.push(`## ${i + 1}. ${pick.title}`);
-    lines.push(`*${pick.source} · [查看原文 →](${pick.url})*`);
-    lines.push('');
-    lines.push(pick.snippet);
-    lines.push('');
-    if (i < report.picks.length - 1) {
-      lines.push('---');
-      lines.push('');
-    }
-  });
-
-  return lines.join('\n');
-}
+import type { MockPick } from './mock-data';
 
 /* ================================================================
  * 工具函数
@@ -57,29 +33,23 @@ export default function DigestReportPage() {
   const topic = MOCK_TOPICS.find((t) => t.id === topicId);
   const report = MOCK_REPORTS.find((r) => r.id === reportId && r.topicId === topicId);
 
-  // TOC：MarkdownBody 渲染完成后从 DOM 提取 heading，与 anthology EntryReader 同模式
-  const centerRef = useRef<HTMLDivElement>(null);
-  const [toc, setToc] = useState<Array<{ id: string; text: string; level: number }>>([]);
-  const refreshToc = useCallback(() => {
-    if (!centerRef.current) return;
-    const els = Array.from(
-      centerRef.current.querySelectorAll('[data-heading-id]'),
-    ) as HTMLElement[];
-    setToc(
-      els.map((el) => ({
-        id: el.getAttribute('data-heading-id') ?? '',
-        text: el.textContent ?? '',
-        level: parseInt(el.tagName.slice(1), 10) || 1,
-      })),
-    );
-  }, []);
+  // 同 topicId 下的所有 report，按 issueNumber 排序（用于 prev/next 导航）
+  const siblingReports = report
+    ? MOCK_REPORTS.filter((r) => r.topicId === topicId).sort(
+        (a, b) => a.issueNumber - b.issueNumber,
+      )
+    : [];
+  const currentIdx = siblingReports.findIndex((r) => r.id === reportId);
+  const prevReport = currentIdx > 0 ? siblingReports[currentIdx - 1] : null;
+  const nextReport =
+    currentIdx < siblingReports.length - 1 ? siblingReports[currentIdx + 1] : null;
 
   if (!topic || !report) {
     return (
       <div className="flex flex-1 items-center justify-center">
         <p
-          className="text-xs uppercase tracking-[0.18em]"
-          style={{ color: 'var(--ink-ghost)' }}
+          className="text-[11px] font-bold uppercase tracking-[0.28em]"
+          style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
         >
           报告不存在
         </p>
@@ -87,14 +57,14 @@ export default function DigestReportPage() {
     );
   }
 
-  const markdown = buildMarkdown(report);
   const headline = report.headline ?? '本期精选';
+  const [firstPick, ...restPicks] = report.picks;
 
   return (
     <div className="relative flex w-full items-stretch overflow-hidden">
 
       {/* ── 主体阅读区 ── */}
-      <div ref={centerRef} className="flex-1 overflow-y-auto py-16">
+      <div className="flex-1 overflow-y-auto py-16">
         <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 max-[520px]:px-5">
 
           {/* breadcrumb */}
@@ -102,14 +72,11 @@ export default function DigestReportPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3, ease: appleEase }}
-            className="mb-12 flex items-center gap-2 text-xs uppercase tracking-[0.18em]"
-            style={{ color: 'var(--ink-ghost)' }}
+            className="mb-10 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.28em]"
+            style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
             aria-label="面包屑"
           >
-            <Link
-              to="/digest"
-              className="transition-opacity duration-150 hover:opacity-60"
-            >
+            <Link to="/digest" className="transition-opacity duration-150 hover:opacity-60">
               目录
             </Link>
             <span>/</span>
@@ -123,76 +90,99 @@ export default function DigestReportPage() {
 
           {/* ── 报头 ── */}
           <motion.header
-            className="mb-12"
-            initial={{ opacity: 0, y: 10 }}
+            className="mb-0"
+            initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, ease: smoothBounce }}
+            transition={{ duration: 0.3, ease: appleEase }}
           >
-            {/* 期号 + 日期行：small caps */}
+            {/* 期号 + 出版信息行 */}
             <p
-              className="mb-4 text-xs uppercase tracking-[0.22em]"
-              style={{ color: 'var(--ink-ghost)' }}
+              className="mb-4 text-[11px] font-bold uppercase tracking-[0.28em]"
+              style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
             >
-              第 {report.issueNumber} 期 · {formatDate(report.date)}
+              Vol. 1 &nbsp;·&nbsp; 第 {report.issueNumber} 期 &nbsp;·&nbsp; {formatDate(report.date)} &nbsp;·&nbsp; 编辑：Aurora
             </p>
 
-            {/* 栏目名（副标题级别） */}
-            <p
-              className="mb-2 text-xl font-medium leading-snug"
-              style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
-            >
-              {topic.name}
-            </p>
-
-            {/* 本期标题：衬线大字 */}
+            {/* 巨型本期标题 */}
             <h1
-              className="mb-5 text-4xl font-bold leading-tight tracking-tight"
+              className="mb-4 text-6xl font-bold leading-[1.0] tracking-tight max-[520px]:text-4xl"
               style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
             >
               {headline}
             </h1>
 
-            {/* meta 行 */}
+            {/* 副标题 italic */}
             <p
-              className="mb-8 text-xs uppercase tracking-[0.18em]"
-              style={{ color: 'var(--ink-ghost)' }}
+              className="mb-5 text-xl italic leading-snug"
+              style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
             >
-              共 {report.picks.length} 条 · 自动采集 + AI 判定
+              共 {report.picks.length} 条精选 · 涵盖 {new Set(report.picks.map((p) => p.source)).size} 个来源
             </p>
 
-            {/* 报头粗横线 */}
-            <div style={{ borderBottom: '1px solid var(--ink)' }} />
+            {/* 报头下方 3px 粗黑横线 */}
+            <div style={{ borderBottom: '3px solid var(--ink)' }} />
           </motion.header>
 
-          {/* ── 正文 ── */}
-          {/* [&_h2] 子选择器让 MarkdownBody 渲染的 H2 使用衬线字体（MarkdownBody 本身不改）*/}
+          {/* ── 正文 picks ── */}
           <motion.div
-            className="note-prose text-base leading-[1.9] [&_h2]:font-serif"
-            style={{ color: 'var(--ink-light)' }}
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.1, ease: appleEase }}
+            transition={{ duration: 0.3, delay: 0.1, ease: appleEase }}
           >
-            <MarkdownBody markdown={markdown} onHeadingsMarked={refreshToc} />
+            {/* 头条：整宽 + dropcap */}
+            {firstPick && (
+              <LeadPick pick={firstPick} />
+            )}
+
+            {/* 次条：每条 1px 黑线分隔 */}
+            {restPicks.map((pick, i) => (
+              <SecondaryPick key={pick.url} pick={pick} index={i + 2} />
+            ))}
           </motion.div>
 
-          {/* ── 页尾仪式感结语 ── */}
+          {/* ── 页尾 ── */}
           <motion.div
-            className="mt-16 pb-8 text-center"
+            className="mt-16 pb-8"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.4, delay: 0.3, ease: appleEase }}
+            transition={{ duration: 0.3, delay: 0.2, ease: appleEase }}
           >
-            <div
-              className="mb-8"
-              style={{ borderTop: '0.5px solid var(--separator)' }}
-            />
+            <div style={{ borderTop: '3px solid var(--ink)' }} />
+
             <p
-              className="text-xs uppercase tracking-[0.22em]"
-              style={{ color: 'var(--ink-ghost)' }}
+              className="mt-6 text-center text-[11px] font-bold uppercase tracking-[0.28em]"
+              style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
             >
               —— 本期完 ——
             </p>
+
+            {/* prev/next 导航 */}
+            {(prevReport || nextReport) && (
+              <div className="mt-8 flex items-center justify-between gap-4">
+                {prevReport ? (
+                  <Link
+                    to={`/digest/${topicId}/${prevReport.id}`}
+                    className="text-[11px] font-bold uppercase tracking-[0.22em] transition-opacity duration-150 hover:opacity-60"
+                    style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+                  >
+                    ← 第 {prevReport.issueNumber} 期
+                  </Link>
+                ) : (
+                  <span />
+                )}
+                {nextReport ? (
+                  <Link
+                    to={`/digest/${topicId}/${nextReport.id}`}
+                    className="text-[11px] font-bold uppercase tracking-[0.22em] transition-opacity duration-150 hover:opacity-60"
+                    style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+                  >
+                    第 {nextReport.issueNumber} 期 →
+                  </Link>
+                ) : (
+                  <span />
+                )}
+              </div>
+            )}
           </motion.div>
 
         </div>
@@ -200,70 +190,272 @@ export default function DigestReportPage() {
 
       {/* ── 右栏：Aurora 追问占位 ── */}
       <AuroraPlaceholder />
-
-      {/* TOC 面板 */}
-      <MarkdownTocPanel toc={toc} centerRef={centerRef} />
     </div>
   );
 }
 
 /* ================================================================
- * AuroraPlaceholder — 期刊风 Aurora 追问占位
+ * LeadPick — 头条（整宽，巨型标题，双栏正文，首字放大）
+ * ================================================================ */
+
+function LeadPick({ pick }: { pick: MockPick }) {
+  const hasParagraphs = pick.paragraphs.length > 0;
+
+  return (
+    <div className="mt-8">
+      {/* 头条 label */}
+      <p
+        className="mb-3 text-[10px] font-bold uppercase tracking-[0.32em]"
+        style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+      >
+        头条
+      </p>
+
+      {/* 巨型标题 */}
+      <h2
+        className="mb-3 text-5xl font-bold leading-[1.05] tracking-tight max-[520px]:text-3xl"
+        style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
+      >
+        {pick.title}
+      </h2>
+
+      {/* 副标题 italic */}
+      {pick.subtitle && (
+        <p
+          className="mb-4 text-xl italic leading-snug"
+          style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
+        >
+          {pick.subtitle}
+        </p>
+      )}
+
+      {/* 来源行 small caps */}
+      <p
+        className="mb-6 text-[10px] font-bold uppercase tracking-[0.28em]"
+        style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+      >
+        {pick.source}
+        {pick.readingTime && (
+          <>
+            <span className="mx-2">·</span>
+            阅读 {pick.readingTime}
+          </>
+        )}
+        <span className="mx-2">·</span>
+        <a
+          href={pick.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="transition-opacity duration-150 hover:opacity-60"
+          style={{ color: 'var(--ink-ghost)' }}
+        >
+          查看原文 →
+        </a>
+      </p>
+
+      {hasParagraphs ? (
+        /* 双栏正文 + 首字放大 dropcap */
+        <div
+          className="max-md:columns-1"
+          style={{
+            columnCount: 2,
+            columnGap: '2.5rem',
+            columnRule: '0.5px solid var(--ink-ghost)',
+          }}
+        >
+          {pick.paragraphs.map((para, i) => (
+            <p
+              key={i}
+              className={`mb-4 text-base leading-relaxed ${
+                i === 0
+                  ? // dropcap：首字放大浮动，中文首字同样生效
+                    'first-letter:float-left first-letter:text-7xl first-letter:font-bold first-letter:leading-[0.85] first-letter:mt-1 first-letter:mr-2'
+                  : ''
+              }`}
+              style={{
+                color: 'var(--ink)',
+                fontFamily: 'var(--font-serif)',
+                ...(i === 0 ? { fontFamily: 'var(--font-serif)' } : {}),
+              }}
+            >
+              {para}
+            </p>
+          ))}
+        </div>
+      ) : (
+        /* fallback 简讯 */
+        <BriefSnippet snippet={pick.snippet} url={pick.url} />
+      )}
+
+      {/* 头条与次条之间加粗横线 */}
+      <div className="mt-8" style={{ borderBottom: '1px solid var(--ink)' }} />
+    </div>
+  );
+}
+
+/* ================================================================
+ * SecondaryPick — 次条（1px 黑线上方分隔，标题 + 双栏正文）
+ * ================================================================ */
+
+function SecondaryPick({ pick, index }: { pick: MockPick; index: number }) {
+  const hasParagraphs = pick.paragraphs.length > 0;
+
+  return (
+    <div className="mt-8">
+      {/* 条目序号 label */}
+      <p
+        className="mb-3 text-[10px] font-bold uppercase tracking-[0.32em]"
+        style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+      >
+        {index}
+      </p>
+
+      {/* 标题 */}
+      <h2
+        className="mb-2 text-3xl font-bold leading-tight tracking-tight max-[520px]:text-2xl"
+        style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
+      >
+        {hasParagraphs ? pick.title : <><em className="font-normal not-italic text-[11px] font-bold uppercase tracking-[0.22em] mr-2" style={{ color: 'var(--ink-ghost)' }}>简讯</em>{pick.title}</>}
+      </h2>
+
+      {/* 副标题 italic */}
+      {pick.subtitle && hasParagraphs && (
+        <p
+          className="mb-3 text-base italic leading-snug"
+          style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
+        >
+          {pick.subtitle}
+        </p>
+      )}
+
+      {/* 来源行 small caps */}
+      <p
+        className="mb-5 text-[10px] font-bold uppercase tracking-[0.28em]"
+        style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+      >
+        {pick.source}
+        {pick.readingTime && (
+          <>
+            <span className="mx-2">·</span>
+            阅读 {pick.readingTime}
+          </>
+        )}
+        <span className="mx-2">·</span>
+        <a
+          href={pick.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="transition-opacity duration-150 hover:opacity-60"
+          style={{ color: 'var(--ink-ghost)' }}
+        >
+          查看原文 →
+        </a>
+      </p>
+
+      {hasParagraphs ? (
+        /* 双栏正文 */
+        <div
+          className="max-md:columns-1"
+          style={{
+            columnCount: 2,
+            columnGap: '2.5rem',
+            columnRule: '0.5px solid var(--ink-ghost)',
+          }}
+        >
+          {pick.paragraphs.map((para, i) => (
+            <p
+              key={i}
+              className="mb-4 text-base leading-relaxed"
+              style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
+            >
+              {para}
+            </p>
+          ))}
+        </div>
+      ) : (
+        <BriefSnippet snippet={pick.snippet} url={pick.url} />
+      )}
+
+      {/* 条目间分隔线 */}
+      <div className="mt-8" style={{ borderBottom: '1px solid var(--ink)' }} />
+    </div>
+  );
+}
+
+/* ================================================================
+ * BriefSnippet — 无完整段落时的简讯 fallback
+ * ================================================================ */
+
+function BriefSnippet({ snippet, url }: { snippet: string; url: string }) {
+  return (
+    <p
+      className="mb-3 text-base italic leading-relaxed"
+      style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
+    >
+      {snippet}
+      {' '}
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="not-italic text-[10px] font-bold uppercase tracking-[0.22em] transition-opacity duration-150 hover:opacity-60"
+        style={{ color: 'var(--ink-ghost)' }}
+      >
+        查看原文 →
+      </a>
+    </p>
+  );
+}
+
+/* ================================================================
+ * AuroraPlaceholder — 右栏 Aurora 追问占位（无 icon，纯排版）
  * ================================================================ */
 
 function AuroraPlaceholder() {
   return (
     <motion.aside
-      initial={{ opacity: 0, x: 12 }}
+      initial={{ opacity: 0, x: 10 }}
       animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.4, delay: 0.25, ease: appleEase }}
-      className="hidden w-[240px] shrink-0 xl:flex xl:flex-col"
+      transition={{ duration: 0.3, delay: 0.2, ease: appleEase }}
+      className="hidden w-[220px] shrink-0 xl:flex xl:flex-col"
       style={{ paddingTop: '4rem', paddingRight: '1.5rem', paddingBottom: '2rem' }}
     >
       <div className="sticky top-16 flex flex-col gap-5">
-        {/* 期刊风栏头：small caps */}
+        {/* 栏头 small caps */}
         <div>
           <p
-            className="mb-3 text-xs uppercase tracking-[0.22em]"
-            style={{ color: 'var(--ink-ghost)' }}
+            className="mb-3 text-[10px] font-bold uppercase tracking-[0.28em]"
+            style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
           >
             Editorial · 编辑追问
           </p>
-          <div style={{ borderBottom: '0.5px solid var(--separator)' }} />
+          <div style={{ borderBottom: '1px solid var(--ink)' }} />
         </div>
 
-        {/* 说明 */}
+        {/* 说明文字 */}
         <p
-          className="text-xs leading-relaxed"
-          style={{ color: 'var(--ink-faded)' }}
+          className="text-sm leading-relaxed"
+          style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
         >
           登录后可与 Aurora 追问本期，深入挖掘你感兴趣的细节。
         </p>
 
-        {/* 登录按钮 */}
+        {/* 登录按钮（纯文字，无 icon） */}
         <Link
           to="/login"
-          className="flex items-center gap-1.5 text-xs uppercase tracking-[0.16em] transition-opacity duration-150 hover:opacity-70"
-          style={{ color: 'var(--ink-ghost)' }}
+          className="text-[11px] font-bold uppercase tracking-[0.22em] transition-opacity duration-150 hover:opacity-60"
+          style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
         >
-          <Lock size={10} strokeWidth={1.5} />
-          登录后追问
+          登录后追问 →
         </Link>
 
-        {/* Aurora 图标装饰 */}
-        <div className="mt-2 flex items-center gap-1.5">
-          <Sparkles
-            size={12}
-            strokeWidth={1.5}
-            style={{ color: 'var(--accent)' }}
-          />
-          <span
-            className="text-xs uppercase tracking-[0.14em]"
-            style={{ color: 'var(--ink-ghost)' }}
-          >
-            Aurora
-          </span>
-        </div>
+        {/* Aurora 署名，纯文字 */}
+        <p
+          className="mt-2 text-[10px] font-bold uppercase tracking-[0.22em]"
+          style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+        >
+          Aurora
+        </p>
       </div>
     </motion.aside>
   );

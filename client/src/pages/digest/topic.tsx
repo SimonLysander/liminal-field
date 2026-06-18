@@ -1,12 +1,11 @@
 /**
- * /digest/:topicId — 专栏首页（往期列表）。
+ * /digest/:topicId — 专栏首页（往期归档列表）。
  *
- * 期刊范式：栏目报头 + 往期行式列表（第 N 期，不用卡片）。
- * 点击某行进 /digest/:topicId/:reportId。
- * 本页纯 mock 数据（./mock-data），不接 API（task #38 再接）。
+ * 真报纸专栏归档：巨型栏目名 + 3px 粗横线 + 期号行式列表。
+ * 每期行：左期号大字 / 中标题+副标+预览 / 右日期+箭头。
+ * 无卡片背景，无 icon，全用排版和横线区分层级。
  */
 import { Link, useParams } from 'react-router-dom';
-import { ChevronLeft } from 'lucide-react';
 import { motion } from 'motion/react';
 import { appleEase } from '@/lib/motion';
 import { MOCK_TOPICS, MOCK_REPORTS } from './mock-data';
@@ -34,8 +33,8 @@ export default function DigestTopicPage() {
     return (
       <div className="flex flex-1 items-center justify-center">
         <p
-          className="text-xs uppercase tracking-[0.18em]"
-          style={{ color: 'var(--ink-ghost)' }}
+          className="text-[11px] font-bold uppercase tracking-[0.28em]"
+          style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
         >
           栏目不存在
         </p>
@@ -52,86 +51,102 @@ export default function DigestTopicPage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3, ease: appleEase }}
-          className="mb-12"
+          className="mb-10"
         >
           <Link
             to="/digest"
-            className="inline-flex items-center gap-1 text-xs uppercase tracking-[0.18em] transition-opacity duration-150 hover:opacity-60"
-            style={{ color: 'var(--ink-ghost)' }}
+            className="text-[11px] font-bold uppercase tracking-[0.28em] transition-opacity duration-150 hover:opacity-60"
+            style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
           >
-            <ChevronLeft size={12} strokeWidth={1.5} />
-            返回目录
+            ← 返回目录
           </Link>
         </motion.div>
 
         {/* ── 栏目报头 ── */}
         <motion.header
-          className="mb-10"
-          initial={{ opacity: 0, y: 10 }}
+          className="mb-0"
+          initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, ease: appleEase }}
+          transition={{ duration: 0.3, ease: appleEase }}
         >
-          {/* 专栏标签 */}
+          {/* 专栏标签行 */}
           <p
-            className="mb-4 text-xs uppercase tracking-[0.22em]"
-            style={{ color: 'var(--ink-ghost)' }}
+            className="mb-4 text-[11px] font-bold uppercase tracking-[0.28em]"
+            style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
           >
             Column · 专栏
           </p>
 
-          {/* 栏目名 */}
+          {/* 巨型栏目名 */}
           <h1
-            className="mb-3 text-5xl font-bold leading-none tracking-tight"
+            className="mb-4 text-6xl font-bold leading-[1.0] tracking-tight max-[520px]:text-4xl"
             style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
           >
             {topic.name}
           </h1>
 
-          {/* 描述 */}
+          {/* italic 副标题描述 */}
           <p
-            className="mb-6 text-base leading-relaxed"
-            style={{ color: 'var(--ink-faded)' }}
+            className="mb-5 text-xl italic leading-snug"
+            style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
           >
-            {topic.description}
+            {topic.tagline}
           </p>
 
-          {/* meta 行：期数 · 信息源 · 节奏 */}
+          {/* meta 行 small caps */}
           <p
-            className="mb-8 text-xs uppercase tracking-[0.18em]"
-            style={{ color: 'var(--ink-ghost)' }}
+            className="mb-6 text-[11px] font-bold uppercase tracking-[0.22em]"
+            style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
           >
-            总 {reports.length} 期
-            <span className="mx-3" style={{ color: 'var(--separator)' }}>·</span>
+            本栏目
+            <span className="mx-3">·</span>
+            共 {reports.length} 期
+            <span className="mx-3">·</span>
             订阅 {topic.sourceCount} 个信息源
-            <span className="mx-3" style={{ color: 'var(--separator)' }}>·</span>
+            <span className="mx-3">·</span>
             {topic.cronLabel}
           </p>
 
-          {/* 报头粗横线 */}
-          <div style={{ borderBottom: '1px solid var(--ink)' }} />
+          {/* 报头下方 3px 粗横线 */}
+          <div style={{ borderBottom: '3px solid var(--ink)' }} />
         </motion.header>
 
         {/* ── 往期列表 ── */}
         <motion.section
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 0.4, delay: 0.2, ease: appleEase }}
+          transition={{ duration: 0.3, delay: 0.12, ease: appleEase }}
         >
           {reports.length === 0 ? (
             <EmptyReports />
           ) : (
             <div className="flex flex-col">
-              {reports.map((report, i) => (
+              {reports.map((report) => (
                 <IssueRow
                   key={report.id}
                   report={report}
                   topicId={topic.id}
-                  index={i}
                 />
               ))}
             </div>
           )}
         </motion.section>
+
+        {/* ── 页尾 ── */}
+        <motion.footer
+          className="mt-16"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3, delay: 0.25, ease: appleEase }}
+        >
+          <div style={{ borderTop: '3px solid var(--ink)' }} />
+          <p
+            className="mt-5 text-[10px] font-bold uppercase tracking-[0.28em]"
+            style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+          >
+            由 Aurora 自动采集整理 &nbsp;·&nbsp; 欢迎订阅
+          </p>
+        </motion.footer>
 
       </div>
     </div>
@@ -139,72 +154,80 @@ export default function DigestTopicPage() {
 }
 
 /* ================================================================
- * IssueRow — 单期行式条目
+ * IssueRow — 单期行式条目（期号 / 标题预览 / 日期箭头三段式）
  * ================================================================ */
 
 function IssueRow({
   report,
   topicId,
-  index,
 }: {
   report: MockReport;
   topicId: string;
-  index: number;
 }) {
+  // 取第一条 pick 的 subtitle 作为本期提要
+  const firstSubtitle = report.picks[0]?.subtitle ?? '';
   const previewPicks = report.picks.slice(0, 3);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, delay: 0.05 * index, ease: appleEase }}
+    <div
+      style={{ borderTop: '1px solid var(--ink)' }}
     >
       <Link
         to={`/digest/${topicId}/${report.id}`}
-        className="group flex items-start gap-8 py-7 transition-colors duration-150 hover:opacity-80"
-        style={{ borderBottom: '0.5px solid var(--separator)' }}
+        className="group flex items-start gap-8 py-7 transition-opacity duration-150 hover:opacity-70 max-[520px]:flex-col max-[520px]:gap-3"
+        aria-label={`第 ${report.issueNumber} 期 · ${report.headline ?? '本期精选'}`}
       >
-        {/* 左：期号 */}
-        <div className="w-16 shrink-0 pt-0.5">
+        {/* 左：期号大字 + 日期（垂直） */}
+        <div className="w-20 shrink-0 pt-0.5 max-[520px]:w-auto max-[520px]:flex max-[520px]:gap-3 max-[520px]:items-baseline">
           <p
-            className="text-xs uppercase tracking-[0.18em]"
-            style={{ color: 'var(--ink-ghost)' }}
+            className="text-2xl font-bold leading-none tracking-tight"
+            style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
           >
-            第 {report.issueNumber} 期
+            第{report.issueNumber}期
           </p>
           <p
-            className="mt-1 text-xs"
-            style={{ color: 'var(--ink-ghost)' }}
+            className="mt-2 text-[10px] font-bold uppercase tracking-[0.22em] max-[520px]:mt-0"
+            style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
           >
             {formatDateShort(report.date)}
           </p>
         </div>
 
-        {/* 中：picks 预览 */}
+        {/* 中：标题 + 副标 + 前 3 条预览 */}
         <div className="min-w-0 flex-1">
-          {/* 本期标题（如有） */}
+          {/* 本期 headline */}
           {report.headline && (
             <p
-              className="mb-2 text-base font-semibold leading-snug"
+              className="mb-1.5 text-xl font-bold leading-snug tracking-tight"
               style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
             >
               {report.headline}
             </p>
           )}
 
-          {/* 前 3 条 pick 标题行 */}
+          {/* 第一条 pick 的 subtitle 作为本期提要 */}
+          {firstSubtitle && (
+            <p
+              className="mb-3 text-sm italic leading-snug"
+              style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
+            >
+              {firstSubtitle}
+            </p>
+          )}
+
+          {/* 前 3 条 pick 列表（标题 + 来源 small caps） */}
           <ul className="flex flex-col gap-1.5">
             {previewPicks.map((pick) => (
               <li key={pick.url} className="flex items-baseline gap-2">
                 <span
-                  className="shrink-0 text-xs uppercase tracking-[0.14em]"
-                  style={{ color: 'var(--ink-ghost)' }}
+                  className="shrink-0 text-[10px] font-bold uppercase tracking-[0.2em]"
+                  style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
                 >
                   {pick.source}
                 </span>
                 <span
                   className="truncate text-sm leading-snug"
-                  style={{ color: 'var(--ink-faded)' }}
+                  style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
                 >
                   {pick.title}
                 </span>
@@ -212,10 +235,10 @@ function IssueRow({
             ))}
             {report.picks.length > 3 && (
               <li
-                className="text-xs"
-                style={{ color: 'var(--ink-ghost)' }}
+                className="text-[10px] font-bold uppercase tracking-[0.18em]"
+                style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
               >
-                +{report.picks.length - 3} 条…
+                +{report.picks.length - 3} 条更多
               </li>
             )}
           </ul>
@@ -223,13 +246,13 @@ function IssueRow({
 
         {/* 右：阅读箭头 */}
         <div
-          className="shrink-0 pt-0.5 text-xs uppercase tracking-[0.18em] transition-all duration-150 group-hover:translate-x-1"
-          style={{ color: 'var(--ink-ghost)' }}
+          className="shrink-0 pt-0.5 text-base font-bold transition-transform duration-150 group-hover:translate-x-1 max-[520px]:self-end"
+          style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
         >
-          阅读 →
+          →
         </div>
       </Link>
-    </motion.div>
+    </div>
   );
 }
 
@@ -241,11 +264,11 @@ function EmptyReports() {
   return (
     <div
       className="py-24 text-center"
-      style={{ borderTop: '0.5px solid var(--separator)', borderBottom: '0.5px solid var(--separator)' }}
+      style={{ borderTop: '1px solid var(--ink)', borderBottom: '1px solid var(--ink)' }}
     >
       <p
-        className="text-xs uppercase tracking-[0.18em]"
-        style={{ color: 'var(--ink-ghost)' }}
+        className="text-[11px] font-bold uppercase tracking-[0.28em]"
+        style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
       >
         本专栏尚无出刊记录
       </p>

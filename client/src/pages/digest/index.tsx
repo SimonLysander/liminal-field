@@ -1,12 +1,10 @@
 /**
  * /digest — 精选刊目录页。
  *
- * 期刊范式：报头（刊名 + 卷次）+ 栏目目录列表。
- * 每个事项 = 一个专栏条目（单行，不用卡片网格），整行可点击进 /digest/:topicId。
- * 本页纯 mock 数据（./mock-data），不接 API（task #38 再接）。
+ * 真报纸头版：粗黑横线 + 巨型刊名 + Vol/No small caps 行 + 单列栏目目录。
+ * 设计原则：全靠排版层级，去 icon 去卡片背景，横线即结构。
  */
 import { Link } from 'react-router-dom';
-import { ChevronRight } from 'lucide-react';
 import { motion } from 'motion/react';
 import { appleEase } from '@/lib/motion';
 import { MOCK_TOPICS, MOCK_REPORTS } from './mock-data';
@@ -39,49 +37,49 @@ export default function DigestPublicPage() {
 
         {/* ── 报头区 ── */}
         <motion.header
-          className="mb-12"
-          initial={{ opacity: 0, y: 10 }}
+          className="mb-0"
+          initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, ease: appleEase }}
+          transition={{ duration: 0.3, ease: appleEase }}
         >
-          {/* 卷次行：small caps */}
+          {/* 卷次行 */}
           <p
-            className="mb-4 text-xs uppercase tracking-[0.22em]"
-            style={{ color: 'var(--ink-ghost)' }}
+            className="mb-5 text-[11px] font-bold uppercase tracking-[0.28em]"
+            style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
           >
-            Vol. 1 · 2026
+            Vol. 1 &nbsp;·&nbsp; No. 12 &nbsp;·&nbsp; 2026-06-18 &nbsp;·&nbsp; 由 Aurora 编辑
           </p>
 
-          {/* 刊名 */}
+          {/* 巨型刊名 */}
           <h1
-            className="mb-3 text-5xl font-bold leading-none tracking-tight"
+            className="mb-4 text-7xl font-bold leading-[0.95] tracking-tight max-[520px]:text-5xl"
             style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
           >
             DIGEST · 精选
           </h1>
 
-          {/* tagline */}
+          {/* 副标题 tagline — italic serif */}
           <p
-            className="mb-8 text-xs uppercase tracking-[0.18em]"
-            style={{ color: 'var(--ink-faded)' }}
+            className="mb-6 text-xl italic leading-snug"
+            style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
           >
-            选订自定 · AI 替你筛过 · 周期出刊
+            本期关注 · AI 应用发展 · 摄影活动 · 写作叙事
           </p>
 
-          {/* 报头下方粗横线 */}
-          <div style={{ borderBottom: '2px solid var(--ink)' }} />
+          {/* 报头下方 3px 粗黑横线 */}
+          <div style={{ borderBottom: '3px solid var(--ink)' }} />
         </motion.header>
 
         {/* ── 栏目目录 ── */}
         <motion.section
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 0.4, delay: 0.15, ease: appleEase }}
+          transition={{ duration: 0.3, delay: 0.12, ease: appleEase }}
         >
           {/* 目录标签行 */}
           <p
-            className="mb-6 text-xs uppercase tracking-[0.22em]"
-            style={{ color: 'var(--ink-ghost)' }}
+            className="mt-8 mb-2 text-[11px] font-bold uppercase tracking-[0.28em]"
+            style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
           >
             本期专栏
           </p>
@@ -102,17 +100,14 @@ export default function DigestPublicPage() {
           className="mt-20 text-center"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 0.4, delay: 0.35, ease: appleEase }}
+          transition={{ duration: 0.3, delay: 0.25, ease: appleEase }}
         >
-          <div
-            className="mb-8"
-            style={{ borderTop: '0.5px solid var(--separator)' }}
-          />
+          <div style={{ borderTop: '3px solid var(--ink)' }} />
           <p
-            className="text-xs uppercase tracking-[0.18em]"
-            style={{ color: 'var(--ink-ghost)' }}
+            className="mt-6 text-[10px] font-bold uppercase tracking-[0.28em]"
+            style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
           >
-            由 Aurora 协作维护 · 由你订阅
+            Printed by Aurora &nbsp;·&nbsp; Subscribed by You
           </p>
         </motion.footer>
 
@@ -122,64 +117,63 @@ export default function DigestPublicPage() {
 }
 
 /* ================================================================
- * TopicRow — 单个栏目条目（行式，非卡片）
+ * TopicRow — 单个栏目条目（行式，纯排版，无卡片无图标）
  * ================================================================ */
 
 function TopicRow({ topic, index }: { topic: PublicTopic; index: number }) {
   const count = reportCount(topic.id);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, delay: 0.06 * index, ease: appleEase }}
-    >
+    <div>
+      {/* 行间黑色分隔线（1px 黑，比 separator 深得多） */}
+      <div style={{ borderTop: '1px solid var(--ink)' }} />
+
       <Link
         to={`/digest/${topic.id}`}
-        className="group flex items-baseline justify-between gap-6 py-6 transition-colors duration-150"
-        style={{ borderBottom: '0.5px solid var(--separator)' }}
+        className="group flex items-baseline justify-between gap-6 py-6 transition-opacity duration-150 hover:opacity-70"
+        style={{ animationDelay: `${0.06 * index}s` }}
       >
-        {/* 左侧：栏目名 + 副标题 */}
+        {/* 左侧：栏目名 + italic 副标题 */}
         <div className="min-w-0 flex-1">
           <h2
-            className="text-2xl font-bold leading-snug transition-colors duration-150 group-hover:opacity-80"
+            className="text-3xl font-bold leading-snug tracking-tight"
             style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
           >
             {topic.name}
           </h2>
           <p
-            className="mt-1.5 text-sm leading-relaxed"
-            style={{ color: 'var(--ink-ghost)' }}
+            className="mt-1.5 text-base italic leading-relaxed"
+            style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
           >
             {topic.tagline}
           </p>
         </div>
 
-        {/* 右侧：meta + 箭头 */}
-        <div className="flex shrink-0 items-center gap-4">
+        {/* 右侧：small caps meta + ASCII 箭头 */}
+        <div className="flex shrink-0 items-center gap-6">
           <div className="text-right">
             <p
-              className="text-xs uppercase tracking-[0.16em]"
-              style={{ color: 'var(--ink-ghost)' }}
+              className="text-[10px] font-bold uppercase tracking-[0.28em]"
+              style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
             >
               {count} 期
             </p>
             <p
-              className="mt-0.5 text-xs"
-              style={{ color: 'var(--ink-ghost)' }}
+              className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.22em]"
+              style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
             >
-              {daysAgo(topic.lastReportAt)}更新
+              {daysAgo(topic.lastReportAt)} 更新
             </p>
           </div>
-          <ChevronRight
-            size={15}
-            strokeWidth={1.5}
-            className="transition-transform duration-150 group-hover:translate-x-1"
-            style={{ color: 'var(--ink-ghost)' }}
-          />
+          <span
+            className="text-base font-bold transition-transform duration-150 group-hover:translate-x-1"
+            style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+          >
+            →
+          </span>
         </div>
       </Link>
-    </motion.div>
+    </div>
   );
 }
 
@@ -191,11 +185,11 @@ function EmptyTopics() {
   return (
     <div
       className="py-24 text-center"
-      style={{ borderTop: '0.5px solid var(--separator)', borderBottom: '0.5px solid var(--separator)' }}
+      style={{ borderTop: '1px solid var(--ink)', borderBottom: '1px solid var(--ink)' }}
     >
       <p
-        className="text-xs uppercase tracking-[0.18em]"
-        style={{ color: 'var(--ink-ghost)' }}
+        className="text-[11px] font-bold uppercase tracking-[0.28em]"
+        style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
       >
         暂无专栏
       </p>
