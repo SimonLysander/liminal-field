@@ -26,14 +26,28 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
   const hasBody = body !== undefined && body !== null;
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    credentials: 'include',
-    headers: {
-      ...(hasBody && !isFormData ? { 'Content-Type': 'application/json' } : {}),
-      ...options?.headers,
-    },
-  });
+  // 离线 / DNS 失败 / CORS 拒绝 时 fetch 会抛 TypeError("Failed to fetch")。
+  // 不接住的话调用方拿到的是裸 TypeError，banner / ErrorBoundary 会把英文原文
+  // 直接冒给用户。这里翻译成 ApiError(0, …)，code=0 表示"非 HTTP 层错误"，
+  // 文案在线/离线分桶 —— 离线场景 saveDraft 的 catch 看到这条会知道是网络断，
+  // 配合 localStorage 镜像可以放心继续编辑。
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      ...options,
+      credentials: 'include',
+      headers: {
+        ...(hasBody && !isFormData ? { 'Content-Type': 'application/json' } : {}),
+        ...options?.headers,
+      },
+    });
+  } catch {
+    const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+    throw new ApiError(
+      0,
+      offline ? '已离线，改动暂存本地，联网后自动同步' : '网络请求失败，请稍后重试',
+    );
+  }
 
   const text = await res.text();
   const json = text ? (JSON.parse(text) as ApiResponse<T>) : null;

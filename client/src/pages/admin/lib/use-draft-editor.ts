@@ -15,6 +15,7 @@ import { useConfirm } from '@/contexts/ConfirmContext';
 import { parseError } from '../helpers';
 import { type HeadingEntry, extractHeadingEntriesFromMarkdown } from './markdown-toc';
 import { useLocalDraftBuffer } from './use-local-draft-buffer';
+import { useOnlineStatus } from '@/hooks/use-online-status';
 
 /** 文稿草稿的最小字段(笔记 / 文集条目共有)。场景可扩展(如笔记的 summary / changeType) */
 export interface BaseDraftState {
@@ -370,6 +371,20 @@ export function useDraftEditor<TState extends BaseDraftState>(adapter: DraftEdit
     const timer = window.setTimeout(() => void saveDraft({ silent: true }), 1500);
     return () => window.clearTimeout(timer);
   }, [isDirty, loading, saveDraft]);
+
+  // 联网恢复时把离线期间积累的脏改动补送一次：
+  //   离线时 saveDraft 会失败 → isDirty 保持 true，但 1.5s debounce 已经
+  //   消耗完，再不动键盘就再也不触发 save。这里监听 online false→true，
+  //   只要还脏就立刻 silent 补一次，让用户合上电脑出门→联网→不动也能上送。
+  //   wasOfflineRef 保证只在"真的从离线切回联网"时触发，初次挂载不误触。
+  const online = useOnlineStatus();
+  const wasOfflineRef = useRef(!online);
+  useEffect(() => {
+    if (online && wasOfflineRef.current && isDirty && !loading) {
+      void saveDraft({ silent: true });
+    }
+    wasOfflineRef.current = !online;
+  }, [online, isDirty, loading, saveDraft]);
 
   return {
     state,
