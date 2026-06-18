@@ -1,13 +1,12 @@
 /**
- * /admin/digest/sources — 信息源管理（纯前端 mock，不接 API）
- *
- * 全局共用：一个源可被多事项订阅，不重复抓取。
- * 首期只支持 RSS / Atom，其他 type 在 Dialog 里标为"敬请期待"。
+ * DigestSourcesTab — 信息源管理，作为 Settings sub-tab 内嵌使用。
+ * 从 pages/admin/sources/index.tsx 迁移而来，去掉外层 admin 页面布局壳和「← 返回」面包屑，
+ * 对齐 SkillsTab 的结构：顶层 <div className="space-y-6">，header 用 text-base font-semibold。
+ * 全局共用：一个源可被多事项订阅，不重复抓取。首期只支持 RSS / Atom。
  */
 
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ChevronLeft, Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import {
   Dialog,
@@ -27,7 +26,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { banner } from '@/components/ui/banner-api';
-import { FieldLabel, PrimaryButton, SecondaryButton, DangerButton } from '../settings/SettingsUI';
+import { FieldLabel, PrimaryButton, SecondaryButton, DangerButton } from './SettingsUI';
 
 // ── 本地类型（隔离后端，骨架阶段不 import server types） ──────────────────────
 
@@ -41,7 +40,7 @@ interface InfoSource {
   subscriberCount: number;
 }
 
-// ── Mock 数据 ─────────────────────────────────────────────────────────────────
+// ── Mock 数据（独立变量，避免 react-refresh/only-export-components 警告） ─────
 
 const MOCK_SOURCES: InfoSource[] = [
   { id: 'src_1a2b3c4d5e6f', type: 'rss', name: 'Paul Graham Essays', url: 'http://www.aaronsw.com/2002/feeds/pgessays.rss', enabled: true, lastFetchedAt: '2026-06-18T07:00:00Z', subscriberCount: 2 },
@@ -227,9 +226,9 @@ function SourceForm({ initial, onSubmit, onCancel }: {
   );
 }
 
-// ── 页面主体 ──────────────────────────────────────────────────────────────────
+// ── Tab 主体 ──────────────────────────────────────────────────────────────────
 
-export default function SourcesAdminPage() {
+export function DigestSourcesTab() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<InfoSource | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<InfoSource | null>(null);
@@ -251,52 +250,34 @@ export default function SourcesAdminPage() {
   };
 
   return (
-    <div
-      className="flex flex-1 flex-col overflow-hidden"
-      style={{ background: 'var(--paper)' }}
-    >
-      <div className="mx-auto flex w-full max-w-[var(--layout-reading-max)] flex-col gap-6 px-10 py-9">
-
-        {/* 面包屑 */}
-        <Link
-          to="/admin/digest"
-          className="flex w-fit items-center gap-1 rounded-md px-2 py-1 text-sm transition-colors hover:bg-[var(--hover-overlay)]"
-          style={{ color: 'var(--ink-ghost)' }}
-        >
-          <ChevronLeft size={14} strokeWidth={1.5} />
-          返回智能采集
-        </Link>
-
-        {/* Header */}
-        <div className="space-y-6">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h1 className="text-base font-semibold" style={{ color: 'var(--ink)' }}>
-                信息源
-              </h1>
-              <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-                全局共用 — 一个源可以被多个事项订阅，不重复抓取。首期实现 RSS / Atom，后续扩展。
-              </p>
-            </div>
-            <PrimaryButton onClick={() => setCreating(true)}>
-              + 新建信息源
-            </PrimaryButton>
-          </div>
-          <Separator />
-
-          {/* 列表 */}
-          <section className="space-y-2">
-            {MOCK_SOURCES.map((source) => (
-              <SourceRow
-                key={source.id}
-                source={source}
-                onEdit={() => setEditing(source)}
-                onDelete={() => setConfirmingDelete(source)}
-              />
-            ))}
-          </section>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-base font-semibold" style={{ color: 'var(--ink)' }}>
+            信息源
+          </h1>
+          <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            全局共用 — 一个源可以被多个事项订阅，不重复抓取。首期实现 RSS / Atom，后续扩展。
+          </p>
         </div>
+        <PrimaryButton onClick={() => setCreating(true)}>
+          + 新建信息源
+        </PrimaryButton>
       </div>
+      <Separator />
+
+      {/* 列表 */}
+      <section className="space-y-2">
+        {MOCK_SOURCES.map((source) => (
+          <SourceRow
+            key={source.id}
+            source={source}
+            onEdit={() => setEditing(source)}
+            onDelete={() => setConfirmingDelete(source)}
+          />
+        ))}
+      </section>
 
       {/* 新建 Dialog */}
       <Dialog open={creating} onOpenChange={(v) => !v && setCreating(false)}>

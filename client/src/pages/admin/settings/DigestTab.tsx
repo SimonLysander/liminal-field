@@ -1,12 +1,12 @@
 /**
- * /admin/digest — 智能采集事项列表（纯前端 mock，不接 API）
- *
- * 事项是"关注点"：有名称、cron 节奏、订阅信息源、关键词、AI 判定 prompt。
- * 每次触发后从订阅源拉内容、AI 判定相关性、归档命中条目。
+ * DigestTab — 智能采集事项列表，作为 Settings sub-tab 内嵌使用。
+ * 从 pages/admin/digest/index.tsx 迁移而来，去掉外层 admin 页面布局壳，
+ * 对齐 SkillsTab 的结构：顶层 <div className="space-y-6">，header 用 text-base font-semibold。
+ * 「信息源」入口按钮已移除，信息源现在是同级 tab（digest-sources）。
  */
 
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Pencil, Trash2, ChevronRight } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -27,8 +27,9 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { banner } from '@/components/ui/banner-api';
-import { PrimaryButton, DangerButton } from '../settings/SettingsUI';
-import { TopicForm, type TopicDraft } from './TopicForm';
+import { PrimaryButton, DangerButton } from './SettingsUI';
+import { DigestTopicForm } from './DigestTopicForm';
+import type { TopicDraft } from './DigestTopicForm';
 
 // ── 本地类型 ──────────────────────────────────────────────────────────────────
 
@@ -45,7 +46,7 @@ interface Topic {
   lastRunStatus: 'ok' | 'error' | null;
 }
 
-// ── Mock 数据 ─────────────────────────────────────────────────────────────────
+// ── Mock 数据（独立变量，避免 react-refresh/only-export-components 警告） ─────
 
 const MOCK_TOPICS: Topic[] = [
   { id: 'ci_topic_ai001', name: 'AI 应用发展', cron: '0 8 * * *', cronLabel: '每天 8:00', sourceCount: 3, keywordCount: 12, enabled: true, lastRunAt: '2026-06-18T08:00:00Z', lastRunHits: 5, lastRunStatus: 'ok' },
@@ -164,9 +165,9 @@ function TopicRow({
   );
 }
 
-// ── 页面主体 ──────────────────────────────────────────────────────────────────
+// ── Tab 主体 ──────────────────────────────────────────────────────────────────
 
-export default function DigestAdminPage() {
+export function DigestTab() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Topic | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<Topic | null>(null);
@@ -188,57 +189,43 @@ export default function DigestAdminPage() {
   };
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden" style={{ background: 'var(--paper)' }}>
-      <div className="mx-auto flex w-full max-w-[var(--layout-reading-max)] flex-col gap-6 px-10 py-9">
-        <div className="space-y-6">
-
-          {/* Header */}
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h1 className="text-base font-semibold" style={{ color: 'var(--ink)' }}>
-                智能采集
-              </h1>
-              <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-                配置关注事项，自动从订阅信息源里采集，AI 判定相关性，生成精选报告。
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Link
-                to="/admin/digest/sources"
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm transition-colors duration-100 hover:bg-[var(--shelf)]"
-                style={{ color: 'var(--ink-faded)', border: '1px solid var(--separator)' }}
-              >
-                信息源
-              </Link>
-              <PrimaryButton onClick={() => setCreating(true)}>
-                + 新建事项
-              </PrimaryButton>
-            </div>
-          </div>
-          <Separator />
-
-          {/* 列表 */}
-          <section className="space-y-2">
-            {MOCK_TOPICS.length > 0 ? (
-              MOCK_TOPICS.map((topic) => (
-                <TopicRow
-                  key={topic.id}
-                  topic={topic}
-                  onEdit={() => setEditing(topic)}
-                  onDelete={() => setConfirmingDelete(topic)}
-                />
-              ))
-            ) : (
-              <div
-                className="rounded-lg px-3 py-6 text-center text-xs"
-                style={{ color: 'var(--ink-ghost)', border: '1px dashed var(--separator)' }}
-              >
-                还没有事项，点右上「新建事项」开始关注一个话题。
-              </div>
-            )}
-          </section>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-base font-semibold" style={{ color: 'var(--ink)' }}>
+            智能采集
+          </h1>
+          <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            配置关注事项，自动从订阅信息源里采集，AI 判定相关性，生成精选报告。
+          </p>
         </div>
+        <PrimaryButton onClick={() => setCreating(true)}>
+          + 新建事项
+        </PrimaryButton>
       </div>
+      <Separator />
+
+      {/* 列表 */}
+      <section className="space-y-2">
+        {MOCK_TOPICS.length > 0 ? (
+          MOCK_TOPICS.map((topic) => (
+            <TopicRow
+              key={topic.id}
+              topic={topic}
+              onEdit={() => setEditing(topic)}
+              onDelete={() => setConfirmingDelete(topic)}
+            />
+          ))
+        ) : (
+          <div
+            className="rounded-lg px-3 py-6 text-center text-xs"
+            style={{ color: 'var(--ink-ghost)', border: '1px dashed var(--separator)' }}
+          >
+            还没有事项，点右上「新建事项」开始关注一个话题。
+          </div>
+        )}
+      </section>
 
       {/* 新建 Dialog */}
       <Dialog open={creating} onOpenChange={(v) => !v && setCreating(false)}>
@@ -247,7 +234,7 @@ export default function DigestAdminPage() {
             <DialogTitle>新建事项</DialogTitle>
             <DialogDescription className="sr-only">新建一个智能采集事项，配置信息源和关键词</DialogDescription>
           </DialogHeader>
-          <TopicForm onSubmit={handleCreate} onCancel={() => setCreating(false)} />
+          <DigestTopicForm onSubmit={handleCreate} onCancel={() => setCreating(false)} />
         </DialogContent>
       </Dialog>
 
@@ -259,7 +246,7 @@ export default function DigestAdminPage() {
             <DialogDescription className="sr-only">修改事项配置</DialogDescription>
           </DialogHeader>
           {editing && (
-            <TopicForm
+            <DigestTopicForm
               initial={{ name: editing.name, cron: editing.cron, enabled: editing.enabled }}
               onSubmit={handleUpdate}
               onCancel={() => setEditing(null)}

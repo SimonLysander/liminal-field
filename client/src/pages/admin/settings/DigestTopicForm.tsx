@@ -1,10 +1,11 @@
 /**
- * TopicForm — 事项新建/编辑表单（从 digest/index.tsx 拆出以控制单文件行数）
+ * DigestTopicForm — 事项新建/编辑表单
+ * 从 digest/TopicForm.tsx 迁移到 settings 目录，配合 DigestTab settings sub-tab 使用。
  */
 
 import { useState } from 'react';
 import { ChipSelector } from '@/components/shared/ChipSelector';
-import { FieldLabel, PrimaryButton, SecondaryButton } from '../settings/SettingsUI';
+import { FieldLabel, PrimaryButton, SecondaryButton } from './SettingsUI';
 
 // ── 共享 mock 数据（和主页保持一致，避免 API 依赖） ──────────────────────────
 
@@ -51,7 +52,7 @@ const inputStyle = {
   border: '1px solid var(--separator)',
 };
 
-export function TopicForm({
+export function DigestTopicForm({
   initial,
   onSubmit,
   onCancel,

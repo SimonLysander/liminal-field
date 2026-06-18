@@ -101,12 +101,13 @@ export default function DigestPublicPage() {
           我关心的话题，每天替我筛选一份精选 — 自动采集 + AI 判定 + Aurora 追问。
         </motion.p>
 
-        {/* 事项卡片网格 */}
+        {/* 事项列表：单列纵向，每条占整行 — 像 newsletter / feed 流，
+            不用双列 grid（用户反馈双列不舒服，单列更聚焦阅读节奏）。 */}
         {MOCK_TOPICS.length === 0 ? (
           <EmptyTopics />
         ) : (
           <motion.div
-            className="grid gap-4 md:grid-cols-2"
+            className="flex flex-col gap-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.4, delay: 0.15, ease: appleEase }}

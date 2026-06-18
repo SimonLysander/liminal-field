@@ -46,8 +46,6 @@ const DraftEditPage = lazy(() => import('./pages/admin/edit'));
 const ImportPreviewPage = lazy(() => import('./pages/admin/import-preview'));
 const BatchImportPage = lazy(() => import('./pages/admin/batch-import'));
 const SettingsPage = lazy(() => import('./pages/admin/settings'));
-const DigestAdminPage = lazy(() => import('./pages/admin/digest'));
-const SourcesAdminPage = lazy(() => import('./pages/admin/sources'));
 const DigestPublicPage = lazy(() => import('./pages/digest'));
 const DigestTopicPage = lazy(() => import('./pages/digest/topic'));
 const DigestReportPage = lazy(() => import('./pages/digest/report'));
@@ -218,10 +216,9 @@ function App() {
           <Route path="gallery" element={<Suspense fallback={<LoadingState variant="full" />}><GalleryAdmin /></Suspense>} />
           <Route path="settings" element={<Navigate to="/admin/settings/owner" replace />} />
           <Route path="settings/:tab" element={<Suspense fallback={<LoadingState variant="full" />}><SettingsPage /></Suspense>} />
-          {/* 智能小应用 · 自动信息收集 — 事项管理 + 信息源管理。
-              信息源挂 /admin/digest/sources 下，让 IconRail 前缀匹配能自动高亮「智能采集」。 */}
-          <Route path="digest" element={<Suspense fallback={<LoadingState variant="full" />}><DigestAdminPage /></Suspense>} />
-          <Route path="digest/sources" element={<Suspense fallback={<LoadingState variant="full" />}><SourcesAdminPage /></Suspense>} />
+          {/* 智能采集已迁移到 settings sub-tab，老 URL redirect 防 404 */}
+          <Route path="digest" element={<Navigate to="/admin/settings/digest" replace />} />
+          <Route path="digest/sources" element={<Navigate to="/admin/settings/digest-sources" replace />} />
         </Route>
         <Route
           path="/admin/notes/:id/edit"
