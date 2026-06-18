@@ -49,7 +49,7 @@ const NotesEditPanel = ({ id }: { id: string }) => {
     () => ({
       ready: !!id,
       storageKey: id,
-      initialState: { title: '', summary: '', bodyMarkdown: '', changeNote: '更新内容', changeType: 'patch' },
+      initialState: { title: '', summary: '', bodyMarkdown: '', changeNote: '', changeType: 'patch' },
       async loadDraft() {
         const draft = await contentItemsApi.getDraft(id);
         if (!draft) return null;
@@ -70,7 +70,7 @@ const NotesEditPanel = ({ id }: { id: string }) => {
           title: detail.latestVersion.title,
           summary: detail.latestVersion.summary,
           bodyMarkdown: detail.bodyMarkdown,
-          changeNote: '更新内容',
+          changeNote: '',
           changeType: 'patch',
         };
       },
@@ -131,7 +131,7 @@ const AnthologyNodeEditPanel = ({ id }: { id: string }) => {
     () => ({
       ready: !!id,
       storageKey: `anthology-${id}`,
-      initialState: { title: '', bodyMarkdown: '', changeNote: '更新内容' },
+      initialState: { title: '', bodyMarkdown: '', changeNote: '' },
       async loadDraft() {
         const draft = await workspaceApi.getNodeDraft('anthology', id);
         if (!draft) return null;
@@ -151,7 +151,7 @@ const AnthologyNodeEditPanel = ({ id }: { id: string }) => {
         return {
           title: detail.title,
           bodyMarkdown: detail.bodyMarkdown,
-          changeNote: '更新内容',
+          changeNote: '',
         };
       },
       async saveDraft(state) {

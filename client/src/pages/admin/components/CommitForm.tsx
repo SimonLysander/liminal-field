@@ -19,6 +19,10 @@ export function CommitForm({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  // 必填：trim 后空就拦住。disabled 控制按钮 + Enter，
+  // 用户看到按钮置灰 + placeholder 提示就能理解为什么不能提交，
+  // 不需要额外 FieldError 红字（弹窗本身就小，再加一行错误反而吵）。
+  const canSubmit = changeNote.trim().length > 0;
   return (
     <div>
       <div className="mb-0.5 text-md font-semibold" style={{ color: 'var(--ink)' }}>提交版本</div>
@@ -29,13 +33,14 @@ export function CommitForm({
           type="text"
           value={changeNote}
           onChange={(e) => onChangeNote(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') onConfirm(); }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && canSubmit) onConfirm(); }}
+          placeholder="例如：补充第三章 / 修笔误 / 重排结构"
           autoFocus
         />
       </label>
       <div className="mt-3 flex items-center justify-end gap-1.5">
         <Button variant="ghost" size="sm" type="button" onClick={onCancel}>取消</Button>
-        <Button variant="primary" size="sm" type="button" onClick={onConfirm}>确认提交</Button>
+        <Button variant="primary" size="sm" type="button" disabled={!canSubmit} onClick={onConfirm}>确认提交</Button>
       </div>
     </div>
   );
