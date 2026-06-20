@@ -123,7 +123,8 @@ describe('InfoSourceService.onModuleInit', () => {
       expect(createdDoc.type).toBe('rss');
       expect(typeof createdDoc._id).toBe('string');
       expect((createdDoc._id as string).startsWith('src_')).toBe(true);
-      expect(createdDoc.enabled).toBe(true);
+      // enabled 透传 seed.enabled ?? true：URL 不通的源设 false，其余 true
+      expect(createdDoc.enabled).toBe(SEED_SOURCES[idx].enabled ?? true);
     });
 
     // 验证新 5 类 category 均有对应源被插入（覆盖精简后的所有分类）

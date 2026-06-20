@@ -15,6 +15,11 @@ export interface SeedSource {
   category: InfoSourceCategory;
   rssUrl: string; // 可含 {rsshub} 占位符
   description: string;
+  /**
+   * 默认 true。curl 验证 URL 不通且无原生 RSS 替代时设 false，
+   * 保留条目以备将来重新启用，不影响正常采集。
+   */
+  enabled?: boolean;
 }
 
 export const SEED_SOURCES: SeedSource[] = [
@@ -28,14 +33,18 @@ export const SEED_SOURCES: SeedSource[] = [
   {
     name: 'AlphaSignal',
     category: InfoSourceCategory.ai,
+    // curl 2026-06-20 验：alphasignal.ai 无公开 RSS，仅 email 订阅
     rssUrl: 'https://alphasignal.ai/feed',
     description: 'ML 工程师周报，含模型/GPU/代码动态',
+    enabled: false,
   },
   {
     name: 'The Batch (DeepLearning.AI)',
     category: InfoSourceCategory.ai,
+    // curl 2026-06-20 验：deeplearning.ai 无原生 RSS，纯邮件 newsletter
     rssUrl: 'https://www.deeplearning.ai/the-batch/feed/',
     description: '吴恩达团队 AI 周报',
+    enabled: false,
   },
   {
     name: 'Import AI (Jack Clark)',
@@ -71,8 +80,10 @@ export const SEED_SOURCES: SeedSource[] = [
   {
     name: 'Every',
     category: InfoSourceCategory.ai,
-    rssUrl: 'https://every.to/feed.xml',
-    description: 'Dan Shipper 的 AI + 商业写作集合',
+    // curl 2026-06-20 验：every.to/feed.xml 404；每.to 各子刊有独立 feed，
+    // 换用主刊 Chain of Thought（Dan Shipper 执笔，AI + 商业，最高质量）
+    rssUrl: 'https://every.to/chain-of-thought/feed',
+    description: 'Dan Shipper 的 AI + 商业写作集合（Chain of Thought 主刊）',
   },
   {
     name: 'Simon Willison Blog',
@@ -179,8 +190,9 @@ export const SEED_SOURCES: SeedSource[] = [
   {
     name: 'Decoder by Nilay Patel',
     category: InfoSourceCategory.business,
-    rssUrl:
-      'https://www.theverge.com/decoder-podcast-with-nilay-patel/rss/index.xml',
+    // curl 2026-06-20 验：原 theverge.com/.../rss/index.xml 404；
+    // 正确 feed 来自 Megaphone 托管，通过 Apple Podcast API 确认
+    rssUrl: 'https://feeds.megaphone.fm/recodedecode',
     description: 'The Verge 主编访谈 CEO，科技商业深度',
   },
 

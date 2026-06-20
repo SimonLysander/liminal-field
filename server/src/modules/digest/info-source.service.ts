@@ -118,7 +118,8 @@ export class InfoSourceService implements OnModuleInit {
         config: { url: resolvedUrl },
         category: seed.category,
         description: seed.description,
-        enabled: true,
+        // 透传 seed 的 enabled 标记：URL 不通或无原生 RSS 时 false，其余默认 true
+        enabled: seed.enabled ?? true,
         createdAt: new Date(),
       });
       seededCount++;
