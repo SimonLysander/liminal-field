@@ -7,18 +7,21 @@
  *
  * 版式：
  *   - 报头（标题 + 出版信息行）
- *   - MarkdownBody 渲染报告正文（AI 生成的 markdown，含 ## 章节 + [CIT N] 引用）
- *   - 参考资料列表（findings，带 [CIT N] 序号 + 来源链接）
+ *   - MarkdownBody 渲染报告正文（AI 生成的 markdown，含 ## 章节 + citation 引用）
  *   - 页尾 prev/next 导航（按 siblings publishedAt 升序排列）
  *   - 右栏：已登录 → AdvisorSidebar；未登录 → 占位
  *
  * 三态处理：loading / error（含 404）/ success
  * 注意：report.tsx 不依赖 mock-data.ts，mock 文件保留供 index.tsx / topic.tsx 使用
  *
- * [CIT N] 跳转逻辑（task #53）：
- *   正文预处理将 [CIT N] 替换为 markdown link [\[CIT N\]](#cit-N)，Plate 的
- *   LinkPlugin 会渲染成 <a href="#cit-N">。委托 click 监听拦截 #cit- 链接，
- *   preventDefault 后平滑滚动至参考资料条目，并短暂高亮（淡出）。
+ * Citation 渲染（重构）：
+ *   正文预处理将 [@#CIT N] / [CIT N]（兼容老格式）替换为标准 markdown link：
+ *   [N](目标URL#cit-N "title — sourceName")
+ *   - href 指向真实外部 URL（新标签打开），#cit-N fragment 仅供 CSS 角标选择器命中
+ *   - title 属性提供浏览器原生 hover tooltip（title — sourceName）
+ *   - CSS `.digest-report-body a[href*="#cit-"]` 渲染为 superscript 角标样式（紫色）
+ *   - click 委托强制 window.open(_blank) 确保跨源链接在新标签打开
+ *   - 不再展示底部「参考资料」section
  */
 import { useState, useEffect, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -58,8 +61,6 @@ export default function DigestReportPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** 当前高亮的参考资料 citationId（点击 [CIT N] 跳转后短暂高亮该条） */
-  const [highlightedCitId, setHighlightedCitId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!topicId || !reportId) return;
@@ -89,41 +90,56 @@ export default function DigestReportPage() {
 
   /**
    * 预处理正文 markdown：
-   * 1. 截断参考资料分隔符之后的内容（findings 由 React 自己渲染，避免 Plate 重复渲染）
-   * 2. 将正文中的 [CIT N] 替换为 [\[CIT N\]](#cit-N)
-   *    Plate 的 LinkPlugin 会把标准 markdown link 渲染成 <a>，使之可点击跳转
+   * 1. 截断参考资料分隔符之后的内容（老报告 markdown 末尾可能有，新报告后端不再追加）
+   * 2. 构建 findings 字典（citationId → finding）
+   * 3. 兼容 [@#CIT N]（新格式）和 [CIT N]（老格式），替换为带 title 的 markdown link：
+   *    [N](目标URL#cit-N "title — sourceName")
+   *    - href 是真实外部 URL，#cit-N fragment 供 CSS `.digest-report-body a[href*="#cit-"]` 选择器命中
+   *    - title 属性提供浏览器原生 hover tooltip
+   *    - 找不到对应 finding 的引用直接擦掉（避免渲染坏数据）
    */
   // React Compiler 管控此 memo，dep 数组由 RC 自动优化；传 [data] 是语义保底
   const processedMarkdown = useMemo(() => {
     const md = data?.report.markdown;
     if (!md) return '';
-    // 截断参考资料部分：寻找 "---\n\n## 参考资料" 分隔符（agent 生成格式固定）
+
+    // 截断老报告末尾的参考资料 section（新报告后端不再追加，防御性处理）
     const refSeparator = '\n---\n\n## 参考资料';
     const idx = md.indexOf(refSeparator);
     const body = idx >= 0 ? md.slice(0, idx) : md;
-    // [CIT N] → [\[CIT N\]](#cit-N)，Plate 解析时 \[ 是转义的 [，最终文本为 [CIT N]
-    return body.replace(/\[CIT\s+(\d+)\]/g, '[\\[CIT $1\\]](#cit-$1)');
+
+    // 构建 citationId → finding 映射（用于 hover title）
+    const findingsMap = new Map(
+      data?.report.findings?.map((f) => [f.citationId, f]) ?? [],
+    );
+
+    // [@#CIT N] / [CIT N] → [N](url#cit-N "title — sourceName")
+    return body.replace(/\[(?:@#)?CIT\s+(\d+)\]/g, (_m, nStr: string) => {
+      const n = parseInt(nStr, 10);
+      const f = findingsMap.get(n);
+      if (!f) return ''; // 找不到对应 finding 直接擦掉
+      // title 转义：去掉双引号和反斜杠，防止 markdown link title 解析错位
+      const safeTitle = `${f.title} — ${f.sourceName}`.replace(/[\\"]/g, '');
+      return `[${n}](${f.url}#cit-${n} "${safeTitle}")`;
+    });
   }, [data]);
 
   /**
-   * 委托监听 <a href="#cit-*"> 点击，平滑滚动到参考资料对应条目并短暂高亮。
-   * 用 document 委托而非 ref，是因为 Plate 渲染的 <a> 在内部 shadow DOM 外，
-   * 且 Plate 自己也会处理内部 link 点击（LinkPlugin），委托拦截在冒泡阶段走得到。
+   * 委托监听 citation 角标点击，强制在新标签打开目标网页。
+   * href 形如 "https://example.com/article#cit-N"：URL 指向外部资源，#cit-N fragment 仅供 CSS 选择。
+   * Plate LinkPlugin 可能拦截 link 点击，用 document 委托在冒泡阶段统一处理，确保跨源链接
+   * 不会在当前页内导航。
    */
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       const target = (e.target as HTMLElement).closest('a');
       if (!target) return;
       const href = target.getAttribute('href');
-      if (!href?.startsWith('#cit-')) return;
+      // 只处理包含 #cit- fragment 的 citation 链接
+      if (!href?.includes('#cit-')) return;
       e.preventDefault();
-      const elementId = href.slice(1); // "cit-N"
-      const num = parseInt(elementId.replace('cit-', ''), 10);
-      if (Number.isNaN(num)) return;
-      document.getElementById(elementId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      setHighlightedCitId(num);
-      // 2.5 秒后清除高亮（仅当未被新点击覆盖时才清空，防止多次快速点击互相干扰）
-      window.setTimeout(() => setHighlightedCitId((cur) => (cur === num ? null : cur)), 2500);
+      // 强制在新标签打开，防止 Plate 内部路由拦截
+      window.open(href, '_blank', 'noopener,noreferrer');
     }
     document.addEventListener('click', handleClick);
     return () => document.removeEventListener('click', handleClick);
@@ -254,9 +270,11 @@ export default function DigestReportPage() {
             <div style={{ borderBottom: '3px solid var(--ink)' }} />
           </motion.header>
 
-          {/* ── 报告正文（MarkdownBody） ── */}
+          {/* ── 报告正文（MarkdownBody）──
+              digest-report-body：配合 index.css 中 citation 角标 CSS 规则，
+              将正文内的 a[href*="#cit-"] 渲染为 superscript 小数字（紫色角标） */}
           <motion.div
-            className="mt-8"
+            className="digest-report-body mt-8"
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: 0.1, ease: appleEase }}
@@ -275,81 +293,6 @@ export default function DigestReportPage() {
               </p>
             )}
           </motion.div>
-
-          {/* ── 参考资料（findings） ── */}
-          {report.findings.length > 0 && (
-            <motion.section
-              className="mt-12"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.3, delay: 0.15, ease: appleEase }}
-            >
-              <div style={{ borderTop: '1px solid var(--ink)' }} />
-
-              <p
-                className="mt-6 mb-4 text-[11px] font-bold uppercase tracking-[0.28em]"
-                style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
-              >
-                参考资料
-              </p>
-
-              <ol className="flex flex-col gap-3">
-                {report.findings.map((f) => {
-                  const isHighlighted = highlightedCitId === f.citationId;
-                  return (
-                    /* id="cit-N" 是正文 [CIT N] 锚点跳转的目标；高亮通过 --accent-soft 背景过渡实现 */
-                    <li
-                      key={f.citationId}
-                      id={`cit-${f.citationId}`}
-                      className="flex items-baseline gap-3 rounded px-2 py-1 transition-colors duration-500"
-                      style={{
-                        background: isHighlighted ? 'var(--accent-soft)' : 'transparent',
-                      }}
-                    >
-                      {/* [CIT N] 标注 */}
-                      <span
-                        className="shrink-0 text-[10px] font-bold uppercase tracking-[0.22em]"
-                        style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
-                      >
-                        [{f.citationId}]
-                      </span>
-
-                      <div className="min-w-0">
-                        {/* 来源名 small caps */}
-                        <span
-                          className="mr-2 text-[10px] font-bold uppercase tracking-[0.2em]"
-                          style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
-                        >
-                          {f.sourceName}
-                        </span>
-
-                        {/* 标题链接 */}
-                        <a
-                          href={f.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm leading-snug transition-opacity duration-150 hover:opacity-60"
-                          style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
-                        >
-                          {f.title}
-                        </a>
-
-                        {/* 发布时间 */}
-                        {f.publishedAt && (
-                          <span
-                            className="ml-2 text-[10px] font-bold uppercase tracking-[0.16em]"
-                            style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
-                          >
-                            {formatDate(f.publishedAt)}
-                          </span>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
-            </motion.section>
-          )}
 
           {/* ── 页尾 ── */}
           <motion.div

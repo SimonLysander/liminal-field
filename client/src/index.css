@@ -1275,3 +1275,28 @@ body.gallery-immersive aside {
     padding: 2px 0 4px;
   }
 }
+
+/* ── Digest 报告正文 citation 角标 ─────────────────────────────────────────────
+ * 匹配规则：.digest-report-body 容器内，href 含 "#cit-" 的 <a>（即 citation 链接）。
+ * href 形如 "https://external.url/article#cit-N"——前半段是目标网页，#cit-N 仅供选择器命中。
+ * 渲染效果：行内 superscript 紫色小数字，hover 有淡底，click 由 JS 委托强制新标签打开。
+ * ─────────────────────────────────────────────────────────────────────────────── */
+.digest-report-body a[href*="#cit-"] {
+  display: inline;
+  font-size: 0.7em;
+  vertical-align: super;
+  line-height: 1;
+  margin: 0 1px;
+  padding: 0 3px;
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 3px;
+  transition: background-color 150ms ease;
+  cursor: pointer;
+}
+.digest-report-body a[href*="#cit-"]:hover {
+  background-color: var(--accent-soft);
+}
+.digest-report-body a[href*="#cit-"]::before { content: '['; opacity: 0.5; }
+.digest-report-body a[href*="#cit-"]::after  { content: ']'; opacity: 0.5; }

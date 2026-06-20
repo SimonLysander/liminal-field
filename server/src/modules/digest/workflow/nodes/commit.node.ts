@@ -3,16 +3,16 @@
  *
  * 步骤（严格有序）：
  * 1. 找事项容器对应的 NavigationNode（parentNode）
- * 2. 构建完整 markdown（报告正文 + 参考资料列表）
- * 3. ContentService.createContent → ContentItem
- * 4. 在 digest scope 下创建子 NavigationNode（报告 entry）
- * 5. ContentService.saveContent commit（写 Git 归档 + snapshot）
- * 6. ProcessedFeedItemRepository.create × findings.length（去重记录）
- * 7. return { reportContentItemId }
+ * 2. ContentService.createContent → ContentItem
+ * 3. 在 digest scope 下创建子 NavigationNode（报告 entry）
+ * 4. ContentService.saveContent commit（写 Git 归档 + snapshot）
+ * 5. ProcessedFeedItemRepository.create × findings.length（去重记录）
+ * 6. return { reportContentItemId }
  *
  * 设计决策：
  * - 不动 workflow service 层的 DigestTask 状态——由 DigestWorkflowService 统一管理。
- * - buildReferences 把 findings 转成 markdown 参考资料列表，追加在报告末尾。
+ * - findings 存于 DigestTask，前端通过 PublicReportDto.findings 读取用于 citation hover tooltip，
+ *   不再拼接到 markdown 末尾（重构：角标 + hover tooltip 方案，去掉底部参考资料 section）。
  * - ProcessedFeedItem 写法：topicId + sourceId + itemGuid（唯一索引去重基准）。
  */
 import { Injectable, Logger } from '@nestjs/common';
@@ -43,16 +43,12 @@ function buildPfiId(): string {
   return `pfi_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
 }
 
-function buildReferences(findings: Finding[]): string {
-  if (findings.length === 0) return '';
-  const lines = findings.map(
-    (f) =>
-      `[CIT ${f.citationId}] [${f.title}](${f.url})` +
-      (f.sourceName ? ` — ${f.sourceName}` : '') +
-      (f.publishedAt ? ` (${f.publishedAt.toISOString().slice(0, 10)})` : ''),
-  );
-  return `## 参考资料\n\n${lines.join('\n')}`;
-}
+/**
+ * buildReferences — 已停用，不再追加到 markdown。
+ * findings 保留在 DigestTask，前端通过 PublicReportDto.findings 做 hover tooltip。
+ * 函数保留注释以记录历史决策，避免将来重复添加。
+ */
+// function buildReferences(findings: Finding[]): string { ... }
 
 @Injectable()
 export class CommitNode {
@@ -75,18 +71,15 @@ export class CommitNode {
     // 1. 找事项容器对应的 NavigationNode（parentNode）
     const parentNode = await this.navigationRepo.findByContentItemId(topicId);
 
-    // 2. 构建完整 markdown（报告正文 + 参考资料）
-    const refs = buildReferences(findings);
-    const fullMarkdown = refs ? `${markdown}\n\n---\n\n${refs}` : markdown;
-
-    // 3. 创建 ContentItem
+    // 2. 创建 ContentItem
+    // 注意：findings 不再拼接到 markdown，前端通过 PublicReportDto.findings 渲染 hover tooltip
     const ci = await this.contentService.createContent({
       title: headline,
       summary: markdown.slice(0, 200),
       createdBy: 'digest-workflow',
     });
 
-    // 4. 创建子 NavigationNode（digest scope，挂在事项容器下）
+    // 3. 创建子 NavigationNode（digest scope，挂在事项容器下）
     const parentId = parentNode ? parentNode._id.toString() : undefined;
     const siblings = parentId
       ? await this.navigationRepo.listByParentId(
@@ -103,18 +96,19 @@ export class CommitNode {
       order: siblings.length,
     });
 
-    // 5. saveContent commit（写 Git 归档 + snapshot）
+    // 4. saveContent commit（写 Git 归档 + snapshot）
+    // bodyMarkdown 直接用 compose 输出的正文（不再追加参考资料 section）
     await this.contentService.saveContent(ci.id, {
       title: headline,
       summary: markdown.slice(0, 200),
       status: ContentStatus.committed,
-      bodyMarkdown: fullMarkdown,
+      bodyMarkdown: markdown,
       changeNote: '智能采集自动生成',
       action: ContentSaveAction.commit,
       source: 'digest',
     });
 
-    // 6. 写 ProcessedFeedItem（去重记录），忽略重复键错误（幂等）
+    // 5. 写 ProcessedFeedItem（去重记录），忽略重复键错误（幂等）
     const pickedAt = new Date();
     const pfiWrites = findings.map((f) =>
       this.pfiRepo

@@ -321,7 +321,7 @@ describe('Digest Case 2: 完整 workflow 跑通（mock LLM）', () => {
       object: {
         headline: 'e2e 测试本期',
         markdown:
-          '## 概要\n\n本期内容 [CIT 1] 与 [CIT 2]。\n\n这是 e2e 自动生成的报告正文。',
+          '## 概要\n\n本期内容 [@#CIT 1] 与 [@#CIT 2]。\n\n这是 e2e 自动生成的报告正文。',
       },
     } as any);
   });
