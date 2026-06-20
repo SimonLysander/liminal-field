@@ -20,12 +20,23 @@ import { TypegooseModule } from 'nestjs-typegoose';
 
 import { InfoSource } from './info-source.entity';
 import { InfoSourceRepository } from './info-source.repository';
+import { InfoSourceService } from './info-source.service';
+import { InfoSourceController } from './info-source.controller';
 import { SmartTopicConfig } from './smart-topic-config.entity';
 import { SmartTopicConfigRepository } from './smart-topic-config.repository';
 
 @Module({
   imports: [TypegooseModule.forFeature([InfoSource, SmartTopicConfig])],
-  providers: [InfoSourceRepository, SmartTopicConfigRepository],
-  exports: [InfoSourceRepository, SmartTopicConfigRepository],
+  controllers: [InfoSourceController],
+  providers: [
+    InfoSourceRepository,
+    InfoSourceService,
+    SmartTopicConfigRepository,
+  ],
+  exports: [
+    InfoSourceRepository,
+    InfoSourceService,
+    SmartTopicConfigRepository,
+  ],
 })
 export class DigestModule {}

@@ -3,9 +3,11 @@
  * 从 pages/admin/sources/index.tsx 迁移而来，去掉外层 admin 页面布局壳和「← 返回」面包屑，
  * 对齐 SkillsTab 的结构：顶层 <div className="space-y-6">，header 用 text-base font-semibold。
  * 全局共用：一个源可被多事项订阅，不重复抓取。首期只支持 RSS / Atom。
+ *
+ * 数据契约: client/src/services/info-sources.ts
  */
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -27,28 +29,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { banner } from '@/components/ui/banner-api';
 import { FieldLabel, PrimaryButton, SecondaryButton, DangerButton } from './SettingsUI';
-
-// ── 本地类型（隔离后端，骨架阶段不 import server types） ──────────────────────
-
-interface InfoSource {
-  id: string;
-  type: 'rss';
-  name: string;
-  url: string;
-  enabled: boolean;
-  lastFetchedAt: string | null;
-  subscriberCount: number;
-}
-
-// ── Mock 数据（独立变量，避免 react-refresh/only-export-components 警告） ─────
-
-const MOCK_SOURCES: InfoSource[] = [
-  { id: 'src_1a2b3c4d5e6f', type: 'rss', name: 'Paul Graham Essays', url: 'http://www.aaronsw.com/2002/feeds/pgessays.rss', enabled: true, lastFetchedAt: '2026-06-18T07:00:00Z', subscriberCount: 2 },
-  { id: 'src_7g8h9i0j1k2l', type: 'rss', name: 'Hacker News Frontpage', url: 'https://hnrss.org/frontpage', enabled: true, lastFetchedAt: '2026-06-18T08:30:00Z', subscriberCount: 1 },
-  { id: 'src_3m4n5o6p7q8r', type: 'rss', name: 'LessWrong', url: 'https://www.lesswrong.com/feed.xml', enabled: false, lastFetchedAt: null, subscriberCount: 0 },
-  { id: 'src_9s0t1u2v3w4x', type: 'rss', name: '少数派', url: 'https://sspai.com/feed', enabled: true, lastFetchedAt: '2026-06-18T06:15:00Z', subscriberCount: 1 },
-  { id: 'src_5y6z7a8b9c0d', type: 'rss', name: '阮一峰的网络日志', url: 'http://www.ruanyifeng.com/blog/atom.xml', enabled: true, lastFetchedAt: '2026-06-18T05:45:00Z', subscriberCount: 3 },
-];
+import { infoSourcesApi } from '@/services/info-sources';
+import type { InfoSource } from '@/services/info-sources';
 
 // ── 工具函数 ──────────────────────────────────────────────────────────────────
 
@@ -62,17 +44,25 @@ function formatRelativeTime(iso: string): string {
   return `${Math.floor(hr / 24)} 天前`;
 }
 
+function getUrl(source: InfoSource): string {
+  const url = source.config['url'];
+  return typeof url === 'string' ? url : '';
+}
+
 // ── 子组件：单行信息源 ─────────────────────────────────────────────────────────
 
 function SourceRow({
   source,
   onEdit,
   onDelete,
+  onToggleEnabled,
 }: {
   source: InfoSource;
   onEdit: () => void;
   onDelete: () => void;
+  onToggleEnabled: () => void;
 }) {
+  const url = getUrl(source);
   return (
     <div
       className="flex items-center gap-3 rounded-lg px-4 py-3"
@@ -102,24 +92,25 @@ function SourceRow({
           <span
             className="truncate font-mono text-2xs"
             style={{ color: 'var(--ink-ghost)' }}
-            title={source.url}
+            title={url}
           >
-            {source.url}
+            {url}
           </span>
         </div>
         <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
           {source.lastFetchedAt
             ? `上次抓取 ${formatRelativeTime(source.lastFetchedAt)}`
             : '尚未抓取'}
-          {' · '}
-          {source.subscriberCount} 个事项订阅
+          {source.lastFetchStatus === 'failed' && source.lastFetchError
+            ? ` · 上次失败: ${source.lastFetchError}`
+            : ''}
         </p>
       </div>
 
-      {/* enabled 状态 — 视觉占位，点击提示敬请期待 */}
+      {/* enabled 状态切换 */}
       <button
         type="button"
-        onClick={() => banner.info('敬请期待')}
+        onClick={onToggleEnabled}
         className="shrink-0 rounded-full px-2 py-0.5 text-2xs font-medium transition-colors"
         style={
           source.enabled
@@ -168,27 +159,26 @@ const OTHER_TYPES = [
 
 interface SourceDraft { name: string; url: string; enabled: boolean; }
 
-// 表单输入公共样式
 const inputCls = 'mt-1 w-full rounded-lg px-3 py-2 text-sm outline-none';
 const inputSty = { background: 'var(--paper-white)', color: 'var(--ink)', border: '1px solid var(--separator)' };
 
-function SourceForm({ initial, onSubmit, onCancel }: {
+function SourceForm({ initial, onSubmit, onCancel, saving }: {
   initial?: InfoSource;
   onSubmit: (draft: SourceDraft) => void;
   onCancel: () => void;
+  saving: boolean;
 }) {
   const [draft, setDraft] = useState<SourceDraft>({
     name: initial?.name ?? '',
-    url: initial?.url ?? '',
+    url: getUrl(initial as InfoSource) ?? '',
     enabled: initial?.enabled ?? true,
   });
-  const canSubmit = draft.name.trim().length > 0 && draft.url.trim().length > 0;
+  const canSubmit = draft.name.trim().length > 0 && draft.url.trim().length > 0 && !saving;
 
   return (
     <div className="space-y-4">
       <div>
         <FieldLabel>类型</FieldLabel>
-        {/* 首期固定 rss，其他 type disabled 敬请期待 */}
         <select disabled defaultValue="rss" className={inputCls} style={inputSty}>
           <option value="rss">RSS / Atom</option>
           {OTHER_TYPES.map((t) => (
@@ -198,29 +188,50 @@ function SourceForm({ initial, onSubmit, onCancel }: {
       </div>
       <div>
         <FieldLabel>订阅 URL</FieldLabel>
-        <input type="url" value={draft.url} onChange={(e) => setDraft((d) => ({ ...d, url: e.target.value }))}
-          placeholder="https://example.com/feed.xml" className={inputCls} style={inputSty} />
+        <input
+          type="url"
+          value={draft.url}
+          onChange={(e) => setDraft((d) => ({ ...d, url: e.target.value }))}
+          placeholder="https://example.com/feed.xml"
+          className={inputCls}
+          style={inputSty}
+          disabled={saving}
+        />
       </div>
       <div>
         <FieldLabel>名称</FieldLabel>
-        <input type="text" value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-          placeholder="Paul Graham Essays" className={inputCls} style={inputSty} />
+        <input
+          type="text"
+          value={draft.name}
+          onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+          placeholder="Paul Graham Essays"
+          className={inputCls}
+          style={inputSty}
+          disabled={saving}
+        />
       </div>
       <div className="flex items-center gap-3">
         <FieldLabel>启用</FieldLabel>
-        <button type="button" role="switch" aria-checked={draft.enabled}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={draft.enabled}
           onClick={() => setDraft((d) => ({ ...d, enabled: !d.enabled }))}
-          className="relative h-5 w-9 rounded-full transition-colors duration-150"
-          style={{ background: draft.enabled ? 'var(--accent)' : 'var(--separator)' }}>
-          <span className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-150"
-            style={{ left: draft.enabled ? '1.125rem' : '0.125rem' }} />
+          disabled={saving}
+          className="relative h-5 w-9 rounded-full transition-colors duration-150 disabled:opacity-50"
+          style={{ background: draft.enabled ? 'var(--accent)' : 'var(--separator)' }}
+        >
+          <span
+            className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-150"
+            style={{ left: draft.enabled ? '1.125rem' : '0.125rem' }}
+          />
         </button>
       </div>
       <div className="flex gap-2 pt-2">
         <PrimaryButton onClick={() => canSubmit && onSubmit(draft)} disabled={!canSubmit}>
-          {initial ? '保存' : '创建'}
+          {saving ? '保存中...' : initial ? '保存' : '创建'}
         </PrimaryButton>
-        <SecondaryButton onClick={onCancel}>取消</SecondaryButton>
+        <SecondaryButton onClick={onCancel} disabled={saving}>取消</SecondaryButton>
       </div>
     </div>
   );
@@ -229,24 +240,86 @@ function SourceForm({ initial, onSubmit, onCancel }: {
 // ── Tab 主体 ──────────────────────────────────────────────────────────────────
 
 export function DigestSourcesTab() {
+  const [sources, setSources] = useState<InfoSource[]>([]);
+  const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<InfoSource | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<InfoSource | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
-  const handleCreate = (draft: SourceDraft) => {
-    banner.success(`信息源「${draft.name}」已新建`);
-    setCreating(false);
+  const loadData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const data = await infoSourcesApi.list();
+      setSources(data);
+    } catch {
+      banner.error('加载信息源列表失败');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 初始数据加载
+    void loadData();
+  }, [loadData]);
+
+  const handleCreate = async (draft: SourceDraft) => {
+    setSaving(true);
+    try {
+      await infoSourcesApi.create({ type: 'rss', name: draft.name, config: { url: draft.url }, enabled: draft.enabled });
+      banner.success(`信息源「${draft.name}」已新建`);
+      setCreating(false);
+      await loadData(true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '创建失败';
+      banner.error(msg);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleUpdate = (draft: SourceDraft) => {
-    banner.success(`信息源「${draft.name}」已保存`);
-    setEditing(null);
+  const handleUpdate = async (draft: SourceDraft) => {
+    if (!editing) return;
+    setSaving(true);
+    try {
+      await infoSourcesApi.update(editing.id, { name: draft.name, config: { url: draft.url }, enabled: draft.enabled });
+      banner.success(`信息源「${draft.name}」已保存`);
+      setEditing(null);
+      await loadData(true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '保存失败';
+      banner.error(msg);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDelete = () => {
+  const handleToggleEnabled = async (source: InfoSource) => {
+    try {
+      await infoSourcesApi.update(source.id, { enabled: !source.enabled });
+      await loadData(true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '操作失败';
+      banner.error(msg);
+    }
+  };
+
+  const handleDelete = async () => {
     if (!confirmingDelete) return;
-    banner.success(`信息源「${confirmingDelete.name}」已删除`);
-    setConfirmingDelete(null);
+    setDeleting(true);
+    try {
+      await infoSourcesApi.delete(confirmingDelete.id);
+      banner.success(`信息源「${confirmingDelete.name}」已删除`);
+      setConfirmingDelete(null);
+      await loadData(true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '删除失败';
+      banner.error(msg);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -269,14 +342,34 @@ export function DigestSourcesTab() {
 
       {/* 列表 */}
       <section className="space-y-2">
-        {MOCK_SOURCES.map((source) => (
-          <SourceRow
-            key={source.id}
-            source={source}
-            onEdit={() => setEditing(source)}
-            onDelete={() => setConfirmingDelete(source)}
-          />
-        ))}
+        {loading ? (
+          <>
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="h-16 animate-pulse rounded-lg"
+                style={{ background: 'var(--shelf)' }}
+              />
+            ))}
+          </>
+        ) : sources.length > 0 ? (
+          sources.map((source) => (
+            <SourceRow
+              key={source.id}
+              source={source}
+              onEdit={() => setEditing(source)}
+              onDelete={() => setConfirmingDelete(source)}
+              onToggleEnabled={() => void handleToggleEnabled(source)}
+            />
+          ))
+        ) : (
+          <div
+            className="rounded-lg px-3 py-6 text-center text-xs"
+            style={{ color: 'var(--ink-ghost)', border: '1px dashed var(--separator)' }}
+          >
+            暂无信息源。点右上「新建信息源」开始。
+          </div>
+        )}
       </section>
 
       {/* 新建 Dialog */}
@@ -289,8 +382,9 @@ export function DigestSourcesTab() {
             </DialogDescription>
           </DialogHeader>
           <SourceForm
-            onSubmit={handleCreate}
+            onSubmit={(draft) => void handleCreate(draft)}
             onCancel={() => setCreating(false)}
+            saving={saving}
           />
         </DialogContent>
       </Dialog>
@@ -307,8 +401,9 @@ export function DigestSourcesTab() {
           {editing && (
             <SourceForm
               initial={editing}
-              onSubmit={handleUpdate}
+              onSubmit={(draft) => void handleUpdate(draft)}
               onCancel={() => setEditing(null)}
+              saving={saving}
             />
           )}
         </DialogContent>
@@ -326,15 +421,14 @@ export function DigestSourcesTab() {
             </AlertDialogTitle>
             <AlertDialogDescription>
               此操作不可撤销。
-              {confirmingDelete && confirmingDelete.subscriberCount > 0
-                ? ` 当前有 ${confirmingDelete.subscriberCount} 个事项订阅了此源，删除后这些事项将抓不到此源的内容。`
-                : ''}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
             <AlertDialogAction asChild>
-              <DangerButton onClick={handleDelete}>删除</DangerButton>
+              <DangerButton onClick={() => void handleDelete()} disabled={deleting}>
+                {deleting ? '删除中...' : '删除'}
+              </DangerButton>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
