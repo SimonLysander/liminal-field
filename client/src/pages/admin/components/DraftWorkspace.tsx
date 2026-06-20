@@ -33,6 +33,7 @@ export const DraftWorkspace = ({
   /* Keyboard shortcuts: Cmd+S → commit, Cmd+Shift+S → save draft */
   useEffect(() => {
     const handleKeydown = (event: KeyboardEvent) => {
+      if (event.isComposing) return;
       const isSaveKey =
         event.key.toLowerCase() === 's' && (event.metaKey || event.ctrlKey);
       if (!isSaveKey) return;

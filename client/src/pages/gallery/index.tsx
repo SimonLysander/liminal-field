@@ -663,6 +663,7 @@ export default function GalleryPage() {
   // ── 键盘导航 ────────────────────────────────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.isComposing) return;
       switch (e.key) {
         case 'ArrowLeft':  navigatePhoto(-1); break;
         case 'ArrowRight': navigatePhoto(1);  break;
