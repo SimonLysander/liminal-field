@@ -83,13 +83,34 @@ export class DigestTaskRepository {
   }
 
   /**
-   * 追加 findings（save_finding 工具在 react_agent loop 中调用）。
+   * 追加 findings（pick 工具在 react_agent loop 中调用）。
    * 用 $push 原子追加，不覆盖已有 findings，支持并发 step。
    */
   async appendFindings(id: string, newFindings: Finding[]): Promise<void> {
     if (newFindings.length === 0) return;
     await this.model
       .updateOne({ _id: id }, { $push: { findings: { $each: newFindings } } })
+      .exec();
+  }
+
+  /**
+   * 工作流成功完成时调用：写入 status=done + reportContentItemId + reportSummary + completedAt。
+   * 与 updateStatus 分开是为了让调用方语义清晰，不必构造完整 patch 对象。
+   */
+  async markDone(
+    id: string,
+    reportContentItemId: string,
+    summary: string,
+  ): Promise<void> {
+    await this.model
+      .findByIdAndUpdate(id, {
+        $set: {
+          status: DigestTaskStatus.done,
+          reportContentItemId,
+          reportSummary: summary,
+          completedAt: new Date(),
+        },
+      })
       .exec();
   }
 }

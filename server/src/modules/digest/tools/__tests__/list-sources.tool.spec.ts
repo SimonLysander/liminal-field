@@ -1,26 +1,36 @@
 /**
- * list_sources 工具单元测试
+ * list_sources (v3) 工具单元测试
  *
- * 测试覆盖：
- *   1. 正常返回 sources 列表（包含 capabilities）
- *   2. 事项配置不存在 → not_found
- *   3. 事项无订阅信息源 → ok + total:0
+ * 覆盖：
+ *   1. 正常：返回 sources 列表，分配 ref s1/s2，写入 sourceRefsMap
+ *   2. 事项无订阅信息源 → not_found
+ *   3. stcRepo 返回 null（事项不存在）→ not_found
  */
+
 import { createListSourcesTool } from '../list-sources.tool';
 import type { InfoSourceRepository } from '../../info-source.repository';
 import type { SmartTopicConfigRepository } from '../../smart-topic-config.repository';
 import type { InfoSource } from '../../info-source.entity';
 import type { SmartTopicConfig } from '../../smart-topic-config.entity';
+import type { TaskContext } from '../digest-tools.factory';
 import { InfoSourceType } from '../../info-source.entity';
 
-// execute 在 AI SDK Tool 类型上是可选的，统一用 helper 绕过类型检查
 const run = (t: unknown, input: unknown): Promise<string> =>
   (t as { execute: (i: unknown, o: unknown) => Promise<string> }).execute(
     input,
     {},
   );
 
-// ── Mocks ─────────────────────────────────────────────────────────────────────
+function makeCtx(overrides?: Partial<TaskContext>): TaskContext {
+  return {
+    taskId: 'dt_test',
+    topicId: 'ci_topic001',
+    refCounter: { source: 0, item: 0 },
+    sourceRefsMap: new Map(),
+    fetchedItemsMap: new Map(),
+    ...overrides,
+  };
+}
 
 function makeInfoSourceRepo(sources: InfoSource[]): InfoSourceRepository {
   return {
@@ -36,82 +46,76 @@ function makeStcRepo(
   } as unknown as SmartTopicConfigRepository;
 }
 
-function makeSource(overrides: Partial<InfoSource> = {}): InfoSource {
+function makeSource(id: string, name: string): InfoSource {
   return {
-    _id: 'src_001',
+    _id: id,
     type: InfoSourceType.rss,
-    name: 'Test RSS',
-    config: { url: 'https://example.com/feed' },
+    name,
+    config: { url: `https://example.com/feed/${id}` },
     enabled: true,
     createdAt: new Date(),
-    ...overrides,
   };
 }
 
-function makeConfig(
-  overrides: Partial<SmartTopicConfig> = {},
-): SmartTopicConfig {
+function makeConfig(sourceIds: string[]): SmartTopicConfig {
   return {
     _id: 'stc_001',
     contentItemId: 'ci_topic001',
-    sourceIds: ['src_001'],
+    sourceIds,
     cron: '0 8 * * *',
     keywords: [],
-    prompt: '科技新闻',
+    prompt: '测试',
     enabled: true,
     extractFields: [],
     topN: 10,
     createdAt: new Date(),
-    ...overrides,
   };
 }
 
-// ── Tests ──────────────────────────────────────────────────────────────────────
-
-describe('list_sources tool', () => {
-  it('Case 1: 正常返回 sources 列表，包含 capabilities', async () => {
-    const source = makeSource();
-    const config = makeConfig({ sourceIds: ['src_001'] });
+describe('list_sources (v3)', () => {
+  it('Case 1: 正常 — 分配 ref s1/s2，写入 sourceRefsMap', async () => {
+    const ctx = makeCtx();
     const tool = createListSourcesTool({
-      infoSourceRepo: makeInfoSourceRepo([source]),
-      stcRepo: makeStcRepo(config),
+      infoSourceRepo: makeInfoSourceRepo([
+        makeSource('src_001', 'HN'),
+        makeSource('src_002', 'Reddit'),
+      ]),
+      stcRepo: makeStcRepo(makeConfig(['src_001', 'src_002'])),
+      ctx,
     });
 
-    const result = await run(tool, { topicId: 'ci_topic001' });
-    const parsed = JSON.parse(result);
+    const result = JSON.parse(await run(tool, {}));
 
-    expect(parsed.meta.status).toBe('ok');
-    expect(parsed.meta.total).toBe(1);
-    expect(parsed.meta.sources).toHaveLength(1);
-    expect(parsed.meta.sources[0].id).toBe('src_001');
-    expect(parsed.meta.sources[0].capabilities).toContain('fetch');
-    expect(parsed.meta.sources[0].capabilities).toContain('search');
-    expect(parsed.meta.sources[0].capabilities).toContain('read_full');
+    expect(result.meta.status).toBe('ok');
+    expect(result.meta.sources).toHaveLength(2);
+    expect(result.meta.sources[0].ref).toBe('s1');
+    expect(result.meta.sources[1].ref).toBe('s2');
+    expect(ctx.sourceRefsMap.size).toBe(2);
+    expect(ctx.sourceRefsMap.has('s1')).toBe(true);
+    expect(ctx.sourceRefsMap.get('s1')?.name).toBe('HN');
   });
 
-  it('Case 2: 事项配置不存在 → status not_found', async () => {
+  it('Case 2: 无订阅源 → not_found', async () => {
+    const ctx = makeCtx();
+    const tool = createListSourcesTool({
+      infoSourceRepo: makeInfoSourceRepo([]),
+      stcRepo: makeStcRepo(makeConfig([])),
+      ctx,
+    });
+
+    const result = JSON.parse(await run(tool, {}));
+    expect(result.meta.status).toBe('not_found');
+  });
+
+  it('Case 3: stcRepo 返回 null → not_found', async () => {
+    const ctx = makeCtx();
     const tool = createListSourcesTool({
       infoSourceRepo: makeInfoSourceRepo([]),
       stcRepo: makeStcRepo(null),
+      ctx,
     });
 
-    const result = await run(tool, { topicId: 'ci_nonexistent' });
-    const parsed = JSON.parse(result);
-
-    expect(parsed.meta.status).toBe('not_found');
-  });
-
-  it('Case 3: 事项无订阅信息源 → ok + total:0', async () => {
-    const config = makeConfig({ sourceIds: [] });
-    const tool = createListSourcesTool({
-      infoSourceRepo: makeInfoSourceRepo([]),
-      stcRepo: makeStcRepo(config),
-    });
-
-    const result = await run(tool, { topicId: 'ci_topic001' });
-    const parsed = JSON.parse(result);
-
-    expect(parsed.meta.status).toBe('ok');
-    expect(parsed.meta.total).toBe(0);
+    const result = JSON.parse(await run(tool, {}));
+    expect(result.meta.status).toBe('not_found');
   });
 });

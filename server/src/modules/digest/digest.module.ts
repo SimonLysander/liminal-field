@@ -15,12 +15,14 @@
  *   - content_items / content_snapshots：报告正文 + 版本（完全复用）
  *
  * PromptManagerModule 是 @Global()，已在 AppModule 导入，这里无需重复 import。
+ * SettingsModule（SystemConfigService）也是 @Global()，无需重复 import。
  */
 import { Module } from '@nestjs/common';
 import { TypegooseModule } from 'nestjs-typegoose';
 
 import { ContentModule } from '../content/content.module';
 import { NavigationModule } from '../navigation/navigation.module';
+import { SettingsModule } from '../settings/settings.module';
 
 import { InfoSource } from './info-source.entity';
 import { InfoSourceRepository } from './info-source.repository';
@@ -43,6 +45,11 @@ import { RssFetcher } from './fetchers/rss-fetcher.service';
 import { FetcherRegistry } from './fetchers/fetcher-registry.service';
 import { DigestToolsFactory } from './tools/digest-tools.factory';
 
+import { ReactAgentNode } from './workflow/nodes/react-agent.node';
+import { ComposeNode } from './workflow/nodes/compose.node';
+import { CommitNode } from './workflow/nodes/commit.node';
+import { DigestWorkflowService } from './workflow/digest-workflow.service';
+
 @Module({
   imports: [
     TypegooseModule.forFeature([
@@ -53,6 +60,7 @@ import { DigestToolsFactory } from './tools/digest-tools.factory';
     ]),
     ContentModule,
     NavigationModule,
+    SettingsModule,
   ],
   controllers: [InfoSourceController, TopicController],
   providers: [
@@ -65,6 +73,11 @@ import { DigestToolsFactory } from './tools/digest-tools.factory';
     RssFetcher,
     FetcherRegistry,
     DigestToolsFactory,
+    // workflow nodes
+    ReactAgentNode,
+    ComposeNode,
+    CommitNode,
+    DigestWorkflowService,
   ],
   exports: [
     InfoSourceRepository,
@@ -75,6 +88,7 @@ import { DigestToolsFactory } from './tools/digest-tools.factory';
     TopicService,
     FetcherRegistry,
     DigestToolsFactory,
+    DigestWorkflowService,
   ],
 })
 export class DigestModule {}
