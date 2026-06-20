@@ -42,6 +42,8 @@ export interface TopicDetailDto {
   keywords: string[];
   prompt: string;
   enabled: boolean;
+  /** Agent 最大轮次，默认 20，范围 5-50 */
+  maxSteps: number;
   reportCount: number;
   lastRunAt: string | null;
   lastRunStatus: 'ok' | 'failed' | null;

@@ -88,6 +88,14 @@ export class SmartTopicConfig {
   @prop({ required: true, default: 10 })
   topN!: number;
 
+  /**
+   * Agent 跑这个事项时最多调多少轮工具（stepCountIs 兜底）。
+   * Vercel AI SDK step ≈ LLM 一次 reasoning + 若干 tool calls，实际产生的工具调用数 > maxSteps。
+   * 默认 20。订阅源多 / 需要深挖时调高。范围 5-50。
+   */
+  @prop({ required: true, default: 20 })
+  maxSteps!: number;
+
   @prop({ type: () => Date })
   lastRunAt?: Date;
 

@@ -36,6 +36,7 @@ function makeConfig(
     prompt: 'test',
     extractFields: [],
     topN: 10,
+    maxSteps: 20,
     createdAt: new Date(),
     ...overrides,
   };

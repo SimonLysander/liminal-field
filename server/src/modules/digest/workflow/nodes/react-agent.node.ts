@@ -92,7 +92,8 @@ export class ReactAgentNode {
       messages: [{ role: 'user', content: '开始本次收集。' }],
       // DigestToolset 是具名类型，AI SDK 要求 ToolSet（带 index signature）
       tools: tools as any,
-      stopWhen: stepCountIs(20),
+      // maxSteps 从事项配置读取，老数据 / 未配置时兜底 20
+      stopWhen: stepCountIs(stc?.maxSteps ?? 20),
       experimental_repairToolCall: makeRepairToolCall(model),
       // 边跑边把每步 tool_call + result 摘要写进 DigestTask.steps，不存抓取全文
       onStepFinish: async (step: StepResult<ToolSet>) => {

@@ -9,9 +9,12 @@ import {
   ArrayUnique,
   IsArray,
   IsBoolean,
+  IsInt,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 
@@ -53,4 +56,11 @@ export class UpdateTopicDto {
   @IsBoolean()
   @IsOptional()
   enabled?: boolean;
+
+  /** Agent 最大轮次，范围 5-50，默认 20（schema default 兜底） */
+  @IsInt()
+  @Min(5)
+  @Max(50)
+  @IsOptional()
+  maxSteps?: number;
 }

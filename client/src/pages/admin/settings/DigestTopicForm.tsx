@@ -24,6 +24,7 @@ export interface TopicDraft {
   schedule: Schedule;
   sourceIds: string[];
   enabled: boolean;
+  maxSteps: number;        // Agent 最大轮次，4 档固定选项
 }
 
 /** 父组件编辑模式传入（从 TopicDetail 组装） */
@@ -35,6 +36,7 @@ export interface TopicFormInitial {
   sourceIds: string[];
   aiPrompt: string;
   enabled: boolean;
+  maxSteps?: number;
 }
 
 // ── 常量 ──────────────────────────────────────────────────────────────────────
@@ -273,6 +275,7 @@ export function DigestTopicForm({
           schedule: cronToSchedule(initial.cron),
           sourceIds: initial.sourceIds,
           enabled: initial.enabled,
+          maxSteps: initial.maxSteps ?? 20,
         }
       : {
           name: '',
@@ -280,6 +283,7 @@ export function DigestTopicForm({
           schedule: DEFAULT_SCHEDULE,
           sourceIds: [],
           enabled: true,
+          maxSteps: 20,
         },
   );
 
@@ -346,6 +350,27 @@ export function DigestTopicForm({
           value={draft.schedule}
           onChange={(s) => setDraft((d) => ({ ...d, schedule: s }))}
         />
+      </div>
+
+      {/* Agent 最大轮次 — 4 档固定选项，不允许自由输入 */}
+      <div>
+        <FieldLabel>
+          Agent 最大轮次
+          <span className="ml-2 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            （{draft.maxSteps} 轮 · 每轮可调多个工具）
+          </span>
+        </FieldLabel>
+        <select
+          value={draft.maxSteps}
+          onChange={(e) => setDraft((d) => ({ ...d, maxSteps: parseInt(e.target.value, 10) }))}
+          className={selectClass}
+          style={inputStyle}
+        >
+          <option value={10}>10 轮（轻量）</option>
+          <option value={20}>20 轮（默认）</option>
+          <option value={30}>30 轮（深挖）</option>
+          <option value={50}>50 轮（重度研究）</option>
+        </select>
       </div>
 
       {/* 订阅信息源 — 按分类展示 checkbox 列表，支持分类级全选/取消全选 */}

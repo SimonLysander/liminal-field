@@ -48,6 +48,7 @@ function makeConfig(
     enabled: true,
     extractFields: [],
     topN: 10,
+    maxSteps: 20,
     lastRunAt: undefined,
     lastRunStatus: undefined,
     lastRunError: undefined,

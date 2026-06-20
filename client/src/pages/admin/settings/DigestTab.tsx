@@ -199,6 +199,7 @@ export function DigestTab() {
         keywords: [],
         prompt: draft.prompt.trim(),
         enabled: draft.enabled,
+        maxSteps: draft.maxSteps,
       });
       banner.success(`事项「${draft.name}」已新建`);
       setCreating(false);
@@ -224,6 +225,7 @@ export function DigestTab() {
         keywords: [],
         prompt: draft.prompt.trim(),
         enabled: draft.enabled,
+        maxSteps: draft.maxSteps,
       });
       banner.success(`事项「${draft.name}」已保存`);
       setEditingDetail(null);
@@ -274,6 +276,7 @@ export function DigestTab() {
         sourceIds: editingDetail.sourceIds,
         aiPrompt: editingDetail.prompt,
         enabled: editingDetail.enabled,
+        maxSteps: editingDetail.maxSteps,
       }
     : undefined;
 
@@ -333,29 +336,34 @@ export function DigestTab() {
 
       {/* 新建 Dialog */}
       <Dialog open={creating} onOpenChange={(v) => !v && !submitting && setCreating(false)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="flex max-h-[85vh] max-w-lg flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>新建事项</DialogTitle>
             <DialogDescription className="sr-only">新建一个智能采集事项，配置信息源和关键词</DialogDescription>
           </DialogHeader>
-          <DigestTopicForm onSubmit={(d) => void handleCreate(d)} onCancel={() => setCreating(false)} />
+          {/* 26 条 seed 源 + 表单字段会撑爆 dialog；外层 max-h 限高 + 内层 overflow-y-auto 才能滚 */}
+          <div className="-mr-4 min-h-0 flex-1 overflow-y-auto pr-4">
+            <DigestTopicForm onSubmit={(d) => void handleCreate(d)} onCancel={() => setCreating(false)} />
+          </div>
         </DialogContent>
       </Dialog>
 
       {/* 编辑 Dialog */}
       <Dialog open={!!editingDetail} onOpenChange={(v) => !v && !submitting && setEditingDetail(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="flex max-h-[85vh] max-w-lg flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>编辑事项</DialogTitle>
             <DialogDescription className="sr-only">修改事项配置</DialogDescription>
           </DialogHeader>
-          {editingDetail && editingInitial && (
-            <DigestTopicForm
-              initial={editingInitial}
-              onSubmit={(d) => void handleUpdate(d)}
-              onCancel={() => setEditingDetail(null)}
-            />
-          )}
+          <div className="-mr-4 min-h-0 flex-1 overflow-y-auto pr-4">
+            {editingDetail && editingInitial && (
+              <DigestTopicForm
+                initial={editingInitial}
+                onSubmit={(d) => void handleUpdate(d)}
+                onCancel={() => setEditingDetail(null)}
+              />
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 

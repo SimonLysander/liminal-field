@@ -112,6 +112,7 @@ function makeConfig(sourceIds: string[] = []): SmartTopicConfig {
     enabled: true,
     extractFields: [],
     topN: 10,
+    maxSteps: 20,
     createdAt: new Date(),
   };
 }

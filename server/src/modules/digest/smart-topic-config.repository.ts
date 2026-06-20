@@ -17,6 +17,8 @@ export interface SaveSmartTopicConfigInput {
   keywords: string[];
   prompt: string;
   enabled: boolean;
+  /** 可选：不传时由 schema default(20) 兜底 */
+  maxSteps?: number;
 }
 
 export interface UpdateSmartTopicConfigInput {
@@ -25,6 +27,7 @@ export interface UpdateSmartTopicConfigInput {
   keywords?: string[];
   prompt?: string;
   enabled?: boolean;
+  maxSteps?: number;
 }
 
 export interface UpdateRunStateInput {

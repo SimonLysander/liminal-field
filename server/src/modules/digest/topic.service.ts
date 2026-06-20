@@ -174,6 +174,8 @@ export class TopicService {
       keywords: config.keywords,
       prompt: config.prompt,
       enabled: config.enabled,
+      // maxSteps 由 schema default 20 兜底，老数据回落 20
+      maxSteps: config.maxSteps ?? 20,
       reportCount: children.length,
       lastRunAt: config.lastRunAt ? config.lastRunAt.toISOString() : null,
       lastRunStatus: config.lastRunStatus
@@ -246,6 +248,8 @@ export class TopicService {
         keywords: dto.keywords,
         prompt: dto.prompt,
         enabled: dto.enabled ?? true,
+        // maxSteps 缺省时不传，让 schema default(20) 兜底
+        ...(dto.maxSteps !== undefined ? { maxSteps: dto.maxSteps } : {}),
       });
     } catch (err) {
       // task #35 first iteration: 不用 transaction，失败时手动清理可能有残留
@@ -329,12 +333,14 @@ export class TopicService {
       keywords?: string[];
       prompt?: string;
       enabled?: boolean;
+      maxSteps?: number;
     } = {};
     if (dto.cron !== undefined) configPatch.cron = dto.cron;
     if (dto.sourceIds !== undefined) configPatch.sourceIds = dto.sourceIds;
     if (dto.keywords !== undefined) configPatch.keywords = dto.keywords;
     if (dto.prompt !== undefined) configPatch.prompt = dto.prompt;
     if (dto.enabled !== undefined) configPatch.enabled = dto.enabled;
+    if (dto.maxSteps !== undefined) configPatch.maxSteps = dto.maxSteps;
 
     if (Object.keys(configPatch).length > 0) {
       await this.smartTopicConfigRepository.update(
