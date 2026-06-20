@@ -10,6 +10,10 @@ export enum NavigationScope {
   notes = 'notes',
   gallery = 'gallery',
   anthology = 'anthology',
+  /** 智能小应用 - 自动信息收集："事项 = 容器，报告 = 子节点 entry"。
+   *  跟 anthology 结构同构但业务严格分离 — 不复用 anthology scope 是因为
+   *  公开/管理列表、Aurora agent kind、admin 入口语义完全不同。 */
+  digest = 'digest',
 }
 
 // 覆盖 listByParentId 和 findRootNodes 的查询+排序：{ parentId, scope, order }

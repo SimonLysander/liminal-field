@@ -19,6 +19,7 @@ import {
   User,
   Sparkles,
   Wrench,
+  Rss,
 } from 'lucide-react';
 import Topbar from '@/components/global/Topbar';
 import { SyncTab } from './SyncTab';
@@ -29,6 +30,8 @@ import { AgentTab } from './AgentTab';
 import { OwnerTab } from './OwnerTab';
 import { SkillsTab } from './SkillsTab';
 import { ToolsTab } from './ToolsTab';
+import { DigestTab } from './DigestTab';
+import { DigestSourcesTab } from './DigestSourcesTab';
 
 type TabId =
   | 'owner'
@@ -38,7 +41,9 @@ type TabId =
   | 'skills'
   | 'integration'
   | 'sync'
-  | 'storage';
+  | 'storage'
+  | 'digest'
+  | 'digest-sources';
 
 interface TabItem {
   id: TabId;
@@ -69,6 +74,9 @@ const TAB_GROUPS: TabGroup[] = [
       // 工具 / 技能跟 Agent 同组:agent 用工具、调技能,语义堆叠
       // 顺序 agent → tools → skills:从「调度者」往「能力」走,概念由近及远
       { id: 'tools', label: '工具', icon: Wrench },
+      // 智能采集 + 信息源：在 tools 之后、skills 之前，Sparkles/Rss 图标与语义自然搭配
+      { id: 'digest', label: '智能采集', icon: Sparkles },
+      { id: 'digest-sources', label: '信息源', icon: Rss },
       { id: 'skills', label: '技能', icon: Sparkles },
     ],
   },
@@ -174,6 +182,8 @@ export default function SettingsPage() {
                 {activeTab === 'security' && <SecurityTab />}
                 {activeTab === 'agent' && <AgentTab />}
                 {activeTab === 'tools' && <ToolsTab />}
+                {activeTab === 'digest' && <DigestTab />}
+                {activeTab === 'digest-sources' && <DigestSourcesTab />}
                 {activeTab === 'skills' && <SkillsTab />}
               </motion.div>
             </AnimatePresence>

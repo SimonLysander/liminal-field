@@ -46,6 +46,13 @@ const DraftEditPage = lazy(() => import('./pages/admin/edit'));
 const ImportPreviewPage = lazy(() => import('./pages/admin/import-preview'));
 const BatchImportPage = lazy(() => import('./pages/admin/batch-import'));
 const SettingsPage = lazy(() => import('./pages/admin/settings'));
+// 智能采集事项详情页（/admin/digest/:id）
+const DigestTopicDetailPage = lazy(
+  () => import('./pages/admin/settings/DigestTopicDetail'),
+);
+const DigestPublicPage = lazy(() => import('./pages/digest'));
+const DigestTopicPage = lazy(() => import('./pages/digest/topic'));
+const DigestReportPage = lazy(() => import('./pages/digest/report'));
 const LoginPage = lazy(() => import('./pages/login'));
 // 设计工具:字体样板间(独立、免登录、无布局)
 const FontSampleRoom = lazy(() => import('./pages/design/fonts'));
@@ -166,6 +173,11 @@ function MainLayout() {
               <Route path="/note" element={<NotePage />} />
               <Route path="/anthology" element={<AnthologyPage />} />
               <Route path="/gallery" element={<GalleryPage />} />
+              {/* 智能小应用 · 自动信息收集 — 公开端「精选」。
+                  路由顺序：/:topicId/:reportId 必须在 /:topicId 之后，React Router 优先最先匹配。 */}
+              <Route path="/digest" element={<DigestPublicPage />} />
+              <Route path="/digest/:topicId" element={<DigestTopicPage />} />
+              <Route path="/digest/:topicId/:reportId" element={<DigestReportPage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </motion.div>
@@ -208,6 +220,18 @@ function App() {
           <Route path="gallery" element={<Suspense fallback={<LoadingState variant="full" />}><GalleryAdmin /></Suspense>} />
           <Route path="settings" element={<Navigate to="/admin/settings/owner" replace />} />
           <Route path="settings/:tab" element={<Suspense fallback={<LoadingState variant="full" />}><SettingsPage /></Suspense>} />
+          {/* 智能采集已迁移到 settings sub-tab，老 URL redirect 防 404 */}
+          <Route path="digest" element={<Navigate to="/admin/settings/digest" replace />} />
+          <Route path="digest/sources" element={<Navigate to="/admin/settings/digest-sources" replace />} />
+          {/* 事项详情页：/admin/digest/:id */}
+          <Route
+            path="digest/:id"
+            element={
+              <Suspense fallback={<LoadingState variant="full" />}>
+                <DigestTopicDetailPage />
+              </Suspense>
+            }
+          />
         </Route>
         <Route
           path="/admin/notes/:id/edit"

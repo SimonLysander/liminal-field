@@ -65,8 +65,8 @@ class GalleryContextDto {
 }
 
 class EntryContextDto {
-  // notes-editor = 编辑器侧栏写作顾问;agent-page = 全页总助手 Lux;gallery-editor = 画廊图说写手
-  @IsIn(['notes-editor', 'agent-page', 'gallery-editor'])
+  // notes-editor = 编辑器侧栏写作顾问;agent-page = 全页总助手 Lux;gallery-editor = 画廊图说写手;report-reader = 公开端精选阅读页追问
+  @IsIn(['notes-editor', 'agent-page', 'gallery-editor', 'report-reader'])
   source!: string;
 
   @ValidateNested()
