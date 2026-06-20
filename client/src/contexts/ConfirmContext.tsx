@@ -61,6 +61,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!state) return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.isComposing) return;
       if (e.key === 'Escape') handleClose(false);
     };
     document.addEventListener('keydown', handleKeyDown);

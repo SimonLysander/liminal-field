@@ -61,6 +61,7 @@ export function useProposalKeyboardNav(
     if (!enabled) return;
 
     const handler = (e: KeyboardEvent) => {
+      if (e.isComposing) return;
       if (isTypingTarget(e.target)) return;
       // 任何修饰键组合 → 不处理(交回浏览器/系统,避免 ⌘↑ 跳行首等被吞)
       if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;

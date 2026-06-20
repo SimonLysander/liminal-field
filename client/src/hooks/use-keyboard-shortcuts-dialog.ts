@@ -10,6 +10,7 @@ export function useKeyboardShortcutsDialog() {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (e.isComposing) return;
       // ⌘+/ 或 Ctrl+/
       if (e.key === '/' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();

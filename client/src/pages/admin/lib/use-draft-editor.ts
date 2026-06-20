@@ -335,6 +335,7 @@ export function useDraftEditor<TState extends BaseDraftState>(adapter: DraftEdit
   // ⌘S 打开提交浮层 / ⇧⌘S 直接保存草稿
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
+      if (e.isComposing) return;
       if (e.key.toLowerCase() !== 's' || !(e.metaKey || e.ctrlKey)) return;
       e.preventDefault();
       if (e.shiftKey) void saveDraft();
