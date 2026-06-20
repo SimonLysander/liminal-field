@@ -7,6 +7,9 @@
  *
  * 业务 id 用 src_xxx（randomUUID 截 12 位），跟 ci_xxx / stc_xxx 风格统一，
  * 日志里读得出是什么对象。
+ *
+ * category（Task #40）：给信息源打分类标签，驱动前端"按分类选源"UI（Task #43/#44）。
+ * 老数据无 category 字段，onModuleInit migrate 时统一补 'tech' 作为兜底默认值。
  */
 import { modelOptions, prop, Severity } from '@typegoose/typegoose';
 
@@ -20,6 +23,17 @@ export enum InfoSourceType {
 export enum FetchStatus {
   ok = 'ok',
   failed = 'failed',
+}
+
+/** 信息源分类枚举 — 对应 source-seeds.ts 里的 SEED_SOURCES 清单。 */
+export enum InfoSourceCategory {
+  ai = 'ai',
+  tech = 'tech',
+  business = 'business',
+  design = 'design',
+  china_tech = 'china_tech',
+  reading = 'reading',
+  academic = 'academic',
 }
 
 @modelOptions({
@@ -52,6 +66,19 @@ export class InfoSource {
 
   @prop({ trim: true })
   lastFetchError?: string;
+
+  /** 分类标签（Task #40）：驱动"按分类选源"UI；老数据由 onModuleInit migrate 补 'tech'。 */
+  @prop({
+    enum: InfoSourceCategory,
+    required: true,
+    default: InfoSourceCategory.tech,
+    index: true,
+  })
+  category!: InfoSourceCategory;
+
+  /** 展示排序权重，越小越靠前；seed 源不设此值，UI 按 category + name 自然排序。 */
+  @prop({ type: () => Number })
+  displayOrder?: number;
 
   @prop({ required: true, type: () => Date })
   createdAt!: Date;

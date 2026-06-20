@@ -13,7 +13,7 @@ import type { FetcherRegistry } from '../../fetchers/fetcher-registry.service';
 import type { TaskContext } from '../digest-tools.factory';
 import type { InfoSource } from '../../info-source.entity';
 import type { FetchedItem } from '../../fetchers/fetcher.interface';
-import { InfoSourceType } from '../../info-source.entity';
+import { InfoSourceType, InfoSourceCategory } from '../../info-source.entity';
 
 const run = (t: unknown, input: unknown): Promise<string> =>
   (t as { execute: (i: unknown, o: unknown) => Promise<string> }).execute(
@@ -28,6 +28,7 @@ function makeSource(): InfoSource {
     name: 'HN',
     config: {},
     enabled: true,
+    category: InfoSourceCategory.tech,
     createdAt: new Date(),
   };
 }

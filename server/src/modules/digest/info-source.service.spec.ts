@@ -6,7 +6,11 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { InfoSourceService } from './info-source.service';
 import { InfoSourceRepository } from './info-source.repository';
-import { InfoSourceType, FetchStatus } from './info-source.entity';
+import {
+  InfoSourceType,
+  InfoSourceCategory,
+  FetchStatus,
+} from './info-source.entity';
 import type { InfoSource } from './info-source.entity';
 import { SmartTopicConfigRepository } from './smart-topic-config.repository';
 import type { SmartTopicConfig } from './smart-topic-config.entity';
@@ -24,6 +28,17 @@ const mockSmartTopicConfigRepo = {
   findAll: jest.fn(),
 } as unknown as jest.Mocked<SmartTopicConfigRepository>;
 
+// onModuleInit 用到的 model mock（unit test 里让 onModuleInit 成为 no-op）
+const mockInfoSourceModel = {
+  updateMany: jest.fn().mockReturnValue({
+    exec: jest.fn().mockResolvedValue({ modifiedCount: 0 }),
+  }),
+  countDocuments: jest
+    .fn()
+    .mockReturnValue({ exec: jest.fn().mockResolvedValue(1) }),
+  create: jest.fn(),
+} as unknown as jest.Mocked<any>;
+
 // ── Fixture ───────────────────────────────────────────────────────
 const NOW = new Date('2026-06-20T10:00:00.000Z');
 
@@ -34,6 +49,7 @@ function makeEntity(overrides: Partial<InfoSource> = {}): InfoSource {
     name: 'Test Feed',
     config: { url: 'https://example.com/feed.xml' },
     enabled: true,
+    category: InfoSourceCategory.tech,
     lastFetchedAt: undefined,
     lastFetchStatus: undefined,
     lastFetchError: undefined,
@@ -49,7 +65,18 @@ describe('InfoSourceService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new InfoSourceService(mockRepo, mockSmartTopicConfigRepo);
+    // 重置 model mock 确保 onModuleInit 跑到 seed 循环时 countDocuments 返回 1（已存在，跳过）
+    mockInfoSourceModel.updateMany.mockReturnValue({
+      exec: jest.fn().mockResolvedValue({ modifiedCount: 0 }),
+    });
+    mockInfoSourceModel.countDocuments.mockReturnValue({
+      exec: jest.fn().mockResolvedValue(1),
+    });
+    service = new InfoSourceService(
+      mockRepo,
+      mockSmartTopicConfigRepo,
+      mockInfoSourceModel,
+    );
   });
 
   // Case 1：list() 调 repository.findAll，结果经 entityToDto 转换（Date → ISO string）

@@ -52,8 +52,12 @@ import { SettingsModule } from '../src/modules/settings/settings.module';
 import type { FetchedItem } from '../src/modules/digest/fetchers/fetcher.interface';
 
 // 强类型 mock：避免在 test body 里反复 as any
-const mockGenerateText = generateText as jest.MockedFunction<typeof generateText>;
-const mockGenerateObject = generateObject as jest.MockedFunction<typeof generateObject>;
+const mockGenerateText = generateText as jest.MockedFunction<
+  typeof generateText
+>;
+const mockGenerateObject = generateObject as jest.MockedFunction<
+  typeof generateObject
+>;
 
 // ─── 固定 mock 数据 ───────────────────────────────────────────────────────────
 
@@ -245,9 +249,9 @@ describe('Digest Case 2: 完整 workflow 跑通（mock LLM）', () => {
     let fetchCallCount = 0;
     fetchSpy = jest
       .spyOn(RssFetcher.prototype, 'fetch')
-      .mockImplementation(async () => {
+      .mockImplementation(() => {
         fetchCallCount++;
-        return [
+        return Promise.resolve([
           {
             itemGuid: `mock-item-1-r${fetchCallCount}`,
             title: 'Mock 文章 1',
@@ -262,7 +266,7 @@ describe('Digest Case 2: 完整 workflow 跑通（mock LLM）', () => {
             publishedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
             snippet: '这是 mock 摘要 2，补充背景资料。',
           },
-        ];
+        ]);
       });
 
     const sourceId = await createInfoSource(ctx.app, cookie, 'e2e-workflow-源');
@@ -289,7 +293,8 @@ describe('Digest Case 2: 完整 workflow 跑通（mock LLM）', () => {
         meta: { items: Array<{ ref: string }> };
       };
       const items = parsedBrowse.meta.items;
-      if (!items || items.length === 0) throw new Error('browse returned no items');
+      if (!items || items.length === 0)
+        throw new Error('browse returned no items');
 
       // 步骤 3: pick 所有拉到的 items
       await tools.pick.execute(
@@ -380,7 +385,8 @@ describe('Digest Case 2: 完整 workflow 跑通（mock LLM）', () => {
       .expect(200);
 
     expect(pathRes.body.data.length).toBeGreaterThan(0);
-    const topicNavNodeId = pathRes.body.data[pathRes.body.data.length - 1].id as string;
+    const topicNavNodeId = pathRes.body.data[pathRes.body.data.length - 1]
+      .id as string;
 
     // visibility=all 确保 committed（未发布）的 digest 报告节点也被列出
     const childrenRes = await supertest(ctx.app.getHttpServer())
@@ -410,8 +416,17 @@ describe('Digest Case 3: findings=0 早停', () => {
       .spyOn(RssFetcher.prototype, 'fetch')
       .mockResolvedValue(MOCK_FEED_ITEMS);
 
-    const sourceId = await createInfoSource(ctx.app, cookie, 'e2e-early-stop-源');
-    topicId = await createTopic(ctx.app, cookie, sourceId, 'e2e-early-stop-事项');
+    const sourceId = await createInfoSource(
+      ctx.app,
+      cookie,
+      'e2e-early-stop-源',
+    );
+    topicId = await createTopic(
+      ctx.app,
+      cookie,
+      sourceId,
+      'e2e-early-stop-事项',
+    );
 
     // mock generateText：只调 list_sources + browse，**不调 pick**
     // → findings 保持 0 → workflow 早停 → status=failed
@@ -473,8 +488,17 @@ describe('Digest Case 4: GET /digest/topics/:id/tasks 列最近', () => {
       .spyOn(RssFetcher.prototype, 'fetch')
       .mockResolvedValue(MOCK_FEED_ITEMS);
 
-    const sourceId = await createInfoSource(ctx.app, cookie, 'e2e-list-tasks-源');
-    topicId = await createTopic(ctx.app, cookie, sourceId, 'e2e-list-tasks-事项');
+    const sourceId = await createInfoSource(
+      ctx.app,
+      cookie,
+      'e2e-list-tasks-源',
+    );
+    topicId = await createTopic(
+      ctx.app,
+      cookie,
+      sourceId,
+      'e2e-list-tasks-事项',
+    );
 
     // 简单 mock：不 pick → 快速早停（只测 list，不关心 done/failed）
     mockGenerateText.mockResolvedValue({ steps: [], text: '' } as any);
@@ -582,7 +606,11 @@ describe('Digest Case 5: 未登录 → 401', () => {
   it('POST /info-sources 不带 cookie → 401', async () => {
     await supertest(ctx.app.getHttpServer())
       .post('/api/v1/info-sources')
-      .send({ type: 'rss', name: '未登录', config: { url: 'https://x.com/rss' } })
+      .send({
+        type: 'rss',
+        name: '未登录',
+        config: { url: 'https://x.com/rss' },
+      })
       .expect(401);
   });
 });

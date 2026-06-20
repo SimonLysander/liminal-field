@@ -13,7 +13,7 @@ import type { SmartTopicConfigRepository } from '../../smart-topic-config.reposi
 import type { InfoSource } from '../../info-source.entity';
 import type { SmartTopicConfig } from '../../smart-topic-config.entity';
 import type { TaskContext } from '../digest-tools.factory';
-import { InfoSourceType } from '../../info-source.entity';
+import { InfoSourceType, InfoSourceCategory } from '../../info-source.entity';
 
 const run = (t: unknown, input: unknown): Promise<string> =>
   (t as { execute: (i: unknown, o: unknown) => Promise<string> }).execute(
@@ -53,6 +53,7 @@ function makeSource(id: string, name: string): InfoSource {
     name,
     config: { url: `https://example.com/feed/${id}` },
     enabled: true,
+    category: InfoSourceCategory.tech,
     createdAt: new Date(),
   };
 }

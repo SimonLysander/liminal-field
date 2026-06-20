@@ -14,7 +14,7 @@ import type { SmartTopicConfigRepository } from '../../smart-topic-config.reposi
 import type { TaskContext } from '../digest-tools.factory';
 import type { InfoSource } from '../../info-source.entity';
 import type { FetchedItem } from '../../fetchers/fetcher.interface';
-import { InfoSourceType } from '../../info-source.entity';
+import { InfoSourceType, InfoSourceCategory } from '../../info-source.entity';
 
 const run = (t: unknown, input: unknown): Promise<string> =>
   (t as { execute: (i: unknown, o: unknown) => Promise<string> }).execute(
@@ -39,6 +39,7 @@ function makeSource(name: string): InfoSource {
     name,
     config: {},
     enabled: true,
+    category: InfoSourceCategory.tech,
     createdAt: new Date(),
   };
 }

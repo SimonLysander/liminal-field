@@ -6,17 +6,30 @@
  *
  * 删除时检查 SmartTopicConfig 依赖（task #35）：
  *   若有事项订阅此源，拒绝删除，要求用户先取消订阅。
+ *
+ * onModuleInit（Task #40）：
+ *   1. migrate 老数据：无 category 字段的文档批量补 'tech'。
+ *   2. seed 内置源：首次启动时将 SEED_SOURCES 写入，已存在则跳过（幂等）。
  */
 import {
   BadRequestException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import type { ReturnModelType } from '@typegoose/typegoose';
+import { getModelToken } from 'nestjs-typegoose';
 import { InfoSourceRepository } from './info-source.repository';
-import { InfoSourceType, type InfoSource } from './info-source.entity';
+import {
+  InfoSource,
+  InfoSourceType,
+  InfoSourceCategory,
+} from './info-source.entity';
 import { SmartTopicConfigRepository } from './smart-topic-config.repository';
+import { SEED_SOURCES, resolveSeedUrl } from './source-seeds';
 import type {
   CreateInfoSourceDto,
   UpdateInfoSourceDto,
@@ -26,13 +39,63 @@ import type {
 const RSS_URL_RE = /^https?:\/\//;
 
 @Injectable()
-export class InfoSourceService {
+export class InfoSourceService implements OnModuleInit {
   private readonly logger = new Logger(InfoSourceService.name);
 
   constructor(
     private readonly repo: InfoSourceRepository,
     private readonly smartTopicConfigRepository: SmartTopicConfigRepository,
+    @Inject(getModelToken(InfoSource.name))
+    private readonly infoSourceModel: ReturnModelType<typeof InfoSource>,
   ) {}
+
+  /**
+   * 启动时 migrate + seed：
+   * 1. 老数据没有 category 字段 → 批量补 'tech'（updateMany，幂等）。
+   * 2. SEED_SOURCES 逐条按 name 查重，不存在则插入（不删用户已有的源）。
+   */
+  async onModuleInit(): Promise<void> {
+    // ── Step 1: migrate 老数据 ──────────────────────────────────────────────
+    const migrateResult = await this.infoSourceModel
+      .updateMany(
+        { category: { $exists: false } },
+        { $set: { category: InfoSourceCategory.tech } },
+      )
+      .exec();
+    if (migrateResult.modifiedCount > 0) {
+      this.logger.log(
+        `migrate: 补 category='tech' ${migrateResult.modifiedCount} 条老数据`,
+      );
+    }
+
+    // ── Step 2: seed 内置源 ─────────────────────────────────────────────────
+    let seededCount = 0;
+    for (const seed of SEED_SOURCES) {
+      const resolvedUrl = resolveSeedUrl(seed.rssUrl);
+      // 以 name 做唯一性判断（同名即视为已存在，跳过；不以 URL 判断是因为 rsshub 占位符解析后可能因 env 变化而不同）
+      const exists = await this.infoSourceModel
+        .countDocuments({ name: seed.name })
+        .exec();
+      if (exists > 0) continue;
+
+      await this.infoSourceModel.create({
+        _id: `src_${randomUUID().replace(/-/g, '').slice(0, 12)}`,
+        type: InfoSourceType.rss,
+        name: seed.name,
+        config: { url: resolvedUrl },
+        category: seed.category,
+        enabled: true,
+        createdAt: new Date(),
+      });
+      seededCount++;
+    }
+
+    if (seededCount > 0) {
+      this.logger.log(`seed: 新增内置信息源 ${seededCount} 条`);
+    } else {
+      this.logger.debug('seed: 所有内置源已存在，跳过');
+    }
+  }
 
   /** 构造业务 id，格式 src_xxx，跟 ci_xxx 同款风格 */
   private buildId(): string {
