@@ -17,9 +17,32 @@ export enum RunStatus {
   running = 'running',
 }
 
+/**
+ * 用户自定义内容指标 — 每个事项可以配关心的结构化字段。
+ * AI Judge 调用时把 schema 拼进 prompt，让 LLM 从原文提取这些字段。
+ * 详见 docs/digest-workflow-design.md §3
+ */
+export interface ExtractField {
+  /** 字段 key，如 'venue'；用作 markdown frontmatter 字段名 */
+  key: string;
+  /** 显示名，如 '举办地点' */
+  label: string;
+  type: 'string' | 'date' | 'number' | 'enum' | 'list';
+  /** 给 AI 的提示，描述字段含义和提取策略 */
+  description: string;
+  /** type=enum 时的可选值 */
+  enum?: string[];
+  /** false 时 AI 可以返回 null（找不到就找不到，不强行编） */
+  required?: boolean;
+  extractionMode: 'ai' | 'regex';
+  /** extractionMode=regex 时的正则表达式 */
+  regex?: string;
+}
+
 @modelOptions({
   schemaOptions: { collection: 'smart_topic_configs' },
-  options: { allowMixed: Severity.ERROR },
+  // extractFields 是 Mixed 数组，需要 ALLOW（其余字段保持强类型）
+  options: { allowMixed: Severity.ALLOW },
 })
 export class SmartTopicConfig {
   @prop({ required: true, trim: true })
@@ -48,6 +71,22 @@ export class SmartTopicConfig {
 
   @prop({ required: true, default: true })
   enabled!: boolean;
+
+  /**
+   * 用户自定义内容指标 — 每个事项可以配关心的结构化字段。
+   * AI Judge 调用时把 schema 拼进 prompt，让 LLM 从原文提取这些字段。
+   * type=Mixed（Object 数组）因为 typegoose 不能直接序列化复杂 interface；
+   * 运行时 schema 完全 OK，老数据 forwards-compatible（缺字段 mongoose 补 default []）。
+   */
+  @prop({ type: () => [Object], required: true, default: [] })
+  extractFields!: ExtractField[];
+
+  /**
+   * 每期取相关条目里的 Top N（按 quality × importance 排序）。
+   * 默认 10，范围 1-100 由 DTO 层校验。
+   */
+  @prop({ required: true, default: 10 })
+  topN!: number;
 
   @prop({ type: () => Date })
   lastRunAt?: Date;

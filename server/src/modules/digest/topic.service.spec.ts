@@ -45,6 +45,8 @@ function makeConfig(
     keywords: ['AI', 'LLM'],
     prompt: '关注 AI 落地应用',
     enabled: true,
+    extractFields: [],
+    topN: 10,
     lastRunAt: undefined,
     lastRunStatus: undefined,
     lastRunError: undefined,
