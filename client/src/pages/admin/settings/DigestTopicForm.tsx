@@ -9,9 +9,8 @@
  */
 
 import { useEffect, useState } from 'react';
-import { ChipSelector } from '@/components/shared/ChipSelector';
 import { FieldLabel, PrimaryButton, SecondaryButton } from './SettingsUI';
-import { infoSourcesApi } from '@/services/info-sources';
+import { infoSourcesApi, INFO_SOURCE_CATEGORIES, CATEGORY_LABELS } from '@/services/info-sources';
 import type { InfoSource } from '@/services/info-sources';
 import { cronToSchedule } from './scheduleUtils';
 import type { Schedule } from './scheduleUtils';
@@ -172,6 +171,89 @@ function SchedulePicker({
   );
 }
 
+// ── 子组件：按分类挑选信息源 ──────────────────────────────────────────────────
+
+/**
+ * CategorySourcePicker — 将信息源按 INFO_SOURCE_CATEGORIES 顺序分段展示，
+ * 每段支持「全选 / 取消全选」，单项 checkbox 逐个切换。
+ * selected/onToggle/onSelectCategory/onDeselectCategory 均操作 sourceId string[]，
+ * 数据结构不变（仍用 sourceIds 物化，不做分类级别的新字段）。
+ */
+function CategorySourcePicker({
+  sources,
+  selected,
+  onToggle,
+  onSelectCategory,
+  onDeselectCategory,
+}: {
+  sources: InfoSource[];
+  selected: string[];
+  onToggle: (id: string) => void;
+  onSelectCategory: (ids: string[]) => void;
+  onDeselectCategory: (ids: string[]) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      {INFO_SOURCE_CATEGORIES.map((cat) => {
+        const inCat = sources.filter((s) => s.category === cat);
+        if (inCat.length === 0) return null;
+        const allIds = inCat.map((s) => s.id);
+        const allSelected = allIds.every((id) => selected.includes(id));
+        return (
+          <section key={cat} className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-medium" style={{ color: 'var(--ink)' }}>
+                {CATEGORY_LABELS[cat]}（{inCat.length}）
+              </h4>
+              <button
+                type="button"
+                onClick={() =>
+                  allSelected ? onDeselectCategory(allIds) : onSelectCategory(allIds)
+                }
+                className="text-xs"
+                style={{ color: 'var(--accent)' }}
+              >
+                {allSelected ? '取消全选' : '全选'}
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+              {inCat.map((s) => {
+                const checked = selected.includes(s.id);
+                return (
+                  <label
+                    key={s.id}
+                    className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-sm"
+                    style={{
+                      background: checked ? 'var(--accent-soft, rgba(0,0,0,0.04))' : 'transparent',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => onToggle(s.id)}
+                      className="mt-0.5"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate" style={{ color: 'var(--ink)' }}>
+                        {s.name}
+                      </div>
+                      {s.description && (
+                        <div className="truncate text-xs" style={{ color: 'var(--ink-ghost)' }}>
+                          {s.description}
+                        </div>
+                      )}
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── 主表单 ────────────────────────────────────────────────────────────────────
 
 export function DigestTopicForm({
@@ -216,8 +298,6 @@ export function DigestTopicForm({
       .finally(() => { if (!cancelled) setSourcesLoading(false); });
     return () => { cancelled = true; };
   }, []);
-
-  const availableSourceIds = sources.map((s) => s.id);
 
   // manual 模式下 enabled 强制 false 提交
   const isManual = draft.schedule.mode === 'manual';
@@ -268,30 +348,50 @@ export function DigestTopicForm({
         />
       </div>
 
-      {/* 订阅信息源 */}
+      {/* 订阅信息源 — 按分类展示 checkbox 列表，支持分类级全选/取消全选 */}
       <div>
-        <FieldLabel>订阅信息源</FieldLabel>
+        <FieldLabel>
+          订阅信息源
+          {draft.sourceIds.length > 0 && (
+            <span className="ml-2 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+              已选 {draft.sourceIds.length} 个
+            </span>
+          )}
+        </FieldLabel>
         {sourcesLoading ? (
           <p className="mt-2 text-xs" style={{ color: 'var(--ink-ghost)' }}>
             加载信息源…
           </p>
+        ) : sources.length === 0 ? (
+          <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            暂无信息源，请先在「信息源」Tab 添加
+          </p>
         ) : (
           <div className="mt-2">
-            <ChipSelector<string>
+            <CategorySourcePicker
+              sources={sources}
               selected={draft.sourceIds}
-              available={availableSourceIds}
-              renderLabel={(id) => sources.find((s) => s.id === id)?.name ?? id}
-              onAdd={(id) => setDraft((d) => ({ ...d, sourceIds: [...d.sourceIds, id] }))}
-              onRemove={(id) =>
-                setDraft((d) => ({ ...d, sourceIds: d.sourceIds.filter((x) => x !== id) }))
+              onToggle={(id) =>
+                setDraft((d) => ({
+                  ...d,
+                  sourceIds: d.sourceIds.includes(id)
+                    ? d.sourceIds.filter((x) => x !== id)
+                    : [...d.sourceIds, id],
+                }))
               }
-              addLabel="选择信息源"
+              onSelectCategory={(ids) =>
+                setDraft((d) => ({
+                  ...d,
+                  sourceIds: Array.from(new Set([...d.sourceIds, ...ids])),
+                }))
+              }
+              onDeselectCategory={(ids) =>
+                setDraft((d) => ({
+                  ...d,
+                  sourceIds: d.sourceIds.filter((x) => !ids.includes(x)),
+                }))
+              }
             />
-            {sources.length === 0 && (
-              <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-                暂无信息源，请先在「信息源」Tab 添加
-              </p>
-            )}
           </div>
         )}
       </div>
