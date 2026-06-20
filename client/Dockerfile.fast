@@ -1,0 +1,7 @@
+# 加速版 Dockerfile：跳过 install + build，直接打包本地已经 build 好的 dist。
+# 部署机 1.8G 内存无法在远端 build；本地 buildx + npmmirror 偶尔抽风。
+# 工作流：本地 pnpm build → docker build with this Dockerfile.fast → save + scp + load。
+FROM nginx:alpine
+COPY dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
