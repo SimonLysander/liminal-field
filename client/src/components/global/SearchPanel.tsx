@@ -221,7 +221,7 @@ export function SearchPanel({ open, onOpenChange, admin }: SearchPanelProps) {
             >
               <CommandPrimitive
                 shouldFilter={false}
-                onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onOpenChange(false); } }}
+                onKeyDown={(e) => { if (e.nativeEvent.isComposing) return; if (e.key === 'Escape') { e.preventDefault(); onOpenChange(false); } }}
               >
                 {/* ── Input row ── */}
                 <div className="flex items-center gap-3 px-4" style={{ height: 52 }}>

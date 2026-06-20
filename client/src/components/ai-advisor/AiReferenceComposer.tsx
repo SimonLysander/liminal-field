@@ -218,6 +218,12 @@ export const AiReferenceComposer = forwardRef<
   const editableProps = useMemo(
     () => ({
       onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => {
+        // IME（中文输入法）输入期间不拦截任何 key —— Windows IME 严格按
+        // composition 状态走，keydown 阶段 preventDefault 会打断候选窗口，
+        // 用户必须按两次标点 / Enter 才能落字。Mac 上 IME 实现宽松所以
+        // 没暴露，Windows 暴露。`isComposing` 是 W3C 标准、所有现代浏
+        // 览器支持。下面所有自定义 keydown 都需要这条守卫。
+        if (event.nativeEvent.isComposing) return;
         if (event.key === 'Enter' && !event.shiftKey) {
           event.preventDefault();
           onSubmit?.();
