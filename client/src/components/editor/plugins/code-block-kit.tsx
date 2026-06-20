@@ -33,6 +33,7 @@ export const CodeBlockKit = [
       // Tab / Shift+Tab 在代码块内 → 2 空格缩进 / 反缩进，
       // 不让浏览器默认 Tab 切焦点跳出编辑器。
       onKeyDown: ({ editor, event }) => {
+        if (event.nativeEvent.isComposing) return;  // IME 输入中不响应
         if (event.key !== 'Tab') return;
         const codeLine = editor.api.node<TElement>({
           match: { type: editor.getType(KEYS.codeLine) },

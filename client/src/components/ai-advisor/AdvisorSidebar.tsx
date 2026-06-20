@@ -392,6 +392,9 @@ export function AdvisorSidebar({
             onChange={(e) => setRenameValue(e.target.value)}
             onBlur={commitRename}
             onKeyDown={(e) => {
+              // IME composition 中不响应 Enter/Esc — Windows IME 用 Enter 确认候选词，
+              // 这里 preventDefault 会让候选词无法确认，用户感觉"按两次才行"。
+              if (e.nativeEvent.isComposing) return;
               if (e.key === 'Enter') {
                 e.preventDefault();
                 commitRename();

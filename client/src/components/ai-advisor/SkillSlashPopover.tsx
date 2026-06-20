@@ -95,6 +95,9 @@ export function SkillSlashPopover({
     if (!open || candidates.length === 0) return;
 
     const handler = (event: KeyboardEvent) => {
+      // IME composition 中不抢键 — Windows IME 用 ↑↓ 翻候选词、Enter 确认，
+      // capture 阶段 preventDefault 会打断 IME 流程，用户必须按两次。
+      if (event.isComposing) return;
       if (event.key === 'ArrowDown') {
         event.preventDefault();
         setActiveIndex((i) => (i + 1) % candidates.length);
