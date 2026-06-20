@@ -50,6 +50,8 @@ import { ComposeNode } from './workflow/nodes/compose.node';
 import { CommitNode } from './workflow/nodes/commit.node';
 import { DigestWorkflowService } from './workflow/digest-workflow.service';
 import { DigestWorkflowController } from './digest-workflow.controller';
+import { DigestPublicController } from './digest-public.controller';
+import { DigestPublicService } from './digest-public.service';
 import { DigestSchedulerService } from './digest-scheduler.service';
 
 @Module({
@@ -68,6 +70,7 @@ import { DigestSchedulerService } from './digest-scheduler.service';
     InfoSourceController,
     TopicController,
     DigestWorkflowController,
+    DigestPublicController,
   ],
   providers: [
     InfoSourceRepository,
@@ -86,6 +89,8 @@ import { DigestSchedulerService } from './digest-scheduler.service';
     DigestWorkflowService,
     // scheduler（onModuleInit 时注册所有 enabled cron job）
     DigestSchedulerService,
+    // 公开端服务
+    DigestPublicService,
   ],
   exports: [
     InfoSourceRepository,

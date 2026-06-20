@@ -1,14 +1,17 @@
 /**
  * /digest — 精选刊目录页。
  *
+ * task #52：接真实 API，从 mock 切换到 digestPublicApi.listTopics。
+ *
  * 真报纸头版：粗黑横线 + 巨型刊名 + Vol/No small caps 行 + 单列栏目目录。
  * 设计原则：全靠排版层级，去 icon 去卡片背景，横线即结构。
  */
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { appleEase } from '@/lib/motion';
-import { MOCK_TOPICS, MOCK_REPORTS } from './mock-data';
-import type { PublicTopic } from './mock-data';
+import { digestPublicApi } from '@/services/digest-public';
+import type { PublicTopicData } from '@/services/digest-public';
 
 /* ================================================================
  * 工具函数
@@ -22,15 +25,29 @@ function daysAgo(iso: string): string {
   return `${days} 天前`;
 }
 
-function reportCount(topicId: string): number {
-  return MOCK_REPORTS.filter((r) => r.topicId === topicId).length;
-}
-
 /* ================================================================
  * 页面组件
  * ================================================================ */
 
 export default function DigestPublicPage() {
+  const [topics, setTopics] = useState<PublicTopicData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    digestPublicApi
+      .listTopics()
+      .then((res) => {
+        setTopics(res);
+        setLoading(false);
+      })
+      .catch((err: unknown) => {
+        setLoading(false);
+        const msg = err instanceof Error ? err.message : '加载失败，请稍后重试';
+        setError(msg);
+      });
+  }, []);
+
   return (
     <div className="flex-1 overflow-y-auto" style={{ background: 'var(--paper)' }}>
       <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 py-16 max-[520px]:px-5">
@@ -42,12 +59,12 @@ export default function DigestPublicPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, ease: appleEase }}
         >
-          {/* 卷次行 */}
+          {/* 卷次行（动态日期） */}
           <p
             className="mb-5 text-[11px] font-bold uppercase tracking-[0.28em]"
             style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
           >
-            Vol. 1 &nbsp;·&nbsp; No. 12 &nbsp;·&nbsp; 2026-06-18 &nbsp;·&nbsp; 由 Aurora 编辑
+            由 Aurora 编辑 &nbsp;·&nbsp; 自动更新
           </p>
 
           {/* 巨型刊名 */}
@@ -63,7 +80,9 @@ export default function DigestPublicPage() {
             className="mb-6 text-xl italic leading-snug"
             style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
           >
-            本期关注 · AI 应用发展 · 摄影活动 · 写作叙事
+            {topics.length > 0
+              ? topics.map((t) => t.name).join(' · ')
+              : '智能采集 · AI 精选'}
           </p>
 
           {/* 报头下方 3px 粗黑横线 */}
@@ -84,11 +103,38 @@ export default function DigestPublicPage() {
             本期专栏
           </p>
 
-          {MOCK_TOPICS.length === 0 ? (
+          {loading ? (
+            /* loading 骨架 */
+            <div className="flex flex-col">
+              {Array.from({ length: 2 }).map((_, i) => (
+                <div key={i} style={{ borderTop: '1px solid var(--ink)' }}>
+                  <div className="py-6 flex items-center justify-between gap-6">
+                    <div className="flex-1 space-y-2">
+                      <div className="h-8 w-48 animate-pulse rounded" style={{ background: 'var(--shelf)' }} />
+                      <div className="h-4 w-72 animate-pulse rounded" style={{ background: 'var(--shelf)' }} />
+                    </div>
+                    <div className="h-4 w-16 animate-pulse rounded" style={{ background: 'var(--shelf)' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : error ? (
+            <div
+              className="py-16 text-center"
+              style={{ borderTop: '1px solid var(--ink)' }}
+            >
+              <p
+                className="text-[11px] font-bold uppercase tracking-[0.28em]"
+                style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+              >
+                {error}
+              </p>
+            </div>
+          ) : topics.length === 0 ? (
             <EmptyTopics />
           ) : (
             <div className="flex flex-col">
-              {MOCK_TOPICS.map((topic, i) => (
+              {topics.map((topic, i) => (
                 <TopicRow key={topic.id} topic={topic} index={i} />
               ))}
             </div>
@@ -120,8 +166,10 @@ export default function DigestPublicPage() {
  * TopicRow — 单个栏目条目（行式，纯排版，无卡片无图标）
  * ================================================================ */
 
-function TopicRow({ topic, index }: { topic: PublicTopic; index: number }) {
-  const count = reportCount(topic.id);
+function TopicRow({ topic, index }: { topic: PublicTopicData; index: number }) {
+  const count = topic.reports.length;
+  // 最新报告时间（reports 已按 publishedAt 倒序，取第一个）
+  const lastReportAt = topic.reports[0]?.publishedAt;
 
   return (
     <div>
@@ -133,7 +181,7 @@ function TopicRow({ topic, index }: { topic: PublicTopic; index: number }) {
         className="group flex items-baseline justify-between gap-6 py-6 transition-opacity duration-150 hover:opacity-70"
         style={{ animationDelay: `${0.06 * index}s` }}
       >
-        {/* 左侧：栏目名 + italic 副标题 */}
+        {/* 左侧：栏目名 + italic 描述 */}
         <div className="min-w-0 flex-1">
           <h2
             className="text-3xl font-bold leading-snug tracking-tight"
@@ -141,12 +189,14 @@ function TopicRow({ topic, index }: { topic: PublicTopic; index: number }) {
           >
             {topic.name}
           </h2>
-          <p
-            className="mt-1.5 text-base italic leading-relaxed"
-            style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
-          >
-            {topic.tagline}
-          </p>
+          {topic.description && (
+            <p
+              className="mt-1.5 text-base italic leading-relaxed"
+              style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
+            >
+              {topic.description}
+            </p>
+          )}
         </div>
 
         {/* 右侧：small caps meta + ASCII 箭头 */}
@@ -158,12 +208,14 @@ function TopicRow({ topic, index }: { topic: PublicTopic; index: number }) {
             >
               {count} 期
             </p>
-            <p
-              className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.22em]"
-              style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
-            >
-              {daysAgo(topic.lastReportAt)} 更新
-            </p>
+            {lastReportAt && (
+              <p
+                className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.22em]"
+                style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+              >
+                {daysAgo(lastReportAt)} 更新
+              </p>
+            )}
           </div>
           <span
             className="text-base font-bold transition-transform duration-150 group-hover:translate-x-1"

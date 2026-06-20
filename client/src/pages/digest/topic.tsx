@@ -1,15 +1,19 @@
 /**
  * /digest/:topicId — 专栏首页（往期归档列表）。
  *
+ * task #52：接真实 API，从 mock 切换到 digestPublicApi.getTopic。
+ *
  * 真报纸专栏归档：巨型栏目名 + 3px 粗横线 + 期号行式列表。
- * 每期行：左期号大字 / 中标题+副标+预览 / 右日期+箭头。
+ * 每期行：左期号大字 / 中标题+摘要 / 右日期+箭头。
  * 无卡片背景，无 icon，全用排版和横线区分层级。
  */
+import { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { appleEase } from '@/lib/motion';
-import { MOCK_TOPICS, MOCK_REPORTS } from './mock-data';
-import type { MockReport } from './mock-data';
+import { digestPublicApi } from '@/services/digest-public';
+import type { PublicTopicData } from '@/services/digest-public';
+import { isApiError } from '@/services/request';
 
 /* ================================================================
  * 工具函数
@@ -26,10 +30,57 @@ function formatDateShort(iso: string): string {
 
 export default function DigestTopicPage() {
   const { topicId } = useParams<{ topicId: string }>();
-  const topic = MOCK_TOPICS.find((t) => t.id === topicId);
-  const reports = MOCK_REPORTS.filter((r) => r.topicId === topicId);
 
-  if (!topic) {
+  const [data, setData] = useState<PublicTopicData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!topicId) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- topicId 变化时需同步重置加载状态
+    setLoading(true);
+    setNotFound(false);
+    setError(null);
+
+    digestPublicApi
+      .getTopic(topicId)
+      .then((res) => {
+        setData(res);
+        setLoading(false);
+      })
+      .catch((err: unknown) => {
+        setLoading(false);
+        if (isApiError(err, 404)) {
+          setNotFound(true);
+        } else {
+          const msg = err instanceof Error ? err.message : '加载失败，请稍后重试';
+          setError(msg);
+        }
+      });
+  }, [topicId]);
+
+  /* ── loading 骨架 ── */
+  if (loading) {
+    return (
+      <div className="flex-1 overflow-y-auto" style={{ background: 'var(--paper)' }}>
+        <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 py-16 max-[520px]:px-5">
+          <div className="mb-10 h-3 w-16 animate-pulse rounded" style={{ background: 'var(--shelf)' }} />
+          <div className="mb-4 h-14 w-2/3 animate-pulse rounded" style={{ background: 'var(--shelf)' }} />
+          <div className="mb-6 h-4 w-1/3 animate-pulse rounded" style={{ background: 'var(--shelf)' }} />
+          <div style={{ borderBottom: '3px solid var(--shelf)' }} />
+          <div className="mt-8 space-y-6">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="h-20 animate-pulse rounded" style={{ background: 'var(--shelf)' }} />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── 栏目不存在 ── */
+  if (notFound) {
     return (
       <div className="flex flex-1 items-center justify-center">
         <p
@@ -41,6 +92,24 @@ export default function DigestTopicPage() {
       </div>
     );
   }
+
+  /* ── 加载错误 ── */
+  if (error) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <p
+          className="text-[11px] font-bold uppercase tracking-[0.28em]"
+          style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+        >
+          {error}
+        </p>
+      </div>
+    );
+  }
+
+  if (!data) return null;
+
+  const { reports } = data;
 
   return (
     <div className="flex-1 overflow-y-auto" style={{ background: 'var(--paper)' }}>
@@ -82,16 +151,18 @@ export default function DigestTopicPage() {
             className="mb-4 text-6xl font-bold leading-[1.0] tracking-tight max-[520px]:text-4xl"
             style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
           >
-            {topic.name}
+            {data.name}
           </h1>
 
           {/* italic 副标题描述 */}
-          <p
-            className="mb-5 text-xl italic leading-snug"
-            style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
-          >
-            {topic.tagline}
-          </p>
+          {data.description && (
+            <p
+              className="mb-5 text-xl italic leading-snug"
+              style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
+            >
+              {data.description}
+            </p>
+          )}
 
           {/* meta 行 small caps */}
           <p
@@ -101,10 +172,6 @@ export default function DigestTopicPage() {
             本栏目
             <span className="mx-3">·</span>
             共 {reports.length} 期
-            <span className="mx-3">·</span>
-            订阅 {topic.sourceCount} 个信息源
-            <span className="mx-3">·</span>
-            {topic.cronLabel}
           </p>
 
           {/* 报头下方 3px 粗横线 */}
@@ -121,11 +188,13 @@ export default function DigestTopicPage() {
             <EmptyReports />
           ) : (
             <div className="flex flex-col">
-              {reports.map((report) => (
+              {/* reports 按 publishedAt 倒序，期号取倒序位置（最新 = 最大期号） */}
+              {reports.map((report, i) => (
                 <IssueRow
                   key={report.id}
                   report={report}
-                  topicId={topic.id}
+                  topicId={data.id}
+                  issueNumber={reports.length - i}
                 />
               ))}
             </div>
@@ -154,28 +223,24 @@ export default function DigestTopicPage() {
 }
 
 /* ================================================================
- * IssueRow — 单期行式条目（期号 / 标题预览 / 日期箭头三段式）
+ * IssueRow — 单期行式条目（期号 / 标题+摘要 / 日期箭头三段式）
  * ================================================================ */
 
 function IssueRow({
   report,
   topicId,
+  issueNumber,
 }: {
-  report: MockReport;
+  report: PublicTopicData['reports'][0];
   topicId: string;
+  issueNumber: number;
 }) {
-  // 取第一条 pick 的 subtitle 作为本期提要
-  const firstSubtitle = report.picks[0]?.subtitle ?? '';
-  const previewPicks = report.picks.slice(0, 3);
-
   return (
-    <div
-      style={{ borderTop: '1px solid var(--ink)' }}
-    >
+    <div style={{ borderTop: '1px solid var(--ink)' }}>
       <Link
         to={`/digest/${topicId}/${report.id}`}
         className="group flex items-start gap-8 py-7 transition-opacity duration-150 hover:opacity-70 max-[520px]:flex-col max-[520px]:gap-3"
-        aria-label={`第 ${report.issueNumber} 期 · ${report.headline ?? '本期精选'}`}
+        aria-label={`第 ${issueNumber} 期 · ${report.headline}`}
       >
         {/* 左：期号大字 + 日期（垂直） */}
         <div className="w-20 shrink-0 pt-0.5 max-[520px]:w-auto max-[520px]:flex max-[520px]:gap-3 max-[520px]:items-baseline">
@@ -183,19 +248,18 @@ function IssueRow({
             className="text-2xl font-bold leading-none tracking-tight"
             style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
           >
-            第{report.issueNumber}期
+            第{issueNumber}期
           </p>
           <p
             className="mt-2 text-[10px] font-bold uppercase tracking-[0.22em] max-[520px]:mt-0"
             style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
           >
-            {formatDateShort(report.date)}
+            {formatDateShort(report.publishedAt)}
           </p>
         </div>
 
-        {/* 中：标题 + 副标 + 前 3 条预览 */}
+        {/* 中：标题 + 摘要 */}
         <div className="min-w-0 flex-1">
-          {/* 本期 headline */}
           {report.headline && (
             <p
               className="mb-1.5 text-xl font-bold leading-snug tracking-tight"
@@ -205,43 +269,14 @@ function IssueRow({
             </p>
           )}
 
-          {/* 第一条 pick 的 subtitle 作为本期提要 */}
-          {firstSubtitle && (
+          {report.summary && (
             <p
-              className="mb-3 text-sm italic leading-snug"
+              className="text-sm italic leading-snug"
               style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
             >
-              {firstSubtitle}
+              {report.summary}
             </p>
           )}
-
-          {/* 前 3 条 pick 列表（标题 + 来源 small caps） */}
-          <ul className="flex flex-col gap-1.5">
-            {previewPicks.map((pick) => (
-              <li key={pick.url} className="flex items-baseline gap-2">
-                <span
-                  className="shrink-0 text-[10px] font-bold uppercase tracking-[0.2em]"
-                  style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
-                >
-                  {pick.source}
-                </span>
-                <span
-                  className="truncate text-sm leading-snug"
-                  style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
-                >
-                  {pick.title}
-                </span>
-              </li>
-            ))}
-            {report.picks.length > 3 && (
-              <li
-                className="text-[10px] font-bold uppercase tracking-[0.18em]"
-                style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
-              >
-                +{report.picks.length - 3} 条更多
-              </li>
-            )}
-          </ul>
         </div>
 
         {/* 右：阅读箭头 */}
