@@ -9,7 +9,11 @@
  * 日志里读得出是什么对象。
  *
  * category（Task #40）：给信息源打分类标签，驱动前端"按分类选源"UI（Task #43/#44）。
- * 老数据无 category 字段，onModuleInit migrate 时统一补 'tech' 作为兜底默认值。
+ * 老数据无 category 字段，onModuleInit migrate 时统一补 'engineering' 作为兜底默认值。
+ *
+ * 分类精简（refactor）：7 类 → 5 类（ai/engineering/business/design/longform），
+ * 不再按国内/国外区分，按主题归位；academic 归 ai（seed 论文全是 AI 相关 arXiv）。
+ * onModuleInit Step 1b 负责把数据库里残留的旧 enum 值 map 到新值。
  */
 import { modelOptions, prop, Severity } from '@typegoose/typegoose';
 
@@ -25,15 +29,16 @@ export enum FetchStatus {
   failed = 'failed',
 }
 
-/** 信息源分类枚举 — 对应 source-seeds.ts 里的 SEED_SOURCES 清单。 */
+/**
+ * 信息源分类枚举 — 对应 source-seeds.ts 里的 SEED_SOURCES 清单。
+ * 5 类：按主题严格划分，不区分国内/国外，不留废弃旧值。
+ */
 export enum InfoSourceCategory {
   ai = 'ai',
-  tech = 'tech',
+  engineering = 'engineering',
   business = 'business',
   design = 'design',
-  china_tech = 'china_tech',
-  reading = 'reading',
-  academic = 'academic',
+  longform = 'longform',
 }
 
 @modelOptions({
@@ -67,11 +72,11 @@ export class InfoSource {
   @prop({ trim: true })
   lastFetchError?: string;
 
-  /** 分类标签（Task #40）：驱动"按分类选源"UI；老数据由 onModuleInit migrate 补 'tech'。 */
+  /** 分类标签（Task #40）：驱动"按分类选源"UI；老数据由 onModuleInit migrate 补 'engineering'。 */
   @prop({
     enum: InfoSourceCategory,
     required: true,
-    default: InfoSourceCategory.tech,
+    default: InfoSourceCategory.engineering,
     index: true,
   })
   category!: InfoSourceCategory;

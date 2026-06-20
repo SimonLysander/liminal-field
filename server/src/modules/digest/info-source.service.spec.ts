@@ -49,7 +49,7 @@ function makeEntity(overrides: Partial<InfoSource> = {}): InfoSource {
     name: 'Test Feed',
     config: { url: 'https://example.com/feed.xml' },
     enabled: true,
-    category: InfoSourceCategory.tech,
+    category: InfoSourceCategory.engineering,
     lastFetchedAt: undefined,
     lastFetchStatus: undefined,
     lastFetchError: undefined,
@@ -107,7 +107,7 @@ describe('InfoSourceService', () => {
       type: InfoSourceType.rss,
       name: 'Test Feed',
       config: { url: 'https://example.com/feed.xml' },
-      category: InfoSourceCategory.tech,
+      category: InfoSourceCategory.engineering,
     });
 
     expect(mockRepo.create).toHaveBeenCalledTimes(1);
@@ -125,7 +125,7 @@ describe('InfoSourceService', () => {
         type: InfoSourceType.rss,
         name: 'Bad Feed',
         config: {},
-        category: InfoSourceCategory.tech,
+        category: InfoSourceCategory.engineering,
       }),
     ).rejects.toThrow(BadRequestException);
 
@@ -139,7 +139,7 @@ describe('InfoSourceService', () => {
         type: InfoSourceType.webpage,
         name: 'Web Monitor',
         config: { url: 'https://example.com' },
-        category: InfoSourceCategory.tech,
+        category: InfoSourceCategory.engineering,
       }),
     ).rejects.toThrow(BadRequestException);
 

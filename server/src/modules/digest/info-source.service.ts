@@ -8,7 +8,8 @@
  *   若有事项订阅此源，拒绝删除，要求用户先取消订阅。
  *
  * onModuleInit（Task #40）：
- *   1. migrate 老数据：无 category 字段的文档批量补 'tech'。
+ *   1a. migrate 老数据：无 category 字段的文档批量补 'engineering'。
+ *   1b. migrate 旧 enum 值：tech/china_tech→engineering, reading→longform, academic→ai（5 类 refactor）。
  *   2. seed 内置源：首次启动时将 SEED_SOURCES 写入，已存在则跳过（幂等）。
  *
  * Task #42：category + description 全链路打通（entity / DTO / CRUD / list filter）。
@@ -56,21 +57,47 @@ export class InfoSourceService implements OnModuleInit {
 
   /**
    * 启动时 migrate + seed：
-   * 1. 老数据没有 category 字段 → 批量补 'tech'（updateMany，幂等）。
+   * 1a. 老数据没有 category 字段 → 批量补 'engineering'（updateMany，幂等）。
+   * 1b. 数据库残留旧 enum 值（tech/china_tech/reading/academic）→ map 到新 5 类 enum。
+   *     这步保证即使之前版本写入了旧值，重启后也能迁移干净。
    * 2. SEED_SOURCES 逐条按 name 查重，不存在则插入（不删用户已有的源）。
    */
   async onModuleInit(): Promise<void> {
-    // ── Step 1: migrate 老数据 ──────────────────────────────────────────────
+    // ── Step 1a: 缺字段的老数据补默认 ─────────────────────────────────────
     const migrateResult = await this.infoSourceModel
       .updateMany(
         { category: { $exists: false } },
-        { $set: { category: InfoSourceCategory.tech } },
+        { $set: { category: InfoSourceCategory.engineering } },
       )
       .exec();
     if (migrateResult.modifiedCount > 0) {
       this.logger.log(
-        `migrate: 补 category='tech' ${migrateResult.modifiedCount} 条老数据`,
+        `migrate: 补 category='engineering' ${migrateResult.modifiedCount} 条老数据`,
       );
+    }
+
+    // ── Step 1b: 旧 enum 值 → 新 enum 值（7→5 类精简 refactor 后的 DB 迁移）──
+    // tech/china_tech → engineering；reading → longform；academic → ai
+    const oldToNew: Record<string, InfoSourceCategory> = {
+      tech: InfoSourceCategory.engineering,
+      china_tech: InfoSourceCategory.engineering,
+      reading: InfoSourceCategory.longform,
+      academic: InfoSourceCategory.ai,
+    };
+    for (const [oldVal, newVal] of Object.entries(oldToNew)) {
+      // oldVal 是旧 enum 字符串值，DB 里已存在但 TypeScript enum 不再认识它；
+      // 用 as unknown as InfoSourceCategory 绕过类型检查，仅用于 filter 条件（不污染业务逻辑）
+      const res = await this.infoSourceModel
+        .updateMany(
+          { category: oldVal as unknown as InfoSourceCategory },
+          { $set: { category: newVal } },
+        )
+        .exec();
+      if (res.modifiedCount > 0) {
+        this.logger.log(
+          `migrate: category '${oldVal}' → '${newVal}' ${res.modifiedCount} 条`,
+        );
+      }
     }
 
     // ── Step 2: seed 内置源 ─────────────────────────────────────────────────

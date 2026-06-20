@@ -8,27 +8,26 @@ import { request } from './request';
 
 export type InfoSourceType = 'rss' | 'webpage' | 'api' | 'mailbox';
 
-// 分类常量：INFO_SOURCE_CATEGORIES 定义顺序即列表分段展示顺序
+/**
+ * 分类常量：INFO_SOURCE_CATEGORIES 定义顺序即列表分段展示顺序。
+ * 5 类（精简自 7 类）：按主题严格划分，不区分国内/国外。
+ */
 export const INFO_SOURCE_CATEGORIES = [
   'ai',
-  'tech',
+  'engineering',
   'business',
   'design',
-  'china_tech',
-  'reading',
-  'academic',
+  'longform',
 ] as const;
 
 export type InfoSourceCategory = typeof INFO_SOURCE_CATEGORIES[number];
 
 export const CATEGORY_LABELS: Record<InfoSourceCategory, string> = {
-  ai: 'AI / ML',
-  tech: '技术 / 编程',
-  business: '商业 / 创业',
-  design: '设计 / 产品',
-  china_tech: '国内技术',
-  reading: '通识 / 思想',
-  academic: '学术 / 论文',
+  ai: 'AI',
+  engineering: '工程',
+  business: '商业',
+  design: '设计',
+  longform: '思想 · 长文',
 };
 
 export interface InfoSource {

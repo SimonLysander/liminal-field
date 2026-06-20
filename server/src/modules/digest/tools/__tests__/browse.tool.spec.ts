@@ -41,7 +41,7 @@ function makeSource(enabled = true): InfoSource {
     name: 'HN',
     config: { url: 'https://hn.algolia.com/feed' },
     enabled,
-    category: InfoSourceCategory.tech,
+    category: InfoSourceCategory.engineering,
     createdAt: new Date(),
   };
 }

@@ -116,7 +116,7 @@ function makeInfoSource(id: string, name: string): InfoSource {
     name,
     config: { url: `https://example.com/${id}.rss` },
     enabled: true,
-    category: InfoSourceCategory.tech,
+    category: InfoSourceCategory.engineering,
     createdAt: new Date(),
   };
 }

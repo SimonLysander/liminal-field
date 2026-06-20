@@ -182,7 +182,7 @@ function SourceForm({ initial, onSubmit, onCancel, saving }: {
     name: initial?.name ?? '',
     url: initial ? getUrl(initial) : '',
     enabled: initial?.enabled ?? true,
-    category: initial?.category ?? 'tech',
+    category: initial?.category ?? 'engineering',
     description: initial?.description ?? '',
   });
   const canSubmit = draft.name.trim().length > 0 && draft.url.trim().length > 0 && !saving;

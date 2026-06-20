@@ -7,7 +7,7 @@
  * Case 3: findings=0 早停（task.status=failed + error）
  * Case 4: GET /digest/topics/:id/tasks 列最近（倒序）
  * Case 5: 未登录返回 401
- * Case 6: InfoSource migrate on startup（无 category 老数据 → 补 'tech'）
+ * Case 6: InfoSource migrate on startup（无 category 老数据 → 补 'engineering'）
  * Case 7: Seed sources on startup（幂等 + API 可见 26 条）
  *
  * Mock 策略：
@@ -114,7 +114,7 @@ async function createInfoSource(
       config: { url: 'https://mock.example.com/rss.xml' },
       enabled: true,
       // Task #42: category 必填，不传 → 400 BadRequest
-      category: 'tech',
+      category: 'engineering',
     })
     .expect(201);
 
@@ -599,7 +599,7 @@ describe('Digest Case 5: 未登录 → 401', () => {
         type: 'rss',
         name: '未登录',
         config: { url: 'https://x.com/rss' },
-        category: 'tech',
+        category: 'engineering',
       })
       .expect(401);
   });
@@ -619,7 +619,7 @@ describe('Digest Case 6: InfoSource migrate on startup', () => {
     await ctx.teardown();
   });
 
-  it('补 category=tech 给无 category 字段的老数据', async () => {
+  it('补 category=engineering 给无 category 字段的老数据', async () => {
     // 1. 用底层 mongoose model 直接插"老格式"文档（绕开 typegoose default/required）
     //    目的：模拟 Task #40 之前写入的历史数据，category 字段根本不存在于文档中。
     //    不能用 service.create（它走 DTO 校验，category 是必填），
@@ -647,12 +647,12 @@ describe('Digest Case 6: InfoSource migrate on startup', () => {
     const service = ctx.app.get(InfoSourceService);
     await service.onModuleInit();
 
-    // 4. 断言：migrate 已将该文档的 category 补为 'tech'
+    // 4. 断言：migrate 已将该文档的 category 补为 'engineering'
     const rawAfter = await infoSourceModel.collection.findOne({
       _id: legacyId,
     });
     expect(rawAfter).not.toBeNull();
-    expect(rawAfter!['category']).toBe('tech');
+    expect(rawAfter!['category']).toBe('engineering');
   });
 });
 
