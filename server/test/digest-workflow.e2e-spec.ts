@@ -44,6 +44,11 @@ import { generateText, generateObject } from 'ai';
 import { TestContext, login } from './helpers';
 import { DigestModule } from '../src/modules/digest/digest.module';
 import { RssFetcher } from '../src/modules/digest/fetchers/rss-fetcher.service';
+// PromptManagerModule 是 @Global()，AppModule 一次注入后全局可用；
+// TestContext 手动组装不含 AppModule，需要显式传入 extraModules。
+import { PromptManagerModule } from '../src/infrastructure/prompt/prompt-manager.module';
+// SettingsModule 提供 SystemConfigService（DigestModule → ReactAgentNode/ComposeNode 依赖）
+import { SettingsModule } from '../src/modules/settings/settings.module';
 import type { FetchedItem } from '../src/modules/digest/fetchers/fetcher.interface';
 
 // 强类型 mock：避免在 test body 里反复 as any
@@ -52,19 +57,24 @@ const mockGenerateObject = generateObject as jest.MockedFunction<typeof generate
 
 // ─── 固定 mock 数据 ───────────────────────────────────────────────────────────
 
+// publishedAt 设为"昨天"和"前天"，确保通过 browse 工具的 since=7天前 过滤
+// （不能用固定日期，否则随时间推移会变成 7 天前之前的历史数据被过滤掉）
+const YESTERDAY = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000);
+const DAY_BEFORE = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+
 const MOCK_FEED_ITEMS: FetchedItem[] = [
   {
     itemGuid: 'mock-item-1',
     title: 'Mock 文章 1',
     url: 'https://mock.example.com/1',
-    publishedAt: new Date('2026-06-01T10:00:00Z'),
+    publishedAt: YESTERDAY,
     snippet: '这是 mock 摘要 1，涵盖 e2e 测试核心主题。',
   },
   {
     itemGuid: 'mock-item-2',
     title: 'Mock 文章 2',
     url: 'https://mock.example.com/2',
-    publishedAt: new Date('2026-06-02T10:00:00Z'),
+    publishedAt: DAY_BEFORE,
     snippet: '这是 mock 摘要 2，补充背景资料。',
   },
 ];
@@ -161,7 +171,7 @@ describe('Digest Case 1: POST /digest/topics/:topicId/run-now 创建 task', () =
     // DigestModule 依赖 SettingsModule（SystemConfigService.getAiConfig）
     // SettingsModule 已通过 DigestModule → import SettingsModule 间接引入，
     // 但 TestContext.setup 不含 SettingsModule；这里通过 extraModules 显式加入。
-    await ctx.setup([DigestModule]);
+    await ctx.setup([PromptManagerModule, SettingsModule, DigestModule]);
     cookie = await login(ctx.app);
 
     const sourceId = await createInfoSource(ctx.app, cookie);
@@ -226,13 +236,34 @@ describe('Digest Case 2: 完整 workflow 跑通（mock LLM）', () => {
 
   beforeAll(async () => {
     ctx = new TestContext();
-    await ctx.setup([DigestModule]);
+    await ctx.setup([PromptManagerModule, SettingsModule, DigestModule]);
     cookie = await login(ctx.app);
 
-    // ─── mock RssFetcher.fetch：返回 2 条固定 FetchedItem ───
+    // ─── mock RssFetcher.fetch：每次调用返回唯一 guid 的 FetchedItem（避免 PFI 去重）───
+    // 同一 TestContext 内多次 run-now 会把上一次 pick 的 guid 写入 ProcessedFeedItem，
+    // 导致下一次 browse 时去重后 items 为空。用自增 suffix 确保每次 guid 不同。
+    let fetchCallCount = 0;
     fetchSpy = jest
       .spyOn(RssFetcher.prototype, 'fetch')
-      .mockResolvedValue(MOCK_FEED_ITEMS);
+      .mockImplementation(async () => {
+        fetchCallCount++;
+        return [
+          {
+            itemGuid: `mock-item-1-r${fetchCallCount}`,
+            title: 'Mock 文章 1',
+            url: 'https://mock.example.com/1',
+            publishedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
+            snippet: '这是 mock 摘要 1，涵盖 e2e 测试核心主题。',
+          },
+          {
+            itemGuid: `mock-item-2-r${fetchCallCount}`,
+            title: 'Mock 文章 2',
+            url: 'https://mock.example.com/2',
+            publishedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+            snippet: '这是 mock 摘要 2，补充背景资料。',
+          },
+        ];
+      });
 
     const sourceId = await createInfoSource(ctx.app, cookie, 'e2e-workflow-源');
     topicId = await createTopic(ctx.app, cookie, sourceId, 'e2e-workflow-事项');
@@ -351,8 +382,9 @@ describe('Digest Case 2: 完整 workflow 跑通（mock LLM）', () => {
     expect(pathRes.body.data.length).toBeGreaterThan(0);
     const topicNavNodeId = pathRes.body.data[pathRes.body.data.length - 1].id as string;
 
+    // visibility=all 确保 committed（未发布）的 digest 报告节点也被列出
     const childrenRes = await supertest(ctx.app.getHttpServer())
-      .get(`/api/v1/structure-nodes?parentId=${topicNavNodeId}`)
+      .get(`/api/v1/structure-nodes?parentId=${topicNavNodeId}&visibility=all`)
       .set('Cookie', cookie)
       .expect(200);
 
@@ -371,7 +403,7 @@ describe('Digest Case 3: findings=0 早停', () => {
 
   beforeAll(async () => {
     ctx = new TestContext();
-    await ctx.setup([DigestModule]);
+    await ctx.setup([PromptManagerModule, SettingsModule, DigestModule]);
     cookie = await login(ctx.app);
 
     fetchSpy = jest
@@ -434,7 +466,7 @@ describe('Digest Case 4: GET /digest/topics/:id/tasks 列最近', () => {
 
   beforeAll(async () => {
     ctx = new TestContext();
-    await ctx.setup([DigestModule]);
+    await ctx.setup([PromptManagerModule, SettingsModule, DigestModule]);
     cookie = await login(ctx.app);
 
     fetchSpy = jest
@@ -513,7 +545,7 @@ describe('Digest Case 5: 未登录 → 401', () => {
 
   beforeAll(async () => {
     ctx = new TestContext();
-    await ctx.setup([DigestModule]);
+    await ctx.setup([PromptManagerModule, SettingsModule, DigestModule]);
     cookie = await login(ctx.app);
 
     mockGenerateText.mockResolvedValue({ steps: [], text: '' } as any);
