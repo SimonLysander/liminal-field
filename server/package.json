@@ -51,6 +51,7 @@
     "nanoid": "^3.3.12",
     "nestjs-typegoose": "^7.1.38",
     "reflect-metadata": "^0.2.2",
+    "rss-parser": "^3.13.0",
     "rxjs": "^7.8.1",
     "simple-git": "^3.36.0",
     "turndown": "^7.2.4",

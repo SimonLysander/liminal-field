@@ -39,6 +39,9 @@ import { DigestTaskRepository } from './digest-task.repository';
 import { TopicService } from './topic.service';
 import { TopicController } from './topic.controller';
 
+import { RssFetcher } from './fetchers/rss-fetcher.service';
+import { FetcherRegistry } from './fetchers/fetcher-registry.service';
+
 @Module({
   imports: [
     TypegooseModule.forFeature([
@@ -58,6 +61,8 @@ import { TopicController } from './topic.controller';
     ProcessedFeedItemRepository,
     DigestTaskRepository,
     TopicService,
+    RssFetcher,
+    FetcherRegistry,
   ],
   exports: [
     InfoSourceRepository,
@@ -66,6 +71,7 @@ import { TopicController } from './topic.controller';
     ProcessedFeedItemRepository,
     DigestTaskRepository,
     TopicService,
+    FetcherRegistry,
   ],
 })
 export class DigestModule {}
