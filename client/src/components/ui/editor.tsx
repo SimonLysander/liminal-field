@@ -110,9 +110,11 @@ export const Editor = ({
     )}
     disabled={disabled}
     disableDefaultStyles
-    spellCheck={false}
-    autoCorrect="off"
-    autoCapitalize="off"
+    /* spellCheck/autoCorrect/autoCapitalize 删掉 — 之前显式设 false / "off" 在 Chrome + Win 微软拼音
+     * TSF IME 下会触发"contenteditable 轻量模型"路径，导致第一次按中文标点的 keydown / beforeinput
+     * 被 IME 缓存到第二次按键才一起发出 → 屏幕上只看到第二个字符，第一个丢了。
+     * Edge 用不同 IME 路径所以没暴露。Plate 官网 demo 不设这三项也没暴露 — 强烈对应。
+     * 让 Plate 走默认（spellCheck=true），就用浏览器原生 IME 标准路径。 */
     {...props}
   />
 );
