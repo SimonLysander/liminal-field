@@ -107,6 +107,7 @@ describe('InfoSourceService', () => {
       type: InfoSourceType.rss,
       name: 'Test Feed',
       config: { url: 'https://example.com/feed.xml' },
+      category: InfoSourceCategory.tech,
     });
 
     expect(mockRepo.create).toHaveBeenCalledTimes(1);
@@ -124,6 +125,7 @@ describe('InfoSourceService', () => {
         type: InfoSourceType.rss,
         name: 'Bad Feed',
         config: {},
+        category: InfoSourceCategory.tech,
       }),
     ).rejects.toThrow(BadRequestException);
 
@@ -137,6 +139,7 @@ describe('InfoSourceService', () => {
         type: InfoSourceType.webpage,
         name: 'Web Monitor',
         config: { url: 'https://example.com' },
+        category: InfoSourceCategory.tech,
       }),
     ).rejects.toThrow(BadRequestException);
 
@@ -176,5 +179,63 @@ describe('InfoSourceService', () => {
     await expect(service.getById('src_nonexistent')).rejects.toThrow(
       NotFoundException,
     );
+  });
+
+  // ── Task #42 新增 case ────────────────────────────────────────────
+
+  // Case 7：create() with category + description → entityToDto 包含两字段
+  it('create() 传 category + description → DTO 包含两字段', async () => {
+    const entity = makeEntity({
+      category: InfoSourceCategory.ai,
+      description: 'AI 每日 trending 论文',
+    });
+    mockRepo.create.mockResolvedValue(entity);
+
+    const result = await service.create({
+      type: InfoSourceType.rss,
+      name: 'HuggingFace Papers',
+      config: { url: 'https://huggingface.co/feed' },
+      category: InfoSourceCategory.ai,
+      description: 'AI 每日 trending 论文',
+    });
+
+    // 验证 repo.create 收到 category + description
+    const call = mockRepo.create.mock.calls[0][0];
+    expect(call.category).toBe(InfoSourceCategory.ai);
+    expect(call.description).toBe('AI 每日 trending 论文');
+
+    // 验证 DTO 返回包含两字段
+    expect(result.category).toBe(InfoSourceCategory.ai);
+    expect(result.description).toBe('AI 每日 trending 论文');
+  });
+
+  // Case 8：entityToDto — 老数据无 description 时返 null
+  it('list() 老数据无 description → DTO description 为 null', async () => {
+    const entity = makeEntity({ description: undefined });
+    mockRepo.findAll.mockResolvedValue([entity]);
+
+    const result = await service.list();
+
+    expect(result[0].description).toBeNull();
+  });
+
+  // Case 9：list() 传 category 过滤 → repo.findAll 收到 filter
+  it('list({ category: "ai" }) → repo.findAll 收到 { category: "ai" }', async () => {
+    mockRepo.findAll.mockResolvedValue([]);
+
+    await service.list({ category: InfoSourceCategory.ai });
+
+    expect(mockRepo.findAll).toHaveBeenCalledWith({
+      category: InfoSourceCategory.ai,
+    });
+  });
+
+  // Case 10：list() 不传 category → repo.findAll 收到 undefined
+  it('list() 无过滤 → repo.findAll 收到 undefined', async () => {
+    mockRepo.findAll.mockResolvedValue([]);
+
+    await service.list();
+
+    expect(mockRepo.findAll).toHaveBeenCalledWith(undefined);
   });
 });

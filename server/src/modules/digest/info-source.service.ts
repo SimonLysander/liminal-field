@@ -10,6 +10,11 @@
  * onModuleInit（Task #40）：
  *   1. migrate 老数据：无 category 字段的文档批量补 'tech'。
  *   2. seed 内置源：首次启动时将 SEED_SOURCES 写入，已存在则跳过（幂等）。
+ *
+ * Task #42：category + description 全链路打通（entity / DTO / CRUD / list filter）。
+ *   - create 时 category 必填（DTO 层 @IsEnum 已保证，service 不兜底）。
+ *   - list 支持可选 category 过滤，透传给 repo.findAll。
+ *   - entityToDto 补 category + description（老数据 description 返 null）。
  */
 import {
   BadRequestException,
@@ -78,12 +83,14 @@ export class InfoSourceService implements OnModuleInit {
         .exec();
       if (exists > 0) continue;
 
+      // description 一并写入（Task #42），帮助 agent 在 system prompt 里识别该源用途
       await this.infoSourceModel.create({
         _id: `src_${randomUUID().replace(/-/g, '').slice(0, 12)}`,
         type: InfoSourceType.rss,
         name: seed.name,
         config: { url: resolvedUrl },
         category: seed.category,
+        description: seed.description,
         enabled: true,
         createdAt: new Date(),
       });
@@ -110,6 +117,10 @@ export class InfoSourceService implements OnModuleInit {
       name: e.name,
       config: e.config,
       enabled: e.enabled,
+      // Task #42：category 保证存在（onModuleInit migrate 已兜底老数据）
+      category: e.category,
+      // Task #42：老数据无 description，返 null 而非 undefined，保持 wire format 稳定
+      description: e.description ?? null,
       lastFetchedAt: e.lastFetchedAt ? e.lastFetchedAt.toISOString() : null,
       lastFetchStatus: e.lastFetchStatus ?? null,
       lastFetchError: e.lastFetchError ?? null,
@@ -134,8 +145,16 @@ export class InfoSourceService implements OnModuleInit {
     }
   }
 
-  async list(): Promise<InfoSourceDto[]> {
-    const sources = await this.repo.findAll();
+  /**
+   * 列出信息源，支持按 category 过滤（Task #42）。
+   * opts.category 未传时返回全部；传无效值应在 controller 层 QueryDto 校验拦截。
+   */
+  async list(opts?: {
+    category?: InfoSourceCategory;
+  }): Promise<InfoSourceDto[]> {
+    const sources = await this.repo.findAll(
+      opts?.category ? { category: opts.category } : undefined,
+    );
     return sources.map((e) => this.entityToDto(e));
   }
 
@@ -151,12 +170,15 @@ export class InfoSourceService implements OnModuleInit {
     this.logger.log(
       `creating info-source id=${id} type=${dto.type} name=${dto.name}`,
     );
+    // category 由 DTO 层 @IsEnum 强制校验，service 不再兜底 default（Task #42）
     const entity = await this.repo.create({
       _id: id,
       type: dto.type,
       name: dto.name,
       config: dto.config,
       enabled: dto.enabled ?? true,
+      category: dto.category,
+      description: dto.description,
     });
     return this.entityToDto(entity);
   }
@@ -174,11 +196,14 @@ export class InfoSourceService implements OnModuleInit {
     this.logger.log(
       `updating info-source id=${id} name=${dto.name ?? '(unchanged)'}`,
     );
+    // Task #42：category / description 若有传则写入，undefined 时 repo.update 忽略
     const updated = await this.repo.update(id, {
       type: dto.type,
       name: dto.name,
       config: dto.config,
       enabled: dto.enabled,
+      category: dto.category,
+      description: dto.description,
     });
     if (!updated) throw new NotFoundException(`InfoSource not found: ${id}`);
     return this.entityToDto(updated);

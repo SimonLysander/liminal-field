@@ -76,6 +76,13 @@ export class InfoSource {
   })
   category!: InfoSourceCategory;
 
+  /**
+   * 一句话简介，给 agent 看（在 system prompt 里展示），帮助判断该源适合啥主题。
+   * seed 源在 source-seeds.ts 里预设，admin 手动创建的源可选填。
+   */
+  @prop({ trim: true })
+  description?: string;
+
   /** 展示排序权重，越小越靠前；seed 源不设此值，UI 按 category + name 自然排序。 */
   @prop({ type: () => Number })
   displayOrder?: number;

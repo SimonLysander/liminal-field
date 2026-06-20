@@ -7,7 +7,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { ReturnModelType } from '@typegoose/typegoose';
 import { getModelToken } from 'nestjs-typegoose';
-import { InfoSource, FetchStatus, InfoSourceType } from './info-source.entity';
+import {
+  InfoSource,
+  FetchStatus,
+  InfoSourceType,
+  InfoSourceCategory,
+} from './info-source.entity';
 
 export interface SaveInfoSourceInput {
   _id: string;
@@ -15,6 +20,10 @@ export interface SaveInfoSourceInput {
   name: string;
   config: Record<string, unknown>;
   enabled: boolean;
+  /** 信息源分类（Task #42）。 */
+  category: InfoSourceCategory;
+  /** 一句话简介（Task #42），可选。 */
+  description?: string;
 }
 
 export interface UpdateInfoSourceInput {
@@ -22,6 +31,10 @@ export interface UpdateInfoSourceInput {
   name?: string;
   config?: Record<string, unknown>;
   enabled?: boolean;
+  /** 更新分类（Task #42）。 */
+  category?: InfoSourceCategory;
+  /** 更新简介（Task #42）。 */
+  description?: string;
 }
 
 export interface UpdateFetchStateInput {
@@ -46,8 +59,17 @@ export class InfoSourceRepository {
     return this.infoSourceModel.find({ _id: { $in: ids } }).exec();
   }
 
-  async findAll(): Promise<InfoSource[]> {
-    return this.infoSourceModel.find().sort({ createdAt: -1 }).exec();
+  /**
+   * 查询全部信息源，支持按 category 过滤（Task #42）。
+   * 不传 filter 或 filter.category 为 undefined 时返回全部。
+   */
+  async findAll(filter?: {
+    category?: InfoSourceCategory;
+  }): Promise<InfoSource[]> {
+    const query: Record<string, unknown> = filter?.category
+      ? { category: filter.category }
+      : {};
+    return this.infoSourceModel.find(query).sort({ createdAt: -1 }).exec();
   }
 
   /** 工作流扫描入口：列出所有启用的信息源（供调度/抓取作业筛取）。 */
