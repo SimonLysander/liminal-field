@@ -1,49 +1,45 @@
 /**
  * DigestTopicForm — 事项新建/编辑表单
- * 从 digest/TopicForm.tsx 迁移到 settings 目录，配合 DigestTab settings sub-tab 使用。
+ *
+ * 信息源选项从 infoSourcesApi.list() 拉真实数据。
+ * 父组件传 initial 时为编辑模式（含 sourceIds / keywords / prompt 等完整字段）。
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChipSelector } from '@/components/shared/ChipSelector';
 import { FieldLabel, PrimaryButton, SecondaryButton } from './SettingsUI';
-
-// ── 共享 mock 数据（和主页保持一致，避免 API 依赖） ──────────────────────────
-
-export const MOCK_SOURCES_OPTIONS = [
-  { id: 'src_1a2b3c4d5e6f', label: 'Paul Graham Essays' },
-  { id: 'src_7g8h9i0j1k2l', label: 'Hacker News Frontpage' },
-  { id: 'src_3m4n5o6p7q8r', label: 'LessWrong' },
-  { id: 'src_9s0t1u2v3w4x', label: '少数派' },
-  { id: 'src_5y6z7a8b9c0d', label: '阮一峰的网络日志' },
-] as const;
-
-export type SourceId = typeof MOCK_SOURCES_OPTIONS[number]['id'];
+import { infoSourcesApi } from '@/services/info-sources';
+import type { InfoSource } from '@/services/info-sources';
 
 export interface TopicDraft {
   name: string;
+  description: string;
   cron: string;
-  keywords: string;
-  sourceIds: SourceId[];
+  keywords: string;       // 逗号分隔字符串，提交时拆分
+  sourceIds: string[];
   aiPrompt: string;
   enabled: boolean;
 }
 
 export interface TopicFormInitial {
   name: string;
+  description: string;
   cron: string;
+  keywords: string[];    // 编辑时从 string[] 还原
+  sourceIds: string[];
+  aiPrompt: string;
   enabled: boolean;
 }
 
 const EMPTY_DRAFT: TopicDraft = {
   name: '',
+  description: '',
   cron: '',
   keywords: '',
   sourceIds: [],
   aiPrompt: '',
   enabled: true,
 };
-
-const ALL_SOURCE_IDS = MOCK_SOURCES_OPTIONS.map((s) => s.id);
 
 const inputClass = 'mt-1 w-full rounded-lg px-3 py-2 text-sm outline-none';
 const inputStyle = {
@@ -63,9 +59,42 @@ export function DigestTopicForm({
 }) {
   const [draft, setDraft] = useState<TopicDraft>(() =>
     initial
-      ? { name: initial.name, cron: initial.cron, keywords: '', sourceIds: [], aiPrompt: '', enabled: initial.enabled }
+      ? {
+          name: initial.name,
+          description: initial.description,
+          cron: initial.cron,
+          keywords: initial.keywords.join(', '),
+          sourceIds: initial.sourceIds,
+          aiPrompt: initial.aiPrompt,
+          enabled: initial.enabled,
+        }
       : { ...EMPTY_DRAFT },
   );
+
+  // 从 API 拉取真实信息源列表
+  const [sources, setSources] = useState<InfoSource[]>([]);
+  const [sourcesLoading, setSourcesLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 加载信息源选项
+    setSourcesLoading(true);
+    infoSourcesApi
+      .list()
+      .then((list) => {
+        if (!cancelled) setSources(list);
+      })
+      .catch(() => {
+        // 静默降级：选项为空，用户仍可填其他字段
+        if (!cancelled) setSources([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSourcesLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const availableSourceIds = sources.map((s) => s.id);
 
   const canSubmit = draft.name.trim().length > 0 && draft.cron.trim().length > 0;
 
@@ -80,6 +109,18 @@ export function DigestTopicForm({
           placeholder="AI 应用发展"
           className={inputClass}
           style={inputStyle}
+        />
+      </div>
+
+      <div>
+        <FieldLabel>卷首语（可选）</FieldLabel>
+        <textarea
+          value={draft.description}
+          onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
+          placeholder="简单描述这个事项关注的方向…"
+          rows={2}
+          className={inputClass}
+          style={{ ...inputStyle, resize: 'vertical' }}
         />
       </div>
 
@@ -112,16 +153,34 @@ export function DigestTopicForm({
 
       <div>
         <FieldLabel>订阅信息源</FieldLabel>
-        <div className="mt-2">
-          <ChipSelector<SourceId>
-            selected={draft.sourceIds}
-            available={ALL_SOURCE_IDS}
-            renderLabel={(id) => MOCK_SOURCES_OPTIONS.find((s) => s.id === id)?.label ?? id}
-            onAdd={(id) => setDraft((d) => ({ ...d, sourceIds: [...d.sourceIds, id] }))}
-            onRemove={(id) => setDraft((d) => ({ ...d, sourceIds: d.sourceIds.filter((x) => x !== id) }))}
-            addLabel="选择信息源"
-          />
-        </div>
+        {sourcesLoading ? (
+          <p className="mt-2 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            加载信息源…
+          </p>
+        ) : (
+          <div className="mt-2">
+            <ChipSelector<string>
+              selected={draft.sourceIds}
+              available={availableSourceIds}
+              renderLabel={(id) => sources.find((s) => s.id === id)?.name ?? id}
+              onAdd={(id) =>
+                setDraft((d) => ({ ...d, sourceIds: [...d.sourceIds, id] }))
+              }
+              onRemove={(id) =>
+                setDraft((d) => ({
+                  ...d,
+                  sourceIds: d.sourceIds.filter((x) => x !== id),
+                }))
+              }
+              addLabel="选择信息源"
+            />
+            {sources.length === 0 && (
+              <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+                暂无信息源，请先在「信息源」Tab 添加
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       <div>

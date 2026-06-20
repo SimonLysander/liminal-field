@@ -8,6 +8,8 @@ import { InfoSourceService } from './info-source.service';
 import { InfoSourceRepository } from './info-source.repository';
 import { InfoSourceType, FetchStatus } from './info-source.entity';
 import type { InfoSource } from './info-source.entity';
+import { SmartTopicConfigRepository } from './smart-topic-config.repository';
+import type { SmartTopicConfig } from './smart-topic-config.entity';
 
 // ── Mock repository ───────────────────────────────────────────────
 const mockRepo = {
@@ -17,6 +19,10 @@ const mockRepo = {
   update: jest.fn(),
   deleteById: jest.fn(),
 } as unknown as jest.Mocked<InfoSourceRepository>;
+
+const mockSmartTopicConfigRepo = {
+  findAll: jest.fn(),
+} as unknown as jest.Mocked<SmartTopicConfigRepository>;
 
 // ── Fixture ───────────────────────────────────────────────────────
 const NOW = new Date('2026-06-20T10:00:00.000Z');
@@ -43,7 +49,7 @@ describe('InfoSourceService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new InfoSourceService(mockRepo);
+    service = new InfoSourceService(mockRepo, mockSmartTopicConfigRepo);
   });
 
   // Case 1：list() 调 repository.findAll，结果经 entityToDto 转换（Date → ISO string）
@@ -112,10 +118,28 @@ describe('InfoSourceService', () => {
 
   // Case 5：delete() 调 repository.deleteById，await 完成不抛错
   it('delete() — 调 repo.deleteById，不抛错', async () => {
+    mockSmartTopicConfigRepo.findAll.mockResolvedValue([]);
     mockRepo.deleteById.mockResolvedValue(undefined);
 
     await expect(service.delete('src_aabbcc001122')).resolves.toBeUndefined();
     expect(mockRepo.deleteById).toHaveBeenCalledWith('src_aabbcc001122');
+  });
+
+  // Case 6 (task #35)：delete() 有 SmartTopicConfig 订阅 → BadRequestException
+  it('delete() 有事项订阅该信息源 → BadRequestException，不调 deleteById', async () => {
+    const sourceId = 'src_aabbcc001122';
+    mockSmartTopicConfigRepo.findAll.mockResolvedValue([
+      { _id: 'stc_001', contentItemId: 'ci_001', sourceIds: [sourceId] },
+      {
+        _id: 'stc_002',
+        contentItemId: 'ci_002',
+        sourceIds: ['src_other', sourceId],
+      },
+    ] as unknown as SmartTopicConfig[]);
+
+    await expect(service.delete(sourceId)).rejects.toThrow(BadRequestException);
+    await expect(service.delete(sourceId)).rejects.toThrow('2 个事项订阅');
+    expect(mockRepo.deleteById).not.toHaveBeenCalled();
   });
 
   // 额外：getById 找不到时 NotFoundException

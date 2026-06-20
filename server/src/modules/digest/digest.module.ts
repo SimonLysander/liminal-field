@@ -6,9 +6,6 @@
  *   - DigestModule 是「业务模块」，跟 WorkspaceModule 平级（不互相依赖）
  *   - 提供：信息源 CRUD + 智能事项 CRUD + 工作流（拉源 → AI 判定 → 入 digest scope）
  *
- * 骨架阶段（task #32）只暴露 entity + repository。
- * Controller / Service / Workflow 在 task #34-37 逐步填充。
- *
  * 数据库表：
  *   - info_sources：信息源（全局共用，无 scope）
  *   - smart_topic_configs：事项配置（绑事项容器 ContentItem.id）
@@ -18,25 +15,38 @@
 import { Module } from '@nestjs/common';
 import { TypegooseModule } from 'nestjs-typegoose';
 
+import { ContentModule } from '../content/content.module';
+import { NavigationModule } from '../navigation/navigation.module';
+
 import { InfoSource } from './info-source.entity';
 import { InfoSourceRepository } from './info-source.repository';
 import { InfoSourceService } from './info-source.service';
 import { InfoSourceController } from './info-source.controller';
+
 import { SmartTopicConfig } from './smart-topic-config.entity';
 import { SmartTopicConfigRepository } from './smart-topic-config.repository';
 
+import { TopicService } from './topic.service';
+import { TopicController } from './topic.controller';
+
 @Module({
-  imports: [TypegooseModule.forFeature([InfoSource, SmartTopicConfig])],
-  controllers: [InfoSourceController],
+  imports: [
+    TypegooseModule.forFeature([InfoSource, SmartTopicConfig]),
+    ContentModule,
+    NavigationModule,
+  ],
+  controllers: [InfoSourceController, TopicController],
   providers: [
     InfoSourceRepository,
     InfoSourceService,
     SmartTopicConfigRepository,
+    TopicService,
   ],
   exports: [
     InfoSourceRepository,
     InfoSourceService,
     SmartTopicConfigRepository,
+    TopicService,
   ],
 })
 export class DigestModule {}

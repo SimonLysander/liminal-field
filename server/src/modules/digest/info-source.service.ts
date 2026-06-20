@@ -4,7 +4,8 @@
  * 首期只支持 type=rss，其他 type 在 service 层 BadRequest 拦截。
  * config.url 校验：必填且必须 https?:// 开头（防误填 feed:// 或裸域名）。
  *
- * 删除依赖检查暂不实现 —— task #35 SmartTopicConfig 完成后在此加查询。
+ * 删除时检查 SmartTopicConfig 依赖（task #35）：
+ *   若有事项订阅此源，拒绝删除，要求用户先取消订阅。
  */
 import {
   BadRequestException,
@@ -15,6 +16,7 @@ import {
 import { randomUUID } from 'crypto';
 import { InfoSourceRepository } from './info-source.repository';
 import { InfoSourceType, type InfoSource } from './info-source.entity';
+import { SmartTopicConfigRepository } from './smart-topic-config.repository';
 import type {
   CreateInfoSourceDto,
   UpdateInfoSourceDto,
@@ -27,7 +29,10 @@ const RSS_URL_RE = /^https?:\/\//;
 export class InfoSourceService {
   private readonly logger = new Logger(InfoSourceService.name);
 
-  constructor(private readonly repo: InfoSourceRepository) {}
+  constructor(
+    private readonly repo: InfoSourceRepository,
+    private readonly smartTopicConfigRepository: SmartTopicConfigRepository,
+  ) {}
 
   /** 构造业务 id，格式 src_xxx，跟 ci_xxx 同款风格 */
   private buildId(): string {
@@ -117,7 +122,17 @@ export class InfoSourceService {
   }
 
   async delete(id: string): Promise<void> {
-    // TODO task #35: 检查 SmartTopicConfig 是否有引用此 source，有则拒绝删除
+    // task #35: 检查是否有事项订阅了该信息源，有则拒绝删除（不级联自动解订阅）
+    const allConfigs = await this.smartTopicConfigRepository.findAll();
+    const subscriberCount = allConfigs.filter((c) =>
+      c.sourceIds.includes(id),
+    ).length;
+    if (subscriberCount > 0) {
+      throw new BadRequestException(
+        `该信息源被 ${subscriberCount} 个事项订阅，删除前请先取消订阅`,
+      );
+    }
+
     this.logger.log(`deleting info-source id=${id}`);
     await this.repo.deleteById(id);
   }

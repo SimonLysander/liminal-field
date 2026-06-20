@@ -1,11 +1,11 @@
 /**
  * DigestTab — 智能采集事项列表，作为 Settings sub-tab 内嵌使用。
- * 从 pages/admin/digest/index.tsx 迁移而来，去掉外层 admin 页面布局壳，
- * 对齐 SkillsTab 的结构：顶层 <div className="space-y-6">，header 用 text-base font-semibold。
- * 「信息源」入口按钮已移除，信息源现在是同级 tab（digest-sources）。
+ *
+ * 数据来源: topicsApi（/digest/topics）
+ * 模式: useState + async/await + try/catch + banner 反馈（同 DigestSourcesTab）
  */
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Pencil, Trash2, ChevronRight } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
@@ -29,30 +29,9 @@ import {
 import { banner } from '@/components/ui/banner-api';
 import { PrimaryButton, DangerButton } from './SettingsUI';
 import { DigestTopicForm } from './DigestTopicForm';
-import type { TopicDraft } from './DigestTopicForm';
-
-// ── 本地类型 ──────────────────────────────────────────────────────────────────
-
-interface Topic {
-  id: string;
-  name: string;
-  cron: string;
-  cronLabel: string;
-  sourceCount: number;
-  keywordCount: number;
-  enabled: boolean;
-  lastRunAt: string | null;
-  lastRunHits: number;
-  lastRunStatus: 'ok' | 'error' | null;
-}
-
-// ── Mock 数据（独立变量，避免 react-refresh/only-export-components 警告） ─────
-
-const MOCK_TOPICS: Topic[] = [
-  { id: 'ci_topic_ai001', name: 'AI 应用发展', cron: '0 8 * * *', cronLabel: '每天 8:00', sourceCount: 3, keywordCount: 12, enabled: true, lastRunAt: '2026-06-18T08:00:00Z', lastRunHits: 5, lastRunStatus: 'ok' },
-  { id: 'ci_topic_photo02', name: '摄影活动举办', cron: '0 9 * * 1', cronLabel: '每周一 9:00', sourceCount: 2, keywordCount: 8, enabled: true, lastRunAt: '2026-06-17T09:00:00Z', lastRunHits: 2, lastRunStatus: 'ok' },
-  { id: 'ci_topic_writing', name: '写作 · 叙事 · 文学', cron: '0 0 */3 * *', cronLabel: '每 3 天 0:00', sourceCount: 4, keywordCount: 15, enabled: false, lastRunAt: null, lastRunHits: 0, lastRunStatus: null },
-];
+import type { TopicDraft, TopicFormInitial } from './DigestTopicForm';
+import { topicsApi } from '@/services/topics';
+import type { TopicSummary, TopicDetail } from '@/services/topics';
 
 // ── 工具函数 ──────────────────────────────────────────────────────────────────
 
@@ -66,16 +45,26 @@ function formatRelativeTime(iso: string): string {
   return `${Math.floor(hr / 24)} 天前`;
 }
 
+/** draft 的 keywords 字符串 → string[] */
+function parseKeywords(raw: string): string[] {
+  return raw
+    .split(',')
+    .map((k) => k.trim())
+    .filter((k) => k.length > 0);
+}
+
 // ── 子组件：单行事项 ──────────────────────────────────────────────────────────
 
 function TopicRow({
   topic,
   onEdit,
   onDelete,
+  onToggleEnabled,
 }: {
-  topic: Topic;
+  topic: TopicSummary;
   onEdit: () => void;
   onDelete: () => void;
+  onToggleEnabled: () => void;
 }) {
   const navigate = useNavigate();
 
@@ -108,7 +97,7 @@ function TopicRow({
           )}
         </div>
         <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-faded)' }}>
-          {topic.cronLabel} · {topic.sourceCount} 个信息源 · {topic.keywordCount} 个关键词
+          {topic.cron} · {topic.sourceCount} 个信息源 · {topic.keywordCount} 个关键词
         </p>
       </div>
 
@@ -120,12 +109,11 @@ function TopicRow({
             : '尚未运行'}
         </span>
 
-        {/* enabled toggle 占位，点击提示敬请期待 */}
         <button
           type="button"
           role="switch"
           aria-checked={topic.enabled}
-          onClick={(e) => { e.stopPropagation(); banner.info('敬请期待'); }}
+          onClick={(e) => { e.stopPropagation(); onToggleEnabled(); }}
           className="relative h-5 w-9 rounded-full transition-colors duration-150"
           style={{ background: topic.enabled ? 'var(--accent)' : 'var(--separator)' }}
           title={topic.enabled ? '停用' : '启用'}
@@ -168,25 +156,131 @@ function TopicRow({
 // ── Tab 主体 ──────────────────────────────────────────────────────────────────
 
 export function DigestTab() {
+  const [topics, setTopics] = useState<TopicSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [creating, setCreating] = useState(false);
-  const [editing, setEditing] = useState<Topic | null>(null);
-  const [confirmingDelete, setConfirmingDelete] = useState<Topic | null>(null);
+  // 编辑时需要 TopicDetail（含 sourceIds / keywords / prompt）
+  const [editingDetail, setEditingDetail] = useState<TopicDetail | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<TopicSummary | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleCreate = (draft: TopicDraft) => {
-    banner.success(`事项「${draft.name}」已新建`);
-    setCreating(false);
+  const loadTopics = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const list = await topicsApi.list();
+      setTopics(list);
+    } catch {
+      setError('加载事项失败，请稍后重试');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 初始数据加载
+    void loadTopics();
+  }, [loadTopics]);
+
+  /** 点击编辑：拉 detail（含完整配置）再打开 Dialog */
+  const handleOpenEdit = async (id: string) => {
+    try {
+      const detail = await topicsApi.get(id);
+      setEditingDetail(detail);
+    } catch {
+      banner.error('加载事项详情失败');
+    }
   };
 
-  const handleUpdate = (draft: TopicDraft) => {
-    banner.success(`事项「${draft.name}」已保存`);
-    setEditing(null);
+  const handleCreate = async (draft: TopicDraft) => {
+    setSubmitting(true);
+    try {
+      await topicsApi.create({
+        name: draft.name.trim(),
+        description: draft.description.trim() || undefined,
+        cron: draft.cron.trim(),
+        sourceIds: draft.sourceIds,
+        keywords: parseKeywords(draft.keywords),
+        prompt: draft.aiPrompt.trim(),
+        enabled: draft.enabled,
+      });
+      banner.success(`事项「${draft.name}」已新建`);
+      setCreating(false);
+      await loadTopics();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '创建失败';
+      banner.error(msg);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleDelete = () => {
+  const handleUpdate = async (draft: TopicDraft) => {
+    if (!editingDetail) return;
+    setSubmitting(true);
+    try {
+      await topicsApi.update(editingDetail.id, {
+        name: draft.name.trim(),
+        description: draft.description.trim(),
+        cron: draft.cron.trim(),
+        sourceIds: draft.sourceIds,
+        keywords: parseKeywords(draft.keywords),
+        prompt: draft.aiPrompt.trim(),
+        enabled: draft.enabled,
+      });
+      banner.success(`事项「${draft.name}」已保存`);
+      setEditingDetail(null);
+      await loadTopics();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '保存失败';
+      banner.error(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
     if (!confirmingDelete) return;
-    banner.success(`事项「${confirmingDelete.name}」已删除`);
-    setConfirmingDelete(null);
+    setSubmitting(true);
+    try {
+      await topicsApi.delete(confirmingDelete.id);
+      banner.success(`事项「${confirmingDelete.name}」已删除`);
+      setConfirmingDelete(null);
+      await loadTopics();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '删除失败';
+      banner.error(msg);
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  const handleToggleEnabled = async (topic: TopicSummary) => {
+    try {
+      await topicsApi.update(topic.id, { enabled: !topic.enabled });
+      banner.success(
+        topic.enabled ? `事项「${topic.name}」已停用` : `事项「${topic.name}」已启用`,
+      );
+      await loadTopics();
+    } catch {
+      banner.error('操作失败');
+    }
+  };
+
+  /** 编辑 initial：从 TopicDetail 组装 TopicFormInitial */
+  const editingInitial: TopicFormInitial | undefined = editingDetail
+    ? {
+        name: editingDetail.name,
+        description: editingDetail.description,
+        cron: editingDetail.cron,
+        keywords: editingDetail.keywords,
+        sourceIds: editingDetail.sourceIds,
+        aiPrompt: editingDetail.prompt,
+        enabled: editingDetail.enabled,
+      }
+    : undefined;
 
   return (
     <div className="space-y-6">
@@ -208,13 +302,28 @@ export function DigestTab() {
 
       {/* 列表 */}
       <section className="space-y-2">
-        {MOCK_TOPICS.length > 0 ? (
-          MOCK_TOPICS.map((topic) => (
+        {loading ? (
+          <div
+            className="rounded-lg px-3 py-6 text-center text-xs"
+            style={{ color: 'var(--ink-ghost)', border: '1px dashed var(--separator)' }}
+          >
+            加载中…
+          </div>
+        ) : error ? (
+          <div
+            className="rounded-lg px-3 py-6 text-center text-xs"
+            style={{ color: 'var(--error, #e53e3e)', border: '1px dashed var(--separator)' }}
+          >
+            {error}
+          </div>
+        ) : topics.length > 0 ? (
+          topics.map((topic) => (
             <TopicRow
               key={topic.id}
               topic={topic}
-              onEdit={() => setEditing(topic)}
+              onEdit={() => void handleOpenEdit(topic.id)}
               onDelete={() => setConfirmingDelete(topic)}
+              onToggleEnabled={() => void handleToggleEnabled(topic)}
             />
           ))
         ) : (
@@ -228,35 +337,38 @@ export function DigestTab() {
       </section>
 
       {/* 新建 Dialog */}
-      <Dialog open={creating} onOpenChange={(v) => !v && setCreating(false)}>
+      <Dialog open={creating} onOpenChange={(v) => !v && !submitting && setCreating(false)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>新建事项</DialogTitle>
             <DialogDescription className="sr-only">新建一个智能采集事项，配置信息源和关键词</DialogDescription>
           </DialogHeader>
-          <DigestTopicForm onSubmit={handleCreate} onCancel={() => setCreating(false)} />
+          <DigestTopicForm onSubmit={(d) => void handleCreate(d)} onCancel={() => setCreating(false)} />
         </DialogContent>
       </Dialog>
 
       {/* 编辑 Dialog */}
-      <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>
+      <Dialog open={!!editingDetail} onOpenChange={(v) => !v && !submitting && setEditingDetail(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>编辑事项</DialogTitle>
             <DialogDescription className="sr-only">修改事项配置</DialogDescription>
           </DialogHeader>
-          {editing && (
+          {editingDetail && editingInitial && (
             <DigestTopicForm
-              initial={{ name: editing.name, cron: editing.cron, enabled: editing.enabled }}
-              onSubmit={handleUpdate}
-              onCancel={() => setEditing(null)}
+              initial={editingInitial}
+              onSubmit={(d) => void handleUpdate(d)}
+              onCancel={() => setEditingDetail(null)}
             />
           )}
         </DialogContent>
       </Dialog>
 
       {/* 删除确认 AlertDialog */}
-      <AlertDialog open={!!confirmingDelete} onOpenChange={(v) => !v && setConfirmingDelete(null)}>
+      <AlertDialog
+        open={!!confirmingDelete}
+        onOpenChange={(v) => !v && !submitting && setConfirmingDelete(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>删除事项「{confirmingDelete?.name}」？</AlertDialogTitle>
@@ -265,9 +377,11 @@ export function DigestTab() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={submitting}>取消</AlertDialogCancel>
             <AlertDialogAction asChild>
-              <DangerButton onClick={handleDelete}>删除</DangerButton>
+              <DangerButton onClick={() => void handleDelete()} disabled={submitting}>
+                删除
+              </DangerButton>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
