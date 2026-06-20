@@ -37,3 +37,18 @@ export function cronToSchedule(cron: string): Schedule {
   }
   return { mode: 'manual' };
 }
+
+/** Cron → 人话简短描述，用于详情页 metadata 展示 */
+export function humanizeCron(cron?: string): string {
+  if (!cron) return '—';
+  const s = cronToSchedule(cron);
+  switch (s.mode) {
+    case 'manual': return '仅手动';
+    case 'daily': return `每天 ${String(s.hour).padStart(2, '0')}:00`;
+    case 'weekly': {
+      const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+      return `每${days[s.weekday]} ${String(s.hour).padStart(2, '0')}:00`;
+    }
+    case 'every-n-days': return `每 ${s.intervalDays} 天 ${String(s.hour).padStart(2, '0')}:00`;
+  }
+}

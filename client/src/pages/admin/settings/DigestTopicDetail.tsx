@@ -32,6 +32,7 @@ import type { LucideIcon } from 'lucide-react';
 import { banner } from '@/components/ui/banner-api';
 import { topicsApi, digestTasksApi } from '@/services/topics';
 import type { TopicDetail, DigestTaskListItem, AgentStep } from '@/services/topics';
+import { humanizeCron } from './scheduleUtils';
 
 // ── 工具函数 ───────────────────────────────────────────────────────────────────
 
@@ -381,6 +382,67 @@ export function DigestTopicDetail() {
       {/* 内容区 */}
       <div className="flex-1 overflow-y-auto px-6 py-6">
         <div className="max-w-2xl space-y-6">
+          {/* 事项配置 section（只读展示，编辑走列表的 ✏️ 按钮） */}
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>
+              事项配置
+            </h2>
+            <div className="space-y-2">
+              {/* 任务描述（用户最关心的） */}
+              {topic.prompt && (
+                <div>
+                  <div className="text-xs" style={{ color: 'var(--ink-ghost)' }}>任务描述</div>
+                  <p
+                    className="mt-1 whitespace-pre-wrap text-sm"
+                    style={{ color: 'var(--ink)' }}
+                  >
+                    {topic.prompt}
+                  </p>
+                </div>
+              )}
+
+              {/* 节奏 + 最大轮次 一行展示 */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-xs" style={{ color: 'var(--ink-ghost)' }}>运行节奏</div>
+                  <p className="mt-1 text-sm" style={{ color: 'var(--ink)' }}>
+                    {humanizeCron(topic.cron)}
+                  </p>
+                </div>
+                <div>
+                  <div className="text-xs" style={{ color: 'var(--ink-ghost)' }}>Agent 最大轮次</div>
+                  <p className="mt-1 text-sm" style={{ color: 'var(--ink)' }}>
+                    {topic.maxSteps ?? 20} 轮
+                  </p>
+                </div>
+              </div>
+
+              {/* 订阅信息源（chip 只读，不带删除按钮） */}
+              {topic.sources.length > 0 && (
+                <div>
+                  <div className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
+                    订阅信息源（{topic.sources.length}）
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {topic.sources.map((s) => (
+                      <span
+                        key={s.id}
+                        className="rounded px-2 py-0.5 text-xs"
+                        style={{
+                          background: 'var(--shelf)',
+                          color: 'var(--ink-soft)',
+                          border: '0.5px solid var(--separator)',
+                        }}
+                      >
+                        {s.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+
           {/* 最近运行 section */}
           <section className="space-y-3">
             <div className="flex items-center justify-between">

@@ -90,7 +90,7 @@ function TopicRow({
           )}
         </div>
         <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-faded)' }}>
-          {topic.cron} · {topic.sourceCount} 个信息源 · {topic.keywordCount} 个关键词
+          {topic.cron} · {topic.sourceCount} 个信息源
         </p>
       </div>
 
