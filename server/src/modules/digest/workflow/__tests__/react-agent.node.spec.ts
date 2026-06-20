@@ -1,14 +1,14 @@
 /**
- * ReactAgentNode 单元测试（v4）
+ * ReactAgentNode 单元测试（v5）
  *
  * 覆盖：
  *   1. 正常运行：generateText 被调用，传入 system prompt + tools + stopWhen
  *   2. promptManager.render 被调用并带正确的 topic_name / topic_prompt
  *   3. 订阅源列表被拼入 system prompt（infoSourceRepo.findManyByIds 被调用）
+ *   4. onStepFinish 钩子被传入 generateText，回调时 taskRepository.appendStep 被调用，携带正确的 toolName + args + summary
  *
- * v4 变化：
- *   - DigestToolsFactory 注入改为 4 工具（browse/web_search?/web_fetch/pick）
- *   - ReactAgentNode 新增 infoSourceRepo 依赖（注入订阅源列表拼 system prompt）
+ * v5 变化：
+ *   - ReactAgentNode 新增 taskRepository 依赖（onStepFinish 钩子写 steps）
  */
 
 const mockGenerateText = jest.fn().mockResolvedValue({ steps: [] });
@@ -34,6 +34,7 @@ import type { InfoSourceRepository } from '../../info-source.repository';
 import type { ContentRepository } from '../../../content/content.repository';
 import type { DigestToolsFactory } from '../../tools/digest-tools.factory';
 import type { SystemConfigService } from '../../../settings/system-config.service';
+import type { DigestTaskRepository } from '../../digest-task.repository';
 import type { SmartTopicConfig } from '../../smart-topic-config.entity';
 import type { ContentItem } from '../../../content/content-item.entity';
 import type { InfoSource } from '../../info-source.entity';
@@ -94,6 +95,12 @@ function makeSystemConfig(): SystemConfigService {
   } as unknown as SystemConfigService;
 }
 
+function makeTaskRepository(): jest.Mocked<DigestTaskRepository> {
+  return {
+    appendStep: jest.fn().mockResolvedValue(undefined),
+  } as unknown as jest.Mocked<DigestTaskRepository>;
+}
+
 function makeConfig(sourceIds: string[] = []): SmartTopicConfig {
   return {
     _id: 'stc_001',
@@ -141,6 +148,7 @@ describe('ReactAgentNode (v4)', () => {
       }),
       makeToolsFactory(),
       makeSystemConfig(),
+      makeTaskRepository(),
     );
 
     await node.run('dt_test', 'ci_topic001');
@@ -171,6 +179,7 @@ describe('ReactAgentNode (v4)', () => {
       }),
       makeToolsFactory(),
       makeSystemConfig(),
+      makeTaskRepository(),
     );
 
     await node.run('dt_test', 'ci_topic001');
@@ -201,6 +210,7 @@ describe('ReactAgentNode (v4)', () => {
       }),
       makeToolsFactory(),
       makeSystemConfig(),
+      makeTaskRepository(),
     );
 
     await node.run('dt_test', 'ci_topic001');
@@ -219,5 +229,67 @@ describe('ReactAgentNode (v4)', () => {
     expect(typeof callArgs.system).toBe('string');
     expect(callArgs.system as string).toContain('src_abc123');
     expect(callArgs.system as string).toContain('HuggingFace Papers');
+  });
+
+  it('Case 4: onStepFinish 钩子触发时 taskRepository.appendStep 被调用，携带正确字段', async () => {
+    // generateText mock 会调用 onStepFinish（模拟 browse 工具调用 + 结果）
+    const browseOutput = JSON.stringify({
+      summary: 'HuggingFace Papers 过去 7 天 15 条',
+      meta: { totalFetched: 30, afterDedupe: 15, status: 'ok' },
+    });
+    mockGenerateText.mockImplementationOnce(
+      async (opts: Record<string, unknown>) => {
+        // 模拟 onStepFinish 被 AI SDK 调用一次
+        if (typeof opts.onStepFinish === 'function') {
+          await (opts.onStepFinish as (step: unknown) => Promise<void>)({
+            toolCalls: [
+              {
+                type: 'tool-call',
+                toolCallId: 'tc_001',
+                toolName: 'browse',
+                input: { sourceId: 'src_abc123', limit: 20 },
+              },
+            ],
+            toolResults: [
+              {
+                type: 'tool-result',
+                toolCallId: 'tc_001',
+                toolName: 'browse',
+                output: browseOutput,
+              },
+            ],
+          });
+        }
+        return { steps: [] };
+      },
+    );
+
+    const taskRepo = makeTaskRepository();
+    const node = new ReactAgentNode(
+      makePromptManager(),
+      makeStcRepo(makeConfig()),
+      makeInfoSourceRepo([]),
+      makeContentRepo({
+        latestVersion: {
+          title: 'AI 动态',
+          versionId: 'v1',
+          commitHash: '',
+          summary: '',
+        },
+      }),
+      makeToolsFactory(),
+      makeSystemConfig(),
+      taskRepo,
+    );
+
+    await node.run('dt_test', 'ci_topic001');
+
+    expect(taskRepo.appendStep).toHaveBeenCalledTimes(1);
+    const stepArg = (taskRepo.appendStep as jest.Mock).mock.calls[0][1];
+    expect(stepArg.toolName).toBe('browse');
+    expect(stepArg.args).toEqual({ sourceId: 'src_abc123', limit: 20 });
+    expect(stepArg.summary).toBe('HuggingFace Papers 过去 7 天 15 条');
+    expect(stepArg.meta).toMatchObject({ totalFetched: 30, afterDedupe: 15 });
+    expect(stepArg.error).toBeUndefined();
   });
 });

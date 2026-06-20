@@ -4,8 +4,9 @@
  * 生命周期：
  *   1. react_agent 节点启动前创建，status=running
  *   2. react_agent 执行过程中通过 save_finding 工具累积 findings
- *   3. compose + commit 完成后回写 status=done + reportContentItemId + reportSummary
- *   4. 任意节点抛错写 status=failed + error
+ *   3. react_agent 每一步（tool_call + result）通过 onStepFinish 钩子追加到 steps
+ *   4. compose + commit 完成后回写 status=done + reportContentItemId + reportSummary
+ *   5. 任意节点抛错写 status=failed + error
  *
  * findings 内 citationId 由 save_finding 工具全局递增分配，
  * compose 节点用 [CIT N] 引用，N = citationId。
@@ -14,7 +15,7 @@
  *
  * 字段严格按 §3.2 文档。
  */
-import { modelOptions, prop } from '@typegoose/typegoose';
+import { modelOptions, prop, Severity } from '@typegoose/typegoose';
 
 export enum DigestTaskStatus {
   running = 'running',
@@ -56,8 +57,38 @@ export class Finding {
   reason!: string;
 }
 
+/**
+ * Agent 调用链中的一步（一个 tool_call + 其结果摘要）。
+ *
+ * 边跑边追加：react-agent.node 在 generateText 的 onStepFinish 钩子里调
+ * taskRepository.appendStep 把每步写进 DigestTask.steps。
+ *
+ * 设计约束：只存"调用链回放"所需信息，不存抓取的全文内容（避免单条 task 文档膨胀到几 MB）。
+ *   - args: 工具入参（query/url/sourceId/limit 这些短字段）
+ *   - summary: 工具返回的 ToolResult.summary（人话一句）
+ *   - meta: 数值类聚合（count/durationMs 等），不含 detail/markdown/content 等大字段
+ */
+export interface AgentStep {
+  /** 触发时间 */
+  ts: Date;
+  /** browse / web_search / web_fetch / pick */
+  toolName: string;
+  /** 短入参（长字符串截断 200 字） */
+  args: Record<string, unknown>;
+  /** 工具返回的人话一句（ToolResult.summary） */
+  summary: string;
+  /** 数值类聚合（count/totalFetched 等） */
+  meta?: Record<string, number | string>;
+  /** 工具调用耗时（ms），当前 generateText.step 不直接给单工具时延，暂为 0） */
+  durationMs: number;
+  /** 工具调用失败时的错误码或消息（不含 stack） */
+  error?: string;
+}
+
 @modelOptions({
   schemaOptions: { collection: 'digest_tasks' },
+  // steps 是 AgentStep[]（interface，非 class），用 [Object] 存 Mixed 数组
+  options: { allowMixed: Severity.ALLOW },
 })
 export class DigestTask {
   /** dt_xxx 业务 id */
@@ -74,6 +105,13 @@ export class DigestTask {
   /** react_agent 通过 save_finding 累积的命中条目 */
   @prop({ type: () => [Finding], default: [] })
   findings!: Finding[];
+
+  /**
+   * Agent 调用链步骤（tool_call + 结果摘要）。
+   * 边跑边追加（$push 原子写），不存抓取全文，详见 AgentStep 注释。
+   */
+  @prop({ type: () => [Object], default: [] })
+  steps!: AgentStep[];
 
   /** commit 后回写的报告 ContentItem.id */
   @prop()

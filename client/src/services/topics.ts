@@ -73,3 +73,50 @@ export const topicsApi = {
   delete: (id: string) =>
     request<void>(`/digest/topics/${id}`, { method: 'DELETE' }),
 };
+
+// ── Digest Task API ───────────────────────────────────────────────────────────
+
+/** 列表端点返回（不含 steps 数组） */
+export interface DigestTaskListItem {
+  id: string;
+  topicId: string;
+  status: 'running' | 'done' | 'failed';
+  traceId: string;
+  iterations: number;
+  llmCallsCount: number;
+  findingsCount: number;
+  stepsCount: number;
+  reportContentItemId: string | null;
+  reportSummary: string | null;
+  error: string | null;
+  startedAt: string;
+  completedAt: string | null;
+}
+
+/** Agent 调用链中的一步（tool_call + 结果摘要） */
+export interface AgentStep {
+  ts: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  summary: string;
+  meta?: Record<string, number | string>;
+  durationMs: number;
+  error?: string;
+}
+
+/** 详情端点返回（含完整 steps） */
+export interface DigestTaskDetail extends DigestTaskListItem {
+  steps: AgentStep[];
+}
+
+export const digestTasksApi = {
+  listByTopic: (topicId: string, limit = 5) =>
+    request<DigestTaskListItem[]>(
+      `/digest/topics/${topicId}/tasks?limit=${limit}`,
+    ),
+  get: (taskId: string) => request<DigestTaskDetail>(`/digest/tasks/${taskId}`),
+  runNow: (topicId: string) =>
+    request<{ taskId: string }>(`/digest/topics/${topicId}/run-now`, {
+      method: 'POST',
+    }),
+};

@@ -46,6 +46,10 @@ const DraftEditPage = lazy(() => import('./pages/admin/edit'));
 const ImportPreviewPage = lazy(() => import('./pages/admin/import-preview'));
 const BatchImportPage = lazy(() => import('./pages/admin/batch-import'));
 const SettingsPage = lazy(() => import('./pages/admin/settings'));
+// 智能采集事项详情页（/admin/digest/:id）
+const DigestTopicDetailPage = lazy(
+  () => import('./pages/admin/settings/DigestTopicDetail'),
+);
 const DigestPublicPage = lazy(() => import('./pages/digest'));
 const DigestTopicPage = lazy(() => import('./pages/digest/topic'));
 const DigestReportPage = lazy(() => import('./pages/digest/report'));
@@ -219,6 +223,15 @@ function App() {
           {/* 智能采集已迁移到 settings sub-tab，老 URL redirect 防 404 */}
           <Route path="digest" element={<Navigate to="/admin/settings/digest" replace />} />
           <Route path="digest/sources" element={<Navigate to="/admin/settings/digest-sources" replace />} />
+          {/* 事项详情页：/admin/digest/:id */}
+          <Route
+            path="digest/:id"
+            element={
+              <Suspense fallback={<LoadingState variant="full" />}>
+                <DigestTopicDetailPage />
+              </Suspense>
+            }
+          />
         </Route>
         <Route
           path="/admin/notes/:id/edit"

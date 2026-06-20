@@ -25,8 +25,8 @@ import { DigestTaskRepository } from './digest-task.repository';
 import type { DigestTaskDto } from './dto/digest-task.dto';
 import type { DigestTask } from './digest-task.entity';
 
-/** entity → DTO 转换，隔离内部结构与 HTTP 响应 */
-function toDto(task: DigestTask): DigestTaskDto {
+/** 列表端点 entity → DTO（不含 steps 数组，只含 stepsCount，节省 payload） */
+function toListDto(task: DigestTask): DigestTaskDto {
   return {
     id: String(task._id),
     topicId: task.topicId,
@@ -35,11 +35,20 @@ function toDto(task: DigestTask): DigestTaskDto {
     iterations: task.iterations,
     llmCallsCount: task.llmCallsCount,
     findingsCount: task.findings?.length ?? 0,
+    stepsCount: task.steps?.length ?? 0,
     reportContentItemId: task.reportContentItemId ?? null,
     reportSummary: task.reportSummary ?? null,
     error: task.error ?? null,
     startedAt: task.startedAt.toISOString(),
     completedAt: task.completedAt ? task.completedAt.toISOString() : null,
+  };
+}
+
+/** 详情端点 entity → DTO（含完整 steps 数组，供前端展示时间线） */
+function toDetailDto(task: DigestTask): DigestTaskDto {
+  return {
+    ...toListDto(task),
+    steps: task.steps ?? [],
   };
 }
 
@@ -65,7 +74,7 @@ export class DigestWorkflowController {
 
   /**
    * GET /digest/tasks/:taskId
-   * 查单个 task 状态，前端轮询用。
+   * 查单个 task 状态 + 完整 steps（前端详情展开用）。
    */
   @Get('tasks/:taskId')
   async getTask(@Param('taskId') taskId: string): Promise<DigestTaskDto> {
@@ -74,12 +83,13 @@ export class DigestWorkflowController {
     if (!task) {
       throw new NotFoundException(`Task not found: ${taskId}`);
     }
-    return toDto(task);
+    return toDetailDto(task);
   }
 
   /**
    * GET /digest/topics/:topicId/tasks
    * 列该事项最近 N 次 task，默认 limit=10。
+   * 不返 steps 数组（只返 stepsCount），节省列表 payload。
    */
   @Get('topics/:topicId/tasks')
   async listTasks(
@@ -89,6 +99,6 @@ export class DigestWorkflowController {
     const limit = limitStr ? Math.min(parseInt(limitStr, 10) || 10, 100) : 10;
     this.logger.debug(`GET /digest/topics/${topicId}/tasks limit=${limit}`);
     const tasks = await this.taskRepository.findRecentByTopic(topicId, limit);
-    return tasks.map(toDto);
+    return tasks.map(toListDto);
   }
 }

@@ -13,7 +13,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { ReturnModelType } from '@typegoose/typegoose';
 import { getModelToken } from 'nestjs-typegoose';
-import { DigestTask, DigestTaskStatus, Finding } from './digest-task.entity';
+import {
+  AgentStep,
+  DigestTask,
+  DigestTaskStatus,
+  Finding,
+} from './digest-task.entity';
 
 export interface CreateDigestTaskInput {
   _id: string;
@@ -105,6 +110,16 @@ export class DigestTaskRepository {
       .find({ topicId })
       .sort({ startedAt: -1 })
       .limit(limit)
+      .exec();
+  }
+
+  /**
+   * 把一步追加到 task.steps 末尾。原子 $push，不读旧值不覆盖。
+   * 用于 react-agent 的 onStepFinish 钩子边跑边写——挂了一半也能看到已跑的步。
+   */
+  async appendStep(taskId: string, step: AgentStep): Promise<void> {
+    await this.model
+      .updateOne({ _id: taskId }, { $push: { steps: step } })
       .exec();
   }
 

@@ -24,6 +24,7 @@ function makeTask(overrides: Partial<DigestTask> = {}): DigestTask {
     iterations: 3,
     llmCallsCount: 4,
     findings: [{ citationId: 1 } as DigestTask['findings'][0]],
+    steps: [],
     reportContentItemId: 'ci_report001',
     reportSummary: 'AI 摘要',
     error: undefined,

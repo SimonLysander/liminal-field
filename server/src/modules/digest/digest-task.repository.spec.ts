@@ -38,6 +38,7 @@ function makeTask(overrides: Partial<DigestTask> = {}): DigestTask {
     topicId: 'ci_topic001',
     status: DigestTaskStatus.running,
     findings: [],
+    steps: [],
     traceId: 'trace_abc123',
     iterations: 0,
     llmCallsCount: 0,
@@ -192,5 +193,26 @@ describe('DigestTaskRepository', () => {
     await repo.appendFindings('dt_aabbcc001122', []);
 
     expect(mockModel.updateOne).not.toHaveBeenCalled();
+  });
+
+  // Case 8: appendStep() — 原子追加 step，调 $push
+  it('appendStep() — 原子追加 step 到 steps 数组，调 $push', async () => {
+    mockModel.updateOne.mockReturnValue(chainExec({ modifiedCount: 1 }));
+
+    const step = {
+      ts: NOW,
+      toolName: 'browse',
+      args: { sourceId: 'src_abc123', limit: 20 },
+      summary: 'HuggingFace Papers 过去 7 天 15 条',
+      meta: { totalFetched: 30, afterDedupe: 15 },
+      durationMs: 0,
+    };
+
+    await repo.appendStep('dt_aabbcc001122', step);
+
+    expect(mockModel.updateOne).toHaveBeenCalledWith(
+      { _id: 'dt_aabbcc001122' },
+      { $push: { steps: step } },
+    );
   });
 });

@@ -57,6 +57,7 @@ function makeTask(findings: Finding[]): DigestTask {
     topicId: 'ci_topic001',
     status: DigestTaskStatus.running,
     findings,
+    steps: [],
     traceId: 'trace_001',
     iterations: 0,
     llmCallsCount: 0,

@@ -105,6 +105,7 @@ function makeTask(findingsCount: number): DigestTask {
       snippet: '摘要',
       reason: '相关',
     })),
+    steps: [],
     traceId: 'trace_001',
     iterations: 0,
     llmCallsCount: 0,

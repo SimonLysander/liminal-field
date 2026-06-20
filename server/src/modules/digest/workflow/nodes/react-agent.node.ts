@@ -16,6 +16,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText, stepCountIs } from 'ai';
+import type { StepResult, ToolSet } from 'ai';
 // import type 用于 @Injectable 构造器参数会导致 NestJS IoC 运行时无法解析，改为正式 import
 import { PromptManagerService } from '../../../../infrastructure/prompt/prompt-manager.service';
 import { SmartTopicConfigRepository } from '../../smart-topic-config.repository';
@@ -24,6 +25,8 @@ import { ContentRepository } from '../../../content/content.repository';
 import { DigestToolsFactory } from '../../tools/digest-tools.factory';
 import { SystemConfigService } from '../../../settings/system-config.service';
 import { makeRepairToolCall } from '../../../agent/agent.utils';
+import { DigestTaskRepository } from '../../digest-task.repository';
+import type { AgentStep } from '../../digest-task.entity';
 
 @Injectable()
 export class ReactAgentNode {
@@ -36,6 +39,7 @@ export class ReactAgentNode {
     private readonly contentRepo: ContentRepository,
     private readonly toolsFactory: DigestToolsFactory,
     private readonly systemConfigService: SystemConfigService,
+    private readonly taskRepository: DigestTaskRepository,
   ) {}
 
   /**
@@ -90,11 +94,98 @@ export class ReactAgentNode {
       tools: tools as any,
       stopWhen: stepCountIs(20),
       experimental_repairToolCall: makeRepairToolCall(model),
+      // 边跑边把每步 tool_call + result 摘要写进 DigestTask.steps，不存抓取全文
+      onStepFinish: async (step: StepResult<ToolSet>) => {
+        for (const tc of step.toolCalls ?? []) {
+          const tr = step.toolResults?.find(
+            (r) => r.toolCallId === tc.toolCallId,
+          );
+          await this.writeAgentStep(taskId, tc, tr);
+        }
+      },
     });
 
     this.logger.log(
       `[react-agent] 完成 taskId=${taskId} steps=${result.steps?.length ?? 0}`,
     );
+  }
+
+  /**
+   * 把一个工具调用 + 结果摘要写进 DigestTask.steps。
+   * 不存 detail（web_fetch markdown / web_search content / browse snippet 全文）。
+   * 通过 ToolResult.output（JSON string）取 summary + meta 数值字段。
+   */
+  private async writeAgentStep(
+    taskId: string,
+    toolCall: { toolName: string; input?: unknown; toolCallId: string },
+    toolResult: { toolCallId: string; output?: unknown } | undefined,
+  ): Promise<void> {
+    let summary = '';
+    let meta: Record<string, number | string> | undefined;
+    let error: string | undefined;
+
+    if (toolResult) {
+      try {
+        // output 可能是 JSON 字符串（toolResult() 序列化），也可能已经是对象
+        const parsed: unknown =
+          typeof toolResult.output === 'string'
+            ? JSON.parse(toolResult.output)
+            : toolResult.output;
+
+        if (parsed && typeof parsed === 'object') {
+          const p = parsed as Record<string, unknown>;
+          summary = typeof p.summary === 'string' ? p.summary : '';
+          // errorCode 来自工具 return toolResult(..., { errorCode: '...' })
+          if (typeof p.errorCode === 'string') error = p.errorCode;
+          // meta：只取数值类型的字段，跳过 detail/list/items 等大对象
+          if (p.meta && typeof p.meta === 'object') {
+            const numericMeta: Record<string, number | string> = {};
+            for (const [k, v] of Object.entries(
+              p.meta as Record<string, unknown>,
+            )) {
+              if (typeof v === 'number' || typeof v === 'string') {
+                numericMeta[k] = v;
+              }
+            }
+            if (Object.keys(numericMeta).length) meta = numericMeta;
+          }
+        }
+      } catch {
+        summary = '（结果解析失败）';
+      }
+    }
+
+    const step: AgentStep = {
+      ts: new Date(),
+      toolName: toolCall.toolName,
+      args: this.sanitizeArgs(toolCall.input),
+      summary,
+      meta,
+      // generateText.onStepFinish 不直接提供单工具耗时，暂记 0
+      durationMs: 0,
+      error,
+    };
+
+    await this.taskRepository.appendStep(taskId, step);
+    this.logger.debug(
+      `[react-agent] step written taskId=${taskId} tool=${toolCall.toolName} summary="${summary.slice(0, 60)}"`,
+    );
+  }
+
+  /**
+   * 入参精简：去掉可能很大的字段（预留过滤）。长字符串截断 200 字。
+   */
+  private sanitizeArgs(args: unknown): Record<string, unknown> {
+    if (!args || typeof args !== 'object') return {};
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(args as Record<string, unknown>)) {
+      if (typeof v === 'string' && v.length > 200) {
+        out[k] = `${v.slice(0, 200)}…`;
+      } else {
+        out[k] = v;
+      }
+    }
+    return out;
   }
 
   /**
