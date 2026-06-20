@@ -14,8 +14,13 @@
  *
  * 三态处理：loading / error（含 404）/ success
  * 注意：report.tsx 不依赖 mock-data.ts，mock 文件保留供 index.tsx / topic.tsx 使用
+ *
+ * [CIT N] 跳转逻辑（task #53）：
+ *   正文预处理将 [CIT N] 替换为 markdown link [\[CIT N\]](#cit-N)，Plate 的
+ *   LinkPlugin 会渲染成 <a href="#cit-N">。委托 click 监听拦截 #cit- 链接，
+ *   preventDefault 后平滑滚动至参考资料条目，并短暂高亮（淡出）。
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { appleEase } from '@/lib/motion';
@@ -53,6 +58,8 @@ export default function DigestReportPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** 当前高亮的参考资料 citationId（点击 [CIT N] 跳转后短暂高亮该条） */
+  const [highlightedCitId, setHighlightedCitId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!topicId || !reportId) return;
@@ -79,6 +86,48 @@ export default function DigestReportPage() {
         }
       });
   }, [topicId, reportId]);
+
+  /**
+   * 预处理正文 markdown：
+   * 1. 截断参考资料分隔符之后的内容（findings 由 React 自己渲染，避免 Plate 重复渲染）
+   * 2. 将正文中的 [CIT N] 替换为 [\[CIT N\]](#cit-N)
+   *    Plate 的 LinkPlugin 会把标准 markdown link 渲染成 <a>，使之可点击跳转
+   */
+  // React Compiler 管控此 memo，dep 数组由 RC 自动优化；传 [data] 是语义保底
+  const processedMarkdown = useMemo(() => {
+    const md = data?.report.markdown;
+    if (!md) return '';
+    // 截断参考资料部分：寻找 "---\n\n## 参考资料" 分隔符（agent 生成格式固定）
+    const refSeparator = '\n---\n\n## 参考资料';
+    const idx = md.indexOf(refSeparator);
+    const body = idx >= 0 ? md.slice(0, idx) : md;
+    // [CIT N] → [\[CIT N\]](#cit-N)，Plate 解析时 \[ 是转义的 [，最终文本为 [CIT N]
+    return body.replace(/\[CIT\s+(\d+)\]/g, '[\\[CIT $1\\]](#cit-$1)');
+  }, [data]);
+
+  /**
+   * 委托监听 <a href="#cit-*"> 点击，平滑滚动到参考资料对应条目并短暂高亮。
+   * 用 document 委托而非 ref，是因为 Plate 渲染的 <a> 在内部 shadow DOM 外，
+   * 且 Plate 自己也会处理内部 link 点击（LinkPlugin），委托拦截在冒泡阶段走得到。
+   */
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      const target = (e.target as HTMLElement).closest('a');
+      if (!target) return;
+      const href = target.getAttribute('href');
+      if (!href?.startsWith('#cit-')) return;
+      e.preventDefault();
+      const elementId = href.slice(1); // "cit-N"
+      const num = parseInt(elementId.replace('cit-', ''), 10);
+      if (Number.isNaN(num)) return;
+      document.getElementById(elementId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedCitId(num);
+      // 2.5 秒后清除高亮（仅当未被新点击覆盖时才清空，防止多次快速点击互相干扰）
+      window.setTimeout(() => setHighlightedCitId((cur) => (cur === num ? null : cur)), 2500);
+    }
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, []);
 
   /* ── loading 骨架 ── */
   if (loading) {
@@ -212,9 +261,9 @@ export default function DigestReportPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: 0.1, ease: appleEase }}
           >
-            {report.markdown ? (
+            {processedMarkdown ? (
               <MarkdownBody
-                markdown={report.markdown}
+                markdown={processedMarkdown}
                 contentItemId={report.id}
               />
             ) : (
@@ -245,48 +294,59 @@ export default function DigestReportPage() {
               </p>
 
               <ol className="flex flex-col gap-3">
-                {report.findings.map((f) => (
-                  <li key={f.citationId} className="flex items-baseline gap-3">
-                    {/* [CIT N] 标注 */}
-                    <span
-                      className="shrink-0 text-[10px] font-bold uppercase tracking-[0.22em]"
-                      style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+                {report.findings.map((f) => {
+                  const isHighlighted = highlightedCitId === f.citationId;
+                  return (
+                    /* id="cit-N" 是正文 [CIT N] 锚点跳转的目标；高亮通过 --accent-soft 背景过渡实现 */
+                    <li
+                      key={f.citationId}
+                      id={`cit-${f.citationId}`}
+                      className="flex items-baseline gap-3 rounded px-2 py-1 transition-colors duration-500"
+                      style={{
+                        background: isHighlighted ? 'var(--accent-soft)' : 'transparent',
+                      }}
                     >
-                      [{f.citationId}]
-                    </span>
-
-                    <div className="min-w-0">
-                      {/* 来源名 small caps */}
+                      {/* [CIT N] 标注 */}
                       <span
-                        className="mr-2 text-[10px] font-bold uppercase tracking-[0.2em]"
+                        className="shrink-0 text-[10px] font-bold uppercase tracking-[0.22em]"
                         style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
                       >
-                        {f.sourceName}
+                        [{f.citationId}]
                       </span>
 
-                      {/* 标题链接 */}
-                      <a
-                        href={f.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm leading-snug transition-opacity duration-150 hover:opacity-60"
-                        style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
-                      >
-                        {f.title}
-                      </a>
-
-                      {/* 发布时间 */}
-                      {f.publishedAt && (
+                      <div className="min-w-0">
+                        {/* 来源名 small caps */}
                         <span
-                          className="ml-2 text-[10px] font-bold uppercase tracking-[0.16em]"
+                          className="mr-2 text-[10px] font-bold uppercase tracking-[0.2em]"
                           style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
                         >
-                          {formatDate(f.publishedAt)}
+                          {f.sourceName}
                         </span>
-                      )}
-                    </div>
-                  </li>
-                ))}
+
+                        {/* 标题链接 */}
+                        <a
+                          href={f.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm leading-snug transition-opacity duration-150 hover:opacity-60"
+                          style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
+                        >
+                          {f.title}
+                        </a>
+
+                        {/* 发布时间 */}
+                        {f.publishedAt && (
+                          <span
+                            className="ml-2 text-[10px] font-bold uppercase tracking-[0.16em]"
+                            style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+                          >
+                            {formatDate(f.publishedAt)}
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
               </ol>
             </motion.section>
           )}
