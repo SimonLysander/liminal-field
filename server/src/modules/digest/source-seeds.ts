@@ -62,6 +62,30 @@ export const SEED_SOURCES: SeedSource[] = [
     rssUrl: 'http://arxiv.org/rss/cs.CL',
     description: 'arXiv 计算语言学 / NLP',
   },
+  {
+    name: 'Latent Space',
+    category: InfoSourceCategory.ai,
+    rssUrl: 'https://www.latent.space/feed',
+    description: 'swyx 的 AI 工程播客 + newsletter，AI 圈最火新出版物之一',
+  },
+  {
+    name: 'Every',
+    category: InfoSourceCategory.ai,
+    rssUrl: 'https://every.to/feed.xml',
+    description: 'Dan Shipper 的 AI + 商业写作集合',
+  },
+  {
+    name: 'Simon Willison Blog',
+    category: InfoSourceCategory.ai,
+    rssUrl: 'https://simonwillison.net/atom/everything/',
+    description: '前 Lanyrd 创始人，独立 AI 工具开发 + 深度评测',
+  },
+  {
+    name: 'OpenAI Blog',
+    category: InfoSourceCategory.ai,
+    rssUrl: 'https://openai.com/news/rss.xml',
+    description: 'OpenAI 官方公告 / 模型发布',
+  },
 
   // ── 工程（技术/编程，不分国内外，按主题归位）──────────────────────────────
   {
@@ -151,6 +175,13 @@ export const SEED_SOURCES: SeedSource[] = [
     category: InfoSourceCategory.business,
     rssUrl: '{rsshub}/36kr/newsflashes',
     description: '国内 TechCrunch，融资+创业全覆盖',
+  },
+  {
+    name: 'Decoder by Nilay Patel',
+    category: InfoSourceCategory.business,
+    rssUrl:
+      'https://www.theverge.com/decoder-podcast-with-nilay-patel/rss/index.xml',
+    description: 'The Verge 主编访谈 CEO，科技商业深度',
   },
 
   // ── 设计（UI/UX/视觉工程）────────────────────────────────────────────────
