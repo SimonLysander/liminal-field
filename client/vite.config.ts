@@ -13,6 +13,7 @@ export default defineConfig({
   },
   server: {
     port: 4399,
+    host: true, // 0.0.0.0 — 局域网内其他设备（如同网段 Win 测 IME bug）能访问
     proxy: {
       '/api': 'http://localhost:4398',
     },
