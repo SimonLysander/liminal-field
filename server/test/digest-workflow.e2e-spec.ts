@@ -7,6 +7,8 @@
  * Case 3: findings=0 早停（task.status=failed + error）
  * Case 4: GET /digest/topics/:id/tasks 列最近（倒序）
  * Case 5: 未登录返回 401
+ * Case 6: InfoSource migrate on startup（无 category 老数据 → 补 'tech'）
+ * Case 7: Seed sources on startup（幂等 + API 可见 26 条）
  *
  * Mock 策略：
  * - generateText / generateObject：jest.mock('ai')，只 mock LLM 调用不改任何 DB/Git 逻辑
@@ -15,6 +17,11 @@
  *
  * 注意：jest.mock('ai') 必须在文件顶部（jest 会 hoist mock 调用到 import 之前），
  * 随后 import 的 generateText/generateObject 就是 jest mock function。
+ *
+ * v4 工具集变更（Task #41）：
+ * - 删除 list_sources / search / view，browse 入参从 source(ref) 改为 sourceId(src_xxx)。
+ * - react-agent system prompt 已内嵌订阅源列表，mock 模型不 care prompt 内容。
+ * - mock 序列改为：browse({sourceId}) → pick([{ref, reason}])（不再调 list_sources）。
  */
 
 // ─── LLM mock（必须在所有 import 之前声明，jest hoist 会提升到顶部）────────
@@ -50,6 +57,10 @@ import { PromptManagerModule } from '../src/infrastructure/prompt/prompt-manager
 // SettingsModule 提供 SystemConfigService（DigestModule → ReactAgentNode/ComposeNode 依赖）
 import { SettingsModule } from '../src/modules/settings/settings.module';
 import type { FetchedItem } from '../src/modules/digest/fetchers/fetcher.interface';
+import { SEED_SOURCES } from '../src/modules/digest/source-seeds';
+import { getModelToken } from 'nestjs-typegoose';
+import { InfoSource } from '../src/modules/digest/info-source.entity';
+import { InfoSourceService } from '../src/modules/digest/info-source.service';
 
 // 强类型 mock：避免在 test body 里反复 as any
 const mockGenerateText = generateText as jest.MockedFunction<
@@ -87,6 +98,7 @@ const MOCK_FEED_ITEMS: FetchedItem[] = [
 
 /**
  * 创建一条信息源（RSS type），返回其 id（src_xxx）。
+ * Task #42：category 现为必填字段，不传则 class-validator 返回 400。
  */
 async function createInfoSource(
   app: import('@nestjs/platform-fastify').NestFastifyApplication,
@@ -101,6 +113,8 @@ async function createInfoSource(
       name,
       config: { url: 'https://mock.example.com/rss.xml' },
       enabled: true,
+      // Task #42: category 必填，不传 → 400 BadRequest
+      category: 'tech',
     })
     .expect(201);
 
@@ -236,6 +250,7 @@ describe('Digest Case 2: 完整 workflow 跑通（mock LLM）', () => {
   let ctx: TestContext;
   let cookie: string;
   let topicId: string;
+  let sourceId: string;
   let fetchSpy: jest.SpyInstance;
 
   beforeAll(async () => {
@@ -269,26 +284,17 @@ describe('Digest Case 2: 完整 workflow 跑通（mock LLM）', () => {
         ]);
       });
 
-    const sourceId = await createInfoSource(ctx.app, cookie, 'e2e-workflow-源');
+    sourceId = await createInfoSource(ctx.app, cookie, 'e2e-workflow-源');
     topicId = await createTopic(ctx.app, cookie, sourceId, 'e2e-workflow-事项');
 
-    // ─── mock generateText：模拟 agent 调了 list_sources → browse → pick ───
+    // ─── mock generateText：v4 工具集序列（browse(sourceId) → pick）───────────
+    // Task #41：删除 list_sources，browse 入参从 source(ref) 改为 sourceId(src_xxx)。
+    // sourceId 由 system prompt 注入 LLM，这里直接用闭包捕获（模拟 LLM "读" system prompt）。
     mockGenerateText.mockImplementation(async ({ tools }: any) => {
       if (!tools) throw new Error('tools missing in generateText mock');
 
-      // 步骤 1: list_sources（拿 sourceRef）
-      const listResult = await tools.list_sources.execute({}, {} as any);
-      const parsedList = JSON.parse(listResult) as {
-        meta: { sources: Array<{ ref: string }> };
-      };
-      const sourceRef = parsedList.meta.sources[0]?.ref;
-      if (!sourceRef) throw new Error('list_sources returned no sources');
-
-      // 步骤 2: browse（拿 item refs）
-      const browseResult = await tools.browse.execute(
-        { source: sourceRef },
-        {} as any,
-      );
+      // 步骤 1: browse（直接用 sourceId，不再调 list_sources 分配 ref）
+      const browseResult = await tools.browse.execute({ sourceId }, {} as any);
       const parsedBrowse = JSON.parse(browseResult) as {
         meta: { items: Array<{ ref: string }> };
       };
@@ -296,7 +302,7 @@ describe('Digest Case 2: 完整 workflow 跑通（mock LLM）', () => {
       if (!items || items.length === 0)
         throw new Error('browse returned no items');
 
-      // 步骤 3: pick 所有拉到的 items
+      // 步骤 2: pick 所有拉到的 items
       await tools.pick.execute(
         {
           items: items.slice(0, 2).map((i: { ref: string }) => ({
@@ -307,7 +313,7 @@ describe('Digest Case 2: 完整 workflow 跑通（mock LLM）', () => {
         {} as any,
       );
 
-      return { steps: [{}, {}, {}], text: 'done' } as any;
+      return { steps: [{}, {}], text: 'done' } as any;
     });
 
     // ─── mock generateObject：compose 节点用 ───
@@ -405,6 +411,7 @@ describe('Digest Case 3: findings=0 早停', () => {
   let ctx: TestContext;
   let cookie: string;
   let topicId: string;
+  let sourceId: string;
   let fetchSpy: jest.SpyInstance;
 
   beforeAll(async () => {
@@ -416,11 +423,7 @@ describe('Digest Case 3: findings=0 早停', () => {
       .spyOn(RssFetcher.prototype, 'fetch')
       .mockResolvedValue(MOCK_FEED_ITEMS);
 
-    const sourceId = await createInfoSource(
-      ctx.app,
-      cookie,
-      'e2e-early-stop-源',
-    );
+    sourceId = await createInfoSource(ctx.app, cookie, 'e2e-early-stop-源');
     topicId = await createTopic(
       ctx.app,
       cookie,
@@ -428,22 +431,17 @@ describe('Digest Case 3: findings=0 早停', () => {
       'e2e-early-stop-事项',
     );
 
-    // mock generateText：只调 list_sources + browse，**不调 pick**
+    // mock generateText：只调 browse（用 sourceId），**不调 pick**
     // → findings 保持 0 → workflow 早停 → status=failed
+    // Task #41：去掉已删除的 list_sources 调用，直接 browse({sourceId})。
     mockGenerateText.mockImplementation(async ({ tools }: any) => {
       if (!tools) throw new Error('tools missing in generateText mock');
 
-      const listResult = await tools.list_sources.execute({}, {} as any);
-      const parsedList = JSON.parse(listResult) as {
-        meta: { sources: Array<{ ref: string }> };
-      };
-      const sourceRef = parsedList.meta.sources[0]?.ref;
-      if (sourceRef) {
-        await tools.browse.execute({ source: sourceRef }, {} as any);
-      }
+      // 直接 browse（不再依赖 list_sources 分配 ref）
+      await tools.browse.execute({ sourceId }, {} as any);
       // 不调 pick → findings 为空
 
-      return { steps: [{}, {}], text: 'no picks' } as any;
+      return { steps: [{}], text: 'no picks' } as any;
     });
 
     mockGenerateObject.mockResolvedValue({
@@ -456,7 +454,7 @@ describe('Digest Case 3: findings=0 早停', () => {
     await ctx.teardown();
   });
 
-  it('findings=0 → task.status=failed，error 包含"无 findings"', async () => {
+  it('findings=0 → task.status=failed，error 包含"findings"', async () => {
     const runRes = await supertest(ctx.app.getHttpServer())
       .post(`/api/v1/digest/topics/${topicId}/run-now`)
       .set('Cookie', cookie)
@@ -488,17 +486,8 @@ describe('Digest Case 4: GET /digest/topics/:id/tasks 列最近', () => {
       .spyOn(RssFetcher.prototype, 'fetch')
       .mockResolvedValue(MOCK_FEED_ITEMS);
 
-    const sourceId = await createInfoSource(
-      ctx.app,
-      cookie,
-      'e2e-list-tasks-源',
-    );
-    topicId = await createTopic(
-      ctx.app,
-      cookie,
-      sourceId,
-      'e2e-list-tasks-事项',
-    );
+    const sid = await createInfoSource(ctx.app, cookie, 'e2e-list-tasks-源');
+    topicId = await createTopic(ctx.app, cookie, sid, 'e2e-list-tasks-事项');
 
     // 简单 mock：不 pick → 快速早停（只测 list，不关心 done/failed）
     mockGenerateText.mockResolvedValue({ steps: [], text: '' } as any);
@@ -610,7 +599,117 @@ describe('Digest Case 5: 未登录 → 401', () => {
         type: 'rss',
         name: '未登录',
         config: { url: 'https://x.com/rss' },
+        category: 'tech',
       })
       .expect(401);
+  });
+});
+
+// ─── Case 6: InfoSource migrate on startup ────────────────────────────────────
+
+describe('Digest Case 6: InfoSource migrate on startup', () => {
+  let ctx: TestContext;
+
+  beforeAll(async () => {
+    ctx = new TestContext();
+    await ctx.setup([PromptManagerModule, SettingsModule, DigestModule]);
+  });
+
+  afterAll(async () => {
+    await ctx.teardown();
+  });
+
+  it('补 category=tech 给无 category 字段的老数据', async () => {
+    // 1. 用底层 mongoose model 直接插"老格式"文档（绕开 typegoose default/required）
+    //    目的：模拟 Task #40 之前写入的历史数据，category 字段根本不存在于文档中。
+    //    不能用 service.create（它走 DTO 校验，category 是必填），
+    //    collection.insertOne 可以完全绕开 Schema 校验，直接写裸文档。
+    const infoSourceModel = ctx.app.get(getModelToken(InfoSource.name));
+    const legacyId = `src_legacy_${Date.now()}`;
+    await infoSourceModel.collection.insertOne({
+      _id: legacyId,
+      type: 'rss',
+      name: 'Legacy 老源（无 category）',
+      config: { url: 'https://legacy.example.com/rss.xml' },
+      enabled: true,
+      createdAt: new Date(),
+      // 故意不写 category 字段，模拟老数据
+    });
+
+    // 2. 验证插入时 category 确实不存在（typegoose default 不会自动填充 insertOne）
+    const rawBefore = await infoSourceModel.collection.findOne({
+      _id: legacyId,
+    });
+    expect(rawBefore).not.toBeNull();
+    expect(rawBefore!['category']).toBeUndefined();
+
+    // 3. 手动调 onModuleInit（等价于服务重启触发 migrate）
+    const service = ctx.app.get(InfoSourceService);
+    await service.onModuleInit();
+
+    // 4. 断言：migrate 已将该文档的 category 补为 'tech'
+    const rawAfter = await infoSourceModel.collection.findOne({
+      _id: legacyId,
+    });
+    expect(rawAfter).not.toBeNull();
+    expect(rawAfter!['category']).toBe('tech');
+  });
+});
+
+// ─── Case 7: Seed sources on startup ─────────────────────────────────────────
+
+describe('Digest Case 7: Seed sources on startup', () => {
+  let ctx: TestContext;
+  let cookie: string;
+
+  beforeAll(async () => {
+    ctx = new TestContext();
+    await ctx.setup([PromptManagerModule, SettingsModule, DigestModule]);
+    cookie = await login(ctx.app);
+  });
+
+  afterAll(async () => {
+    await ctx.teardown();
+  });
+
+  it('冷启动后 GET /info-sources 能看到 SEED_SOURCES 全部条目', async () => {
+    // 集成视角：通过 API 验证 seed 数量 >= SEED_SOURCES.length（可能有 admin 手动创建的）
+    const res = await supertest(ctx.app.getHttpServer())
+      .get('/api/v1/info-sources')
+      .set('Cookie', cookie)
+      .expect(200);
+
+    const sources = res.body.data as Array<{ name: string }>;
+    // seed 源的 name 集合应该是返回源 name 集合的子集
+    const returnedNames = new Set(sources.map((s) => s.name));
+    for (const seed of SEED_SOURCES) {
+      expect(returnedNames.has(seed.name)).toBe(true);
+    }
+
+    expect(sources.length).toBeGreaterThanOrEqual(SEED_SOURCES.length);
+  });
+
+  it('再次调 onModuleInit 不重复插入（幂等）', async () => {
+    const service = ctx.app.get(InfoSourceService);
+
+    // 第 2 次调 onModuleInit（模拟重启）
+    await service.onModuleInit();
+
+    const res = await supertest(ctx.app.getHttpServer())
+      .get('/api/v1/info-sources')
+      .set('Cookie', cookie)
+      .expect(200);
+
+    const sources = res.body.data as Array<{ name: string }>;
+
+    // 重复调 onModuleInit 后数量不变（seed 以 name 去重）
+    const nameCount = new Map<string, number>();
+    for (const s of sources) {
+      nameCount.set(s.name, (nameCount.get(s.name) ?? 0) + 1);
+    }
+    // 所有 seed 源的 name 应该只出现 1 次
+    for (const seed of SEED_SOURCES) {
+      expect(nameCount.get(seed.name)).toBe(1);
+    }
   });
 });
