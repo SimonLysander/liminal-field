@@ -25,6 +25,8 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+      rsshub:
+        condition: service_started
     volumes:
       - kb-data:/data/liminal-field-kb
     environment:
@@ -44,6 +46,8 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       COOKIE_SECURE: ${COOKIE_SECURE:-}
+      # RSSHub 内部地址；容器名即 DNS，port 1200 为 RSSHub 默认
+      RSSHUB_BASE_URL: ${RSSHUB_BASE_URL:-http://rsshub:1200}
     dns:
       - 223.5.5.5
       - 8.8.8.8
@@ -54,6 +58,21 @@ services:
     networks:
       - frontend
       - backend
+
+  # RSSHub：RSS 聚合代理，仅 backend 网络内可达，不对公网暴露（防滥用）。
+  # 使用 chromium-bundled 镜像支持掘金等 SPA 站渲染；镜像体积 ~600MB，运行内存 ~200-400MB。
+  # 阿里云 1.8G 机器：mem_limit 512m + chromium 共用进程池，需监控；若 OOM 可换 diygod/rsshub:latest。
+  rsshub:
+    image: diygod/rsshub:chromium-bundled
+    restart: unless-stopped
+    networks:
+      - backend
+    environment:
+      NODE_ENV: production
+      CACHE_TYPE: memory
+      CACHE_EXPIRE: 3600
+    # 不暴露宿主机端口；仅 backend 网络内 server 能访问
+    mem_limit: 512m
 
   client:
     build: ./client
