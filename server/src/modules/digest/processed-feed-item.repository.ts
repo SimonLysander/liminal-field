@@ -41,17 +41,19 @@ export class ProcessedFeedItemRepository {
   }
 
   /**
-   * 查某事项最近 N 天的命中条目，按 pickedAt 倒序。
-   * days 默认 30，供 get_recent_picks 工具使用。
+   * 查某事项最近 N 天的命中条目，按 pickedAt 倒序，供 get_recent_picks 工具使用。
+   * days 默认 30，limit 默认 50（工具层按需覆盖）。
    */
   async findRecentByTopic(
     topicId: string,
     days = 30,
+    limit = 50,
   ): Promise<ProcessedFeedItem[]> {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
     return this.model
       .find({ topicId, pickedAt: { $gte: since } })
       .sort({ pickedAt: -1 })
+      .limit(limit)
       .exec();
   }
 

@@ -82,22 +82,25 @@ describe('ProcessedFeedItemRepository', () => {
     expect(result).toBe(false);
   });
 
-  // Case 3: findRecentByTopic — 返回文档列表（链式 sort）
+  // Case 3: findRecentByTopic — 返回文档列表（链式 sort + limit）
   it('findRecentByTopic() — 返回事项最近条目', async () => {
     const docs = [
       makePfi({ pickedAt: NOW }),
       makePfi({ _id: 'pfi_222', itemGuid: 'guid-002', pickedAt: YESTERDAY }),
     ];
-    const sortMock = { exec: jest.fn().mockResolvedValue(docs) };
-    const findMock = { sort: jest.fn().mockReturnValue(sortMock) };
-    mockModel.find.mockReturnValue(findMock);
+    // 加 limit mock：sort → limit → exec
+    const execMock = { exec: jest.fn().mockResolvedValue(docs) };
+    const limitMock = { limit: jest.fn().mockReturnValue(execMock) };
+    const sortMock = { sort: jest.fn().mockReturnValue(limitMock) };
+    mockModel.find.mockReturnValue(sortMock);
 
     const result = await repo.findRecentByTopic('ci_topic001', 7);
 
     expect(mockModel.find).toHaveBeenCalledWith(
       expect.objectContaining({ topicId: 'ci_topic001' }),
     );
-    expect(findMock.sort).toHaveBeenCalledWith({ pickedAt: -1 });
+    expect(sortMock.sort).toHaveBeenCalledWith({ pickedAt: -1 });
+    expect(limitMock.limit).toHaveBeenCalledWith(50); // 默认 limit=50
     expect(result).toHaveLength(2);
     expect(result[0]._id).toBe('pfi_aabbcc001122');
   });

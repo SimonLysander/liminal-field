@@ -41,6 +41,7 @@ import { TopicController } from './topic.controller';
 
 import { RssFetcher } from './fetchers/rss-fetcher.service';
 import { FetcherRegistry } from './fetchers/fetcher-registry.service';
+import { DigestToolsFactory } from './tools/digest-tools.factory';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { FetcherRegistry } from './fetchers/fetcher-registry.service';
     TopicService,
     RssFetcher,
     FetcherRegistry,
+    DigestToolsFactory,
   ],
   exports: [
     InfoSourceRepository,
@@ -72,6 +74,7 @@ import { FetcherRegistry } from './fetchers/fetcher-registry.service';
     DigestTaskRepository,
     TopicService,
     FetcherRegistry,
+    DigestToolsFactory,
   ],
 })
 export class DigestModule {}
