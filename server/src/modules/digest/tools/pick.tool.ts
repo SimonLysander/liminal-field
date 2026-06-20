@@ -1,11 +1,11 @@
 /**
- * pick — v3：把选中的 items 标记为本任务的 findings。
+ * pick — v4：把选中的 items 标记为本任务的 findings。
  *
  * 设计决策：
- * - 参数用 ref 数组（不用 itemGuid）：LLM 从 browse/search 拿到 ref，系统反查 fetchedItemsMap。
+ * - 参数用 ref 数组（不用 itemGuid）：LLM 从 browse 拿到 ref，系统反查 fetchedItemsMap。
  * - citationId 从 task 当前 findings.length + 1 递增（appendFindings 前先 findById）。
  * - 找不到的 ref 进 skippedRefs，全没找到 → errorCode: ALL_REFS_INVALID。
- * - 每条 finding 构造 sourceId 从 sourceRefsMap 取（InfoSource._id）。
+ * - v4 变化：fetchedItemsMap 存的是 sourceId（src_xxx 直接），不再通过 sourceRefsMap 二次反查。
  */
 import { Logger } from '@nestjs/common';
 import { tool, jsonSchema } from 'ai';
@@ -98,9 +98,8 @@ export function createPickTool(deps: PickDeps) {
             continue;
           }
 
-          const { fetchedItem, sourceRef, sourceName } = entry;
-          const infoSource = ctx.sourceRefsMap.get(sourceRef);
-          const sourceId = infoSource ? String(infoSource._id) : sourceRef;
+          // v4：fetchedItemsMap 直接存 sourceId，不再通过 sourceRefsMap 二次反查
+          const { fetchedItem, sourceId, sourceName } = entry;
 
           const citationId = nextCitationId++;
           newFindings.push({

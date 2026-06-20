@@ -1,10 +1,12 @@
 /**
- * pick (v3) 工具单元测试
+ * pick (v4) 工具单元测试
  *
  * 覆盖：
  *   1. 正常：保存 2 条 findings，citationId 正确递增，pickedRefs 正确
  *   2. 所有 ref 无效 → error ALL_REFS_INVALID
  *   3. 部分 ref 无效 → status:partial，skippedRefs 非空
+ *
+ * v4 变化：fetchedItemsMap 存 { sourceId, sourceName }（不再用 sourceRef+sourceRefsMap 二次反查）
  */
 
 import { createPickTool } from '../pick.tool';
@@ -53,22 +55,22 @@ function makeTaskRepo(task: DigestTask): DigestTaskRepository {
 }
 
 function makeCtx(itemRefs: Record<string, number> = {}): TaskContext {
+  // v4：fetchedItemsMap 存 sourceId（src_xxx），不再用 sourceRef（s1/s2）
   const fetchedItemsMap = new Map<
     string,
-    { fetchedItem: FetchedItem; sourceRef: string; sourceName: string }
+    { fetchedItem: FetchedItem; sourceId: string; sourceName: string }
   >();
   for (const [ref, id] of Object.entries(itemRefs)) {
     fetchedItemsMap.set(ref, {
       fetchedItem: makeFetchedItem(id),
-      sourceRef: 's1',
+      sourceId: 'src_001',
       sourceName: 'HN',
     });
   }
   return {
     taskId: 'dt_test',
     topicId: 'ci_topic001',
-    refCounter: { source: 1, item: Object.keys(itemRefs).length },
-    sourceRefsMap: new Map(),
+    refCounter: { item: Object.keys(itemRefs).length },
     fetchedItemsMap,
   };
 }
