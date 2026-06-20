@@ -29,8 +29,12 @@ import {
 } from '@/components/ui/alert-dialog';
 import { banner } from '@/components/ui/banner-api';
 import { FieldLabel, PrimaryButton, SecondaryButton, DangerButton } from './SettingsUI';
-import { infoSourcesApi } from '@/services/info-sources';
-import type { InfoSource } from '@/services/info-sources';
+import {
+  infoSourcesApi,
+  INFO_SOURCE_CATEGORIES,
+  CATEGORY_LABELS,
+} from '@/services/info-sources';
+import type { InfoSource, InfoSourceCategory } from '@/services/info-sources';
 
 // ── 工具函数 ──────────────────────────────────────────────────────────────────
 
@@ -157,7 +161,13 @@ const OTHER_TYPES = [
   { label: 'Podcast', value: 'podcast' },
 ] as const;
 
-interface SourceDraft { name: string; url: string; enabled: boolean; }
+interface SourceDraft {
+  name: string;
+  url: string;
+  enabled: boolean;
+  category: InfoSourceCategory;
+  description: string;
+}
 
 const inputCls = 'mt-1 w-full rounded-lg px-3 py-2 text-sm outline-none';
 const inputSty = { background: 'var(--paper-white)', color: 'var(--ink)', border: '1px solid var(--separator)' };
@@ -172,11 +182,40 @@ function SourceForm({ initial, onSubmit, onCancel, saving }: {
     name: initial?.name ?? '',
     url: initial ? getUrl(initial) : '',
     enabled: initial?.enabled ?? true,
+    category: initial?.category ?? 'tech',
+    description: initial?.description ?? '',
   });
   const canSubmit = draft.name.trim().length > 0 && draft.url.trim().length > 0 && !saving;
 
   return (
     <div className="space-y-4">
+      <div>
+        <FieldLabel>名称</FieldLabel>
+        <input
+          type="text"
+          value={draft.name}
+          onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+          placeholder="Paul Graham Essays"
+          className={inputCls}
+          style={inputSty}
+          disabled={saving}
+        />
+      </div>
+      {/* 分类下拉：告知 AI 该源内容定位，用于自动分组 */}
+      <div>
+        <FieldLabel>分类</FieldLabel>
+        <select
+          value={draft.category}
+          onChange={(e) => setDraft((d) => ({ ...d, category: e.target.value as InfoSourceCategory }))}
+          className={inputCls}
+          style={inputSty}
+          disabled={saving}
+        >
+          {INFO_SOURCE_CATEGORIES.map((c) => (
+            <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
+          ))}
+        </select>
+      </div>
       <div>
         <FieldLabel>类型</FieldLabel>
         <select disabled defaultValue="rss" className={inputCls} style={inputSty}>
@@ -198,15 +237,17 @@ function SourceForm({ initial, onSubmit, onCancel, saving }: {
           disabled={saving}
         />
       </div>
+      {/* 简介：给 AI 的一句话内容定位说明，非必填 */}
       <div>
-        <FieldLabel>名称</FieldLabel>
-        <input
-          type="text"
-          value={draft.name}
-          onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-          placeholder="Paul Graham Essays"
+        <FieldLabel>简介（可选）</FieldLabel>
+        <textarea
+          value={draft.description}
+          onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
+          placeholder="一句话说明这个源的内容定位（给 AI 看的）"
+          rows={3}
+          maxLength={200}
           className={inputCls}
-          style={inputSty}
+          style={{ ...inputSty, resize: 'vertical' }}
           disabled={saving}
         />
       </div>
@@ -268,7 +309,15 @@ export function DigestSourcesTab() {
   const handleCreate = async (draft: SourceDraft) => {
     setSaving(true);
     try {
-      await infoSourcesApi.create({ type: 'rss', name: draft.name, config: { url: draft.url }, enabled: draft.enabled });
+      await infoSourcesApi.create({
+        type: 'rss',
+        name: draft.name,
+        config: { url: draft.url },
+        enabled: draft.enabled,
+        category: draft.category,
+        // description 空字符串 trim 后不传，后端视为无简介
+        ...(draft.description.trim() ? { description: draft.description.trim() } : {}),
+      });
       banner.success(`信息源「${draft.name}」已新建`);
       setCreating(false);
       await loadData(true);
@@ -284,7 +333,14 @@ export function DigestSourcesTab() {
     if (!editing) return;
     setSaving(true);
     try {
-      await infoSourcesApi.update(editing.id, { name: draft.name, config: { url: draft.url }, enabled: draft.enabled });
+      await infoSourcesApi.update(editing.id, {
+        name: draft.name,
+        config: { url: draft.url },
+        enabled: draft.enabled,
+        category: draft.category,
+        // description 空字符串 trim 后传 undefined，让后端清空该字段
+        description: draft.description.trim() || undefined,
+      });
       banner.success(`信息源「${draft.name}」已保存`);
       setEditing(null);
       await loadData(true);
@@ -340,8 +396,8 @@ export function DigestSourcesTab() {
       </div>
       <Separator />
 
-      {/* 列表 */}
-      <section className="space-y-2">
+      {/* 列表：按 category 分段展示，空分类不渲染 */}
+      <div className="space-y-6">
         {loading ? (
           <>
             {[0, 1, 2].map((i) => (
@@ -353,15 +409,29 @@ export function DigestSourcesTab() {
             ))}
           </>
         ) : sources.length > 0 ? (
-          sources.map((source) => (
-            <SourceRow
-              key={source.id}
-              source={source}
-              onEdit={() => setEditing(source)}
-              onDelete={() => setConfirmingDelete(source)}
-              onToggleEnabled={() => void handleToggleEnabled(source)}
-            />
-          ))
+          INFO_SOURCE_CATEGORIES.map((cat) => {
+            const items = sources.filter((s) => s.category === cat);
+            if (items.length === 0) return null;
+            return (
+              <section key={cat} className="space-y-2">
+                {/* 分类标题：使用 ink-soft 弱化，与内容产生层级感 */}
+                <h3 className="text-sm font-medium" style={{ color: 'var(--ink-soft)' }}>
+                  {CATEGORY_LABELS[cat]}（{items.length}）
+                </h3>
+                <div className="space-y-2">
+                  {items.map((source) => (
+                    <SourceRow
+                      key={source.id}
+                      source={source}
+                      onEdit={() => setEditing(source)}
+                      onDelete={() => setConfirmingDelete(source)}
+                      onToggleEnabled={() => void handleToggleEnabled(source)}
+                    />
+                  ))}
+                </div>
+              </section>
+            );
+          })
         ) : (
           <div
             className="rounded-lg px-3 py-6 text-center text-xs"
@@ -370,7 +440,7 @@ export function DigestSourcesTab() {
             暂无信息源。点右上「新建信息源」开始。
           </div>
         )}
-      </section>
+      </div>
 
       {/* 新建 Dialog */}
       <Dialog open={creating} onOpenChange={(v) => !v && setCreating(false)}>
