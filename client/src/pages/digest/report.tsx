@@ -35,6 +35,12 @@ function formatDate(iso: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/** 报告头部用：YYYY-MM-DD HH:MM（精确到分钟，让读者知道每期"出版"时间） */
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  return `${formatDate(iso)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 /* ================================================================
  * 页面组件
  * ================================================================ */
@@ -174,7 +180,7 @@ export default function DigestReportPage() {
               className="mb-4 text-[11px] font-bold uppercase tracking-[0.28em]"
               style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
             >
-              Vol. 1 &nbsp;·&nbsp; 第 {issueNumber} 期 &nbsp;·&nbsp; {formatDate(report.publishedAt)} &nbsp;·&nbsp; 编辑：Aurora
+              Vol. 1 &nbsp;·&nbsp; 第 {issueNumber} 期 &nbsp;·&nbsp; {formatDateTime(report.publishedAt)} &nbsp;·&nbsp; 编辑：Aurora
             </p>
 
             {/* 巨型本期标题 */}
