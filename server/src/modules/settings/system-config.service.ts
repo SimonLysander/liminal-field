@@ -117,6 +117,34 @@ export class SystemConfigService implements OnModuleInit {
     'propose_caption', // 写/改单张图说
   ];
 
+  /**
+   * report-analyst 入口:精选阅读页追问,纯对话无工具。
+   * 管理员可在 UI 修改 systemPrompt,启动不会覆盖已有记录(补齐策略:只补缺失 key)。
+   */
+  private static readonly REPORT_ANALYST_ENTRY = {
+    key: 'report-analyst',
+    name: '报告分析师',
+    description: '帮用户深挖精选报告内容，追问细节与论点',
+    enabled: true,
+    // 报告分析师 prompt:以当前期报告为上下文，克制有判断，不水
+    systemPrompt:
+      '你是「精选」专栏的报告分析师。用户正在阅读一份由自动信息收集工作流产出的报告（每条精选条目都有标题、来源、AI 总结的正文段落）。\n\n' +
+      '你的职责：\n' +
+      '- 帮用户深挖：用户问「第 3 条文章的核心论点是什么」「为什么三种 agent 框架在状态管理上差异这么大」之类的问题时，基于当前报告 context 给出有依据、有判断的回答\n' +
+      '- 不要泛泛而谈：报告里有的内容直接引用，不要绕开报告造一段无关解读\n' +
+      '- 必要时承认信息盲点：报告只是摘要，原文你看不到，如果用户问的细节超出摘要范围，明说"摘要里没说，建议看原文"\n\n' +
+      '风格：克制、有判断、不水。',
+    // 报告分析不需要工具(不写文件、不查数据库),纯对话
+    tools: [],
+    tier: 'standard',
+    providerId: '',
+    flashProviderId: '',
+    standardProviderId: '',
+    thinkProviderId: '',
+    visionProviderId: '',
+    enabledSkillIds: [],
+  };
+
   /** gallery-caption-writer 的预置入口(预置与补齐共用一份,避免两处手抄)。 */
   private static readonly GALLERY_CAPTION_ENTRY = {
     key: 'gallery-caption-writer',
@@ -179,10 +207,11 @@ export class SystemConfigService implements OnModuleInit {
             enabledSkillIds: [],
           },
           { ...SystemConfigService.GALLERY_CAPTION_ENTRY },
+          { ...SystemConfigService.REPORT_ANALYST_ENTRY },
         ] as AgentEntryConfig[],
       });
       this.logger.log(
-        '预置 writing-advisor + gallery-caption-writer agent 配置已写入',
+        '预置 writing-advisor + gallery-caption-writer + report-analyst agent 配置已写入',
       );
     } else {
       // 退役工具清理：只删"确已下线、代码里已无对应工厂"的死工具名,不碰用户的有效选择。
@@ -218,6 +247,15 @@ export class SystemConfigService implements OnModuleInit {
         });
         await this.repo.patch({ agentConfigs: config.agentConfigs });
         this.logger.log('补齐 gallery-caption-writer agent 配置');
+      }
+
+      // 补齐 report-analyst:精选阅读页追问 agent(2026-06-20 新增)
+      if (!config.agentConfigs.some((c) => c.key === 'report-analyst')) {
+        config.agentConfigs.push({
+          ...SystemConfigService.REPORT_ANALYST_ENTRY,
+        });
+        await this.repo.patch({ agentConfigs: config.agentConfigs });
+        this.logger.log('补齐 report-analyst agent 配置');
       }
     }
   }
