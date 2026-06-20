@@ -94,6 +94,21 @@ export class DigestTaskRepository {
   }
 
   /**
+   * 查某事项最近 N 次 task（最新优先）。
+   * Controller GET /digest/topics/:topicId/tasks 调用。
+   */
+  async findRecentByTopic(
+    topicId: string,
+    limit: number,
+  ): Promise<DigestTask[]> {
+    return this.model
+      .find({ topicId })
+      .sort({ startedAt: -1 })
+      .limit(limit)
+      .exec();
+  }
+
+  /**
    * 工作流成功完成时调用：写入 status=done + reportContentItemId + reportSummary + completedAt。
    * 与 updateStatus 分开是为了让调用方语义清晰，不必构造完整 patch 对象。
    */

@@ -33,6 +33,7 @@ import {
 import { UpdateTopicDto } from './dto/update-topic.dto';
 import type { TopicSummaryDto, TopicDetailDto } from './dto/topic-view.dto';
 import { RunStatus } from './smart-topic-config.entity';
+import type { DigestSchedulerService } from './digest-scheduler.service';
 
 @Injectable()
 export class TopicService {
@@ -44,6 +45,8 @@ export class TopicService {
     private readonly navigationRepository: NavigationRepository,
     private readonly smartTopicConfigRepository: SmartTopicConfigRepository,
     private readonly infoSourceRepository: InfoSourceRepository,
+    // 注入 DigestSchedulerService 用于 create/update/delete 后同步调度状态
+    private readonly scheduler: DigestSchedulerService,
   ) {}
 
   /** 生成事项配置业务 id，格式 stc_xxx，同款风格 */
@@ -267,6 +270,14 @@ export class TopicService {
     this.logger.log(
       `topic created: contentItemId=${contentItemId} configId=${configId}`,
     );
+
+    // 钩接调度器：创建后立即按 enabled 状态注册（或跳过）cron job
+    const newConfig =
+      await this.smartTopicConfigRepository.findByContentItemId(contentItemId);
+    if (newConfig) {
+      this.scheduler.reschedule(newConfig);
+    }
+
     return this.getById(contentItemId);
   }
 
@@ -332,6 +343,14 @@ export class TopicService {
     }
 
     this.logger.log(`topic updated: contentItemId=${contentItemId}`);
+
+    // 钩接调度器：任何配置变更（cron / enabled）都要重新同步调度
+    const updatedConfig =
+      await this.smartTopicConfigRepository.findByContentItemId(contentItemId);
+    if (updatedConfig) {
+      this.scheduler.reschedule(updatedConfig);
+    }
+
     return this.getById(contentItemId);
   }
 
@@ -341,6 +360,9 @@ export class TopicService {
     if (!navNode) {
       throw new NotFoundException(`Topic not found: ${contentItemId}`);
     }
+
+    // 钩接调度器：删除前先注销 cron job，防止删除后还触发工作流
+    this.scheduler.unregisterJob(contentItemId);
 
     // 1. 级联删除子节点（报告）：报告 = 该 NavigationNode 下的子节点
     const children = await this.navigationRepository.findChildrenByParentId(

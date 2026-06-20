@@ -49,6 +49,8 @@ import { ReactAgentNode } from './workflow/nodes/react-agent.node';
 import { ComposeNode } from './workflow/nodes/compose.node';
 import { CommitNode } from './workflow/nodes/commit.node';
 import { DigestWorkflowService } from './workflow/digest-workflow.service';
+import { DigestWorkflowController } from './digest-workflow.controller';
+import { DigestSchedulerService } from './digest-scheduler.service';
 
 @Module({
   imports: [
@@ -62,7 +64,11 @@ import { DigestWorkflowService } from './workflow/digest-workflow.service';
     NavigationModule,
     SettingsModule,
   ],
-  controllers: [InfoSourceController, TopicController],
+  controllers: [
+    InfoSourceController,
+    TopicController,
+    DigestWorkflowController,
+  ],
   providers: [
     InfoSourceRepository,
     InfoSourceService,
@@ -78,6 +84,8 @@ import { DigestWorkflowService } from './workflow/digest-workflow.service';
     ComposeNode,
     CommitNode,
     DigestWorkflowService,
+    // scheduler（onModuleInit 时注册所有 enabled cron job）
+    DigestSchedulerService,
   ],
   exports: [
     InfoSourceRepository,
@@ -89,6 +97,7 @@ import { DigestWorkflowService } from './workflow/digest-workflow.service';
     FetcherRegistry,
     DigestToolsFactory,
     DigestWorkflowService,
+    DigestSchedulerService,
   ],
 })
 export class DigestModule {}

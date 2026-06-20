@@ -15,6 +15,7 @@ import { NavigationScope } from '../navigation/navigation.entity';
 import type { SmartTopicConfig } from './smart-topic-config.entity';
 import { RunStatus } from './smart-topic-config.entity';
 import type { ContentItem } from '../content/content-item.entity';
+import type { DigestSchedulerService } from './digest-scheduler.service';
 
 // ── Mock factories ────────────────────────────────────────────────────────────
 
@@ -107,6 +108,11 @@ const mockInfoSourceRepository = {
   findManyByIds: jest.fn(),
 } as unknown as jest.Mocked<InfoSourceRepository>;
 
+const mockScheduler = {
+  reschedule: jest.fn(),
+  unregisterJob: jest.fn(),
+} as unknown as jest.Mocked<DigestSchedulerService>;
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('TopicService', () => {
@@ -120,6 +126,7 @@ describe('TopicService', () => {
       mockNavigationRepository,
       mockSmartTopicConfigRepository,
       mockInfoSourceRepository,
+      mockScheduler,
     );
   });
 
@@ -185,6 +192,12 @@ describe('TopicService', () => {
     expect(configCall._id).toMatch(/^stc_[a-f0-9]{12}$/);
     expect(result.id).toBe(contentId);
     expect(result.sourceIds).toContain('src_111');
+
+    // 调度器钩接：create 后必须 reschedule
+    expect(mockScheduler.reschedule).toHaveBeenCalledTimes(1);
+    expect(mockScheduler.reschedule).toHaveBeenCalledWith(
+      expect.objectContaining({ contentItemId: contentId }),
+    );
   });
 
   // Case 2: create cron 格式错误 → BadRequestException
@@ -283,6 +296,9 @@ describe('TopicService', () => {
     expect(mockContentRepository.deleteById).toHaveBeenCalledWith(
       'ci_aabbcc001122',
     );
+
+    // 调度器钩接：delete 时必须 unregisterJob
+    expect(mockScheduler.unregisterJob).toHaveBeenCalledWith('ci_aabbcc001122');
   });
 
   // Case 6: delete() 找不到 → NotFoundException
@@ -291,6 +307,40 @@ describe('TopicService', () => {
 
     await expect(service.delete('ci_nonexist')).rejects.toThrow(
       NotFoundException,
+    );
+  });
+
+  // Case 7: update() 后调用 scheduler.reschedule（含 cron / enabled 变更均触发）
+  it('update() — 更新配置后调用 scheduler.reschedule', async () => {
+    const navNode = makeNavNode();
+    const config = makeConfig();
+    const updatedConfig = makeConfig({ cron: '0 9 * * *', enabled: false });
+
+    mockNavigationRepository.findByContentItemId.mockResolvedValue(navNode);
+    mockSmartTopicConfigRepository.findByContentItemId
+      .mockResolvedValueOnce(config) // update 内先查
+      .mockResolvedValueOnce(updatedConfig) // update 后再查（reschedule 用）
+      .mockResolvedValueOnce(updatedConfig); // getById 内查
+
+    mockSmartTopicConfigRepository.update.mockResolvedValue(updatedConfig);
+    mockContentRepository.patchMeta.mockResolvedValue(null);
+    mockNavigationRepository.update.mockResolvedValue(navNode);
+    mockContentRepository.findById.mockResolvedValue(makeContentItem());
+    mockNavigationRepository.findChildrenByParentId.mockResolvedValue([]);
+    mockInfoSourceRepository.findManyByIds.mockResolvedValue([
+      { _id: 'src_111', name: 'Feed 1', type: 'rss' },
+      { _id: 'src_222', name: 'Feed 2', type: 'rss' },
+    ] as unknown as Awaited<ReturnType<InfoSourceRepository['findManyByIds']>>);
+
+    await service.update('ci_aabbcc001122', {
+      cron: '0 9 * * *',
+      enabled: false,
+    });
+
+    // reschedule 必须被调用一次
+    expect(mockScheduler.reschedule).toHaveBeenCalledTimes(1);
+    expect(mockScheduler.reschedule).toHaveBeenCalledWith(
+      expect.objectContaining({ cron: '0 9 * * *', enabled: false }),
     );
   });
 });
