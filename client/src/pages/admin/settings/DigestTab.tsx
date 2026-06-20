@@ -30,6 +30,7 @@ import { banner } from '@/components/ui/banner-api';
 import { PrimaryButton, DangerButton } from './SettingsUI';
 import { DigestTopicForm } from './DigestTopicForm';
 import type { TopicDraft, TopicFormInitial } from './DigestTopicForm';
+import { scheduleToCron } from './scheduleUtils';
 import { topicsApi } from '@/services/topics';
 import type { TopicSummary, TopicDetail } from '@/services/topics';
 
@@ -43,14 +44,6 @@ function formatRelativeTime(iso: string): string {
   const hr = Math.floor(min / 60);
   if (hr < 24) return `${hr} 小时前`;
   return `${Math.floor(hr / 24)} 天前`;
-}
-
-/** draft 的 keywords 字符串 → string[] */
-function parseKeywords(raw: string): string[] {
-  return raw
-    .split(',')
-    .map((k) => k.trim())
-    .filter((k) => k.length > 0);
 }
 
 // ── 子组件：单行事项 ──────────────────────────────────────────────────────────
@@ -197,13 +190,14 @@ export function DigestTab() {
   const handleCreate = async (draft: TopicDraft) => {
     setSubmitting(true);
     try {
+      // schedule → cron 转换在此完成，keywords/description 发空值（后端字段不变）
       await topicsApi.create({
         name: draft.name.trim(),
-        description: draft.description.trim() || undefined,
-        cron: draft.cron.trim(),
+        description: '',
+        cron: scheduleToCron(draft.schedule),
         sourceIds: draft.sourceIds,
-        keywords: parseKeywords(draft.keywords),
-        prompt: draft.aiPrompt.trim(),
+        keywords: [],
+        prompt: draft.prompt.trim(),
         enabled: draft.enabled,
       });
       banner.success(`事项「${draft.name}」已新建`);
@@ -221,13 +215,14 @@ export function DigestTab() {
     if (!editingDetail) return;
     setSubmitting(true);
     try {
+      // schedule → cron 转换，keywords/description 发空值保持后端接口兼容
       await topicsApi.update(editingDetail.id, {
         name: draft.name.trim(),
-        description: draft.description.trim(),
-        cron: draft.cron.trim(),
+        description: '',
+        cron: scheduleToCron(draft.schedule),
         sourceIds: draft.sourceIds,
-        keywords: parseKeywords(draft.keywords),
-        prompt: draft.aiPrompt.trim(),
+        keywords: [],
+        prompt: draft.prompt.trim(),
         enabled: draft.enabled,
       });
       banner.success(`事项「${draft.name}」已保存`);

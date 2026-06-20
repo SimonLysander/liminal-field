@@ -17,14 +17,15 @@
  */
 import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import type { ContentService } from '../../../content/content.service';
+// import type 用于 @Injectable 构造器参数会导致 NestJS IoC 运行时无法解析，改为正式 import
+import { ContentService } from '../../../content/content.service';
 import { ContentStatus } from '../../../content/content-item.entity';
 import { ContentSaveAction } from '../../../content/dto/save-content.dto';
-import type { NavigationRepository } from '../../../navigation/navigation.repository';
+import { NavigationRepository } from '../../../navigation/navigation.repository';
 import { NavigationScope } from '../../../navigation/navigation.entity';
-import type { ProcessedFeedItemRepository } from '../../processed-feed-item.repository';
-import type { DigestTask, Finding } from '../../digest-task.entity';
-import type { ComposeOutput } from './compose.node';
+import { ProcessedFeedItemRepository } from '../../processed-feed-item.repository';
+import type { DigestTask, Finding } from '../../digest-task.entity'; // 非注入参数，保留 type import
+import type { ComposeOutput } from './compose.node'; // 非注入参数，保留 type import
 
 export interface CommitInput {
   topicId: string;

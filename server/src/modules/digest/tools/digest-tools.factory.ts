@@ -9,13 +9,14 @@
  * - 5 工具：list_sources / browse / search / view / pick（去掉 get_recent_picks，去重在 browse/search 内部做）。
  */
 import { Injectable } from '@nestjs/common';
-import type { FetchedItem } from '../fetchers/fetcher.interface';
-import type { InfoSource } from '../info-source.entity';
-import type { InfoSourceRepository } from '../info-source.repository';
-import type { SmartTopicConfigRepository } from '../smart-topic-config.repository';
-import type { FetcherRegistry } from '../fetchers/fetcher-registry.service';
-import type { ProcessedFeedItemRepository } from '../processed-feed-item.repository';
-import type { DigestTaskRepository } from '../digest-task.repository';
+import type { FetchedItem } from '../fetchers/fetcher.interface'; // 非注入，保留 type import
+import type { InfoSource } from '../info-source.entity'; // 非注入，保留 type import
+// import type 用于 @Injectable 构造器参数会导致 NestJS IoC 运行时无法解析，改为正式 import
+import { InfoSourceRepository } from '../info-source.repository';
+import { SmartTopicConfigRepository } from '../smart-topic-config.repository';
+import { FetcherRegistry } from '../fetchers/fetcher-registry.service';
+import { ProcessedFeedItemRepository } from '../processed-feed-item.repository';
+import { DigestTaskRepository } from '../digest-task.repository';
 
 import { createListSourcesTool } from './list-sources.tool';
 import { createBrowseTool } from './browse.tool';

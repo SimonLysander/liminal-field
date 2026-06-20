@@ -33,7 +33,8 @@ import {
 import { UpdateTopicDto } from './dto/update-topic.dto';
 import type { TopicSummaryDto, TopicDetailDto } from './dto/topic-view.dto';
 import { RunStatus } from './smart-topic-config.entity';
-import type { DigestSchedulerService } from './digest-scheduler.service';
+// import type 会导致运行时 metadata 丢失（NestJS IoC 无法注入）— 必须用 import（非 type）
+import { DigestSchedulerService } from './digest-scheduler.service';
 
 @Injectable()
 export class TopicService {

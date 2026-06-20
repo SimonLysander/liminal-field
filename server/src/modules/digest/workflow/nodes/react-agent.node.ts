@@ -10,11 +10,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText, stepCountIs } from 'ai';
-import type { PromptManagerService } from '../../../../infrastructure/prompt/prompt-manager.service';
-import type { SmartTopicConfigRepository } from '../../smart-topic-config.repository';
-import type { ContentRepository } from '../../../content/content.repository';
-import type { DigestToolsFactory } from '../../tools/digest-tools.factory';
-import type { SystemConfigService } from '../../../settings/system-config.service';
+// import type 用于 @Injectable 构造器参数会导致 NestJS IoC 运行时无法解析，改为正式 import
+import { PromptManagerService } from '../../../../infrastructure/prompt/prompt-manager.service';
+import { SmartTopicConfigRepository } from '../../smart-topic-config.repository';
+import { ContentRepository } from '../../../content/content.repository';
+import { DigestToolsFactory } from '../../tools/digest-tools.factory';
+import { SystemConfigService } from '../../../settings/system-config.service';
 import { makeRepairToolCall } from '../../../agent/agent.utils';
 
 @Injectable()

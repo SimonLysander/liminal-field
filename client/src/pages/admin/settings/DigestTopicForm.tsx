@@ -1,8 +1,11 @@
 /**
- * DigestTopicForm — 事项新建/编辑表单
+ * DigestTopicForm — 事项新建/编辑表单（极简版）
  *
- * 信息源选项从 infoSourcesApi.list() 拉真实数据。
- * 父组件传 initial 时为编辑模式（含 sourceIds / keywords / prompt 等完整字段）。
+ * 用户只需填：事项名 + 任务描述 + 运行节奏（人话下拉）+ 订阅源 + 启用。
+ * 去掉了：卷首语、关键词、cron 原始输入框、"AI 判定 Prompt"（统一叫"任务描述"）。
+ *
+ * Schedule → Cron 转换在前端完成，后端接口不变（仍接 cron + keywords + description）。
+ * manual 模式强制 enabled=false 提交（后端 scheduler 看 enabled=false 不注册）。
  */
 
 import { useEffect, useState } from 'react';
@@ -10,36 +13,38 @@ import { ChipSelector } from '@/components/shared/ChipSelector';
 import { FieldLabel, PrimaryButton, SecondaryButton } from './SettingsUI';
 import { infoSourcesApi } from '@/services/info-sources';
 import type { InfoSource } from '@/services/info-sources';
+import { cronToSchedule } from './scheduleUtils';
+import type { Schedule } from './scheduleUtils';
 
+// ── 接口 ──────────────────────────────────────────────────────────────────────
+
+/** 表单内部状态 */
 export interface TopicDraft {
   name: string;
-  description: string;
-  cron: string;
-  keywords: string;       // 逗号分隔字符串，提交时拆分
+  prompt: string;          // 即"任务描述"，对应后端 prompt 字段
+  schedule: Schedule;
   sourceIds: string[];
-  aiPrompt: string;
   enabled: boolean;
 }
 
+/** 父组件编辑模式传入（从 TopicDetail 组装） */
 export interface TopicFormInitial {
   name: string;
-  description: string;
+  description: string;     // 保留但不展示，提交时原样回传
   cron: string;
-  keywords: string[];    // 编辑时从 string[] 还原
+  keywords: string[];      // 保留但不展示，提交时发空数组
   sourceIds: string[];
   aiPrompt: string;
   enabled: boolean;
 }
 
-const EMPTY_DRAFT: TopicDraft = {
-  name: '',
-  description: '',
-  cron: '',
-  keywords: '',
-  sourceIds: [],
-  aiPrompt: '',
-  enabled: true,
-};
+// ── 常量 ──────────────────────────────────────────────────────────────────────
+
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+const N_DAY_OPTIONS = [2, 3, 7, 14, 30];
+
+const DEFAULT_SCHEDULE: Schedule = { mode: 'daily', hour: 8 };
 
 const inputClass = 'mt-1 w-full rounded-lg px-3 py-2 text-sm outline-none';
 const inputStyle = {
@@ -47,6 +52,127 @@ const inputStyle = {
   color: 'var(--ink)',
   border: '1px solid var(--separator)',
 };
+const selectClass = 'rounded-lg px-3 py-2 text-sm outline-none';
+
+// ── 子组件：运行节奏选择器 ────────────────────────────────────────────────────
+
+function SchedulePicker({
+  value,
+  onChange,
+}: {
+  value: Schedule;
+  onChange: (s: Schedule) => void;
+}) {
+  function handleModeChange(mode: string) {
+    switch (mode) {
+      case 'manual':       onChange({ mode: 'manual' }); break;
+      case 'daily':        onChange({ mode: 'daily', hour: 8 }); break;
+      case 'weekly':       onChange({ mode: 'weekly', weekday: 1, hour: 8 }); break;
+      case 'every-n-days': onChange({ mode: 'every-n-days', intervalDays: 3, hour: 8 }); break;
+    }
+  }
+
+  return (
+    <div className="mt-1 space-y-2">
+      {/* 模式下拉 */}
+      <select
+        value={value.mode}
+        onChange={(e) => handleModeChange(e.target.value)}
+        className={selectClass}
+        style={inputStyle}
+      >
+        <option value="manual">仅手动触发</option>
+        <option value="daily">每天</option>
+        <option value="weekly">每周</option>
+        <option value="every-n-days">每 N 天</option>
+      </select>
+
+      {/* 每天：选小时 */}
+      {value.mode === 'daily' && (
+        <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--ink)' }}>
+          <span>每天</span>
+          <select
+            value={value.hour}
+            onChange={(e) => onChange({ mode: 'daily', hour: parseInt(e.target.value, 10) })}
+            className={selectClass}
+            style={inputStyle}
+          >
+            {HOURS.map((h) => (
+              <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* 每周：选周几 + 小时 */}
+      {value.mode === 'weekly' && (
+        <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--ink)' }}>
+          <span>每周</span>
+          <select
+            value={value.weekday}
+            onChange={(e) =>
+              onChange({ mode: 'weekly', weekday: parseInt(e.target.value, 10), hour: value.hour })
+            }
+            className={selectClass}
+            style={inputStyle}
+          >
+            {WEEKDAYS.map((d, i) => <option key={i} value={i}>{d}</option>)}
+          </select>
+          <select
+            value={value.hour}
+            onChange={(e) =>
+              onChange({ mode: 'weekly', weekday: value.weekday, hour: parseInt(e.target.value, 10) })
+            }
+            className={selectClass}
+            style={inputStyle}
+          >
+            {HOURS.map((h) => (
+              <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* 每 N 天：选间隔 + 小时 */}
+      {value.mode === 'every-n-days' && (
+        <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--ink)' }}>
+          <span>每</span>
+          <select
+            value={value.intervalDays}
+            onChange={(e) =>
+              onChange({ mode: 'every-n-days', intervalDays: parseInt(e.target.value, 10), hour: value.hour })
+            }
+            className={selectClass}
+            style={inputStyle}
+          >
+            {N_DAY_OPTIONS.map((n) => <option key={n} value={n}>{n} 天</option>)}
+          </select>
+          <select
+            value={value.hour}
+            onChange={(e) =>
+              onChange({ mode: 'every-n-days', intervalDays: value.intervalDays, hour: parseInt(e.target.value, 10) })
+            }
+            className={selectClass}
+            style={inputStyle}
+          >
+            {HOURS.map((h) => (
+              <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* manual 提示 */}
+      {value.mode === 'manual' && (
+        <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
+          不自动运行，启用后只能手动触发
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── 主表单 ────────────────────────────────────────────────────────────────────
 
 export function DigestTopicForm({
   initial,
@@ -61,14 +187,18 @@ export function DigestTopicForm({
     initial
       ? {
           name: initial.name,
-          description: initial.description,
-          cron: initial.cron,
-          keywords: initial.keywords.join(', '),
+          prompt: initial.aiPrompt,
+          schedule: cronToSchedule(initial.cron),
           sourceIds: initial.sourceIds,
-          aiPrompt: initial.aiPrompt,
           enabled: initial.enabled,
         }
-      : { ...EMPTY_DRAFT },
+      : {
+          name: '',
+          prompt: '',
+          schedule: DEFAULT_SCHEDULE,
+          sourceIds: [],
+          enabled: true,
+        },
   );
 
   // 从 API 拉取真实信息源列表
@@ -81,25 +211,29 @@ export function DigestTopicForm({
     setSourcesLoading(true);
     infoSourcesApi
       .list()
-      .then((list) => {
-        if (!cancelled) setSources(list);
-      })
-      .catch(() => {
-        // 静默降级：选项为空，用户仍可填其他字段
-        if (!cancelled) setSources([]);
-      })
-      .finally(() => {
-        if (!cancelled) setSourcesLoading(false);
-      });
+      .then((list) => { if (!cancelled) setSources(list); })
+      .catch(() => { if (!cancelled) setSources([]); })
+      .finally(() => { if (!cancelled) setSourcesLoading(false); });
     return () => { cancelled = true; };
   }, []);
 
   const availableSourceIds = sources.map((s) => s.id);
 
-  const canSubmit = draft.name.trim().length > 0 && draft.cron.trim().length > 0;
+  // manual 模式下 enabled 强制 false 提交
+  const isManual = draft.schedule.mode === 'manual';
+  const canSubmit = draft.name.trim().length > 0;
+
+  function handleSubmit() {
+    if (!canSubmit) return;
+    onSubmit({
+      ...draft,
+      enabled: isManual ? false : draft.enabled,
+    });
+  }
 
   return (
     <div className="space-y-4">
+      {/* 事项名称 */}
       <div>
         <FieldLabel>事项名称</FieldLabel>
         <input
@@ -112,45 +246,29 @@ export function DigestTopicForm({
         />
       </div>
 
+      {/* 任务描述（原"AI 判定 Prompt"） */}
       <div>
-        <FieldLabel>卷首语（可选）</FieldLabel>
+        <FieldLabel>任务描述</FieldLabel>
         <textarea
-          value={draft.description}
-          onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
-          placeholder="简单描述这个事项关注的方向…"
-          rows={2}
+          value={draft.prompt}
+          onChange={(e) => setDraft((d) => ({ ...d, prompt: e.target.value }))}
+          placeholder="我想关注 AI 应用发展，特别是大模型新进展和 Agent 框架"
+          rows={6}
           className={inputClass}
           style={{ ...inputStyle, resize: 'vertical' }}
         />
       </div>
 
+      {/* 运行节奏 */}
       <div>
-        <FieldLabel>执行节奏（cron）</FieldLabel>
-        <input
-          type="text"
-          value={draft.cron}
-          onChange={(e) => setDraft((d) => ({ ...d, cron: e.target.value }))}
-          placeholder="0 8 * * *"
-          className={`${inputClass} font-mono`}
-          style={inputStyle}
-        />
-        <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-          五段式 cron，例：'0 8 * * *' 每天 8:00
-        </p>
-      </div>
-
-      <div>
-        <FieldLabel>关键词（逗号分隔）</FieldLabel>
-        <textarea
-          value={draft.keywords}
-          onChange={(e) => setDraft((d) => ({ ...d, keywords: e.target.value }))}
-          placeholder="AI, LLM, 大模型, Agent, 应用落地"
-          rows={2}
-          className={inputClass}
-          style={{ ...inputStyle, resize: 'vertical' }}
+        <FieldLabel>运行节奏</FieldLabel>
+        <SchedulePicker
+          value={draft.schedule}
+          onChange={(s) => setDraft((d) => ({ ...d, schedule: s }))}
         />
       </div>
 
+      {/* 订阅信息源 */}
       <div>
         <FieldLabel>订阅信息源</FieldLabel>
         {sourcesLoading ? (
@@ -163,14 +281,9 @@ export function DigestTopicForm({
               selected={draft.sourceIds}
               available={availableSourceIds}
               renderLabel={(id) => sources.find((s) => s.id === id)?.name ?? id}
-              onAdd={(id) =>
-                setDraft((d) => ({ ...d, sourceIds: [...d.sourceIds, id] }))
-              }
+              onAdd={(id) => setDraft((d) => ({ ...d, sourceIds: [...d.sourceIds, id] }))}
               onRemove={(id) =>
-                setDraft((d) => ({
-                  ...d,
-                  sourceIds: d.sourceIds.filter((x) => x !== id),
-                }))
+                setDraft((d) => ({ ...d, sourceIds: d.sourceIds.filter((x) => x !== id) }))
               }
               addLabel="选择信息源"
             />
@@ -183,37 +296,33 @@ export function DigestTopicForm({
         )}
       </div>
 
-      <div>
-        <FieldLabel>AI 判定 Prompt</FieldLabel>
-        <textarea
-          value={draft.aiPrompt}
-          onChange={(e) => setDraft((d) => ({ ...d, aiPrompt: e.target.value }))}
-          placeholder="描述这个事项关心什么、什么算相关。例：关注 AI 在实际产品中的落地应用案例，学术论文/纯技术文章不算。"
-          rows={4}
-          className={inputClass}
-          style={{ ...inputStyle, resize: 'vertical' }}
-        />
-      </div>
-
+      {/* 启用（manual 模式不可操作，且始终为 false） */}
       <div className="flex items-center gap-3">
         <FieldLabel>启用</FieldLabel>
         <button
           type="button"
           role="switch"
-          aria-checked={draft.enabled}
+          aria-checked={isManual ? false : draft.enabled}
+          disabled={isManual}
           onClick={() => setDraft((d) => ({ ...d, enabled: !d.enabled }))}
-          className="relative h-5 w-9 rounded-full transition-colors duration-150"
-          style={{ background: draft.enabled ? 'var(--accent)' : 'var(--separator)' }}
+          className="relative h-5 w-9 rounded-full transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40"
+          style={{ background: (!isManual && draft.enabled) ? 'var(--accent)' : 'var(--separator)' }}
+          title={isManual ? '手动触发模式下无法启用自动运行' : undefined}
         >
           <span
             className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-150"
-            style={{ left: draft.enabled ? '1.125rem' : '0.125rem' }}
+            style={{ left: (!isManual && draft.enabled) ? '1.125rem' : '0.125rem' }}
           />
         </button>
+        {isManual && (
+          <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            手动触发模式，自动运行不可用
+          </span>
+        )}
       </div>
 
       <div className="flex gap-2 pt-2">
-        <PrimaryButton onClick={() => canSubmit && onSubmit(draft)} disabled={!canSubmit}>
+        <PrimaryButton onClick={handleSubmit} disabled={!canSubmit}>
           {initial ? '保存' : '创建'}
         </PrimaryButton>
         <SecondaryButton onClick={onCancel}>取消</SecondaryButton>

@@ -22,12 +22,13 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { nanoid } from 'nanoid';
-import type { SmartTopicConfigRepository } from '../smart-topic-config.repository';
-import type { DigestTaskRepository } from '../digest-task.repository';
+// import type 用于 @Injectable 构造器参数会导致 NestJS IoC 无法解析，统一改为正式 import
+import { SmartTopicConfigRepository } from '../smart-topic-config.repository';
+import { DigestTaskRepository } from '../digest-task.repository';
 import { DigestTaskStatus } from '../digest-task.entity';
-import type { ReactAgentNode } from './nodes/react-agent.node';
-import type { ComposeNode } from './nodes/compose.node';
-import type { CommitNode } from './nodes/commit.node';
+import { ReactAgentNode } from './nodes/react-agent.node';
+import { ComposeNode } from './nodes/compose.node';
+import { CommitNode } from './nodes/commit.node';
 
 function buildTaskId(): string {
   return `dt_${randomUUID().replace(/-/g, '').slice(0, 12)}`;

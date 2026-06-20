@@ -18,9 +18,10 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
-import type { SmartTopicConfigRepository } from './smart-topic-config.repository';
-import type { SmartTopicConfig } from './smart-topic-config.entity';
-import type { DigestWorkflowService } from './workflow/digest-workflow.service';
+// import type 用于 @Injectable 构造器参数会导致 NestJS IoC 运行时无法解析，改为正式 import
+import { SmartTopicConfigRepository } from './smart-topic-config.repository';
+import { SmartTopicConfig } from './smart-topic-config.entity';
+import { DigestWorkflowService } from './workflow/digest-workflow.service';
 
 @Injectable()
 export class DigestSchedulerService implements OnModuleInit {

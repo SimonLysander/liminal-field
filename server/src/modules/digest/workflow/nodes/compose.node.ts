@@ -11,9 +11,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateObject } from 'ai';
 import { z } from 'zod';
-import type { PromptManagerService } from '../../../../infrastructure/prompt/prompt-manager.service';
-import type { DigestTask } from '../../digest-task.entity';
-import type { SystemConfigService } from '../../../settings/system-config.service';
+// import type 用于 @Injectable 构造器参数会导致 NestJS IoC 运行时无法解析，改为正式 import
+import { PromptManagerService } from '../../../../infrastructure/prompt/prompt-manager.service';
+import type { DigestTask } from '../../digest-task.entity'; // 非注入参数，保留 type import
+import { SystemConfigService } from '../../../settings/system-config.service';
 
 export const ComposeSchema = z.object({
   headline: z.string().max(50),

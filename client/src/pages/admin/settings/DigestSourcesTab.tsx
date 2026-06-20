@@ -170,7 +170,7 @@ function SourceForm({ initial, onSubmit, onCancel, saving }: {
 }) {
   const [draft, setDraft] = useState<SourceDraft>({
     name: initial?.name ?? '',
-    url: getUrl(initial as InfoSource) ?? '',
+    url: initial ? getUrl(initial) : '',
     enabled: initial?.enabled ?? true,
   });
   const canSubmit = draft.name.trim().length > 0 && draft.url.trim().length > 0 && !saving;
