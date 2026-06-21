@@ -1,12 +1,17 @@
 /**
  * SEED_SOURCES — 系统启动时种入的内置信息源「市场」。
  *
- * URL 里的 `{rsshub}` 占位符在 seedSources() 内被 RSSHUB_BASE_URL env
- * （默认 http://rsshub:1200）替换，避免硬编码部署细节。
- * 上线后增删调这里即可，不需要数据库迁移。
+ * PR3 重要变化(Fetcher 插件 v2 落地):
+ * - 每条 seed 标对应 fetcherKind + 可选 config(arxiv 的 category、掘金 cateId 等)
+ * - rssUrl 字段保留作为 admin 后台展示用 URL(原生 RSS 站填实际 feed URL,
+ *   非 RSS 站填能在浏览器打开的对应 endpoint/主页,实际抓取走 fetcherKind 内部逻辑)
+ * - 新增源:阮一峰周刊(GitHub Issues)、知乎日报(移动 API);删除 enabled=false 的
+ *   AlphaSignal/The Batch(已实现专用 fetcher,启用)
  *
- * 选源标准：(1) 信息密度高 (2) 更新频次稳定 (3) 圈内公认权威。
- * 不收录纯娱乐/纯社交/反爬严重的站点。
+ * URL 里的 `{rsshub}` 占位符在 seedSources() 内被 RSSHUB_BASE_URL env 替换;
+ * 现在我们 0 个源依赖 rsshub —— 全部走官方 API / RSS / 单 HTML scrape。
+ *
+ * 选源标准:(1) 信息密度高 (2) 更新频次稳定 (3) 圈内公认权威。
  */
 import { InfoSourceCategory } from './info-source.entity';
 import { FetcherKind } from './fetchers/fetcher.interface';
@@ -14,94 +19,88 @@ import { FetcherKind } from './fetchers/fetcher.interface';
 export interface SeedSource {
   name: string;
   category: InfoSourceCategory;
-  rssUrl: string; // 可含 {rsshub} 占位符（PR2 落地 arxiv/hf/HN/掘金 等具体 fetcher 后这些字段会改用对应 config）
+  rssUrl: string; // 可含 {rsshub} 占位符;同时作为 admin 后台展示用 URL
   description: string;
-  /**
-   * Fetcher 插件 v2 抓取方式（PR2 落地具体 Fetcher 后使用）。
-   * PR1 阶段所有 seed 都默认走 rss，PR2 完成后这里改为 'arxiv'/'hf_papers'/'hn_firebase' 等。
-   */
+  /** Fetcher 插件 v2 抓取方式(默认 rss)。 */
   fetcherKind?: FetcherKind;
-  /**
-   * 额外 config 字段（合并进 InfoSource.config）。
-   * 例如：arxiv 用 `{ category: 'cs.AI' }`、github_trending 用 `{ language: 'typescript' }`。
-   * url 字段由 rssUrl 自动生成，不要在这里重复。
-   */
+  /** 额外 config 字段(合并进 InfoSource.config)。 */
   config?: Record<string, unknown>;
-  /**
-   * 默认 true。curl 验证 URL 不通且无原生 RSS 替代时设 false，
-   * 保留条目以备将来重新启用，不影响正常采集。
-   */
+  /** 默认 true;curl 验证 URL 不通且无替代实现时设 false。 */
   enabled?: boolean;
 }
 
 export const SEED_SOURCES: SeedSource[] = [
-  // ── AI（人工智能论文 + 业界周报）──────────────────────────────────────────
+  // ── AI(论文 + 业界周报)──────────────────────────────────────────────
   {
     name: 'HuggingFace Papers',
     category: InfoSourceCategory.ai,
-    rssUrl: '{rsshub}/huggingface/daily-papers',
-    description: 'AI 每日 trending 论文，社区投票',
+    rssUrl: 'https://huggingface.co/api/daily_papers',
+    description: 'AI 每日 trending 论文,HuggingFace 社区投票',
+    fetcherKind: FetcherKind.hf_papers,
   },
   {
     name: 'AlphaSignal',
     category: InfoSourceCategory.ai,
-    // curl 2026-06-20 验：alphasignal.ai 无公开 RSS，仅 email 订阅
-    rssUrl: 'https://alphasignal.ai/feed',
-    description: 'ML 工程师周报，含模型/GPU/代码动态',
-    enabled: false,
+    // 无官方 RSS,改走 sitemap.xml 列出所有 /news/<slug> URL
+    rssUrl: 'https://alphasignal.ai/newsletter',
+    description: 'ML 工程师周报,含模型/GPU/代码动态(sitemap scrape)',
+    fetcherKind: FetcherKind.alpha_signal,
   },
   {
     name: 'The Batch (DeepLearning.AI)',
     category: InfoSourceCategory.ai,
-    // curl 2026-06-20 验：deeplearning.ai 无原生 RSS，纯邮件 newsletter
-    rssUrl: 'https://www.deeplearning.ai/the-batch/feed/',
-    description: '吴恩达团队 AI 周报',
-    enabled: false,
+    // 官方 /feed/ 已下线,改走 archive 列表页 scrape
+    rssUrl: 'https://www.deeplearning.ai/the-batch/',
+    description: '吴恩达团队 AI 周报(列表页 scrape)',
+    fetcherKind: FetcherKind.the_batch,
   },
   {
     name: 'Import AI (Jack Clark)',
     category: InfoSourceCategory.ai,
     rssUrl: 'https://importai.substack.com/feed',
-    description: 'Anthropic 联创周报，AI 政策 + 前沿',
+    description: 'Anthropic 联创周报,AI 政策 + 前沿',
   },
   {
     name: 'arXiv cs.AI',
     category: InfoSourceCategory.ai,
-    rssUrl: 'http://arxiv.org/rss/cs.AI',
-    description: 'arXiv 人工智能预印本',
+    rssUrl: 'https://arxiv.org/list/cs.AI/recent',
+    description: 'arXiv 人工智能预印本(API,支持 keywords 服务端检索)',
+    fetcherKind: FetcherKind.arxiv,
+    config: { category: 'cs.AI' },
   },
-  // 原 academic — arXiv AI 相关论文统一归 ai
   {
     name: 'arXiv cs.LG',
     category: InfoSourceCategory.ai,
-    rssUrl: 'http://arxiv.org/rss/cs.LG',
-    description: 'arXiv 机器学习预印本',
+    rssUrl: 'https://arxiv.org/list/cs.LG/recent',
+    description: 'arXiv 机器学习预印本(API,支持 keywords)',
+    fetcherKind: FetcherKind.arxiv,
+    config: { category: 'cs.LG' },
   },
   {
     name: 'arXiv cs.CL',
     category: InfoSourceCategory.ai,
-    rssUrl: 'http://arxiv.org/rss/cs.CL',
-    description: 'arXiv 计算语言学 / NLP',
+    rssUrl: 'https://arxiv.org/list/cs.CL/recent',
+    description: 'arXiv 计算语言学 / NLP(API,支持 keywords)',
+    fetcherKind: FetcherKind.arxiv,
+    config: { category: 'cs.CL' },
   },
   {
     name: 'Latent Space',
     category: InfoSourceCategory.ai,
     rssUrl: 'https://www.latent.space/feed',
-    description: 'swyx 的 AI 工程播客 + newsletter，AI 圈最火新出版物之一',
+    description: 'swyx 的 AI 工程播客 + newsletter',
   },
   {
-    name: 'Every',
+    name: 'Every (Chain of Thought)',
     category: InfoSourceCategory.ai,
-    // curl 2026-06-20 验：every.to/feed.xml 404；每.to 各子刊有独立 feed，
-    // 换用主刊 Chain of Thought（Dan Shipper 执笔，AI + 商业，最高质量）
     rssUrl: 'https://every.to/chain-of-thought/feed',
-    description: 'Dan Shipper 的 AI + 商业写作集合（Chain of Thought 主刊）',
+    description: 'Dan Shipper 的 AI + 商业写作(Chain of Thought 主刊)',
   },
   {
     name: 'Simon Willison Blog',
     category: InfoSourceCategory.ai,
     rssUrl: 'https://simonwillison.net/atom/everything/',
-    description: '前 Lanyrd 创始人，独立 AI 工具开发 + 深度评测',
+    description: '独立 AI 工具开发 + 深度评测',
   },
   {
     name: 'OpenAI Blog',
@@ -110,30 +109,33 @@ export const SEED_SOURCES: SeedSource[] = [
     description: 'OpenAI 官方公告 / 模型发布',
   },
 
-  // ── 工程（技术/编程，不分国内外，按主题归位）──────────────────────────────
+  // ── 工程(技术/编程)──────────────────────────────────────────────
   {
     name: 'Hacker News Frontpage',
     category: InfoSourceCategory.engineering,
-    rssUrl: 'https://hnrss.org/frontpage',
-    description: 'YC 系开发者每日必看',
+    rssUrl: 'https://news.ycombinator.com/',
+    description: 'YC 开发者每日必看(Firebase API,直拉 topstories)',
+    fetcherKind: FetcherKind.hn_firebase,
   },
   {
     name: 'Lobsters',
     category: InfoSourceCategory.engineering,
     rssUrl: 'https://lobste.rs/rss',
-    description: '邀请制小社区，技术纯度高、噪音低',
+    description: '邀请制小社区,技术纯度高、噪音低',
   },
   {
     name: 'dev.to',
     category: InfoSourceCategory.engineering,
     rssUrl: 'https://dev.to/feed',
-    description: '开发者写作社区，教程类多',
+    description: '开发者写作社区,教程类多',
   },
   {
     name: 'GitHub Trending (TypeScript)',
     category: InfoSourceCategory.engineering,
-    rssUrl: '{rsshub}/github/trending/daily/typescript/en',
-    description: '工程师在 star 什么的指标',
+    rssUrl: 'https://github.com/trending/typescript?since=daily',
+    description: '工程师在 star 什么的指标(HTML scrape)',
+    fetcherKind: FetcherKind.github_trending,
+    config: { language: 'typescript' },
   },
   {
     name: 'The Pragmatic Engineer',
@@ -141,24 +143,28 @@ export const SEED_SOURCES: SeedSource[] = [
     rssUrl: 'https://newsletter.pragmaticengineer.com/feed',
     description: '工程文化 + 大厂内幕周报',
   },
-  // 原 china_tech 中的技术社区 → engineering
   {
     name: 'V2EX 首页',
     category: InfoSourceCategory.engineering,
-    rssUrl: 'https://www.v2ex.com/index.xml',
-    description: '国内开发者讨论，质量高',
+    rssUrl: 'https://www.v2ex.com/',
+    description: '国内开发者讨论(官方 API,直拉 latest topics)',
+    fetcherKind: FetcherKind.v2ex,
   },
   {
     name: '掘金 · 前端',
     category: InfoSourceCategory.engineering,
-    rssUrl: '{rsshub}/juejin/category/frontend',
-    description: '掘金前端版',
+    rssUrl: 'https://juejin.cn/frontend',
+    description: '掘金前端版(POST API)',
+    fetcherKind: FetcherKind.juejin,
+    config: { cateId: '6809637767543259144' },
   },
   {
     name: '掘金 · 后端',
     category: InfoSourceCategory.engineering,
-    rssUrl: '{rsshub}/juejin/category/backend',
-    description: '掘金后端版',
+    rssUrl: 'https://juejin.cn/backend',
+    description: '掘金后端版(POST API)',
+    fetcherKind: FetcherKind.juejin,
+    config: { cateId: '6809637769959178254' },
   },
   {
     name: '少数派',
@@ -166,8 +172,22 @@ export const SEED_SOURCES: SeedSource[] = [
     rssUrl: 'https://sspai.com/feed',
     description: '工具 / 效率 / AI 工具沉淀厚',
   },
+  {
+    name: '知乎日报',
+    category: InfoSourceCategory.engineering,
+    rssUrl: 'https://daily.zhihu.com/',
+    description: '知乎日报精选(官方移动 API)',
+    fetcherKind: FetcherKind.zhihu_daily,
+  },
+  {
+    name: '阮一峰科技爱好者周刊',
+    category: InfoSourceCategory.engineering,
+    rssUrl: 'https://github.com/ruanyf/weekly/issues',
+    description: '阮一峰周刊自荐池(GitHub Issues,头部上游)',
+    fetcherKind: FetcherKind.ruanyf_weekly,
+  },
 
-  // ── 商业（创投/策略/增长）────────────────────────────────────────────────
+  // ── 商业 ────────────────────────────────────────────────────────
   {
     name: 'TechCrunch',
     category: InfoSourceCategory.business,
@@ -190,30 +210,21 @@ export const SEED_SOURCES: SeedSource[] = [
     name: 'Marginal Revolution',
     category: InfoSourceCategory.business,
     rssUrl: 'https://marginalrevolution.com/feed',
-    description: 'Tyler Cowen 经济 / 文化日更博客',
-  },
-  // 原 china_tech 中的商业媒体 → business
-  {
-    name: '36氪快讯',
-    category: InfoSourceCategory.business,
-    rssUrl: '{rsshub}/36kr/newsflashes',
-    description: '国内 TechCrunch，融资+创业全覆盖',
+    description: 'Tyler Cowen 经济 / 文化日更',
   },
   {
     name: 'Decoder by Nilay Patel',
     category: InfoSourceCategory.business,
-    // curl 2026-06-20 验：原 theverge.com/.../rss/index.xml 404；
-    // 正确 feed 来自 Megaphone 托管，通过 Apple Podcast API 确认
     rssUrl: 'https://feeds.megaphone.fm/recodedecode',
-    description: 'The Verge 主编访谈 CEO，科技商业深度',
+    description: 'The Verge 主编访谈 CEO,科技商业深度',
   },
 
-  // ── 设计（UI/UX/视觉工程）────────────────────────────────────────────────
+  // ── 设计 ────────────────────────────────────────────────────────
   {
     name: 'Sidebar',
     category: InfoSourceCategory.design,
     rssUrl: 'https://sidebar.io/feed.xml',
-    description: '每日 5 条精选设计链接，零噪音',
+    description: '每日 5 条精选设计链接,零噪音',
   },
   {
     name: 'Smashing Magazine',
@@ -222,7 +233,7 @@ export const SEED_SOURCES: SeedSource[] = [
     description: '前端 + 设计工程老牌站',
   },
 
-  // ── 思想 · 长文（原 reading）────────────────────────────────────────────
+  // ── 思想 · 长文 ─────────────────────────────────────────────────
   {
     name: 'Paul Graham Essays',
     category: InfoSourceCategory.longform,
@@ -239,7 +250,7 @@ export const SEED_SOURCES: SeedSource[] = [
     name: 'Aeon',
     category: InfoSourceCategory.longform,
     rssUrl: 'https://aeon.co/feed.rss',
-    description: '哲学 / 科学长文，编辑挑选',
+    description: '哲学 / 科学长文,编辑挑选',
   },
 ];
 

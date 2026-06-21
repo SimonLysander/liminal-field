@@ -1,17 +1,26 @@
 /**
- * browse (v4) 工具单元测试
+ * browse (v5) 工具单元测试
  *
- * 覆盖：
- *   1. 正常：拉到 3 条，历史无去重，分配 item ref，写入 fetchedItemsMap（存 sourceId）
- *   2. sourceId 不存在 → error SOURCE_NOT_FOUND
- *   3. 历史去重：已有 1 条 → afterDedupe = 2
- *   4. source 已禁用 → error SOURCE_DISABLED
- *   5. limit 参数：只返回 limit 条（但 afterDedupe 计数仍反映去重后总数）
+ * v5 新签名: { sourceIds?, keywords?, limit? },多源并行
+ *
+ * 覆盖:
+ *   1. 默认无参:自动扫当前事项订阅的所有 enabled 源
+ *   2. 显式 sourceIds 含 invalid / disabled id → partial
+ *   3. 历史去重
+ *   4. 单源失败 + 其他源成功 → partial + failedSources
+ *   5. 所有源失败 → ALL_SOURCES_FAILED
+ *   6. 事项无订阅源 → NO_SUBSCRIBED_SOURCES
+ *   7. limit 参数生效(合并 + 去重后 cap)
+ *   8. keywords 透传给 FetcherRegistry.fetchMany
  */
 
 import { createBrowseTool } from '../browse.tool';
 import type { InfoSourceRepository } from '../../../digest/info-source.repository';
-import type { FetcherRegistry } from '../../../digest/fetchers/fetcher-registry.service';
+import type { SmartTopicConfigRepository } from '../../../digest/smart-topic-config.repository';
+import type {
+  FetcherRegistry,
+  FetchManyResultPerSource,
+} from '../../../digest/fetchers/fetcher-registry.service';
 import type { ProcessedFeedItemRepository } from '../../../digest/processed-feed-item.repository';
 import type { DigestTaskContext } from '../digest-task-context';
 import type { InfoSource } from '../../../digest/info-source.entity';
@@ -30,40 +39,60 @@ const run = (t: unknown, input: unknown): Promise<string> =>
     {},
   );
 
-function makeItem(id: number): FetchedItem {
+function makeItem(
+  srcKey: string,
+  id: number,
+  publishedOffsetDays = 0,
+): FetchedItem {
   return {
-    itemGuid: `guid_${id}`,
-    title: `标题 ${id}`,
-    url: `https://example.com/${id}`,
-    publishedAt: new Date('2026-06-15'),
-    snippet: `摘要 ${id}`.repeat(10),
+    itemGuid: `guid_${srcKey}_${id}`,
+    title: `${srcKey} item ${id}`,
+    url: `https://example.com/${srcKey}/${id}`,
+    publishedAt: new Date(Date.now() - publishedOffsetDays * 86400_000),
+    snippet: `摘要 ${srcKey}-${id}`.repeat(5),
   };
 }
 
-function makeSource(enabled = true): InfoSource {
+function makeSource(id: string, name: string, enabled = true): InfoSource {
   return {
-    _id: 'src_001',
+    _id: id,
     type: InfoSourceType.rss,
     fetcherKind: FetcherKind.rss,
-    name: 'HN',
-    config: { url: 'https://hn.algolia.com/feed' },
+    name,
+    config: { url: `https://example.com/${id}.rss` },
     enabled,
     category: InfoSourceCategory.engineering,
     createdAt: new Date(),
   };
 }
 
-function makeInfoSourceRepo(source: InfoSource | null): InfoSourceRepository {
+function makeInfoSourceRepo(sources: InfoSource[]): InfoSourceRepository {
+  const byId = new Map(sources.map((s) => [String(s._id), s]));
   return {
-    findById: jest.fn().mockResolvedValue(source),
+    // 同步实现即可(mock 返同步值),签名上是 Promise<InfoSource[]> 但 Jest 自动包装
+    findManyByIds: jest
+      .fn()
+      .mockImplementation((ids: string[]) =>
+        Promise.resolve(ids.map((id) => byId.get(id)).filter(Boolean)),
+      ),
   } as unknown as InfoSourceRepository;
 }
 
-function makeFetcherRegistry(items: FetchedItem[]): FetcherRegistry {
-  // v2: browse.tool 改成调 registry.fetch(source, opts) 直接走单源入口
-  // mock 顶层 fetch 方法即可，不再需要 get(...).fetch 链
+function makeStcRepo(sourceIds: string[] | null): SmartTopicConfigRepository {
   return {
-    fetch: jest.fn().mockResolvedValue(items),
+    findByContentItemId: jest
+      .fn()
+      .mockResolvedValue(sourceIds ? { sourceIds } : null),
+  } as unknown as SmartTopicConfigRepository;
+}
+
+function makeFetcherRegistry(
+  results: FetchManyResultPerSource[],
+  spy?: jest.Mock,
+): FetcherRegistry {
+  const fetchManyMock = jest.fn().mockResolvedValue(results);
+  return {
+    fetchMany: spy ?? fetchManyMock,
   } as unknown as FetcherRegistry;
 }
 
@@ -84,101 +113,224 @@ function makeCtx(): DigestTaskContext {
   };
 }
 
-describe('browse (v4)', () => {
-  it('Case 1: 正常 — 分配 ref i1/i2/i3，写入 fetchedItemsMap（含 sourceId）', async () => {
-    const source = makeSource();
+describe('browse (v5 多源并行)', () => {
+  it('Case 1: 默认无参 — 自动扫当前事项订阅的所有 enabled 源', async () => {
+    const srcA = makeSource('src_a', 'A');
+    const srcB = makeSource('src_b', 'B');
     const ctx = makeCtx();
     const tool = createBrowseTool({
-      infoSourceRepo: makeInfoSourceRepo(source),
+      infoSourceRepo: makeInfoSourceRepo([srcA, srcB]),
+      smartTopicConfigRepo: makeStcRepo(['src_a', 'src_b']),
       fetcherRegistry: makeFetcherRegistry([
-        makeItem(1),
-        makeItem(2),
-        makeItem(3),
+        {
+          source: srcA,
+          status: 'ok',
+          items: [makeItem('a', 1), makeItem('a', 2)],
+          durationMs: 100,
+        },
+        {
+          source: srcB,
+          status: 'ok',
+          items: [makeItem('b', 1)],
+          durationMs: 150,
+        },
       ]),
       pfiRepo: makePfiRepo(),
       ctx,
     });
 
-    const result = JSON.parse(await run(tool, { sourceId: 'src_001' }));
+    const result = JSON.parse(await run(tool, {}));
 
     expect(result.meta.status).toBe('ok');
-    expect(result.meta.afterDedupe).toBe(3);
+    expect(result.meta.returned).toBe(3);
     expect(result.meta.items).toHaveLength(3);
-    expect(result.meta.items[0].ref).toBe('i1');
     expect(ctx.fetchedItemsMap.size).toBe(3);
-    // v4: fetchedItemsMap 存 sourceId 而非 sourceRef
-    expect(ctx.fetchedItemsMap.get('i1')?.sourceId).toBe('src_001');
+    // 每条 ref 都要能反查到 sourceName
+    const firstRef = result.meta.items[0].ref;
+    expect(ctx.fetchedItemsMap.get(firstRef)?.sourceName).toMatch(/[AB]/);
   });
 
-  it('Case 2: sourceId 不存在 → error SOURCE_NOT_FOUND', async () => {
+  it('Case 2: 显式 sourceIds 含 invalid + disabled → status=partial', async () => {
+    const srcA = makeSource('src_a', 'A', true);
+    const srcDisabled = makeSource('src_disabled', 'Disabled', false);
     const ctx = makeCtx();
     const tool = createBrowseTool({
-      infoSourceRepo: makeInfoSourceRepo(null), // null = 不存在
-      fetcherRegistry: makeFetcherRegistry([]),
-      pfiRepo: makePfiRepo(),
-      ctx,
-    });
-
-    const result = JSON.parse(await run(tool, { sourceId: 'src_999' }));
-    expect(result.meta.status).toBe('error');
-    expect(result.meta.errorCode).toBe('SOURCE_NOT_FOUND');
-  });
-
-  it('Case 3: 历史去重 — 1 条已有 → afterDedupe = 2', async () => {
-    const source = makeSource();
-    const ctx = makeCtx();
-    const tool = createBrowseTool({
-      infoSourceRepo: makeInfoSourceRepo(source),
+      infoSourceRepo: makeInfoSourceRepo([srcA, srcDisabled]),
+      smartTopicConfigRepo: makeStcRepo(null), // 不会用到
       fetcherRegistry: makeFetcherRegistry([
-        makeItem(1),
-        makeItem(2),
-        makeItem(3),
-      ]),
-      pfiRepo: makePfiRepo(['guid_1']), // guid_1 已处理过
-      ctx,
-    });
-
-    const result = JSON.parse(await run(tool, { sourceId: 'src_001' }));
-    expect(result.meta.afterDedupe).toBe(2);
-    expect(result.meta.totalFetched).toBe(3);
-  });
-
-  it('Case 4: source 已禁用 → error SOURCE_DISABLED', async () => {
-    const source = makeSource(false); // enabled=false
-    const ctx = makeCtx();
-    const tool = createBrowseTool({
-      infoSourceRepo: makeInfoSourceRepo(source),
-      fetcherRegistry: makeFetcherRegistry([]),
-      pfiRepo: makePfiRepo(),
-      ctx,
-    });
-
-    const result = JSON.parse(await run(tool, { sourceId: 'src_001' }));
-    expect(result.meta.errorCode).toBe('SOURCE_DISABLED');
-  });
-
-  it('Case 5: limit 参数 — 只返回 limit 条', async () => {
-    const source = makeSource();
-    const ctx = makeCtx();
-    const tool = createBrowseTool({
-      infoSourceRepo: makeInfoSourceRepo(source),
-      fetcherRegistry: makeFetcherRegistry([
-        makeItem(1),
-        makeItem(2),
-        makeItem(3),
-        makeItem(4),
-        makeItem(5),
+        {
+          source: srcA,
+          status: 'ok',
+          items: [makeItem('a', 1)],
+          durationMs: 50,
+        },
       ]),
       pfiRepo: makePfiRepo(),
       ctx,
     });
 
     const result = JSON.parse(
-      await run(tool, { sourceId: 'src_001', limit: 2 }),
+      await run(tool, {
+        sourceIds: ['src_a', 'src_disabled', 'src_nonexistent'],
+      }),
     );
-    expect(result.meta.status).toBe('ok');
-    expect(result.meta.afterDedupe).toBe(5); // 去重后总数仍是 5
-    expect(result.meta.items).toHaveLength(2); // 但只返回 2 条
-    expect(ctx.fetchedItemsMap.size).toBe(2);
+
+    expect(result.meta.status).toBe('partial');
+    expect(result.meta.invalidIds).toContain('src_nonexistent');
+    expect(result.meta.disabledIds).toContain('src_disabled');
+    expect(result.meta.returned).toBe(1);
+  });
+
+  it('Case 3: 历史去重 — 已 pick 过的 itemGuid 剔除', async () => {
+    const srcA = makeSource('src_a', 'A');
+    const ctx = makeCtx();
+    const tool = createBrowseTool({
+      infoSourceRepo: makeInfoSourceRepo([srcA]),
+      smartTopicConfigRepo: makeStcRepo(['src_a']),
+      fetcherRegistry: makeFetcherRegistry([
+        {
+          source: srcA,
+          status: 'ok',
+          items: [makeItem('a', 1), makeItem('a', 2), makeItem('a', 3)],
+          durationMs: 50,
+        },
+      ]),
+      pfiRepo: makePfiRepo(['guid_a_1']), // guid_a_1 已 pick 过
+      ctx,
+    });
+
+    const result = JSON.parse(await run(tool, {}));
+    expect(result.meta.totalFetched).toBe(3);
+    expect(result.meta.afterDedupe).toBe(2);
+    expect(result.meta.returned).toBe(2);
+  });
+
+  it('Case 4: 单源失败 + 其他源成功 → status=partial + failedSources', async () => {
+    const srcA = makeSource('src_a', 'A');
+    const srcB = makeSource('src_b', 'B');
+    const ctx = makeCtx();
+    const tool = createBrowseTool({
+      infoSourceRepo: makeInfoSourceRepo([srcA, srcB]),
+      smartTopicConfigRepo: makeStcRepo(['src_a', 'src_b']),
+      fetcherRegistry: makeFetcherRegistry([
+        {
+          source: srcA,
+          status: 'failed',
+          items: [],
+          error: 'HTTP 500',
+          durationMs: 80,
+        },
+        {
+          source: srcB,
+          status: 'ok',
+          items: [makeItem('b', 1), makeItem('b', 2)],
+          durationMs: 120,
+        },
+      ]),
+      pfiRepo: makePfiRepo(),
+      ctx,
+    });
+
+    const result = JSON.parse(await run(tool, {}));
+    expect(result.meta.status).toBe('partial');
+    expect(result.meta.failedSources).toHaveLength(1);
+    expect(result.meta.failedSources[0].name).toBe('A');
+    expect(result.meta.failedSources[0].error).toContain('HTTP 500');
+    expect(result.meta.returned).toBe(2);
+  });
+
+  it('Case 5: 所有源都失败 → status=error + ALL_SOURCES_FAILED', async () => {
+    const srcA = makeSource('src_a', 'A');
+    const ctx = makeCtx();
+    const tool = createBrowseTool({
+      infoSourceRepo: makeInfoSourceRepo([srcA]),
+      smartTopicConfigRepo: makeStcRepo(['src_a']),
+      fetcherRegistry: makeFetcherRegistry([
+        {
+          source: srcA,
+          status: 'failed',
+          items: [],
+          error: 'timeout',
+          durationMs: 10000,
+        },
+      ]),
+      pfiRepo: makePfiRepo(),
+      ctx,
+    });
+
+    const result = JSON.parse(await run(tool, {}));
+    expect(result.meta.status).toBe('error');
+    expect(result.meta.errorCode).toBe('ALL_SOURCES_FAILED');
+    expect(result.meta.failedSources).toHaveLength(1);
+  });
+
+  it('Case 6: 事项无订阅源 → NO_SUBSCRIBED_SOURCES', async () => {
+    const ctx = makeCtx();
+    const tool = createBrowseTool({
+      infoSourceRepo: makeInfoSourceRepo([]),
+      smartTopicConfigRepo: makeStcRepo(null), // SmartTopicConfig 不存在
+      fetcherRegistry: makeFetcherRegistry([]),
+      pfiRepo: makePfiRepo(),
+      ctx,
+    });
+
+    const result = JSON.parse(await run(tool, {}));
+    expect(result.meta.status).toBe('error');
+    expect(result.meta.errorCode).toBe('NO_SUBSCRIBED_SOURCES');
+  });
+
+  it('Case 7: limit 参数 — 合并去重后 cap', async () => {
+    const srcA = makeSource('src_a', 'A');
+    const srcB = makeSource('src_b', 'B');
+    const ctx = makeCtx();
+    const tool = createBrowseTool({
+      infoSourceRepo: makeInfoSourceRepo([srcA, srcB]),
+      smartTopicConfigRepo: makeStcRepo(['src_a', 'src_b']),
+      fetcherRegistry: makeFetcherRegistry([
+        {
+          source: srcA,
+          status: 'ok',
+          items: [makeItem('a', 1), makeItem('a', 2), makeItem('a', 3)],
+          durationMs: 50,
+        },
+        {
+          source: srcB,
+          status: 'ok',
+          items: [makeItem('b', 1), makeItem('b', 2)],
+          durationMs: 60,
+        },
+      ]),
+      pfiRepo: makePfiRepo(),
+      ctx,
+    });
+
+    const result = JSON.parse(await run(tool, { limit: 3 }));
+    expect(result.meta.afterDedupe).toBe(5);
+    expect(result.meta.returned).toBe(3);
+    expect(ctx.fetchedItemsMap.size).toBe(3);
+  });
+
+  it('Case 8: keywords 透传给 FetcherRegistry.fetchMany', async () => {
+    const srcA = makeSource('src_a', 'A');
+    const ctx = makeCtx();
+    const fetchManySpy = jest
+      .fn()
+      .mockResolvedValue([
+        { source: srcA, status: 'ok', items: [], durationMs: 30 },
+      ]);
+    const tool = createBrowseTool({
+      infoSourceRepo: makeInfoSourceRepo([srcA]),
+      smartTopicConfigRepo: makeStcRepo(['src_a']),
+      fetcherRegistry: makeFetcherRegistry([], fetchManySpy),
+      pfiRepo: makePfiRepo(),
+      ctx,
+    });
+
+    await run(tool, { keywords: ['transformer', 'MoE'] });
+
+    expect(fetchManySpy).toHaveBeenCalledTimes(1);
+    expect(fetchManySpy.mock.calls[0][1]).toMatchObject({
+      keywords: ['transformer', 'MoE'],
+    });
   });
 });

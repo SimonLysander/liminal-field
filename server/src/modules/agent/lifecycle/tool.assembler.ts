@@ -62,6 +62,7 @@ import { createBrowseTool } from '../tools/browse.tool';
 import { createPickTool } from '../tools/pick.tool';
 import type { DigestTaskContext } from '../tools/digest-task-context';
 import { InfoSourceRepository } from '../../digest/info-source.repository';
+import { SmartTopicConfigRepository } from '../../digest/smart-topic-config.repository';
 import { FetcherRegistry } from '../../digest/fetchers/fetcher-registry.service';
 import { ProcessedFeedItemRepository } from '../../digest/processed-feed-item.repository';
 import { DigestTaskRepository } from '../../digest/digest-task.repository';
@@ -102,7 +103,9 @@ export class ToolAssembler {
     // Skill 池(agent skills):agent 启用 skill 时按 name 调起、注入 body 作 tool_result
     private readonly skillService: SkillService,
     // browse/pick 用的 digest repos —— 通过 DigestSharedModule 注入,无循环依赖
+    // browse v5 还需 smartTopicConfigRepo(默认 sourceIds 时反查当前事项订阅源列表)
     private readonly infoSourceRepo: InfoSourceRepository,
+    private readonly smartTopicConfigRepo: SmartTopicConfigRepository,
     private readonly fetcherRegistry: FetcherRegistry,
     private readonly pfiRepo: ProcessedFeedItemRepository,
     private readonly digestTaskRepo: DigestTaskRepository,
@@ -226,6 +229,7 @@ export class ToolAssembler {
         ? {
             browse: createBrowseTool({
               infoSourceRepo: this.infoSourceRepo,
+              smartTopicConfigRepo: this.smartTopicConfigRepo,
               fetcherRegistry: this.fetcherRegistry,
               pfiRepo: this.pfiRepo,
               ctx: entryContext.digestTaskContext,
