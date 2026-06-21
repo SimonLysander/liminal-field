@@ -15,7 +15,7 @@
  * 设计风格：与 ToolCallCard（Aurora advisor）风格对齐，左竖线时间线。
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -27,11 +27,15 @@ import {
   Star,
   Play,
   Wrench,
+  ExternalLink,
+  Trash2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { banner } from '@/components/ui/banner-api';
 import { topicsApi, digestTasksApi } from '@/services/topics';
 import type { TopicDetail, DigestTaskListItem, AgentStep } from '@/services/topics';
+import { structureApi } from '@/services/structure';
+import { useConfirm } from '@/contexts/ConfirmContext';
 import { humanizeCron } from './scheduleUtils';
 
 // ── 工具函数 ───────────────────────────────────────────────────────────────────
@@ -178,15 +182,22 @@ function StepTimeline({ steps }: { steps: AgentStep[] }) {
 /**
  * TaskRow — 单次运行记录行。
  * 展开时懒加载 steps（GET /digest/tasks/:id）。
+ * task done 且产出了 report 时,行末显示"查看 ↗"+ "删除 🗑"——把"管理产物"
+ * 落在 task 本身的位置(而不是单独再做一个"已发布报告"列表),避免数据双源。
  */
 function TaskRow({
   task,
+  topicId,
   expanded,
   onToggleExpand,
+  onDeleteReport,
 }: {
   task: DigestTaskListItem;
+  topicId: string;
   expanded: boolean;
   onToggleExpand: () => void;
+  /** task done 且 reportContentItemId 非空时点击删除产物 */
+  onDeleteReport?: (task: DigestTaskListItem) => void;
 }) {
   const [steps, setSteps] = useState<AgentStep[] | null>(null);
   const [loadingSteps, setLoadingSteps] = useState(false);
@@ -239,6 +250,35 @@ function TaskRow({
 
         <div className="flex-1" />
 
+        {/* 产物操作:只在 task done + reportContentItemId 非空时显示 */}
+        {task.status === 'done' && task.reportContentItemId && (
+          <div className="flex items-center gap-0.5">
+            <a
+              href={`/digest/${topicId}/${task.reportContentItemId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="在新标签打开报告"
+              className="flex items-center gap-1 rounded px-2 py-1 text-2xs transition-colors hover:bg-[var(--shelf)]"
+              style={{ color: 'var(--ink-faded)' }}
+            >
+              <ExternalLink size={12} strokeWidth={1.75} />
+              <span>查看</span>
+            </a>
+            {onDeleteReport && (
+              <button
+                type="button"
+                onClick={() => onDeleteReport(task)}
+                title="删除这一期报告(不可恢复)"
+                className="flex items-center gap-1 rounded px-2 py-1 text-2xs transition-colors hover:bg-[var(--shelf)]"
+                style={{ color: 'var(--ink-faded)' }}
+              >
+                <Trash2 size={12} strokeWidth={1.75} />
+                <span>删除</span>
+              </button>
+            )}
+          </div>
+        )}
+
         {/* 展开/收起按钮（只有有 steps 时才显示） */}
         {task.stepsCount > 0 && (
           <button
@@ -286,19 +326,22 @@ function TaskRow({
 export function DigestTopicDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const confirm = useConfirm();
 
   const [topic, setTopic] = useState<TopicDetail | null>(null);
   const [tasks, setTasks] = useState<DigestTaskListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  /** 限多拉一些(20),让用户能看完整本月历史;早期版本只拉 5,新页面右栏空间多 */
+  const TASKS_LIMIT = 20;
 
   const loadData = useCallback(async () => {
     if (!id) return;
     try {
       const [topicData, taskList] = await Promise.all([
         topicsApi.get(id),
-        digestTasksApi.listByTopic(id, 5),
+        digestTasksApi.listByTopic(id, TASKS_LIMIT),
       ]);
       setTopic(topicData);
       setTasks(taskList);
@@ -313,6 +356,25 @@ export function DigestTopicDetail() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 初始数据加载
     void loadData();
   }, [loadData]);
+
+  /**
+   * 自动 poll:有 running task 时每 4s 轻刷,直到所有 task 都不 running。
+   * 设计:之前页面只在打开时拉一次,导致截图里"运行中 0 步"永远 0(看到的
+   * 是 snapshot 不是 live)。现在 running 期间持续刷,体验跟"立即运行"按钮
+   * 形成闭环——点了能看到步数往上加。
+   */
+  const hasRunning = tasks.some((t) => t.status === 'running');
+  const loadDataRef = useRef(loadData);
+  useEffect(() => {
+    loadDataRef.current = loadData;
+  }, [loadData]);
+  useEffect(() => {
+    if (!hasRunning) return;
+    const timer = setInterval(() => {
+      void loadDataRef.current();
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [hasRunning]);
 
   const handleRunNow = async () => {
     if (!id) return;
@@ -329,6 +391,44 @@ export function DigestTopicDetail() {
       setRunning(false);
     }
   };
+
+  /**
+   * 删除一期报告 = 删 ContentItem(走通用 structureApi.deleteNode)。
+   * task 记录里 reportContentItemId 不动(留作历史孤儿引用,公开端 listReports
+   * 基于 NavNode 子节点,删 NavNode 后自然就不出现)。
+   * 不弹"删除调试日志/task 记录"——那是 audit trail,只删产物。
+   */
+  const handleDeleteReport = useCallback(
+    async (task: DigestTaskListItem) => {
+      if (!task.reportContentItemId) return;
+      const ok = await confirm({
+        title: '删了这一期报告？',
+        message: (
+          <>
+            <p>
+              删除后报告页就打不开了——
+              <strong>已经发过的 newsletter 订阅 / 外链都会变成 404</strong>。
+            </p>
+            <p className="mt-2" style={{ color: 'var(--ink-faded)' }}>
+              运行记录会保留(包括步骤、findings 摘要),只是失去了那篇正文。
+            </p>
+          </>
+        ),
+        confirmLabel: '确认删除',
+        cancelLabel: '再想想',
+        danger: true,
+      });
+      if (!ok) return;
+      try {
+        await structureApi.deleteNode(task.reportContentItemId);
+        banner.success('已删除');
+        await loadData();
+      } catch {
+        banner.error('没能删掉，再试一次？');
+      }
+    },
+    [confirm, loadData],
+  );
 
   if (loading) {
     return (
@@ -379,21 +479,25 @@ export function DigestTopicDetail() {
         </div>
       </div>
 
-      {/* 内容区 */}
-      <div className="flex-1 overflow-y-auto px-6 py-6">
-        <div className="max-w-2xl space-y-6">
-          {/* 事项配置 section（只读展示，编辑走列表的 ✏️ 按钮） */}
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>
+      {/* 内容区:双栏(响应式:窄屏 < 1024px 单栏)。
+          左栏 (24rem) 事项配置(只读,改走列表 ✎);右栏 flex-1 产物/运行管理。
+          以前是单栏 max-w-2xl,右侧整片空白浪费 viewport;现在右栏承担"管理报告"主作业面。 */}
+      <div className="flex-1 overflow-hidden">
+        <div className="grid h-full grid-cols-1 lg:grid-cols-[24rem_minmax(0,1fr)]">
+          {/* ── 左栏:事项配置 ── */}
+          <aside
+            className="overflow-y-auto px-6 py-6 lg:border-r"
+            style={{ borderColor: 'var(--separator)' }}
+          >
+            <h2 className="mb-4 text-xs uppercase tracking-[0.18em]" style={{ color: 'var(--ink-ghost)' }}>
               事项配置
             </h2>
-            <div className="space-y-2">
-              {/* 任务描述（用户最关心的） */}
+            <div className="space-y-4">
               {topic.prompt && (
                 <div>
                   <div className="text-xs" style={{ color: 'var(--ink-ghost)' }}>任务描述</div>
                   <p
-                    className="mt-1 whitespace-pre-wrap text-sm"
+                    className="mt-1 whitespace-pre-wrap text-sm leading-relaxed"
                     style={{ color: 'var(--ink)' }}
                   >
                     {topic.prompt}
@@ -401,7 +505,6 @@ export function DigestTopicDetail() {
                 </div>
               )}
 
-              {/* 节奏 + 最大轮次 一行展示 */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <div className="text-xs" style={{ color: 'var(--ink-ghost)' }}>运行节奏</div>
@@ -417,13 +520,12 @@ export function DigestTopicDetail() {
                 </div>
               </div>
 
-              {/* 订阅信息源（chip 只读，不带删除按钮） */}
               {topic.sources.length > 0 && (
                 <div>
                   <div className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
                     订阅信息源（{topic.sources.length}）
                   </div>
-                  <div className="mt-1 flex flex-wrap gap-1.5">
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {topic.sources.map((s) => (
                       <span
                         key={s.id}
@@ -441,14 +543,22 @@ export function DigestTopicDetail() {
                 </div>
               )}
             </div>
-          </section>
+          </aside>
 
-          {/* 最近运行 section */}
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>
-                最近运行
-              </h2>
+          {/* ── 右栏:期刊产物 + 运行管理 ── */}
+          <main className="overflow-y-auto px-6 py-6">
+            {/* 顶栏:页面级"立即运行"按钮 + 自动 poll 提示 */}
+            <div className="mb-5 flex items-center justify-between">
+              <div className="flex items-baseline gap-3">
+                <h2 className="text-xs uppercase tracking-[0.18em]" style={{ color: 'var(--ink-ghost)' }}>
+                  运行历史 &amp; 期刊产物
+                </h2>
+                {hasRunning && (
+                  <span className="text-xs italic" style={{ color: 'var(--accent)' }}>
+                    凝思中…
+                  </span>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => void handleRunNow()}
@@ -466,10 +576,10 @@ export function DigestTopicDetail() {
 
             {tasks.length === 0 ? (
               <div
-                className="rounded-lg px-4 py-6 text-center text-xs"
+                className="rounded-lg px-4 py-12 text-center text-xs"
                 style={{ color: 'var(--ink-ghost)', border: '1px dashed var(--separator)' }}
               >
-                暂无运行记录，点「立即运行」触发第一次采集。
+                还没跑过——点「立即运行」试试第一期。
               </div>
             ) : (
               <div className="space-y-2">
@@ -477,15 +587,17 @@ export function DigestTopicDetail() {
                   <TaskRow
                     key={task.id}
                     task={task}
+                    topicId={id ?? ''}
                     expanded={expandedId === task.id}
                     onToggleExpand={() =>
                       setExpandedId(expandedId === task.id ? null : task.id)
                     }
+                    onDeleteReport={handleDeleteReport}
                   />
                 ))}
               </div>
             )}
-          </section>
+          </main>
         </div>
       </div>
     </div>
