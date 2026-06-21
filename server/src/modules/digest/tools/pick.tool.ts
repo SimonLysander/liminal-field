@@ -82,11 +82,18 @@ export function createPickTool(deps: PickDeps) {
         const newFindings: Finding[] = [];
         const pickedRefs: string[] = [];
         const skippedRefs: string[] = [];
+        const duplicateRefs: string[] = [];
         const savedItems: Array<{
           title: string;
           reason: string;
           citationId: number;
         }> = [];
+
+        // dedup 池: 已 pick 过的 itemGuid(包括本次 task 之前轮的 + 本次循环内已加的)
+        // 防 agent 多轮 pick 把同一个 finding 入库两次(observed bug 2026-06-21)
+        const seenGuids = new Set<string>(
+          currentTask.findings.map((f) => f.itemGuid),
+        );
 
         for (const { ref, reason } of picks) {
           const entry = ctx.fetchedItemsMap.get(ref);
@@ -100,6 +107,16 @@ export function createPickTool(deps: PickDeps) {
 
           // v4：fetchedItemsMap 直接存 sourceId，不再通过 sourceRefsMap 二次反查
           const { fetchedItem, sourceId, sourceName } = entry;
+
+          // itemGuid 去重: 已 pick 过(或本批已加)的同 itemGuid 直接跳过
+          if (seenGuids.has(fetchedItem.itemGuid)) {
+            logger.debug(
+              `pick: itemGuid "${fetchedItem.itemGuid}" (ref=${ref}) 已存在,跳过 dedup (taskId=${ctx.taskId})`,
+            );
+            duplicateRefs.push(ref);
+            continue;
+          }
+          seenGuids.add(fetchedItem.itemGuid);
 
           const citationId = nextCitationId++;
           newFindings.push({
@@ -141,13 +158,23 @@ export function createPickTool(deps: PickDeps) {
         );
 
         const citationIds = savedItems.map((s) => s.citationId);
+        const duplicated = duplicateRefs.length;
 
-        return toolResult(`挑了 ${saved} 条 · 跳过 ${skipped} 条`, undefined, {
-          status: skipped > 0 ? 'partial' : 'ok',
+        // summary 上明示去重数,让 agent 知道"这些 ref 已经在本期 findings 里"——
+        // 引导它不要再 pick 同一批,转去 browse 别的源或停止
+        const summary =
+          duplicated > 0
+            ? `挑了 ${saved} 条 · 跳过 ${skipped} 条 · 去重 ${duplicated} 条(已在本期 findings 里)`
+            : `挑了 ${saved} 条 · 跳过 ${skipped} 条`;
+
+        return toolResult(summary, undefined, {
+          status: skipped > 0 || duplicated > 0 ? 'partial' : 'ok',
           saved,
           skipped,
+          duplicated,
           pickedRefs,
           skippedRefs,
+          duplicateRefs,
           citationIds,
           list: savedItems.map(
             (s) =>

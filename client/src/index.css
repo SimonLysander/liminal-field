@@ -1300,3 +1300,102 @@ body.gallery-immersive aside {
 }
 .digest-report-body a[href*="#cit-"]::before { content: '['; opacity: 0.5; }
 .digest-report-body a[href*="#cit-"]::after  { content: ']'; opacity: 0.5; }
+
+/* ── Digest 报告正文 期刊体例(Stratechery 现代严肃) ──────────────────────────
+ * 用宋体严肃 stack(Source Han Serif / Songti SC / SimSun)替代默认的 LXGW 文楷,
+ * 给 digest 报告独立的"权威 newsletter"视觉权重。
+ * 配套调整: 行距 1.75 / 段间 1.4em / 不缩进 / 数字 oldstyle / 章节 hairline 分隔。
+ * ─────────────────────────────────────────────────────────────────────────────── */
+.digest-report-body {
+  font-family:
+    "Source Han Serif SC",
+    "Noto Serif SC",
+    "Songti SC",
+    "SimSun",
+    "Source Serif Pro",
+    "Iowan Old Style",
+    "Charter",
+    Georgia,
+    serif;
+  font-size: 1.0625rem;          /* 17px - 略大一点点提可读性 */
+  line-height: 1.8;              /* 严肃长读的标准行距 */
+  color: var(--ink);
+  font-variant-numeric: oldstyle-nums proportional-nums;  /* 老式数字, 期刊味 */
+  letter-spacing: 0.005em;
+}
+/* 段落: 不缩进 / 段间 1.4em / 最后段无下间距 */
+.digest-report-body p {
+  margin: 0 0 1.4em 0;
+  text-align: justify;            /* 两端对齐, 期刊版式 */
+  text-justify: inter-character;  /* 中文两端对齐用字符间距而非词间 */
+  hyphens: auto;
+}
+.digest-report-body p:last-child { margin-bottom: 0; }
+
+/* H2: 章节标题用 small caps + tracking, 配 hairline 分隔 */
+.digest-report-body h2 {
+  margin: 3.5em 0 1.2em;
+  padding-top: 1.8em;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;        /* tracking-widest 风 */
+  text-transform: none;          /* 中文章节不要 uppercase, 但保留 letter-spacing */
+  color: var(--ink);
+  border-top: 0.5px solid var(--separator);
+  line-height: 1.4;
+}
+.digest-report-body h2:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+/* H3: 三级标题(段落小标题), 仅 weight + 微大 */
+.digest-report-body h3 {
+  margin: 2.2em 0 0.8em;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: 0.02em;
+}
+
+/* 强调粗体: 不要过粗, 保持衬线优雅 */
+.digest-report-body strong,
+.digest-report-body b {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* 斜体: 保持期刊感 */
+.digest-report-body em,
+.digest-report-body i {
+  font-style: italic;
+}
+
+/* 引用块: italic + 左 border + 右缩进 */
+.digest-report-body blockquote {
+  margin: 2em 0;
+  padding: 0 1.5em;
+  border-left: 3px solid var(--ink-soft);
+  font-style: italic;
+  color: var(--ink-soft);
+}
+
+/* 行内 code: 等宽体 + 浅底 */
+.digest-report-body code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  padding: 0.1em 0.35em;
+  background: var(--shelf);
+  border-radius: 3px;
+}
+
+/* 列表: 适度缩进 */
+.digest-report-body ul,
+.digest-report-body ol {
+  margin: 1em 0 1.4em;
+  padding-left: 1.6em;
+}
+.digest-report-body li {
+  margin-bottom: 0.4em;
+}

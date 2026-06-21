@@ -233,41 +233,43 @@ export default function DigestReportPage() {
             </Link>
           </motion.nav>
 
-          {/* ── 报头 ── */}
+          {/* ── 报头（Stratechery 现代严肃 newsletter 风）── */}
           <motion.header
             className="mb-0"
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, ease: appleEase }}
+            style={{
+              fontFamily:
+                '"Source Han Serif SC","Noto Serif SC","Songti SC","SimSun","Source Serif Pro","Iowan Old Style",Charter,Georgia,serif',
+            }}
           >
-            {/* 期号 + 出版信息行 */}
+            {/* Kicker: AI · VOL. 1 · 第 X 期 — small caps + tracking-widest */}
             <p
-              className="mb-4 text-[11px] font-bold uppercase tracking-[0.28em]"
-              style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+              className="mb-6 text-[11px] font-semibold uppercase tracking-[0.32em]"
+              style={{ color: 'var(--ink-ghost)' }}
             >
-              Vol. 1 &nbsp;·&nbsp; 第 {issueNumber} 期 &nbsp;·&nbsp; {formatDateTime(report.publishedAt)} &nbsp;·&nbsp; 编辑：Aurora
+              {topic.name} &nbsp;·&nbsp; VOL.&nbsp;1 &nbsp;·&nbsp; ISSUE&nbsp;{issueNumber.toString().padStart(2, '0')}
             </p>
 
-            {/* 巨型本期标题 */}
+            {/* 本期标题（稍克制, 不要 6xl 那么夸张） */}
             <h1
-              className="mb-4 text-6xl font-bold leading-[1.0] tracking-tight max-[520px]:text-4xl"
-              style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
+              className="mb-5 text-5xl font-bold leading-[1.1] tracking-tight max-[520px]:text-4xl"
+              style={{ color: 'var(--ink)' }}
             >
               {report.headline}
             </h1>
 
-            {/* 副标题：findings 数 + topic 名 */}
+            {/* 出版信息: italic, 现代 newsletter 那种克制副信息 */}
             <p
-              className="mb-5 text-xl italic leading-snug"
-              style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
+              className="mb-8 text-sm italic"
+              style={{ color: 'var(--ink-faded)' }}
             >
-              {report.findings.length > 0
-                ? `${report.findings.length} 条参考资料 · ${topic.name}`
-                : topic.name}
+              {formatDateTime(report.publishedAt)} &nbsp;·&nbsp; 编辑 Aurora &nbsp;·&nbsp; 本期 {report.findings.length} 条参考
             </p>
 
-            {/* 报头下方 3px 粗黑横线 */}
-            <div style={{ borderBottom: '3px solid var(--ink)' }} />
+            {/* 报头下方 hairline 分隔(0.5px, 不再 3px 粗黑横线那么 heavy) */}
+            <div style={{ borderBottom: '0.5px solid var(--separator)' }} />
           </motion.header>
 
           {/* ── 报告正文（MarkdownBody）──
@@ -294,20 +296,24 @@ export default function DigestReportPage() {
             )}
           </motion.div>
 
-          {/* ── 页尾 ── */}
+          {/* ── 页尾(克制 hairline, 不要 3px 粗黑) ── */}
           <motion.div
-            className="mt-16 pb-8"
+            className="mt-20 pb-8"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3, delay: 0.2, ease: appleEase }}
+            style={{
+              fontFamily:
+                '"Source Han Serif SC","Noto Serif SC","Songti SC","SimSun","Source Serif Pro","Iowan Old Style",Charter,Georgia,serif',
+            }}
           >
-            <div style={{ borderTop: '3px solid var(--ink)' }} />
+            <div style={{ borderTop: '0.5px solid var(--separator)' }} />
 
             <p
-              className="mt-6 text-center text-[11px] font-bold uppercase tracking-[0.28em]"
-              style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+              className="mt-8 text-center text-[11px] font-semibold uppercase tracking-[0.32em]"
+              style={{ color: 'var(--ink-ghost)' }}
             >
-              —— 本期完 ——
+              本&nbsp;期&nbsp;完
             </p>
 
             {/* prev/next 导航 */}
