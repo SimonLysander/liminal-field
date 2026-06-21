@@ -230,15 +230,19 @@ export default function DigestReportPage() {
   /* 期号 = 当前在 siblings 中的位置（1-based） */
   const issueNumber = currentIdx + 1;
 
+  // Notion 签名缓动: 短促 ease-out, 开头快收尾慢, 给人"轻轻拉出"的感觉
+  const notionEase: [number, number, number, number] = [0.32, 0.72, 0, 1];
+  const panelDuration = 0.24;
+
   return (
-    <div className="relative flex h-full w-full overflow-hidden">
+    <div className="relative h-full w-full overflow-hidden">
 
       {/* 全局 fixed 主题按钮: 屏幕右上 right:12 → Aurora 打开时 right:452(440 panel + 12 边距)
           Topbar 在此路由已 return null, 这里独立渲染避免冲突 */}
       <motion.button
         type="button"
         animate={{ right: isAuroraOpen ? 452 : 12 }}
-        transition={{ duration: 0.3, ease: appleEase }}
+        transition={{ duration: panelDuration, ease: notionEase }}
         onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}
         className="fixed top-3 z-50 flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-150 hover:bg-[var(--hover-overlay)]"
         style={{ color: 'var(--ink-faded)' }}
@@ -248,11 +252,11 @@ export default function DigestReportPage() {
         <Moon size={14} strokeWidth={1.5} className="theme-icon-dark" />
       </motion.button>
 
-      {/* ── 主体阅读区(宽度动态: Aurora 打开时缩到 calc(100% - 440px) 让出右侧) ── */}
+      {/* ── 主体阅读区(不动 width 避免长文 reflow, 只加 right padding 让 Notion 风 panel 占位) ── */}
       <motion.div
-        className="overflow-y-auto"
-        animate={{ width: isAuroraOpen ? 'calc(100% - 440px)' : '100%' }}
-        transition={{ duration: 0.3, ease: appleEase }}
+        className="h-full overflow-y-auto"
+        animate={{ paddingRight: isAuroraOpen ? 440 : 0 }}
+        transition={{ duration: panelDuration, ease: notionEase }}
         style={{ paddingTop: '4rem', paddingBottom: '4rem' }}
       >
         <div className="mx-auto w-full max-w-[55rem] px-10 max-[520px]:px-5">
@@ -443,17 +447,17 @@ export default function DigestReportPage() {
         </div>
       </motion.div>
 
-      {/* ── Aurora 抽屉(slide-in from right, 440px 宽,正文左移让出空间) ──
+      {/* ── Aurora 抽屉(Notion 风: absolute 浮右, 纯 translateX, 不带 opacity 配合) ──
           三态：checking→骨架；unauthenticated→登录提示；authenticated→真 AdvisorSidebar */}
       <AnimatePresence>
         {isAuroraOpen && (
           <motion.aside
             key="aurora-panel"
-            initial={{ x: 440, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: 440, opacity: 0 }}
-            transition={{ duration: 0.3, ease: appleEase }}
-            className="relative w-[440px] shrink-0 overflow-hidden pt-12"
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ duration: panelDuration, ease: notionEase }}
+            className="absolute bottom-0 right-0 top-0 w-[440px] overflow-hidden pt-12"
             style={{ borderLeft: '0.5px solid var(--separator)', background: 'var(--paper-white)' }}
           >
             {/* 关闭按钮(左上角) — 右上角已被全局主题切换 icon + AdvisorSidebar
