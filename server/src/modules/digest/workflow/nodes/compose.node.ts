@@ -23,7 +23,13 @@ export const ComposeSchema = z.object({
 
 export type ComposeOutput = z.infer<typeof ComposeSchema>;
 
-/** findings 序列化为 compose prompt 里的 {{findings_text}} */
+/**
+ * findings 序列化为 compose prompt 里的 {{findings_text}}。
+ *
+ * 字段顺序: title → 事实摘要(reason, agent web_fetch 后整理过的多事实点) → 原 snippet(RSS 给的简短描述,补充背景)。
+ * 把 reason 放在前面+加 "**事实摘要**" 强调,是因为 reason 经过 agent 多轮信息收集后整理,信息密度远高于 RSS snippet。
+ * compose-report.md 里的 prompt 引导 LLM 优先用 reason 写成段陈述,snippet 当背景。
+ */
 function buildFindingsText(task: DigestTask): string {
   if (task.findings.length === 0) return '（无 findings）';
   return task.findings
@@ -31,7 +37,7 @@ function buildFindingsText(task: DigestTask): string {
       const date = f.publishedAt
         ? f.publishedAt.toISOString().slice(0, 10)
         : '日期未知';
-      return `[CIT ${f.citationId}] ${f.title}（${f.sourceName}，${date}）\n${f.snippet}\n理由：${f.reason}`;
+      return `[@#CIT ${f.citationId}] ${f.title}（${f.sourceName}，${date}）\n**事实摘要**(主要事实源,agent 整理):\n${f.reason}\n\n**原文摘要**(RSS/snippet,补充背景):\n${f.snippet}`;
     })
     .join('\n\n---\n\n');
 }
