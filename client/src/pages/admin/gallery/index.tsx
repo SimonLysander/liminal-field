@@ -14,7 +14,6 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Plus, RefreshCw } from 'lucide-react';
 import { banner } from '@/components/ui/banner-api';
 
-import Topbar from '@/components/global/Topbar';
 import { LoadingState, ContentFade } from '@/components/LoadingState';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { galleryApi, type GalleryAdminListItem, type GalleryAdminDetail, type ContentHistoryEntry } from '@/services/workspace';
@@ -327,9 +326,8 @@ export default function GalleryAdmin() {
         </div>
       </aside>
 
-      {/* ── 右侧：Topbar + 内容预览 + 信息侧栏 ── */}
+      {/* ── 右侧：内容预览 + 信息侧栏(Topbar 退役, 主题切换在 IconRail 底) ── */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        <Topbar />
         <div className="flex flex-1 overflow-hidden">
           {/* 中间：内容预览 */}
           <main

@@ -199,7 +199,7 @@ export default function GalleryEditPage() {
               提交
             </Button>
           </CommitPopover>
-          {/* 主题切换:对齐编辑器规范(size 18 + rounded-md) */}
+          {/* 主题切换 — 编辑页独立路由(无 IconRail), 留在 toolbar 内 */}
           <button
             className="rounded-md p-1.5 outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none"
             style={{ color: 'var(--ink-ghost)' }}

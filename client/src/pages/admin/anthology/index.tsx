@@ -10,7 +10,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 /* 钻入式左栏改造后:Plus icon 不再用(底部按钮改"新作/新篇"纯字),lucide 直接拆。 */
-import Topbar from '@/components/global/Topbar';
 import { banner } from '@/components/ui/banner-api';
 import { LoadingState } from '@/components/LoadingState';
 import { useConfirm } from '@/contexts/ConfirmContext';
@@ -230,12 +229,10 @@ const AnthologyAdmin = () => {
 
   return (
     <>
-      <Topbar />
-      {/* h-full + w-full:
-       *  - Topbar 是 absolute right-3 top-3(不占布局空间),不该用 calc 减 topbar 高度
-       *  - 父 wrapper 是 flex flex-1(100vh),main 用 h-full 撑满,aside footer 才能贴底
-       *  - calc(100vh - 52) 会让 main 短 52px,footer 视觉上离 viewport 底有空隙——
-       *    这就是用户看到的"footer 没贴底"老 bug */}
+      {/* Topbar 退役, 主题切换在 IconRail 底
+       * h-full + w-full: 父 wrapper 是 flex flex-1(100vh), main 用 h-full 撑满,
+       * aside footer 才能贴底。calc(100vh - 52) 会让 main 短 52px,footer 视觉上
+       * 离 viewport 底有空隙 — 这就是用户看到的"footer 没贴底"老 bug */}
       <main className="flex h-full w-full overflow-hidden">
         {/* 左:钻入式渐进导航(笔记 AdminStructurePanel 同交互心智) + 卷宗气韵视觉
          *

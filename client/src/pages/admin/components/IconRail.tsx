@@ -2,12 +2,13 @@
 
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { FileText, Image, BookOpen, RefreshCw, LogOut, Settings, Search } from 'lucide-react';
+import { FileText, Image, BookOpen, RefreshCw, LogOut, Settings, Search, Sun, Moon } from 'lucide-react';
 import { authApi } from '@/services/auth';
 import { resetAuth } from '@/App';
 import { Logo } from '@/components/Logo';
 import { SearchPanel } from '@/components/global/SearchPanel';
 import { useSearchHotkey } from '@/hooks/use-search-hotkey';
+import { useTheme } from '@/hooks/use-theme';
 import { SyncDialog } from './SyncDialog';
 
 /*
@@ -30,6 +31,7 @@ export function IconRail() {
   const navigate = useNavigate();
   const [syncOpen, setSyncOpen] = useState(false);
   const { searchOpen, setSearchOpen } = useSearchHotkey();
+  const { theme, setTheme } = useTheme();
 
   /* 匹配当前路径到导航项（前缀匹配） */
   const activePath = NAV_ITEMS.find((item) =>
@@ -91,8 +93,19 @@ export function IconRail() {
           );
         })}
 
-        {/* 底部操作区：sync + logout，push to bottom via mt-auto */}
+        {/* 底部操作区：主题 + sync + logout，push to bottom via mt-auto
+            主题切换全站统一在左栏底, 跟公开端 Sidebar 同模式 */}
         <div className="mt-auto flex flex-col items-center gap-1">
+          <button
+            onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}
+            className="flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-[var(--shelf)]"
+            style={{ color: 'var(--ink-ghost)' }}
+            title="切换主题"
+            aria-label="切换主题"
+          >
+            <Sun size={15} strokeWidth={1.8} className="theme-icon-light" />
+            <Moon size={15} strokeWidth={1.8} className="theme-icon-dark" />
+          </button>
           <button
             onClick={() => setSyncOpen(true)}
             className="flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-[var(--shelf)]"

@@ -334,6 +334,8 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
               </PopoverContent>
             </Popover>
 
+            {/* 主题切换 — 编辑页是独立路由(不在 AdminShell 内,没 IconRail),
+                所以主题按钮留在 toolbar 内, 跟保存/提交/⋯ 一组 */}
             <button
               className="rounded-md p-1.5 outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none"
               style={{ color: 'var(--ink-ghost)' }}

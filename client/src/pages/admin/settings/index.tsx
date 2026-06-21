@@ -21,7 +21,6 @@ import {
   Wrench,
   Rss,
 } from 'lucide-react';
-import Topbar from '@/components/global/Topbar';
 import { SyncTab } from './SyncTab';
 import { StorageTab } from './StorageTab';
 import { IntegrationTab } from './IntegrationTab';
@@ -103,7 +102,6 @@ export default function SettingsPage() {
       className="flex flex-1 flex-col overflow-hidden"
       style={{ background: 'var(--paper)' }}
     >
-      <Topbar />
       <div className="flex flex-1 overflow-hidden">
         {/* 左侧导航 — 分组(个人 / 工作区 / 系统),业界惯例 GitHub/Vercel/Linear */}
         <nav

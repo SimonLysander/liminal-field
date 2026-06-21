@@ -11,7 +11,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 // 编辑页跳转统一用 window.location.href（Plate inputRules 在 SPA 导航后不生效）
 import { smoothBounce } from '@/lib/motion';
-import Topbar from '@/components/global/Topbar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ContentVersionView } from '../components/ContentVersionView';
 import { FormalSidePanel } from '../components/FormalSidePanel';
@@ -146,7 +145,6 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
         className="relative z-0 flex flex-1 flex-col overflow-hidden"
         style={{ background: 'var(--paper)' }}
       >
-        <Topbar />
         <div className="flex flex-1 overflow-hidden">
           {/* Center — content preview */}
           <div className="flex flex-1 flex-col overflow-hidden">
