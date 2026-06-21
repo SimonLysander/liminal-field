@@ -453,18 +453,10 @@ export default function DigestReportPage() {
               {report.headline}
             </h1>
 
-            {/* Deck(导语副标): 本期选题指引——报纸主标下两三行 italic 大字,
-                说清"本期讲什么 + 为何重要"。报纸版面解剖里 deck 是仅次于 headline
-                的核心元素;以前我们漏了这一层,直接 headline → byline → 正文,
-                少了从大字标题到正文之间的"中场缓冲"。 */}
-            {topic.description && (
-              <p
-                className="mb-7 text-lg italic leading-[1.55] max-[520px]:text-base"
-                style={{ color: 'var(--ink-soft)' }}
-              >
-                {topic.description}
-              </p>
-            )}
+            {/* 这里原来渲染 topic.description 当 deck — 但 topic.description 是
+                "栏目宗旨"(整个栏目讲什么),不该在单期报告页透传(那是栏目层身份)。
+                本期 deck 应该是"本期讲什么"的概要,目前由正文第一段自然承担,
+                不在报头单独渲染。栏目宗旨只在 /digest 列表 + /digest/:topicId 出现。 */}
 
             {/* Byline(署名): italic + tracking,报纸经典署名样式 */}
             <p
