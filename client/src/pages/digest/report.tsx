@@ -26,9 +26,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Sparkles, Sun, Moon } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { appleEase } from '@/lib/motion';
-import { useTheme } from '@/hooks/use-theme';
 import { AdvisorSidebar } from '@/components/ai-advisor/AdvisorSidebar';
 import { useAuthStatus } from '@/hooks/use-auth-status';
 import MarkdownBody from '@/components/shared/MarkdownBody';
@@ -63,7 +62,6 @@ function formatDateTime(iso: string): string {
 export default function DigestReportPage() {
   const { topicId, reportId } = useParams<{ topicId: string; reportId: string }>();
   const { status: authStatus } = useAuthStatus();
-  const { theme, setTheme } = useTheme();
 
   const [data, setData] = useState<PublicReportData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -264,40 +262,26 @@ export default function DigestReportPage() {
               </Link>
             </div>
 
-            {/* 中栏 toolbar 右侧: 主题切换 + Aurora 按钮 — Topbar 在此路由 return null,
-                由本组件接管(同编辑页模式: 自带 toolbar, 没有全局 Topbar 冲突) */}
-            <div className="flex items-center gap-2">
+            {/* 中栏 toolbar 右侧: 只剩 Aurora 切换按钮
+                主题切换全站统一在左 Sidebar 底部, 不在每页 toolbar 重复 */}
+            {!isAuroraOpen && (
               <button
                 type="button"
-                onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}
-                className="flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-150 hover:bg-[var(--shelf)]"
-                style={{ color: 'var(--ink-faded)' }}
-                aria-label="切换主题"
-                title="切换主题"
+                onClick={() => setIsAuroraOpen(true)}
+                className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] italic transition-all duration-150 hover:opacity-100"
+                style={{
+                  color: 'var(--ink-soft)',
+                  border: '0.5px solid var(--separator)',
+                  fontFamily:
+                    '"Source Han Serif SC","Noto Serif SC","Songti SC","Iowan Old Style",Georgia,serif',
+                  opacity: 0.85,
+                }}
+                title="问 Aurora (⌘K)"
               >
-                <Sun size={14} strokeWidth={1.5} className="theme-icon-light" />
-                <Moon size={14} strokeWidth={1.5} className="theme-icon-dark" />
+                <Sparkles size={11} strokeWidth={1.5} />
+                <span>Aurora</span>
               </button>
-
-              {!isAuroraOpen && (
-                <button
-                  type="button"
-                  onClick={() => setIsAuroraOpen(true)}
-                  className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] italic transition-all duration-150 hover:opacity-100"
-                  style={{
-                    color: 'var(--ink-soft)',
-                    border: '0.5px solid var(--separator)',
-                    fontFamily:
-                      '"Source Han Serif SC","Noto Serif SC","Songti SC","Iowan Old Style",Georgia,serif',
-                    opacity: 0.85,
-                  }}
-                  title="问 Aurora (⌘K)"
-                >
-                  <Sparkles size={11} strokeWidth={1.5} />
-                  <span>Aurora</span>
-                </button>
-              )}
-            </div>
+            )}
           </motion.nav>
 
           {/* ── 报头（Stratechery 现代严肃 newsletter 风）── */}

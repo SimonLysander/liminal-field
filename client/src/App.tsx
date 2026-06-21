@@ -30,7 +30,6 @@ import { DesktopOnlyNotice } from '@/components/shared/DesktopOnlyNotice';
 
 import Sidebar from './components/global/Sidebar';
 import BottomTabBar from './components/global/BottomTabBar';
-import Topbar from './components/global/Topbar';
 import AnthologyPage from './pages/anthology';
 import GalleryPage from './pages/gallery';
 import HomePage from './pages/home';
@@ -151,7 +150,7 @@ function MainLayout() {
       <main
         className="relative z-0 flex flex-1 flex-col overflow-hidden"
       >
-        <Topbar />
+        {/* Topbar 删了 — 主题按钮统一到 Sidebar 底部, 全公开端无屏幕右上 fixed 按钮 */}
 
         <AnimatePresence mode="wait">
           {/* 打开具体文档时 key 变化触发入场动画，浏览目录时稳定 key 不做动画 */}

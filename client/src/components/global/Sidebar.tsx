@@ -19,8 +19,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchHotkey } from '@/hooks/use-search-hotkey';
 import { AnimatePresence, motion } from 'motion/react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Sun, Moon } from 'lucide-react';
 import { Logo } from '@/components/Logo';
 import { SearchPanel } from '@/components/global/SearchPanel';
+import { useTheme } from '@/hooks/use-theme';
 import { structureApi } from '@/services/structure';
 import type { StructureNode } from '@/services/structure';
 import { anthologyApi } from '@/services/workspace';
@@ -154,6 +156,7 @@ export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const active = pathToSpace(location.pathname);
+  const { theme, setTheme } = useTheme();
 
   /* ── 全局搜索 ⌘K ────────────────────────────────── */
   const { searchOpen, setSearchOpen } = useSearchHotkey();
@@ -629,14 +632,27 @@ export default function Sidebar() {
 
       {/* Gallery 页面是全屏沉浸式，侧边栏不需要额外内容 */}
 
-      {/* Bottom — ambient phrase（gallery 沉浸模式隐形占位，保持 sidebar 高度一致） */}
-      <div className="mt-auto px-3 py-4" style={isGallery ? { visibility: 'hidden' } : undefined}>
+      {/* Bottom — 主题切换 + ambient phrase
+          主题按钮: 全站统一入口(删 Topbar 后唯一切换处), 永远在左 sidebar 底
+          不跟任何右栏 Aurora panel 冲突 */}
+      <div className="mt-auto flex items-center justify-between gap-2 px-3 py-4" style={isGallery ? { visibility: 'hidden' } : undefined}>
         <span
-          className="text-xs leading-relaxed"
+          className="min-w-0 flex-1 truncate text-xs leading-relaxed"
           style={{ color: 'var(--ink-ghost)', letterSpacing: '-0.01em' }}
         >
           {getAmbientPhrase()}
         </span>
+        <button
+          type="button"
+          onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors duration-150 hover:bg-[var(--shelf)]"
+          style={{ color: 'var(--ink-faded)' }}
+          aria-label="切换主题"
+          title="切换主题"
+        >
+          <Sun size={13} strokeWidth={1.5} className="theme-icon-light" />
+          <Moon size={13} strokeWidth={1.5} className="theme-icon-dark" />
+        </button>
       </div>
     </aside>
   );
