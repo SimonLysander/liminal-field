@@ -19,8 +19,8 @@ import { SystemConfigService } from '../../../settings/system-config.service';
 export const ComposeSchema = z.object({
   headline: z.string().max(50),
   /** 本期 deck — "本期 N 篇:主题 1 / 主题 2 / 主题 3" 目录式概要,告诉读者"这一期有哪几篇/讲什么";
-   *  报头大字标题之下 italic 大字渲染。max 200 防 LLM 失控写成一段。可选 — 老 prompt/老报告无此字段。 */
-  deck: z.string().max(200).optional(),
+   *  报头大字标题之下 italic 大字渲染。max 200 防 LLM 失控写成一段。required — 由 prompt 强制输出。 */
+  deck: z.string().min(1).max(200),
   markdown: z.string(),
 });
 

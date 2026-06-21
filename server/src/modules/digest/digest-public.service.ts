@@ -114,8 +114,7 @@ export class DigestPublicService {
       report: {
         id: report._id,
         headline: report.headline,
-        // 本期 deck:老报告无此字段时上行 null,前端不渲染那段大字 italic
-        deck: report.deck ?? null,
+        deck: report.deck,
         markdown: report.markdown,
         findings,
         publishedAt: report.publishedAt.toISOString(),

@@ -455,16 +455,13 @@ export default function DigestReportPage() {
 
             {/* Deck(本期目录式概要): 紧贴 headline 下方的 italic 大字,
                 告诉读者"本期有哪几篇/讲什么"——由 compose-report 节点产出 report.deck,
-                跟栏目宗旨(整个栏目讲什么)不同,严格"本期独有"信息,不透传上层。
-                老报告(deck 引入前)无此字段,null 时不渲染。 */}
-            {report.deck && (
-              <p
-                className="mb-7 text-lg italic leading-[1.55] max-[520px]:text-base"
-                style={{ color: 'var(--ink-soft)' }}
-              >
-                {report.deck}
-              </p>
-            )}
+                跟栏目宗旨(整个栏目讲什么)不同,严格"本期独有"信息,不透传上层。 */}
+            <p
+              className="mb-7 text-lg italic leading-[1.55] max-[520px]:text-base"
+              style={{ color: 'var(--ink-soft)' }}
+            >
+              {report.deck}
+            </p>
 
             {/* Byline(署名): italic + tracking,报纸经典署名样式 */}
             <p

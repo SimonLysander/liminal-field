@@ -58,6 +58,7 @@ function makeTask(findings: Finding[]): DigestTask {
 
 const compose: ComposeOutput = {
   headline: '测试标题',
+  deck: '本期 1 篇:测试主题',
   markdown: '## 测试\n内容 [CIT 1]',
 };
 

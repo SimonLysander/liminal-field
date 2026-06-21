@@ -46,9 +46,10 @@ export class DigestReport {
 
   /** 本期 deck — "本期 N 篇:主题 1 / 主题 2 / 主题 3" 形式的目录式概要,
    *  紧贴 headline 下方 italic 大字渲染,告诉读者"这一期里有哪几篇/讲什么"。
-   *  compose-report 节点产出;老报告无此字段,前端 ?? null 兜底。 */
-  @prop({ trim: true })
-  deck?: string;
+   *  compose-report 节点产出,required — 老 prompt 体例的报告已全部清空,
+   *  新生成必带 deck,不做"老报告无此字段"兜底(避免 null/undefined 兼容噪音)。 */
+  @prop({ required: true, trim: true })
+  deck!: string;
 
   /** 正文 markdown 全文 */
   @prop({ required: true })
