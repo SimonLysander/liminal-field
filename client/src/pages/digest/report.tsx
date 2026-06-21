@@ -461,19 +461,18 @@ export default function DigestReportPage() {
             // fixed 钉屏幕右边缘 — 无视 PublicLayout 左 sidebar 边界
             // initial/exit 用精确 440px 而不是 '100%' — 避免 motion 库 measure
             // 元素百分比时引起的 layout 微抖动(user 报告"向上移动一些")
-            className="fixed bottom-0 right-0 top-0 z-40 w-[440px] overflow-hidden pt-12"
+            className="fixed bottom-0 right-0 top-0 z-40 w-[440px] overflow-hidden"
             style={{
               borderLeft: '1px solid var(--separator)',
               background: 'var(--paper-white)',
             }}
           >
-            {/* 关闭按钮(左上角) — 右上角已被全局主题切换 icon + AdvisorSidebar
-                的"新会话"按钮占据,叠在一起,所以挪到 panel 左上 */}
+            {/* 关闭按钮 - 钉 panel 内右上, 在"新会话"按钮左边挨着 */}
             <button
               type="button"
               onClick={() => setIsAuroraOpen(false)}
-              className="absolute left-3 top-3 z-10 rounded-full p-1.5 transition-colors duration-150 hover:bg-[var(--shelf)]"
-              style={{ color: 'var(--ink-soft)' }}
+              className="absolute top-1.5 z-20 rounded-full p-1.5 transition-colors duration-150 hover:bg-[var(--shelf)]"
+              style={{ color: 'var(--ink-soft)', right: '2.75rem' }}
               title="关闭 (Esc)"
               aria-label="关闭 Aurora"
             >
