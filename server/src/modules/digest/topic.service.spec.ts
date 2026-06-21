@@ -114,6 +114,13 @@ const mockScheduler = {
   unregisterJob: jest.fn(),
 } as unknown as jest.Mocked<DigestSchedulerService>;
 
+// Phase 1 重构:reportCount 改从 DigestReport 数
+const mockDigestReportRepository = {
+  countByTopic: jest.fn().mockResolvedValue(0),
+} as unknown as jest.Mocked<
+  import('./digest-report.repository').DigestReportRepository
+>;
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('TopicService', () => {
@@ -128,6 +135,7 @@ describe('TopicService', () => {
       mockSmartTopicConfigRepository,
       mockInfoSourceRepository,
       mockScheduler,
+      mockDigestReportRepository,
     );
   });
 
@@ -241,9 +249,8 @@ describe('TopicService', () => {
     mockSmartTopicConfigRepository.findByContentItemId.mockResolvedValue(
       makeConfig({ lastRunStatus: RunStatus.ok, lastRunAt: NOW }),
     );
-    mockNavigationRepository.findChildrenByParentId.mockResolvedValue([
-      makeNavNode({ _id: 'child_001' as unknown as NavigationNode['_id'] }),
-    ]);
+    // Phase 1 重构:reportCount 来自 DigestReport.countByTopic 不是 NavNode 子节点
+    (mockDigestReportRepository.countByTopic as jest.Mock).mockResolvedValue(1);
 
     const result = await service.list();
 

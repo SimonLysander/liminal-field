@@ -11,6 +11,7 @@
  */
 import {
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -22,6 +23,7 @@ import {
 } from '@nestjs/common';
 import { DigestWorkflowService } from './workflow/digest-workflow.service';
 import { DigestTaskRepository } from './digest-task.repository';
+import { DigestReportRepository } from './digest-report.repository';
 import type { DigestTaskDto } from './dto/digest-task.dto';
 import type { DigestTask } from './digest-task.entity';
 
@@ -59,6 +61,7 @@ export class DigestWorkflowController {
   constructor(
     private readonly workflowService: DigestWorkflowService,
     private readonly taskRepository: DigestTaskRepository,
+    private readonly reportRepository: DigestReportRepository,
   ) {}
 
   /**
@@ -100,5 +103,28 @@ export class DigestWorkflowController {
     this.logger.debug(`GET /digest/topics/${topicId}/tasks limit=${limit}`);
     const tasks = await this.taskRepository.findRecentByTopic(topicId, limit);
     return tasks.map(toListDto);
+  }
+
+  /**
+   * DELETE /digest/topics/:topicId/reports/:reportId
+   * 删除一期 DigestReport(直接 deleteOne)。task 记录保留作 audit trail。
+   *
+   * 校验:report 必须属于该 topic,避免跨 topic 误删。
+   */
+  @Delete('topics/:topicId/reports/:reportId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteReport(
+    @Param('topicId') topicId: string,
+    @Param('reportId') reportId: string,
+  ): Promise<void> {
+    this.logger.debug(`DELETE /digest/topics/${topicId}/reports/${reportId}`);
+    const report = await this.reportRepository.findById(reportId);
+    if (!report) {
+      throw new NotFoundException(`报告不存在: ${reportId}`);
+    }
+    if (report.topicId !== topicId) {
+      throw new NotFoundException(`报告 ${reportId} 不属于事项 ${topicId}`);
+    }
+    await this.reportRepository.deleteById(reportId);
   }
 }

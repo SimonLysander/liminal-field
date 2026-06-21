@@ -123,4 +123,9 @@ export const digestTasksApi = {
     request<{ taskId: string }>(`/digest/topics/${topicId}/run-now`, {
       method: 'POST',
     }),
+  /** 删除一期报告。Phase 1 重构:走专用端点,不再走 structureApi.deleteNode。 */
+  deleteReport: (topicId: string, reportId: string) =>
+    request<void>(`/digest/topics/${topicId}/reports/${reportId}`, {
+      method: 'DELETE',
+    }),
 };

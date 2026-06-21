@@ -8,6 +8,7 @@ import { NotFoundException } from '@nestjs/common';
 import { DigestWorkflowController } from './digest-workflow.controller';
 import type { DigestWorkflowService } from './workflow/digest-workflow.service';
 import type { DigestTaskRepository } from './digest-task.repository';
+import type { DigestReportRepository } from './digest-report.repository';
 import type { DigestTask } from './digest-task.entity';
 import { DigestTaskStatus } from './digest-task.entity';
 
@@ -45,6 +46,11 @@ const mockTaskRepository = {
   findRecentByTopic: jest.fn(),
 } as unknown as jest.Mocked<DigestTaskRepository>;
 
+const mockReportRepository = {
+  findById: jest.fn(),
+  deleteById: jest.fn(),
+} as unknown as jest.Mocked<DigestReportRepository>;
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('DigestWorkflowController', () => {
@@ -55,6 +61,7 @@ describe('DigestWorkflowController', () => {
     controller = new DigestWorkflowController(
       mockWorkflowService,
       mockTaskRepository,
+      mockReportRepository,
     );
   });
 

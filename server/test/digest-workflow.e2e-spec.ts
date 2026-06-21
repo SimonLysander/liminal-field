@@ -345,7 +345,8 @@ describe('Digest Case 2: 完整 workflow 跑通（mock LLM）', () => {
     expect(task.status).toBe('done');
     expect(task.findingsCount).toBe(2);
     expect(task.reportContentItemId).toBeTruthy();
-    expect(task.reportContentItemId).toMatch(/^ci_/);
+    // Phase 1 重构:报告 _id 前缀 ci_ → dr_(独立 DigestReport entity)
+    expect(task.reportContentItemId).toMatch(/^dr_/);
   });
 
   it('task.reportSummary 包含 compose 写入的内容摘要', async () => {
@@ -361,11 +362,11 @@ describe('Digest Case 2: 完整 workflow 跑通（mock LLM）', () => {
     // reportSummary 是 markdown 前 200 字，应包含 compose 写入的 "## 概要"
     expect(task.reportSummary).toBeTruthy();
     expect(task.reportSummary).toContain('## 概要');
-    // reportContentItemId 不为 null 且格式正确
-    expect(task.reportContentItemId).toMatch(/^ci_/);
+    // reportContentItemId 不为 null 且格式正确(Phase 1 重构后 dr_ 前缀)
+    expect(task.reportContentItemId).toMatch(/^dr_/);
   });
 
-  it('事项的 NavigationNode 下有子报告节点（通过 topic detail reportCount 验证）', async () => {
+  it('事项 topic detail reportCount + 公开端 listTopics 都能数到新写的报告', async () => {
     // 先触发一次 workflow
     const runRes = await supertest(ctx.app.getHttpServer())
       .post(`/api/v1/digest/topics/${topicId}/run-now`)
@@ -376,7 +377,9 @@ describe('Digest Case 2: 完整 workflow 跑通（mock LLM）', () => {
     const task = await waitForTaskDone(ctx.app, cookie, taskId, 5000);
     expect(task.status).toBe('done');
 
-    // 通过事项详情确认 reportCount >= 1（CommitNode 写入了子 NavigationNode）
+    // 通过事项详情确认 reportCount >= 1
+    // Phase 1 重构后,topic.service 数 reportCount 走 DigestReport.countByTopic
+    // 不再数 NavNode 子节点
     const detailRes = await supertest(ctx.app.getHttpServer())
       .get(`/api/v1/digest/topics/${topicId}`)
       .set('Cookie', cookie)
@@ -384,24 +387,13 @@ describe('Digest Case 2: 完整 workflow 跑通（mock LLM）', () => {
 
     expect(detailRes.body.data.reportCount).toBeGreaterThanOrEqual(1);
 
-    // 通过 structure-path 找到事项的 NavigationNode id，再查子节点列表
-    const pathRes = await supertest(ctx.app.getHttpServer())
-      .get(`/api/v1/contents/${topicId}/structure-path`)
-      .set('Cookie', cookie)
+    // 公开端 getTopic 也能列出报告(走 DigestReportRepository.findByTopic)
+    const publicRes = await supertest(ctx.app.getHttpServer())
+      .get(`/api/v1/digest/public/topics/${topicId}`)
       .expect(200);
 
-    expect(pathRes.body.data.length).toBeGreaterThan(0);
-    const topicNavNodeId = pathRes.body.data[pathRes.body.data.length - 1]
-      .id as string;
-
-    // visibility=all 确保 committed（未发布）的 digest 报告节点也被列出
-    const childrenRes = await supertest(ctx.app.getHttpServer())
-      .get(`/api/v1/structure-nodes?parentId=${topicNavNodeId}&visibility=all`)
-      .set('Cookie', cookie)
-      .expect(200);
-
-    // StructureListResultDto.children 是子节点数组
-    expect(childrenRes.body.data.children.length).toBeGreaterThan(0);
+    expect(publicRes.body.data.reports.length).toBeGreaterThan(0);
+    expect(publicRes.body.data.reports[0].id).toMatch(/^dr_/);
   });
 });
 

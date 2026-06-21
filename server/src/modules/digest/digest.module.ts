@@ -38,6 +38,10 @@ import { ProcessedFeedItemRepository } from './processed-feed-item.repository';
 import { DigestTask } from './digest-task.entity';
 import { DigestTaskRepository } from './digest-task.repository';
 
+import { DigestReport } from './digest-report.entity';
+import { DigestReportRepository } from './digest-report.repository';
+import { DigestReportMigrationService } from './digest-report-migration.service';
+
 import { TopicService } from './topic.service';
 import { TopicController } from './topic.controller';
 
@@ -61,6 +65,7 @@ import { DigestSchedulerService } from './digest-scheduler.service';
       SmartTopicConfig,
       ProcessedFeedItem,
       DigestTask,
+      DigestReport,
     ]),
     ContentModule,
     NavigationModule,
@@ -78,6 +83,7 @@ import { DigestSchedulerService } from './digest-scheduler.service';
     SmartTopicConfigRepository,
     ProcessedFeedItemRepository,
     DigestTaskRepository,
+    DigestReportRepository,
     TopicService,
     RssFetcher,
     FetcherRegistry,
@@ -91,6 +97,8 @@ import { DigestSchedulerService } from './digest-scheduler.service';
     DigestSchedulerService,
     // 公开端服务
     DigestPublicService,
+    // 一次性迁移老 ContentItem 时代的 digest 报告(onModuleInit 自动跑)
+    DigestReportMigrationService,
   ],
   exports: [
     InfoSourceRepository,
@@ -98,6 +106,7 @@ import { DigestSchedulerService } from './digest-scheduler.service';
     SmartTopicConfigRepository,
     ProcessedFeedItemRepository,
     DigestTaskRepository,
+    DigestReportRepository,
     TopicService,
     FetcherRegistry,
     DigestToolsFactory,

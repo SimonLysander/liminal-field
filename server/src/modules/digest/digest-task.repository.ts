@@ -113,6 +113,12 @@ export class DigestTaskRepository {
       .exec();
   }
 
+  /** 查所有 done task — 一次性迁移老 ContentItem 时代的 digest 报告时用。
+   * 不分页:历史总量不大(每事项每天 1 期,几年也就几千条),够 startup 单跑。 */
+  async findAllDone(): Promise<DigestTask[]> {
+    return this.model.find({ status: DigestTaskStatus.done }).exec();
+  }
+
   /**
    * 把一步追加到 task.steps 末尾。原子 $push，不读旧值不覆盖。
    * 用于 react-agent 的 onStepFinish 钩子边跑边写——挂了一半也能看到已跑的步。

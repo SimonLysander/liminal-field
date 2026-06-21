@@ -26,6 +26,7 @@ import { NavigationRepository } from '../navigation/navigation.repository';
 import { NavigationScope } from '../navigation/navigation.entity';
 import { SmartTopicConfigRepository } from './smart-topic-config.repository';
 import { InfoSourceRepository } from './info-source.repository';
+import { DigestReportRepository } from './digest-report.repository';
 import {
   CreateTopicDto,
   isValidCronFormat,
@@ -48,6 +49,8 @@ export class TopicService {
     private readonly infoSourceRepository: InfoSourceRepository,
     // 注入 DigestSchedulerService 用于 create/update/delete 后同步调度状态
     private readonly scheduler: DigestSchedulerService,
+    // Phase 1 重构:reportCount 从 DigestReport 数(不再数 NavNode 子节点)
+    private readonly digestReportRepository: DigestReportRepository,
   ) {}
 
   /** 生成事项配置业务 id，格式 stc_xxx，同款风格 */
@@ -96,9 +99,9 @@ export class TopicService {
         continue;
       }
 
-      // 统计子节点数（报告）
-      const children = await this.navigationRepository.findChildrenByParentId(
-        String(node._id),
+      // 报告数从 DigestReport 数(重构 Phase 1:报告不再挂 NavNode 子节点)
+      const reportCount = await this.digestReportRepository.countByTopic(
+        node.contentItemId,
       );
 
       result.push({
@@ -108,7 +111,7 @@ export class TopicService {
         sourceCount: config.sourceIds.length,
         keywordCount: config.keywords.length,
         enabled: config.enabled,
-        reportCount: children.length,
+        reportCount,
         lastRunAt: config.lastRunAt ? config.lastRunAt.toISOString() : null,
         lastRunHits: 0, // task #36 工作流才填充
         lastRunStatus: config.lastRunStatus
@@ -155,10 +158,9 @@ export class TopicService {
       type: s.type,
     }));
 
-    // 子节点数（报告数）
-    const children = await this.navigationRepository.findChildrenByParentId(
-      String(navNode._id),
-    );
+    // 报告数从 DigestReport 数(重构 Phase 1:报告不再挂 NavNode 子节点)
+    const reportCount =
+      await this.digestReportRepository.countByTopic(contentItemId);
 
     // ContentItem 的卷首语存在 latestVersion 的 summary 里（简单方式），
     // 但实际上事项描述用 ContentItem 的 latestVersion.summary（创建时传入 description）
@@ -176,7 +178,7 @@ export class TopicService {
       enabled: config.enabled,
       // maxSteps 由 schema default 20 兜底，老数据回落 20
       maxSteps: config.maxSteps ?? 20,
-      reportCount: children.length,
+      reportCount,
       lastRunAt: config.lastRunAt ? config.lastRunAt.toISOString() : null,
       lastRunStatus: config.lastRunStatus
         ? config.lastRunStatus === RunStatus.ok

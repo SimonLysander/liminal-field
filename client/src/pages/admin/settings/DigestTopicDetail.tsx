@@ -34,7 +34,6 @@ import type { LucideIcon } from 'lucide-react';
 import { banner } from '@/components/ui/banner-api';
 import { topicsApi, digestTasksApi } from '@/services/topics';
 import type { TopicDetail, DigestTaskListItem, AgentStep } from '@/services/topics';
-import { structureApi } from '@/services/structure';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { humanizeCron } from './scheduleUtils';
 
@@ -403,14 +402,14 @@ export function DigestTopicDetail() {
   };
 
   /**
-   * 删除一期报告 = 删 ContentItem(走通用 structureApi.deleteNode)。
-   * task 记录里 reportContentItemId 不动(留作历史孤儿引用,公开端 listReports
-   * 基于 NavNode 子节点,删 NavNode 后自然就不出现)。
-   * 不弹"删除调试日志/task 记录"——那是 audit trail,只删产物。
+   * 删除一期报告 = 调专用 DELETE /digest/topics/:topicId/reports/:reportId
+   * (重构 Phase 1:DigestReport 独立 entity,deleteOne 直接干净;不再绕 NavNode/ContentItem
+   * 那套也要 publishedVersion 检查的复杂路径)。
+   * task 记录保留作 audit trail,只删产物。
    */
   const handleDeleteReport = useCallback(
     async (task: DigestTaskListItem) => {
-      if (!task.reportContentItemId) return;
+      if (!task.reportContentItemId || !id) return;
       const ok = await confirm({
         title: '删了这一期报告？',
         message: (
@@ -430,14 +429,14 @@ export function DigestTopicDetail() {
       });
       if (!ok) return;
       try {
-        await structureApi.deleteNode(task.reportContentItemId);
+        await digestTasksApi.deleteReport(id, task.reportContentItemId);
         banner.success('已删除');
         await loadData();
       } catch {
         banner.error('没能删掉，再试一次？');
       }
     },
-    [confirm, loadData],
+    [confirm, loadData, id],
   );
 
   if (loading) {
