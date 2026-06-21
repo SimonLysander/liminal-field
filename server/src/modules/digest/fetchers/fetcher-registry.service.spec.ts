@@ -10,13 +10,23 @@
 import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
-// mock rss-parser 避免 RssFetcher 构造时报错
+// mock rss-parser 避免 RssFetcher / ArxivFetcher 构造时报错
 jest.mock('rss-parser', () => {
   return jest.fn().mockImplementation(() => ({ parseURL: jest.fn() }));
 });
 
 import { FetcherRegistry } from './fetcher-registry.service';
 import { RssFetcher } from './rss-fetcher.service';
+import { ArxivFetcher } from './arxiv-fetcher.service';
+import { HfPapersFetcher } from './hf-papers-fetcher.service';
+import { HnFirebaseFetcher } from './hn-firebase-fetcher.service';
+import { V2exFetcher } from './v2ex-fetcher.service';
+import { JuejinFetcher } from './juejin-fetcher.service';
+import { ZhihuDailyFetcher } from './zhihu-daily-fetcher.service';
+import { RuanyfWeeklyFetcher } from './ruanyf-weekly-fetcher.service';
+import { GithubTrendingFetcher } from './github-trending-fetcher.service';
+import { TheBatchFetcher } from './the-batch-fetcher.service';
+import { AlphaSignalFetcher } from './alpha-signal-fetcher.service';
 import { FetcherKind } from './fetcher.interface';
 import {
   InfoSource,
@@ -44,7 +54,20 @@ describe('FetcherRegistry (v2)', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [RssFetcher, FetcherRegistry],
+      providers: [
+        RssFetcher,
+        ArxivFetcher,
+        HfPapersFetcher,
+        HnFirebaseFetcher,
+        V2exFetcher,
+        JuejinFetcher,
+        ZhihuDailyFetcher,
+        RuanyfWeeklyFetcher,
+        GithubTrendingFetcher,
+        TheBatchFetcher,
+        AlphaSignalFetcher,
+        FetcherRegistry,
+      ],
     }).compile();
 
     registry = module.get(FetcherRegistry);
@@ -58,10 +81,9 @@ describe('FetcherRegistry (v2)', () => {
     expect(fetcher.kind).toBe(FetcherKind.rss);
   });
 
-  // Case 2: 未注册的 kind 抛 BadRequestException
-  it('get(尚未注册的 kind) 应 throw BadRequestException', () => {
-    expect(() => registry.get(FetcherKind.arxiv)).toThrow(BadRequestException);
-    expect(() => registry.get(FetcherKind.hn_firebase)).toThrow(
+  // Case 2: 未知 kind 抛 BadRequestException（所有已实现 kind 均已注册，用 cast 模拟未知 kind）
+  it('get(未知 kind) 应 throw BadRequestException', () => {
+    expect(() => registry.get('unknown_kind' as FetcherKind)).toThrow(
       BadRequestException,
     );
   });

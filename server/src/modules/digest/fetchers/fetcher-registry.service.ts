@@ -19,6 +19,16 @@ import {
   type FetchOptions,
 } from './fetcher.interface';
 import { RssFetcher } from './rss-fetcher.service';
+import { ArxivFetcher } from './arxiv-fetcher.service';
+import { HfPapersFetcher } from './hf-papers-fetcher.service';
+import { HnFirebaseFetcher } from './hn-firebase-fetcher.service';
+import { V2exFetcher } from './v2ex-fetcher.service';
+import { JuejinFetcher } from './juejin-fetcher.service';
+import { ZhihuDailyFetcher } from './zhihu-daily-fetcher.service';
+import { RuanyfWeeklyFetcher } from './ruanyf-weekly-fetcher.service';
+import { GithubTrendingFetcher } from './github-trending-fetcher.service';
+import { TheBatchFetcher } from './the-batch-fetcher.service';
+import { AlphaSignalFetcher } from './alpha-signal-fetcher.service';
 
 /** 单源 fetch 结果（fetchMany 返回的每条元素，单源失败也有结构化错误） */
 export interface FetchManyResultPerSource {
@@ -38,10 +48,30 @@ export class FetcherRegistry {
 
   constructor(
     rss: RssFetcher,
-    // 未来扩展：arxiv: ArxivFetcher, hfPapers: HfPapersFetcher, ...
-    //          每个新 Fetcher 加一个形参（NestJS DI 自动注入）
+    arxiv: ArxivFetcher,
+    hfPapers: HfPapersFetcher,
+    hnFirebase: HnFirebaseFetcher,
+    v2ex: V2exFetcher,
+    juejin: JuejinFetcher,
+    zhihuDaily: ZhihuDailyFetcher,
+    ruanyfWeekly: RuanyfWeeklyFetcher,
+    githubTrending: GithubTrendingFetcher,
+    theBatch: TheBatchFetcher,
+    alphaSignal: AlphaSignalFetcher,
   ) {
-    this.register(rss);
+    [
+      rss,
+      arxiv,
+      hfPapers,
+      hnFirebase,
+      v2ex,
+      juejin,
+      zhihuDaily,
+      ruanyfWeekly,
+      githubTrending,
+      theBatch,
+      alphaSignal,
+    ].forEach((f) => this.register(f));
   }
 
   private register(f: SourceFetcher): void {
