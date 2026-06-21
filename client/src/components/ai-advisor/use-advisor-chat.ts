@@ -73,6 +73,33 @@ export type AdvisorContext = {
       tags: Record<string, string>;
     }[];
   };
+  /**
+   * Digest 报告阅读场景(公开端 /digest/:topicId/:reportId)。
+   *
+   * - topicPrompt: 让 Aurora 知道用户当初创建事项时的关注点
+   * - sections: 章节标题列表,作为"目录索引"
+   * - findings: citationId + title + sourceName + url 轻量索引(reason/snippet 等大字段不塞 context
+   *   避免单次 prompt 撑爆,后续走 get_finding 工具按需取)
+   * - selection: 用户划词追问时附带的选中文本(Aurora 自行推断引用归属)
+   */
+  digestReport?: {
+    reportId: string;
+    topicId: string;
+    topicName: string;
+    topicPrompt: string;
+    headline: string;
+    publishedAt: string;
+    sections: string[];
+    findings: {
+      citationId: number;
+      title: string;
+      sourceName: string;
+      url: string;
+    }[];
+    selection?: {
+      text: string;
+    };
+  };
 };
 
 export interface UseAdvisorChatOptions {

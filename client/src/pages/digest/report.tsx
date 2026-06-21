@@ -25,7 +25,8 @@
  */
 import { useState, useEffect, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Sparkles, X } from 'lucide-react';
 import { appleEase } from '@/lib/motion';
 import { AdvisorSidebar } from '@/components/ai-advisor/AdvisorSidebar';
 import { useAuthStatus } from '@/hooks/use-auth-status';
@@ -33,6 +34,11 @@ import MarkdownBody from '@/components/shared/MarkdownBody';
 import { digestPublicApi } from '@/services/digest-public';
 import type { PublicReportData, PublicSibling } from '@/services/digest-public';
 import { isApiError } from '@/services/request';
+
+/** 从 markdown 抽 ## 章节标题列表,作为 Aurora 的目录索引 */
+function extractSections(md: string): string[] {
+  return Array.from(md.matchAll(/^##\s+(.+)$/gm)).map((m) => m[1].trim());
+}
 
 /* ================================================================
  * 工具函数
@@ -61,6 +67,23 @@ export default function DigestReportPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Aurora 抽屉开关 — 右上按钮 / 报告末尾入口 / ⌘+K 三处触发 */
+  const [isAuroraOpen, setIsAuroraOpen] = useState(false);
+
+  // 全局键盘监听: ⌘+K(mac) / Ctrl+K(win) 切换 Aurora
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsAuroraOpen((o) => !o);
+      }
+      if (e.key === 'Escape') {
+        setIsAuroraOpen(false);
+      }
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   useEffect(() => {
     if (!topicId || !reportId) return;
@@ -206,31 +229,60 @@ export default function DigestReportPage() {
   const issueNumber = currentIdx + 1;
 
   return (
-    <div className="relative flex w-full items-stretch overflow-hidden">
+    <div className="relative flex h-full w-full overflow-hidden">
 
-      {/* ── 主体阅读区 ── */}
-      <div className="flex-1 overflow-y-auto py-16">
+      {/* ── 主体阅读区(宽度动态: Aurora 打开时缩到 calc(100% - 440px) 让出右侧) ── */}
+      <motion.div
+        className="overflow-y-auto"
+        animate={{ width: isAuroraOpen ? 'calc(100% - 440px)' : '100%' }}
+        transition={{ duration: 0.3, ease: appleEase }}
+        style={{ paddingTop: '4rem', paddingBottom: '4rem' }}
+      >
         <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 max-[520px]:px-5">
 
-          {/* breadcrumb */}
+          {/* breadcrumb + Aurora 右上按钮 一行 */}
           <motion.nav
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3, ease: appleEase }}
-            className="mb-10 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.28em]"
-            style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+            className="mb-10 flex items-center justify-between"
             aria-label="面包屑"
           >
-            <Link to="/digest" className="transition-opacity duration-150 hover:opacity-60">
-              目录
-            </Link>
-            <span>/</span>
-            <Link
-              to={`/digest/${topic.id}`}
-              className="transition-opacity duration-150 hover:opacity-60"
+            <div
+              className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.28em]"
+              style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
             >
-              {topic.name}
-            </Link>
+              <Link to="/digest" className="transition-opacity duration-150 hover:opacity-60">
+                目录
+              </Link>
+              <span>/</span>
+              <Link
+                to={`/digest/${topic.id}`}
+                className="transition-opacity duration-150 hover:opacity-60"
+              >
+                {topic.name}
+              </Link>
+            </div>
+
+            {/* 右上 Aurora 按钮(克制细边框,不抢戏) */}
+            {!isAuroraOpen && (
+              <button
+                type="button"
+                onClick={() => setIsAuroraOpen(true)}
+                className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] italic transition-all duration-150 hover:opacity-100"
+                style={{
+                  color: 'var(--ink-soft)',
+                  border: '0.5px solid var(--separator)',
+                  fontFamily:
+                    '"Source Han Serif SC","Noto Serif SC","Songti SC","Iowan Old Style",Georgia,serif',
+                  opacity: 0.85,
+                }}
+                title="问 Aurora (⌘K)"
+              >
+                <Sparkles size={11} strokeWidth={1.5} />
+                <span>Aurora</span>
+              </button>
+            )}
           </motion.nav>
 
           {/* ── 报头（Stratechery 现代严肃 newsletter 风）── */}
@@ -343,53 +395,105 @@ export default function DigestReportPage() {
                 )}
               </div>
             )}
+
+            {/* 末尾 italic 入口: 阅读完想综合讨论时给的柔和钩子(不是按钮) */}
+            {!isAuroraOpen && (
+              <p
+                className="mt-10 text-center text-xs italic"
+                style={{ color: 'var(--ink-ghost)' }}
+              >
+                还想问 Aurora?{' '}
+                <button
+                  type="button"
+                  onClick={() => setIsAuroraOpen(true)}
+                  className="underline decoration-dotted underline-offset-2 transition-opacity duration-150 hover:opacity-60"
+                  style={{ color: 'var(--ink-soft)' }}
+                >
+                  提个问题 ✦
+                </button>
+                {' '}&nbsp;·&nbsp; 或按{' '}
+                <kbd
+                  className="rounded px-1.5 py-0.5 text-[10px] not-italic"
+                  style={{ background: 'var(--shelf)', border: '0.5px solid var(--separator)' }}
+                >
+                  ⌘ K
+                </kbd>
+              </p>
+            )}
           </motion.div>
 
         </div>
-      </div>
+      </motion.div>
 
-      {/* ── 右栏：Aurora 追问 ──
-          三态：checking→骨架；unauthenticated→登录按钮；authenticated→真 AdvisorSidebar */}
-      <motion.aside
-        initial={{ opacity: 0, x: 10 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.3, delay: 0.2, ease: appleEase }}
-        className="hidden w-[220px] shrink-0 xl:flex xl:flex-col"
-        style={{ paddingTop: '4rem', paddingRight: '1.5rem', paddingBottom: '2rem' }}
-      >
-        {authStatus === 'checking' && (
-          /* loading 骨架：防止登录态未知时 UI 闪烁 */
-          <div className="sticky top-16 flex flex-col gap-3">
-            <div className="h-3 w-24 animate-pulse rounded" style={{ background: 'var(--shelf)' }} />
-            <div style={{ borderBottom: '1px solid var(--ink)' }} />
-            <div className="h-16 animate-pulse rounded-lg" style={{ background: 'var(--shelf)' }} />
-          </div>
-        )}
+      {/* ── Aurora 抽屉(slide-in from right, 440px 宽,正文左移让出空间) ──
+          三态：checking→骨架；unauthenticated→登录提示；authenticated→真 AdvisorSidebar */}
+      <AnimatePresence>
+        {isAuroraOpen && (
+          <motion.aside
+            key="aurora-panel"
+            initial={{ x: 440, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 440, opacity: 0 }}
+            transition={{ duration: 0.3, ease: appleEase }}
+            className="relative w-[440px] shrink-0 overflow-hidden"
+            style={{ borderLeft: '0.5px solid var(--separator)', background: 'var(--paper-white)' }}
+          >
+            {/* 关闭按钮(右上角) */}
+            <button
+              type="button"
+              onClick={() => setIsAuroraOpen(false)}
+              className="absolute right-3 top-3 z-10 rounded-full p-1.5 transition-colors duration-150 hover:bg-[var(--shelf)]"
+              style={{ color: 'var(--ink-soft)' }}
+              title="关闭 (Esc)"
+              aria-label="关闭 Aurora"
+            >
+              <X size={16} strokeWidth={1.75} />
+            </button>
 
-        {authStatus === 'unauthenticated' && data && (
-          <AuroraPlaceholder />
-        )}
+            {authStatus === 'checking' && (
+              <div className="flex flex-col gap-3 px-6 pt-16">
+                <div className="h-3 w-24 animate-pulse rounded" style={{ background: 'var(--shelf)' }} />
+                <div className="h-16 animate-pulse rounded-lg" style={{ background: 'var(--shelf)' }} />
+              </div>
+            )}
 
-        {authStatus === 'authenticated' && data && (
-          /* 已登录：接真 AdvisorSidebar，每篇报告独立对话，同栏目共享 agent 实例 */
-          <div className="flex h-full flex-col">
-            <AdvisorSidebar
-              sessionKey={`digest-report-${reportId}`}
-              agentInstanceKey={`digest-topic-${topicId}`}
-              agentKey="report-analyst"
-              source="report-reader"
-              context={{
-                document: {
-                  contentItemId: reportId ?? '',
-                  title: report.headline,
-                  bodyMarkdown: report.markdown,
-                },
-              }}
-              greeting="想聊哪条？"
-            />
-          </div>
+            {authStatus === 'unauthenticated' && (
+              <div className="px-6 pt-12">
+                <AuroraPlaceholder />
+              </div>
+            )}
+
+            {authStatus === 'authenticated' && (
+              <div className="flex h-full flex-col">
+                <AdvisorSidebar
+                  sessionKey={`digest-report-${reportId}`}
+                  agentInstanceKey={`digest-topic-${topicId}`}
+                  agentKey="report-analyst"
+                  source="report-reader"
+                  context={{
+                    digestReport: {
+                      reportId: report.id,
+                      topicId: topic.id,
+                      topicName: topic.name,
+                      topicPrompt: topic.description,
+                      headline: report.headline,
+                      publishedAt: report.publishedAt,
+                      sections: extractSections(report.markdown),
+                      findings: report.findings.map((f) => ({
+                        citationId: f.citationId,
+                        title: f.title,
+                        sourceName: f.sourceName,
+                        url: f.url,
+                      })),
+                    },
+                  }}
+                  greeting="想聊哪条？"
+                />
+              </div>
+            )}
+          </motion.aside>
         )}
-      </motion.aside>
+      </AnimatePresence>
     </div>
   );
 }
