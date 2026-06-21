@@ -214,92 +214,102 @@ function TaskRow({
       .finally(() => setLoadingSteps(false));
   }, [expanded, steps, task.id]);
 
+  // 列固定宽 = 管理表格能扫看的关键。每列宽度不随内容变化,缺数据用占位"—"。
+  // 列布局: 时间 6.5rem | 状态 4.5rem | 步数·条数 8rem | 摘要 flex-1 | 操作 10rem | 调用链 5rem
+  const hasReport = task.status === 'done' && !!task.reportContentItemId;
+
   return (
-    <div
-      className="rounded-lg overflow-hidden"
-      style={{
-        background: 'var(--paper-dark)',
-        border: '0.5px solid var(--separator)',
-      }}
-    >
-      {/* 主行 */}
-      <div className="flex items-center gap-3 px-4 py-3">
-        {/* 时间 */}
-        <span className="text-xs" style={{ color: 'var(--ink-faded)' }}>
+    <div className="overflow-hidden" style={{ background: 'var(--paper)' }}>
+      {/* 主行:grid 固定列,每列内容不影响其他列对齐 */}
+      <div
+        className="grid items-center gap-3 px-4 py-2.5 text-xs tabular-nums"
+        style={{
+          gridTemplateColumns:
+            '6.5rem 4.5rem 7rem minmax(0, 1fr) 9.5rem 5rem',
+        }}
+      >
+        {/* ① 时间 */}
+        <span style={{ color: 'var(--ink-faded)' }}>
           {formatRelativeTime(task.startedAt)}
         </span>
 
-        {/* 状态 */}
-        <StatusBadge status={task.status} />
+        {/* ② 状态 */}
+        <div>
+          <StatusBadge status={task.status} />
+        </div>
 
-        {/* 统计 */}
-        <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
+        {/* ③ 步数 · 条数 */}
+        <span style={{ color: 'var(--ink-ghost)' }}>
           {task.stepsCount} 步 · {task.findingsCount} 条
         </span>
 
-        {/* 失败错误 */}
-        {task.error && (
-          <span
-            className="truncate text-2xs"
-            style={{ color: 'var(--danger, #ef4444)', maxWidth: '12rem' }}
-            title={task.error}
-          >
-            {task.error}
-          </span>
-        )}
+        {/* ④ 摘要 / 错误 — 占满中间剩余宽,长就截断 */}
+        <span
+          className="truncate"
+          style={{
+            color: task.error ? 'var(--danger, #ef4444)' : 'var(--ink-soft)',
+          }}
+          title={task.error || task.reportSummary || ''}
+        >
+          {task.error || task.reportSummary || (
+            <span style={{ color: 'var(--ink-ghost)' }}>—</span>
+          )}
+        </span>
 
-        <div className="flex-1" />
-
-        {/* 产物操作:只在 task done + reportContentItemId 非空时显示 */}
-        {task.status === 'done' && task.reportContentItemId && (
-          <div className="flex items-center gap-0.5">
-            <a
-              href={`/digest/${topicId}/${task.reportContentItemId}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="在新标签打开报告"
-              className="flex items-center gap-1 rounded px-2 py-1 text-2xs transition-colors hover:bg-[var(--shelf)]"
-              style={{ color: 'var(--ink-faded)' }}
-            >
-              <ExternalLink size={12} strokeWidth={1.75} />
-              <span>查看</span>
-            </a>
-            {onDeleteReport && (
-              <button
-                type="button"
-                onClick={() => onDeleteReport(task)}
-                title="删除这一期报告(不可恢复)"
+        {/* ⑤ 操作 — 固定宽:有产物时 查看 + 删除;无产物时占位 — */}
+        <div className="flex items-center justify-end gap-0.5">
+          {hasReport ? (
+            <>
+              <a
+                href={`/digest/${topicId}/${task.reportContentItemId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="在新标签打开报告"
                 className="flex items-center gap-1 rounded px-2 py-1 text-2xs transition-colors hover:bg-[var(--shelf)]"
                 style={{ color: 'var(--ink-faded)' }}
               >
-                <Trash2 size={12} strokeWidth={1.75} />
-                <span>删除</span>
-              </button>
-            )}
-          </div>
-        )}
+                <ExternalLink size={12} strokeWidth={1.75} />
+                <span>查看</span>
+              </a>
+              {onDeleteReport && (
+                <button
+                  type="button"
+                  onClick={() => onDeleteReport(task)}
+                  title="删除这一期报告(不可恢复)"
+                  className="flex items-center gap-1 rounded px-2 py-1 text-2xs transition-colors hover:bg-[var(--shelf)]"
+                  style={{ color: 'var(--ink-faded)' }}
+                >
+                  <Trash2 size={12} strokeWidth={1.75} />
+                  <span>删除</span>
+                </button>
+              )}
+            </>
+          ) : (
+            <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>—</span>
+          )}
+        </div>
 
-        {/* 展开/收起按钮（只有有 steps 时才显示） */}
-        {task.stepsCount > 0 && (
-          <button
-            type="button"
-            onClick={onToggleExpand}
-            className="flex items-center gap-1 rounded px-2 py-1 text-2xs transition-colors hover:bg-[var(--shelf)]"
-            style={{ color: 'var(--ink-faded)' }}
-          >
-            {expanded ? (
-              <>
-                <ChevronUp size={12} />
-                收起
-              </>
-            ) : (
-              <>
-                <ChevronDown size={12} />
-                查看调用链
-              </>
-            )}
-          </button>
-        )}
+        {/* ⑥ 调用链 — 固定宽:有 steps 时显示展开/收起,无则占位 */}
+        <div className="flex justify-end">
+          {task.stepsCount > 0 ? (
+            <button
+              type="button"
+              onClick={onToggleExpand}
+              className="flex items-center gap-1 rounded px-2 py-1 text-2xs transition-colors hover:bg-[var(--shelf)]"
+              style={{ color: 'var(--ink-faded)' }}
+              title={expanded ? '收起调用链' : '查看调用链'}
+            >
+              {expanded ? (
+                <ChevronUp size={12} strokeWidth={1.75} />
+              ) : (
+                <ChevronDown size={12} strokeWidth={1.75} />
+              )}
+              <span>调用链</span>
+            </button>
+          ) : (
+            <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>—</span>
+          )}
+        </div>
       </div>
 
       {/* 展开：时间线 */}
@@ -559,18 +569,21 @@ export function DigestTopicDetail() {
                   </span>
                 )}
               </div>
+              {/* 立即运行: 触发中(点击瞬间)+ 已有 running task 都禁用——
+                  防止用户连点造出多个 task 并发跑(react-agent 占资源) */}
               <button
                 type="button"
                 onClick={() => void handleRunNow()}
-                disabled={running}
-                className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50"
+                disabled={running || hasRunning}
+                title={hasRunning ? '当前有任务在跑,等它完成' : '立即触发一次采集'}
+                className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                 style={{
                   background: 'var(--accent)',
                   color: '#fff',
                 }}
               >
                 <Play size={12} strokeWidth={2} />
-                {running ? '运行中…' : '立即运行'}
+                {running || hasRunning ? '正在跑…' : '立即运行'}
               </button>
             </div>
 
@@ -582,19 +595,41 @@ export function DigestTopicDetail() {
                 还没跑过——点「立即运行」试试第一期。
               </div>
             ) : (
-              <div className="space-y-2">
-                {tasks.map((task) => (
-                  <TaskRow
-                    key={task.id}
-                    task={task}
-                    topicId={id ?? ''}
-                    expanded={expandedId === task.id}
-                    onToggleExpand={() =>
-                      setExpandedId(expandedId === task.id ? null : task.id)
-                    }
-                    onDeleteReport={handleDeleteReport}
-                  />
-                ))}
+              <div
+                className="overflow-hidden rounded-md"
+                style={{ border: '0.5px solid var(--separator)' }}
+              >
+                {/* 表头:固定列宽跟 TaskRow 严格对齐;tracking 拉开做"表格 header"质感 */}
+                <div
+                  className="grid items-center gap-3 px-4 py-2 text-2xs uppercase tracking-[0.14em]"
+                  style={{
+                    gridTemplateColumns: '6.5rem 4.5rem 7rem minmax(0, 1fr) 9.5rem 5rem',
+                    background: 'var(--shelf)',
+                    color: 'var(--ink-ghost)',
+                    borderBottom: '0.5px solid var(--separator)',
+                  }}
+                >
+                  <span>时间</span>
+                  <span>状态</span>
+                  <span>步数 · 条数</span>
+                  <span>摘要 / 错误</span>
+                  <span className="text-right">产物操作</span>
+                  <span className="text-right">调用链</span>
+                </div>
+                <div className="divide-y" style={{ borderColor: 'var(--separator)' }}>
+                  {tasks.map((task) => (
+                    <TaskRow
+                      key={task.id}
+                      task={task}
+                      topicId={id ?? ''}
+                      expanded={expandedId === task.id}
+                      onToggleExpand={() =>
+                        setExpandedId(expandedId === task.id ? null : task.id)
+                      }
+                      onDeleteReport={handleDeleteReport}
+                    />
+                  ))}
+                </div>
               </div>
             )}
           </main>
