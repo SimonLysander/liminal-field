@@ -50,7 +50,8 @@ export default function DigestPublicPage() {
 
   return (
     <div className="flex-1 overflow-y-auto" style={{ background: 'var(--paper)' }}>
-      <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 py-16 max-[520px]:px-5">
+      {/* 容器宽度统一 1240(跟 /digest/:topicId 栏目页一致),避免翻页时边界忽宽忽窄 */}
+      <div className="mx-auto w-full max-w-[1240px] px-10 py-16 max-[520px]:px-5">
 
         {/* ── 报头区 ── */}
         <motion.header
