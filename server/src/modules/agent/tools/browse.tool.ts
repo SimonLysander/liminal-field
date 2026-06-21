@@ -229,10 +229,19 @@ export function createBrowseTool(deps: BrowseDeps) {
             ),
           );
 
-        // 所有源都失败 + 没拿到任何条目 → 整次 error,让 agent 改打 web_search
-        if (allItems.length === 0 && failedSources.length > 0) {
+        // ALL_SOURCES_FAILED 判定:**必须所有目标源都 failed** 才整次 error。
+        // 之前的逻辑 `allItems===0 && failed>0` 是 bug —— 6 源 fetch 成功但
+        // 窗口内 0 条(预期行为)+ 1 源 SSL 失败,会被误判成"所有源失败,改用 web_search",
+        // 让 agent 误以为订阅圈整体挂了。正确语义:
+        //   - 全部源 failed → 整次 error(实际抓取失败,需 web_search 兜底)
+        //   - 部分源 failed,其他 0 条      → status='ok' 正常返回(窗口内确实没新东西)
+        //   - 全部源 ok 但 0 条            → status='ok'(同上)
+        if (
+          failedSources.length === targetSources.length &&
+          targetSources.length > 0
+        ) {
           return toolResult(
-            `所有目标源都抓取失败(${failedSources.length} 个),改用 web_search`,
+            `全部 ${failedSources.length} 个目标源都抓取失败,改用 web_search`,
             undefined,
             {
               status: 'error',

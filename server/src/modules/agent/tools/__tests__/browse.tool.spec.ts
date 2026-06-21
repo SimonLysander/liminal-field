@@ -264,6 +264,36 @@ describe('browse (v5 多源并行)', () => {
     expect(result.meta.failedSources).toHaveLength(1);
   });
 
+  // Bug 修复回归测试:之前 `allItems===0 && failed>0` 误判成 ALL_SOURCES_FAILED,
+  // 实际场景"6 源 fetch 成功但窗口内 0 条 + 1 源 SSL 失败"应该返 ok,不是 error。
+  it('Case 5b: 部分源失败 + 其他源成功但 0 条 → status=ok (NOT ALL_SOURCES_FAILED)', async () => {
+    const srcA = makeSource('src_a', 'A');
+    const srcB = makeSource('src_b', 'B');
+    const srcC = makeSource('src_c', 'C');
+    const ctx = makeCtx();
+    const tool = createBrowseTool({
+      infoSourceRepo: makeInfoSourceRepo([srcA, srcB, srcC]),
+      smartTopicConfigRepo: makeStcRepo(['src_a', 'src_b', 'src_c']),
+      fetcherRegistry: makeFetcherRegistry([
+        { source: srcA, status: 'failed', items: [], error: 'SSL', durationMs: 50 },
+        // srcB / srcC fetch 成功但窗口内 0 条(预期 — 短窗口没新发布)
+        { source: srcB, status: 'ok', items: [], durationMs: 60 },
+        { source: srcC, status: 'ok', items: [], durationMs: 70 },
+      ]),
+      pfiRepo: makePfiRepo(),
+      ctx,
+    });
+
+    const result = JSON.parse(await run(tool, {}));
+    // 关键断言:不是 error/ALL_SOURCES_FAILED — 因为 2 源真的成功了
+    expect(result.meta.errorCode).toBeUndefined();
+    expect(result.meta.status).not.toBe('error');
+    // 该是 partial(有失败源)
+    expect(result.meta.status).toBe('partial');
+    expect(result.meta.returned).toBe(0);
+    expect(result.meta.failedSources).toHaveLength(1);
+  });
+
   it('Case 6: 事项无订阅源 → NO_SUBSCRIBED_SOURCES', async () => {
     const ctx = makeCtx();
     const tool = createBrowseTool({
