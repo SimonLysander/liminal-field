@@ -18,6 +18,8 @@ import {
 } from '../skill/skill.service';
 import { SystemConfigRepository } from './system-config.repository';
 import type { AgentEntryConfig } from './system-config.entity';
+// 从 settings/digest-report-analyst.md 加载报告分析师默认 system prompt(原散落字符串 → promptManager 统一托管)
+import { PromptManagerService } from '../../infrastructure/prompt/prompt-manager.service';
 
 /** 前端展示用的脱敏配置（只含用户通过 UI 管理的字段） */
 export interface SettingsConfigView {
@@ -125,30 +127,52 @@ export class SystemConfigService implements OnModuleInit {
    *
    * 管理员可在 UI 修改 systemPrompt 与 tools,启动不会覆盖已有记录(补齐策略:只补缺失 key)。
    */
-  private static readonly REPORT_ANALYST_ENTRY = {
-    key: 'report-analyst',
-    name: '报告分析师',
-    description: '帮用户深挖简报内容，追问细节与论点',
+  /**
+   * 报告分析师预置入口工厂方法(原 static readonly 常量 → 工厂方法)。
+   * 原因:systemPrompt 现在从 settings/digest-report-analyst.md 读取,
+   * 需要 promptManager 实例,无法在静态属性初始化时调用。
+   * 在 onModuleInit 里调用此方法生成完整配置对象,保持同一份定义不重复。
+   */
+  private getReportAnalystEntry(): typeof SystemConfigService.REPORT_ANALYST_ENTRY_SHAPE {
+    return {
+      key: 'report-analyst',
+      name: '报告分析师',
+      description: '帮用户深挖简报内容，追问细节与论点',
+      enabled: true,
+      // 从 settings/digest-report-analyst.md 加载默认 system prompt(原散落字符串 → promptManager 统一托管)
+      // 这是初始默认值,写入 Mongo 后用户可在 UI 修改;重启不会覆盖已有 DB 记录(补齐策略:只补缺失 key)
+      systemPrompt: this.promptManager.render(
+        'settings/digest-report-analyst.md',
+      ),
+      // 简报本身全篇注入(报告 markdown + findings 完整字段直接进 system prompt),
+      // 给 browse(浏览订阅源最新 7 天) + web_search(任意搜) + web_fetch(读 URL 全文)。
+      // sub-agent 不需要"读内容"类的工具;这套覆盖"我订阅源还有啥/外面还有啥/这篇细节"3 个场景。
+      tools: ['browse', 'web_search', 'web_fetch'],
+      tier: 'standard',
+      providerId: '',
+      flashProviderId: '',
+      standardProviderId: '',
+      thinkProviderId: '',
+      visionProviderId: '',
+      enabledSkillIds: [],
+    };
+  }
+
+  /** 用于 getReportAnalystEntry 返回类型推断的形状占位(TypeScript 不支持从方法本体推断) */
+  private static readonly REPORT_ANALYST_ENTRY_SHAPE = {
+    key: '',
+    name: '',
+    description: '',
     enabled: true,
-    // 报告分析师 prompt:以当前期报告为上下文，克制有判断，不水
-    systemPrompt:
-      '你是「简报」专栏的报告分析师。用户正在阅读一份由自动信息收集工作流产出的简报（每条条目都有标题、来源、AI 总结的正文段落）。\n\n' +
-      '你的职责：\n' +
-      '- 帮用户深挖：用户问「第 3 条文章的核心论点是什么」「为什么三种 agent 框架在状态管理上差异这么大」之类的问题时，基于当前报告 context 给出有依据、有判断的回答\n' +
-      '- 不要泛泛而谈：报告里有的内容直接引用，不要绕开报告造一段无关解读\n' +
-      '- 超出报告范围时:报告是 snapshot,聊起来用户经常会延伸("这论文最近还有相关研究吗""这领域还有谁在做")。这种情况调 web_search/web_fetch 去外面看,别说"我不知道"\n\n' +
-      '风格：克制、有判断、不水。',
-    // 简报本身全篇注入(报告 markdown + findings 完整字段直接进 system prompt),
-    // 给 browse(浏览订阅源最新 7 天) + web_search(任意搜) + web_fetch(读 URL 全文)。
-    // sub-agent 不需要"读内容"类的工具;这套覆盖"我订阅源还有啥/外面还有啥/这篇细节"3 个场景。
-    tools: ['browse', 'web_search', 'web_fetch'],
-    tier: 'standard',
+    systemPrompt: '',
+    tools: [] as string[],
+    tier: '',
     providerId: '',
     flashProviderId: '',
     standardProviderId: '',
     thinkProviderId: '',
     visionProviderId: '',
-    enabledSkillIds: [],
+    enabledSkillIds: [] as string[],
   };
 
   /** gallery-caption-writer 的预置入口(预置与补齐共用一份,避免两处手抄)。 */
@@ -178,6 +202,9 @@ export class SystemConfigService implements OnModuleInit {
     // SkillService:配置 agent 时硬校验 skill.requiredTools ⊆ agent.tools(spec §4.3),
     // 同时 saveAgentConfig 前自动清理因 tool 移除而失效的 enabledSkillIds(Task 0.7)。
     private readonly skillService: SkillService,
+    // PromptManagerService 是 @Global() 注入,无需 module import
+    // 用于在 onModuleInit 时从 settings/digest-report-analyst.md 渲染默认 system prompt
+    private readonly promptManager: PromptManagerService,
   ) {}
 
   /**
@@ -213,7 +240,7 @@ export class SystemConfigService implements OnModuleInit {
             enabledSkillIds: [],
           },
           { ...SystemConfigService.GALLERY_CAPTION_ENTRY },
-          { ...SystemConfigService.REPORT_ANALYST_ENTRY },
+          { ...this.getReportAnalystEntry() },
         ] as AgentEntryConfig[],
       });
       this.logger.log(
@@ -258,7 +285,7 @@ export class SystemConfigService implements OnModuleInit {
       // 补齐 report-analyst:简报阅读页追问 agent(2026-06-20 新增)
       if (!config.agentConfigs.some((c) => c.key === 'report-analyst')) {
         config.agentConfigs.push({
-          ...SystemConfigService.REPORT_ANALYST_ENTRY,
+          ...this.getReportAnalystEntry(),
         });
         await this.repo.patch({ agentConfigs: config.agentConfigs });
         this.logger.log('补齐 report-analyst agent 配置');

@@ -1,7 +1,42 @@
 import { PromptHandler } from '../prompt.handler';
+import type { PromptManagerService } from '../../../../infrastructure/prompt/prompt-manager.service';
+
+/** 最小 PromptManagerService mock,保证 PromptHandler 各 section 有输出且断言通过 */
+function makeMockPromptManager(): PromptManagerService {
+  const templates: Record<string, string> = {
+    'aurora/role.md':
+      '<role>\n你是 Aurora。你是 {{owner_name}} 的另一个自我。\n</role>',
+    'aurora/tools-guide.md':
+      '<tools>\n读 {{owner_name}} 文稿,调 get_current_draft。\n</tools>',
+    'aurora/instructions.md':
+      '<instructions>\n用中文回答,除非 {{owner_name}} 要求。\n你没有直接改写文稿正文的能力(2026-06-04 改稿功能停用)。\n</instructions>',
+    'aurora/partials/skills-prelude.md':
+      '你有以下技能(方法论)可调用,调 load_skill 工具。\n',
+    'aurora/partials/memories-prelude.md':
+      '你对所有者认知,远古细节调 recall_memory。\n',
+    'aurora/partials/conversation-summary-prelude.md':
+      '以下是本次会话的脉络记忆：\n',
+    'aurora/partials/collection-prelude.md':
+      '(用 read_collection_entry 传节点 id;当前用 get_current_draft)\n',
+    'aurora/partials/gallery.md':
+      '<gallery>\n{{owner_name}} 整理画廊《{{title}}》——{{photo_count}} 张{{has_prose}}。\n</gallery>',
+    'aurora/partials/digest-report-prelude.md': '阅读简报。\n',
+  };
+  return {
+    render(name: string, vars: Record<string, string> = {}): string {
+      const tmpl = templates[name];
+      if (!tmpl) throw new Error(`mock: prompt not found: ${name}`);
+      return tmpl.replace(
+        /\{\{(\w+)\}\}/g,
+        (_m, k: string) => vars[k] ?? `{{${k}}}`,
+      );
+    },
+  } as unknown as PromptManagerService;
+}
 
 describe('PromptHandler <document> 注入硬化(v3)', () => {
-  const handler = new PromptHandler();
+  // PromptHandler 现在需要 PromptManagerService,注入 mock
+  const handler = new PromptHandler(makeMockPromptManager());
   const base = {
     coreMemories: [],
     ownerProfile: { name: '主人', birthday: '', bio: '' },

@@ -13,6 +13,8 @@ import { generateText } from 'ai';
 import { SystemConfigService } from '../../settings/system-config.service';
 import { AgentMemoryRepository } from './agent-memory.repository';
 import type { AgentMemory } from './agent-memory.entity';
+// 从 memory/owner-memory.md 和 memory/session-compactor.md 加载 prompt(原散落字符串 → promptManager 统一托管)
+import { PromptManagerService } from '../../../infrastructure/prompt/prompt-manager.service';
 
 interface RememberResult {
   action: 'create' | 'update';
@@ -39,6 +41,8 @@ export class MemoryAgentService {
   constructor(
     private readonly memoryRepo: AgentMemoryRepository,
     private readonly systemConfigService: SystemConfigService,
+    // PromptManagerService 是 @Global() 注入,无需 module import
+    private readonly promptManager: PromptManagerService,
   ) {}
 
   async remember(content: string, tier?: string): Promise<string> {
@@ -225,22 +229,11 @@ export class MemoryAgentService {
       model,
       // 记忆只存所有者画像(user):背景/偏好/习惯/写作风格等跨会话长期有效的信息。
       // project 类型已废弃,不再让模型区分类型。
-      prompt: `你是一个记忆管理器。将关于所有者的新信息整合到记忆库中。
-
-已有记忆：
-${this.formatExistingMemories(existingMemories)}
-
-新信息：
-${newContent}
-
-规则：
-- 只记关于所有者本人的长期信息：通用偏好、背景、习惯、写作风格等
-- 检查已有记忆中是否有相关条目：有 → action: update，合并内容；没有 → action: create
-- update 时保留已有内容中仍然有效的部分，追加新信息
-- title 要简洁明确（中文）
-
-请只输出 JSON，格式：
-{"action": "create 或 update", "title": "标题", "content": "完整内容"}`,
+      // 从 memory/owner-memory.md 加载记忆管理器 prompt(原散落字符串 → promptManager 统一托管)
+      prompt: this.promptManager.render('memory/owner-memory.md', {
+        existing_memories: this.formatExistingMemories(existingMemories),
+        new_content: newContent,
+      }),
     });
     return extractJSON<RememberResult>(text);
   }
@@ -255,29 +248,11 @@ ${newContent}
       model,
       // 压缩策略:以"用户意图为骨架"组织 sessionContent(保留意图+结论双维度,丢冗长过程),
       // 顺带把所有者画像沉淀为 user 记忆。不再产 summary——脉络的归宿就是 session 记忆 content。
-      prompt: `你是一个会话记忆管理器。下面是一段需要压缩的旧对话(可能附带已有的会话记忆脉络 <previous_session_memory>)。请输出 JSON,包含两部分:
-
-1. sessionContent:本次会话的「活摘要」(会替换/合并已有会话记忆)。
-   组织方式——以**用户每轮的意图/问题为骨架**,按话题归纳,每个话题写清三件事:
-     · 话题是什么
-     · 用户想解决什么(意图)
-     · 达成的结论/产出(结果)
-   要求:保留"问过什么(意图)"+"得到什么(结论)"双维度;丢弃冗长的中间过程、重复的试错、寒暄。
-   若有 <previous_session_memory>,在其基础上合并,久远且不重要的话题可适当精简(自然遗忘)。
-
-2. userMemories:从对话里提炼的「所有者画像」数组(背景/偏好/写作风格/习惯等跨会话长期有效的信息)。
-   已有 user 记忆(避免重复提取):
-   ${this.formatExistingMemories(existingMemories)}
-   规则:
-   - 只提取明确表达的、跨会话长期有效的所有者信息,不提临时细节
-   - 已有记忆已覆盖的不要重复提取
-   - 没有可提取的就给空数组 []
-   - title 简洁明确(中文)
-
-请只输出 JSON,格式:
-{"sessionContent": "活摘要文本", "userMemories": [{"title": "标题", "content": "内容"}]}
-
-${inputText}`,
+      // 从 memory/session-compactor.md 加载会话压缩器 prompt(原散落字符串 → promptManager 统一托管)
+      prompt: this.promptManager.render('memory/session-compactor.md', {
+        existing_memories: this.formatExistingMemories(existingMemories),
+        input_text: inputText,
+      }),
     });
     return extractJSON<CompactResult>(text);
   }

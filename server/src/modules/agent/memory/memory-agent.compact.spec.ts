@@ -49,9 +49,19 @@ describe('MemoryAgentService.compact', () => {
         contextWindow: 32000,
       }),
     };
+    // MemoryAgentService 现在需要 PromptManagerService(第三个参数)
+    // compact 里调 this.promptManager.render('memory/session-compactor.md',...)
+    // mock render 直接返回 inputText(保留动态内容让 generateText mock 正常工作)
+    const mockPromptManager = {
+      render(_name: string, vars: Record<string, string> = {}): string {
+        // session-compactor.md 的 {{input_text}} 占位替换即可
+        return vars['input_text'] ?? '';
+      },
+    } as never;
     service = new MemoryAgentService(
       memoryRepo as never,
       systemConfig as never,
+      mockPromptManager,
     );
   });
 

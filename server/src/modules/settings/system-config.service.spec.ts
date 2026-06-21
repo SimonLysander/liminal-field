@@ -30,10 +30,18 @@ function createMocks() {
     delete: jest.fn(),
   } as unknown as jest.Mocked<SkillService>;
 
+  // SystemConfigService 现在需要 PromptManagerService(第四个参数)
+  // 用于 getReportAnalystEntry() 从 settings/digest-report-analyst.md 渲染默认 system prompt
+  const mockPromptManager = {
+    render(): string {
+      return '报告分析师默认 system prompt';
+    },
+  } as never;
   const service = new SystemConfigService(
     mockRepo,
     mockContentRepo,
     mockSkillService,
+    mockPromptManager,
   );
 
   return { service, mockRepo, mockSkillService };
