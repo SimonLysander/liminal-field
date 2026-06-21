@@ -87,10 +87,13 @@ export class DigestPublicService {
         const sourceEntities = await this.infoSourceRepo.findManyByIds(
           stc.sourceIds,
         );
-        sources = sourceEntities.map((s) => ({
-          id: String(s._id),
-          name: s.name,
-        }));
+        // 过滤禁用源:agent 看见后会 browse 它 + 拿到"已禁用"错误,浪费 step 还误导
+        sources = sourceEntities
+          .filter((s) => s.enabled)
+          .map((s) => ({
+            id: String(s._id),
+            name: s.name,
+          }));
       }
     } catch (err) {
       this.logger.warn(

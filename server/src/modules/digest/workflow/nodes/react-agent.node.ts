@@ -220,11 +220,14 @@ export class ReactAgentNode {
     if (sourceIds.length === 0) return '';
 
     const sources = await this.infoSourceRepo.findManyByIds(sourceIds);
-    if (sources.length === 0) return '';
+    // 关键过滤:禁用的源不该出现在 agent 看见的列表里。
+    // 之前 agent 还能"看到"禁用源 + 调 browse(disabled_id) 浪费 step + 让 admin 困惑
+    // (用户实测:"我禁用了为啥 agent 还调用,还能看得着")。
+    const enabled = sources.filter((s) => s.enabled);
+    if (enabled.length === 0) return '';
 
-    const lines = sources.map((s) => {
+    const lines = enabled.map((s) => {
       const url = (s.config?.url as string | undefined) ?? '';
-      // 描述从 name 里取（InfoSource 暂无 description 字段，用 URL 辅助定位）
       const urlHint = url ? ` (${url})` : '';
       return `- ${s._id} · ${s.name}${urlHint}`;
     });
