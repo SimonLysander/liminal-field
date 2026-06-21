@@ -233,6 +233,21 @@ export default function DigestReportPage() {
   return (
     <div className="relative flex h-full w-full overflow-hidden">
 
+      {/* 全局 fixed 主题按钮: 屏幕右上 right:12 → Aurora 打开时 right:452(440 panel + 12 边距)
+          Topbar 在此路由已 return null, 这里独立渲染避免冲突 */}
+      <motion.button
+        type="button"
+        animate={{ right: isAuroraOpen ? 452 : 12 }}
+        transition={{ duration: 0.3, ease: appleEase }}
+        onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}
+        className="fixed top-3 z-50 flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-150 hover:bg-[var(--hover-overlay)]"
+        style={{ color: 'var(--ink-faded)' }}
+        aria-label="切换主题"
+      >
+        <Sun size={14} strokeWidth={1.5} className="theme-icon-light" />
+        <Moon size={14} strokeWidth={1.5} className="theme-icon-dark" />
+      </motion.button>
+
       {/* ── 主体阅读区(宽度动态: Aurora 打开时缩到 calc(100% - 440px) 让出右侧) ── */}
       <motion.div
         className="overflow-y-auto"
@@ -266,39 +281,26 @@ export default function DigestReportPage() {
               </Link>
             </div>
 
-            {/* 右上工具: 主题切换 + Aurora(钉在期刊区域内, 不在屏幕右上)
-                Topbar 在此路由已隐藏自身, 由本组件接管 */}
-            <div className="flex items-center gap-2">
+            {/* breadcrumb 行右边只剩 Aurora 按钮(主题按钮是全局 fixed, 在屏幕右上, Aurora 打开时自动向左挪) */}
+            {!isAuroraOpen && (
               <button
                 type="button"
-                onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}
-                className="flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-150 hover:bg-[var(--hover-overlay)]"
-                style={{ color: 'var(--ink-faded)' }}
-                aria-label="切换主题"
+                onClick={() => setIsAuroraOpen(true)}
+                className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] italic transition-all duration-150 hover:opacity-100"
+                style={{
+                  color: 'var(--ink-soft)',
+                  border: '0.5px solid var(--separator)',
+                  fontFamily:
+                    '"Source Han Serif SC","Noto Serif SC","Songti SC","Iowan Old Style",Georgia,serif',
+                  opacity: 0.85,
+                  marginRight: '3rem',
+                }}
+                title="问 Aurora (⌘K)"
               >
-                <Sun size={14} strokeWidth={1.5} className="theme-icon-light" />
-                <Moon size={14} strokeWidth={1.5} className="theme-icon-dark" />
+                <Sparkles size={11} strokeWidth={1.5} />
+                <span>Aurora</span>
               </button>
-
-              {!isAuroraOpen && (
-                <button
-                  type="button"
-                  onClick={() => setIsAuroraOpen(true)}
-                  className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] italic transition-all duration-150 hover:opacity-100"
-                  style={{
-                    color: 'var(--ink-soft)',
-                    border: '0.5px solid var(--separator)',
-                    fontFamily:
-                      '"Source Han Serif SC","Noto Serif SC","Songti SC","Iowan Old Style",Georgia,serif',
-                    opacity: 0.85,
-                  }}
-                  title="问 Aurora (⌘K)"
-                >
-                  <Sparkles size={11} strokeWidth={1.5} />
-                  <span>Aurora</span>
-                </button>
-              )}
-            </div>
+            )}
           </motion.nav>
 
           {/* ── 报头（Stratechery 现代严肃 newsletter 风）── */}
