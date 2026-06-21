@@ -25,10 +25,9 @@
  */
 import { useState, useEffect, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, X, Sun, Moon } from 'lucide-react';
+import { motion } from 'motion/react';
+import { Sparkles } from 'lucide-react';
 import { appleEase } from '@/lib/motion';
-import { useTheme } from '@/hooks/use-theme';
 import { AdvisorSidebar } from '@/components/ai-advisor/AdvisorSidebar';
 import { useAuthStatus } from '@/hooks/use-auth-status';
 import MarkdownBody from '@/components/shared/MarkdownBody';
@@ -63,7 +62,6 @@ function formatDateTime(iso: string): string {
 export default function DigestReportPage() {
   const { topicId, reportId } = useParams<{ topicId: string; reportId: string }>();
   const { status: authStatus } = useAuthStatus();
-  const { theme, setTheme } = useTheme();
 
   const [data, setData] = useState<PublicReportData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -230,34 +228,12 @@ export default function DigestReportPage() {
   /* 期号 = 当前在 siblings 中的位置（1-based） */
   const issueNumber = currentIdx + 1;
 
-  // Notion 签名缓动: 短促 ease-out, 开头快收尾慢, 给人"轻轻拉出"的感觉
-  const notionEase: [number, number, number, number] = [0.32, 0.72, 0, 1];
-  const panelDuration = 0.24;
-
   return (
-    <div className="relative h-full w-full overflow-hidden">
+    <div className="flex h-full w-full overflow-hidden">
 
-      {/* 全局 fixed 主题按钮: 屏幕右上 right:12 → Aurora 打开时 right:452(440 panel + 12 边距)
-          Topbar 在此路由已 return null, 这里独立渲染避免冲突 */}
-      <motion.button
-        type="button"
-        animate={{ right: isAuroraOpen ? 452 : 12 }}
-        transition={{ duration: panelDuration, ease: notionEase }}
-        onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}
-        className="fixed top-3 z-50 flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-150 hover:bg-[var(--hover-overlay)]"
-        style={{ color: 'var(--ink-faded)' }}
-        aria-label="切换主题"
-      >
-        <Sun size={14} strokeWidth={1.5} className="theme-icon-light" />
-        <Moon size={14} strokeWidth={1.5} className="theme-icon-dark" />
-      </motion.button>
-
-      {/* ── 主体阅读区(width 动画跟着收缩, 让 mx-auto 正文居中在新可视区,
-              视觉对称。Notion ease-out 240ms, 长文 reflow 实测平滑) ── */}
-      <motion.div
-        className="h-full overflow-y-auto"
-        animate={{ width: isAuroraOpen ? 'calc(100% - 440px)' : '100%' }}
-        transition={{ duration: panelDuration, ease: notionEase }}
+      {/* ── 主体阅读区 — flex-1 自动适应 panel 宽度变化 ── */}
+      <div
+        className="flex-1 overflow-y-auto"
         style={{ paddingTop: '4rem', paddingBottom: '4rem' }}
       >
         <div className="mx-auto w-full max-w-[55rem] px-10 max-[520px]:px-5">
@@ -286,7 +262,8 @@ export default function DigestReportPage() {
               </Link>
             </div>
 
-            {/* breadcrumb 行右边只剩 Aurora 按钮(主题按钮是全局 fixed, 在屏幕右上, Aurora 打开时自动向左挪) */}
+            {/* breadcrumb 行右边 Aurora 按钮 — 全局 Topbar 主题按钮在屏幕右上(fixed),
+                不在 breadcrumb 行里, 不存在叠加问题 */}
             {!isAuroraOpen && (
               <button
                 type="button"
@@ -446,83 +423,64 @@ export default function DigestReportPage() {
           </motion.div>
 
         </div>
-      </motion.div>
+      </div>
 
-      {/* ── Aurora 抽屉(Notion 风: absolute 浮右, 纯 translateX, 不带 opacity 配合) ──
-          三态：checking→骨架；unauthenticated→登录提示；authenticated→真 AdvisorSidebar */}
-      <AnimatePresence>
-        {isAuroraOpen && (
-          <motion.aside
-            key="aurora-panel"
-            initial={{ x: 440 }}
-            animate={{ x: 0 }}
-            exit={{ x: 440 }}
-            transition={{ duration: panelDuration, ease: notionEase }}
-            // fixed 钉屏幕右边缘 — 无视 PublicLayout 左 sidebar 边界
-            // initial/exit 用精确 440px 而不是 '100%' — 避免 motion 库 measure
-            // 元素百分比时引起的 layout 微抖动(user 报告"向上移动一些")
-            className="fixed bottom-0 right-0 top-0 z-40 w-[440px] overflow-hidden"
-            style={{
-              borderLeft: '1px solid var(--separator)',
-              background: 'var(--paper-white)',
-            }}
-          >
-            {/* 关闭按钮 - 钉 panel 内右上, 在"新会话"按钮左边挨着 */}
-            <button
-              type="button"
-              onClick={() => setIsAuroraOpen(false)}
-              className="absolute top-1.5 z-20 rounded-full p-1.5 transition-colors duration-150 hover:bg-[var(--shelf)]"
-              style={{ color: 'var(--ink-soft)', right: '2.75rem' }}
-              title="关闭 (Esc)"
-              aria-label="关闭 Aurora"
-            >
-              <X size={16} strokeWidth={1.75} />
-            </button>
+      {/* ── Aurora panel — flex 子, CSS width transition(0/440), 不 absolute 不 motion ──
+          内部 AdvisorSidebar 固定 440 宽, 外壳 width 0 时被 overflow-hidden 截断,
+          width 动画期间内容不 rewrap(因为内层固定宽度)
+          关闭按钮: 后续给 AdvisorSidebar 加 onClose prop 由它内部 toolbar 渲染 */}
+      <aside
+        className="shrink-0 overflow-hidden"
+        style={{
+          width: isAuroraOpen ? '440px' : '0px',
+          transition: 'width 240ms cubic-bezier(0.32, 0.72, 0, 1)',
+          borderLeft: isAuroraOpen ? '1px solid var(--separator)' : 'none',
+        }}
+      >
+        <div className="h-full w-[440px]" style={{ background: 'var(--paper-white)' }}>
+          {authStatus === 'checking' && (
+            <div className="flex flex-col gap-3 px-6 pt-6">
+              <div className="h-3 w-24 animate-pulse rounded" style={{ background: 'var(--shelf)' }} />
+              <div className="h-16 animate-pulse rounded-lg" style={{ background: 'var(--shelf)' }} />
+            </div>
+          )}
 
-            {authStatus === 'checking' && (
-              <div className="flex flex-col gap-3 px-6 pt-16">
-                <div className="h-3 w-24 animate-pulse rounded" style={{ background: 'var(--shelf)' }} />
-                <div className="h-16 animate-pulse rounded-lg" style={{ background: 'var(--shelf)' }} />
-              </div>
-            )}
+          {authStatus === 'unauthenticated' && (
+            <div className="px-6 pt-6">
+              <AuroraPlaceholder />
+            </div>
+          )}
 
-            {authStatus === 'unauthenticated' && (
-              <div className="px-6 pt-12">
-                <AuroraPlaceholder />
-              </div>
-            )}
-
-            {authStatus === 'authenticated' && (
-              <div className="flex h-full flex-col">
-                <AdvisorSidebar
-                  sessionKey={`digest-report-${reportId}`}
-                  agentInstanceKey={`digest-topic-${topicId}`}
-                  agentKey="report-analyst"
-                  source="report-reader"
-                  context={{
-                    digestReport: {
-                      reportId: report.id,
-                      topicId: topic.id,
-                      topicName: topic.name,
-                      topicPrompt: topic.description,
-                      headline: report.headline,
-                      publishedAt: report.publishedAt,
-                      sections: extractSections(report.markdown),
-                      findings: report.findings.map((f) => ({
-                        citationId: f.citationId,
-                        title: f.title,
-                        sourceName: f.sourceName,
-                        url: f.url,
-                      })),
-                    },
-                  }}
-                  greeting="想聊哪条？"
-                />
-              </div>
-            )}
-          </motion.aside>
-        )}
-      </AnimatePresence>
+          {authStatus === 'authenticated' && (
+            <div className="flex h-full flex-col">
+              <AdvisorSidebar
+                sessionKey={`digest-report-${reportId}`}
+                agentInstanceKey={`digest-topic-${topicId}`}
+                agentKey="report-analyst"
+                source="report-reader"
+                context={{
+                  digestReport: {
+                    reportId: report.id,
+                    topicId: topic.id,
+                    topicName: topic.name,
+                    topicPrompt: topic.description,
+                    headline: report.headline,
+                    publishedAt: report.publishedAt,
+                    sections: extractSections(report.markdown),
+                    findings: report.findings.map((f) => ({
+                      citationId: f.citationId,
+                      title: f.title,
+                      sourceName: f.sourceName,
+                      url: f.url,
+                    })),
+                  },
+                }}
+                greeting="想聊哪条？"
+              />
+            </div>
+          )}
+        </div>
+      </aside>
     </div>
   );
 }
