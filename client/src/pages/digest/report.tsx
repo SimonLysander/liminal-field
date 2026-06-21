@@ -26,8 +26,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, X } from 'lucide-react';
+import { Sparkles, X, Sun, Moon } from 'lucide-react';
 import { appleEase } from '@/lib/motion';
+import { useTheme } from '@/hooks/use-theme';
 import { AdvisorSidebar } from '@/components/ai-advisor/AdvisorSidebar';
 import { useAuthStatus } from '@/hooks/use-auth-status';
 import MarkdownBody from '@/components/shared/MarkdownBody';
@@ -62,6 +63,7 @@ function formatDateTime(iso: string): string {
 export default function DigestReportPage() {
   const { topicId, reportId } = useParams<{ topicId: string; reportId: string }>();
   const { status: authStatus } = useAuthStatus();
+  const { theme, setTheme } = useTheme();
 
   const [data, setData] = useState<PublicReportData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -172,7 +174,7 @@ export default function DigestReportPage() {
   if (loading) {
     return (
       <div className="flex-1 overflow-y-auto py-16">
-        <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 max-[520px]:px-5">
+        <div className="mx-auto w-full max-w-[55rem] px-10 max-[520px]:px-5">
           <div className="mb-10 h-3 w-32 animate-pulse rounded" style={{ background: 'var(--shelf)' }} />
           <div className="mb-4 h-12 w-3/4 animate-pulse rounded" style={{ background: 'var(--shelf)' }} />
           <div className="mb-8 h-4 w-1/2 animate-pulse rounded" style={{ background: 'var(--shelf)' }} />
@@ -238,7 +240,7 @@ export default function DigestReportPage() {
         transition={{ duration: 0.3, ease: appleEase }}
         style={{ paddingTop: '4rem', paddingBottom: '4rem' }}
       >
-        <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 max-[520px]:px-5">
+        <div className="mx-auto w-full max-w-[55rem] px-10 max-[520px]:px-5">
 
           {/* breadcrumb + Aurora 右上按钮 一行 */}
           <motion.nav
@@ -264,25 +266,39 @@ export default function DigestReportPage() {
               </Link>
             </div>
 
-            {/* 右上 Aurora 按钮(克制细边框,不抢戏) */}
-            {!isAuroraOpen && (
+            {/* 右上工具: 主题切换 + Aurora(钉在期刊区域内, 不在屏幕右上)
+                Topbar 在此路由已隐藏自身, 由本组件接管 */}
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setIsAuroraOpen(true)}
-                className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] italic transition-all duration-150 hover:opacity-100"
-                style={{
-                  color: 'var(--ink-soft)',
-                  border: '0.5px solid var(--separator)',
-                  fontFamily:
-                    '"Source Han Serif SC","Noto Serif SC","Songti SC","Iowan Old Style",Georgia,serif',
-                  opacity: 0.85,
-                }}
-                title="问 Aurora (⌘K)"
+                onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}
+                className="flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-150 hover:bg-[var(--hover-overlay)]"
+                style={{ color: 'var(--ink-faded)' }}
+                aria-label="切换主题"
               >
-                <Sparkles size={11} strokeWidth={1.5} />
-                <span>Aurora</span>
+                <Sun size={14} strokeWidth={1.5} className="theme-icon-light" />
+                <Moon size={14} strokeWidth={1.5} className="theme-icon-dark" />
               </button>
-            )}
+
+              {!isAuroraOpen && (
+                <button
+                  type="button"
+                  onClick={() => setIsAuroraOpen(true)}
+                  className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] italic transition-all duration-150 hover:opacity-100"
+                  style={{
+                    color: 'var(--ink-soft)',
+                    border: '0.5px solid var(--separator)',
+                    fontFamily:
+                      '"Source Han Serif SC","Noto Serif SC","Songti SC","Iowan Old Style",Georgia,serif',
+                    opacity: 0.85,
+                  }}
+                  title="问 Aurora (⌘K)"
+                >
+                  <Sparkles size={11} strokeWidth={1.5} />
+                  <span>Aurora</span>
+                </button>
+              )}
+            </div>
           </motion.nav>
 
           {/* ── 报头（Stratechery 现代严肃 newsletter 风）── */}
@@ -435,14 +451,15 @@ export default function DigestReportPage() {
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 440, opacity: 0 }}
             transition={{ duration: 0.3, ease: appleEase }}
-            className="relative w-[440px] shrink-0 overflow-hidden"
+            className="relative w-[440px] shrink-0 overflow-hidden pt-12"
             style={{ borderLeft: '0.5px solid var(--separator)', background: 'var(--paper-white)' }}
           >
-            {/* 关闭按钮(右上角) */}
+            {/* 关闭按钮(左上角) — 右上角已被全局主题切换 icon + AdvisorSidebar
+                的"新会话"按钮占据,叠在一起,所以挪到 panel 左上 */}
             <button
               type="button"
               onClick={() => setIsAuroraOpen(false)}
-              className="absolute right-3 top-3 z-10 rounded-full p-1.5 transition-colors duration-150 hover:bg-[var(--shelf)]"
+              className="absolute left-3 top-3 z-10 rounded-full p-1.5 transition-colors duration-150 hover:bg-[var(--shelf)]"
               style={{ color: 'var(--ink-soft)' }}
               title="关闭 (Esc)"
               aria-label="关闭 Aurora"
