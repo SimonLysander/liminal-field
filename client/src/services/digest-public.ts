@@ -38,6 +38,9 @@ export interface PublicReportData {
   report: {
     id: string;
     headline: string;
+    /** 本期目录式概要("本期 N 篇: 主题1 / 主题2 / ..."), 紧贴标题下方 italic 渲染。
+     *  老报告(deck 引入前)无此字段, null 时不渲染。 */
+    deck: string | null;
     /** 完整 markdown 正文 */
     markdown: string;
     findings: PublicFinding[];

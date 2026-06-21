@@ -15,6 +15,8 @@ export interface CreateDigestReportInput {
   topicId: string;
   taskId: string;
   headline: string;
+  /** 本期 deck(目录式概要),可选 */
+  deck?: string;
   markdown: string;
   findings: Finding[];
   publishedAt: Date;

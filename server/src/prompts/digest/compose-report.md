@@ -132,11 +132,15 @@ Shrinkage Bias / E2M1 / FP4 / policy-adherent / ledger / MoE 路由 / KV-cache /
 {{findings_text}}
 
 # Output
-Return JSON: { "headline": string, "markdown": string }
+Return JSON: { "headline": string, "deck": string, "markdown": string }
 
 - **headline**: 本期标题, ≤ 25 字, **不用主张词**:
   - ✘ "工程落地的效率突围" / "AI 应用的破局之道"
+  - ✓ "本期 4 篇 AI 工程论文" / "2026-06-21 简报"
+  - 直接陈述,不归纳主题,不抒情,不评价
+- **deck**: 本期目录式概要, ≤ 100 字, 紧贴标题下方渲染, 告诉读者"本期有哪几篇/讲什么":
   - ✓ "本期 4 篇: DSL Copilot 迁移 / VLM 视觉锚定 / RAG 检索器适配 / 图像修复轻量化"
-  - ✓ "2026-06-21 简报: 4 篇 AI 工程论文"
-  - 直接陈述本期内容, 不归纳主题, 不抒情, 不评价
+  - ✓ "4 篇论文:DiffusionGemma 训练透明性 / S-Agent 空间推理 / RAG branching rollout / Moebius 端侧图像修复"
+  - ✘ 不要写"本周聚焦于..."、"以上几篇共同指向..." 这种**主张式**导语
+  - 就是**目录索引**, 不抒情、不主题串联
 - **markdown**: 报告正文, 按 finding 顺序逐段陈述, 不分主题章节

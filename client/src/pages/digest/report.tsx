@@ -453,10 +453,18 @@ export default function DigestReportPage() {
               {report.headline}
             </h1>
 
-            {/* 这里原来渲染 topic.description 当 deck — 但 topic.description 是
-                "栏目宗旨"(整个栏目讲什么),不该在单期报告页透传(那是栏目层身份)。
-                本期 deck 应该是"本期讲什么"的概要,目前由正文第一段自然承担,
-                不在报头单独渲染。栏目宗旨只在 /digest 列表 + /digest/:topicId 出现。 */}
+            {/* Deck(本期目录式概要): 紧贴 headline 下方的 italic 大字,
+                告诉读者"本期有哪几篇/讲什么"——由 compose-report 节点产出 report.deck,
+                跟栏目宗旨(整个栏目讲什么)不同,严格"本期独有"信息,不透传上层。
+                老报告(deck 引入前)无此字段,null 时不渲染。 */}
+            {report.deck && (
+              <p
+                className="mb-7 text-lg italic leading-[1.55] max-[520px]:text-base"
+                style={{ color: 'var(--ink-soft)' }}
+              >
+                {report.deck}
+              </p>
+            )}
 
             {/* Byline(署名): italic + tracking,报纸经典署名样式 */}
             <p
