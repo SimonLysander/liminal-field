@@ -1,0 +1,6 @@
+# 简易 image: 直接打包本机已 build 好的 dist/(跳过 npm install + vite build)
+# 用法: 本机先 pnpm build,然后 docker buildx build --platform linux/amd64 -f Dockerfile.nginx-only ...
+FROM nginx:alpine
+COPY dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80

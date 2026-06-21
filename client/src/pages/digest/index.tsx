@@ -68,22 +68,20 @@ export default function DigestPublicPage() {
             由 Aurora 编辑 &nbsp;·&nbsp; 自动更新
           </p>
 
-          {/* 巨型刊名 */}
+          {/* 刊头 — 报刊 masthead,5xl/6xl 权威但不压栏目 */}
           <h1
-            className="mb-4 text-7xl font-bold leading-[0.95] tracking-tight max-[520px]:text-5xl"
+            className="mb-3 text-5xl font-bold leading-[0.95] tracking-tight md:text-6xl max-[520px]:text-4xl"
             style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
           >
             DIGEST · 简报
           </h1>
 
-          {/* 副标题 tagline — italic serif */}
+          {/* 刊物级宗旨 — italic serif;不再列举栏目名(下面 TopicRow 会重复) */}
           <p
-            className="mb-6 text-xl italic leading-snug"
+            className="mb-6 text-base italic leading-snug md:text-lg"
             style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
           >
-            {topics.length > 0
-              ? topics.map((t) => t.name).join(' · ')
-              : '智能采集 · AI 简报'}
+            由 Aurora 自动采集整理的多专栏每日简报
           </p>
 
           {/* 报头下方 3px 粗黑横线 */}
