@@ -166,17 +166,12 @@ export default function DigestTopicPage() {
             </p>
           )}
 
+          {/* 栏目元信息(节奏/源数/期数) — 不再写 Aurora,刊头已说过,透传是噪音 */}
           <p
             className="mb-6 text-[11px] font-bold uppercase tracking-[0.22em]"
             style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
           >
-            Edited by Aurora
-            {data.cadence && (
-              <>
-                <span className="mx-3">·</span>
-                {data.cadence}
-              </>
-            )}
+            {data.cadence ?? '手动出刊'}
             {typeof data.sourceCount === 'number' && data.sourceCount > 0 && (
               <>
                 <span className="mx-3">·</span>
@@ -253,9 +248,9 @@ export default function DigestTopicPage() {
                 Colophon · 关于本栏目
               </p>
 
-              {/* sidebar 元数据列表 */}
+              {/* sidebar 只列本栏独有元信息(不写"编辑 Aurora",那是刊物层身份);
+                  也不再加底部说明句子(已经在刊物层 footer 说过) */}
               <dl className="space-y-4">
-                <SidebarEntry label="编辑" value="Aurora" />
                 {data.cadence && (
                   <SidebarEntry label="出刊节奏" value={data.cadence} />
                 )}
@@ -273,20 +268,13 @@ export default function DigestTopicPage() {
                   />
                 )}
               </dl>
-
-              <div className="mt-8" style={{ borderTop: '1px solid var(--separator)' }} />
-
-              <p
-                className="mt-6 text-xs italic leading-relaxed"
-                style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
-              >
-                由 Aurora 编辑出版,每期内容由订阅信息源自动采集 · AI 编排成文。
-              </p>
             </div>
           </aside>
         </motion.div>
 
-        {/* ── 页尾 ── */}
+        {/* 页尾:仅留 3px 粗黑横线收尾,不再透传"由 Aurora 自动采集整理"
+            (那句是刊物层身份,刊物层 footer "PRINTED BY AURORA · SUBSCRIBED BY YOU"
+            已说过;栏目层每页都重复就是噪音) */}
         <motion.footer
           className="mt-20"
           initial={{ opacity: 0 }}
@@ -294,12 +282,6 @@ export default function DigestTopicPage() {
           transition={{ duration: 0.3, delay: 0.25, ease: appleEase }}
         >
           <div style={{ borderTop: '3px solid var(--ink)' }} />
-          <p
-            className="mt-5 text-center text-[10px] font-bold uppercase tracking-[0.28em]"
-            style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
-          >
-            由 Aurora 自动采集整理 &nbsp;·&nbsp; 欢迎订阅
-          </p>
         </motion.footer>
 
       </div>

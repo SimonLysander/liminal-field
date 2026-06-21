@@ -212,18 +212,13 @@ function TopicRow({ topic, index }: { topic: PublicTopicData; index: number }) {
               </p>
             )}
 
-            {/* byline 报纸署名行 — flex 推到底,跟期数对齐底部 */}
+            {/* 栏目元信息行 — 节奏/源数/期数都是本栏独有,不再写 Aurora
+                (刊头已经说"由 AURORA 编辑",这层透传过来就是噪音) */}
             <p
               className="mt-auto pt-4 text-[10px] font-bold uppercase tracking-[0.22em]"
               style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
             >
-              Edited by Aurora
-              {topic.cadence && (
-                <>
-                  <span className="mx-2">·</span>
-                  {topic.cadence}
-                </>
-              )}
+              {topic.cadence ?? '手动出刊'}
               {typeof topic.sourceCount === 'number' && topic.sourceCount > 0 && (
                 <>
                   <span className="mx-2">·</span>
