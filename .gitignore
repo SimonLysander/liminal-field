@@ -108,3 +108,4 @@ server/liminal-field-kb-archives/
 # 留 git 里以便环境重置后能直接跑;其他临时脚本继续忽略
 server/scripts/*
 !server/scripts/smoke-fetchers.ts
+!server/scripts/prod-clean-and-reseed.sh
