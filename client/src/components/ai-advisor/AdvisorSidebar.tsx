@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Descendant } from 'platejs';
-import { ArrowUp, ChevronDown, Pencil, Plus, Square, Trash2 } from 'lucide-react';
+import { ArrowUp, ChevronDown, Pencil, Plus, Square, Trash2, X } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -90,6 +90,11 @@ export interface AdvisorSidebarProps {
   renderToolCard?: (part: unknown, chat: AdvisorChat) => ReactNode | null;
   /** 富文本编辑场景的可选适配(画廊等不传) */
   editorBridge?: AdvisorEditorBridge;
+  /**
+   * 可选关闭回调。传了的话, toolbar 末尾会渲染一个 X 按钮供用户关闭右栏。
+   * 适配场景: digest 公开报告页(右栏可 toggle), 编辑页面想加关闭也能用同样钩子。
+   */
+  onClose?: () => void;
 }
 
 export function AdvisorSidebar({
@@ -101,6 +106,7 @@ export function AdvisorSidebar({
   greeting: greetingProp,
   renderToolCard,
   editorBridge,
+  onClose,
 }: AdvisorSidebarProps) {
   // 编辑器适配:解构成与原 body 一致的局部名,使下方逻辑无需改动
   const {
@@ -473,6 +479,18 @@ export function AdvisorSidebar({
         >
           <Plus size={18} strokeWidth={1.5} />
         </button>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1.5 outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none"
+            style={{ color: 'var(--ink-ghost)' }}
+            aria-label="关闭"
+            title="关闭 (Esc)"
+          >
+            <X size={18} strokeWidth={1.5} />
+          </button>
+        )}
       </div>
       {sessionListError && (
         <div className="shrink-0 px-3 pb-2 text-xs" style={{ color: 'var(--mark-red)' }}>

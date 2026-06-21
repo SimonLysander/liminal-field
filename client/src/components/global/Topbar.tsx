@@ -1,3 +1,4 @@
+import { useLocation } from 'react-router-dom';
 import { useTheme } from '@/hooks/use-theme';
 import { Sun, Moon } from 'lucide-react';
 
@@ -5,9 +6,17 @@ import { Sun, Moon } from 'lucide-react';
  * Topbar — 右上角主题切换图标按钮(无胶囊)
  *
  * 无胶囊设计:不要玻璃底/描边/阴影,只留图标 + hover 淡底,跟全站图标按钮一致。
+ *
+ * 路径例外: digest 公开报告页(/digest/:topicId/:reportId)由 report.tsx
+ * 在中栏 toolbar 自渲染主题按钮, 避免重叠右栏 AdvisorSidebar(同编辑页模式)。
  */
 export default function Topbar() {
   const { theme, setTheme } = useTheme();
+  const { pathname } = useLocation();
+
+  if (/^\/digest\/[^/]+\/[^/]+/.test(pathname)) {
+    return null;
+  }
 
   return (
     <header
