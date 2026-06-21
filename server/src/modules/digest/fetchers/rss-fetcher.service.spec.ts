@@ -1,8 +1,12 @@
 /**
- * RssFetcher 单元测试
+ * RssFetcher 单元测试（Fetcher 插件架构 v2）
+ *
+ * v2 关键变化：
+ * - fetch 第 1 参改为 InfoSource 实例（用 makeSource helper 构造测试 fixture）
+ * - 删除 search? / readFull? 测试（接口移除）
+ * - 新增 keywords 本地过滤测试（OR 语义、不区分大小写）
  *
  * 用 jest.mock 替掉 rss-parser，完全不发真实 HTTP 请求。
- * fixture 覆盖：正常路径、limit、since、url 非法、parser 异常、search、readFull。
  */
 import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -17,6 +21,26 @@ jest.mock('rss-parser', () => {
 });
 
 import { RssFetcher } from './rss-fetcher.service';
+import { FetcherKind } from './fetcher.interface';
+import {
+  InfoSource,
+  InfoSourceType,
+  InfoSourceCategory,
+} from '../info-source.entity';
+
+/** 构造测试用 InfoSource 实例，只填测试关心的字段 */
+function makeSource(url = 'https://example.com/rss'): InfoSource {
+  return {
+    _id: 'src_test',
+    type: InfoSourceType.rss,
+    fetcherKind: FetcherKind.rss,
+    name: 'Test Feed',
+    config: { url },
+    enabled: true,
+    category: InfoSourceCategory.engineering,
+    createdAt: new Date(),
+  };
+}
 
 /** 标准 fixture items */
 const FIXTURE_ITEMS = [
@@ -51,7 +75,7 @@ const FIXTURE_ITEMS = [
   },
 ];
 
-describe('RssFetcher', () => {
+describe('RssFetcher (v2)', () => {
   let fetcher: RssFetcher;
 
   beforeEach(async () => {
@@ -64,12 +88,17 @@ describe('RssFetcher', () => {
     fetcher = module.get(RssFetcher);
   });
 
+  it('kind = rss, supportsServerQuery = false (RSS 协议无 query)', () => {
+    expect(fetcher.kind).toBe(FetcherKind.rss);
+    expect(fetcher.supportsServerQuery).toBe(false);
+  });
+
   // Case 1: fetch 正常路径 — 验证字段映射
   describe('fetch - 正常路径', () => {
     it('应正确将 rss-parser 返回结果映射为 FetchedItem[]', async () => {
       mockParseURL.mockResolvedValueOnce({ items: FIXTURE_ITEMS });
 
-      const result = await fetcher.fetch({ url: 'https://example.com/rss' });
+      const result = await fetcher.fetch(makeSource());
 
       expect(result).toHaveLength(3);
 
@@ -88,8 +117,7 @@ describe('RssFetcher', () => {
       mockParseURL.mockResolvedValueOnce({
         items: [...FIXTURE_ITEMS].reverse(),
       });
-      const result = await fetcher.fetch({ url: 'https://example.com/rss' });
-      // 最新的应排第一
+      const result = await fetcher.fetch(makeSource());
       expect(result[0].itemGuid).toBe('guid-1');
       expect(result[2].itemGuid).toBe('guid-3');
     });
@@ -97,7 +125,7 @@ describe('RssFetcher', () => {
     it('itemGuid 退化链：无 guid 用 link', async () => {
       const itemWithoutGuid = { ...FIXTURE_ITEMS[0], guid: undefined };
       mockParseURL.mockResolvedValueOnce({ items: [itemWithoutGuid] });
-      const result = await fetcher.fetch({ url: 'https://example.com/rss' });
+      const result = await fetcher.fetch(makeSource());
       expect(result[0].itemGuid).toBe('https://example.com/post/1');
     });
 
@@ -108,7 +136,7 @@ describe('RssFetcher', () => {
         link: undefined,
       };
       mockParseURL.mockResolvedValueOnce({ items: [itemNoGuidNoLink] });
-      const result = await fetcher.fetch({ url: 'https://example.com/rss' });
+      const result = await fetcher.fetch(makeSource());
       expect(result[0].itemGuid).toBe('https://example.com/rss#0');
     });
   });
@@ -116,39 +144,29 @@ describe('RssFetcher', () => {
   // Case 2: fetch options.limit 截断
   it('应按 options.limit 截断返回条数', async () => {
     mockParseURL.mockResolvedValueOnce({ items: FIXTURE_ITEMS });
-    const result = await fetcher.fetch(
-      { url: 'https://example.com/rss' },
-      { limit: 2 },
-    );
+    const result = await fetcher.fetch(makeSource(), { limit: 2 });
     expect(result).toHaveLength(2);
   });
 
   // Case 3: fetch options.since 过滤
   it('应按 options.since 过滤旧条目', async () => {
     mockParseURL.mockResolvedValueOnce({ items: FIXTURE_ITEMS });
-    // since = 2024-02-01，应只剩 guid-1（2024-03-01）和 guid-2（2024-02-15）
     const since = new Date('2024-02-01T00:00:00.000Z');
-    const result = await fetcher.fetch(
-      { url: 'https://example.com/rss' },
-      { since },
-    );
+    const result = await fetcher.fetch(makeSource(), { since });
     expect(result).toHaveLength(2);
     expect(result.map((r) => r.itemGuid)).toEqual(['guid-1', 'guid-2']);
   });
 
   // Case 4: url 非法抛 BadRequestException
   it('url 非法时应 throw BadRequestException', async () => {
-    await expect(fetcher.fetch({ url: 'not-a-url' })).rejects.toBeInstanceOf(
+    await expect(fetcher.fetch(makeSource('not-a-url'))).rejects.toBeInstanceOf(
       BadRequestException,
     );
-    await expect(fetcher.fetch({ url: '' })).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
-    await expect(fetcher.fetch({ url: undefined })).rejects.toBeInstanceOf(
+    await expect(fetcher.fetch(makeSource(''))).rejects.toBeInstanceOf(
       BadRequestException,
     );
     await expect(
-      fetcher.fetch({ url: 'ftp://example.com/rss' }),
+      fetcher.fetch(makeSource('ftp://example.com/rss')),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -157,76 +175,64 @@ describe('RssFetcher', () => {
     const networkErr = new Error('ECONNREFUSED');
     mockParseURL.mockRejectedValueOnce(networkErr);
 
-    // spy on logger.error
-
     const loggerError = jest
-      .spyOn((fetcher as any).logger, 'error')
-      .mockImplementation(() => {});
+      .spyOn(
+        (fetcher as unknown as { logger: { error: jest.Mock } }).logger,
+        'error',
+      )
+      .mockImplementation(() => undefined);
 
-    await expect(
-      fetcher.fetch({ url: 'https://example.com/rss' }),
-    ).rejects.toThrow('rss: fetch failed');
+    await expect(fetcher.fetch(makeSource())).rejects.toThrow(
+      'rss: fetch failed',
+    );
     expect(loggerError).toHaveBeenCalled();
   });
 
-  // Case 6: search 命中过滤
-  describe('search', () => {
-    it('应过滤出 title 或 snippet 含 query 的条目', async () => {
+  // Case 6: keywords 本地过滤（v2 新能力）
+  describe('keywords 本地过滤', () => {
+    it('应过滤出 title 或 snippet 含任一 keyword 的条目', async () => {
       mockParseURL.mockResolvedValueOnce({ items: FIXTURE_ITEMS });
-      const result = await fetcher.search(
-        { url: 'https://example.com/rss' },
-        'TypeScript',
-      );
+      const result = await fetcher.fetch(makeSource(), {
+        keywords: ['TypeScript'],
+      });
       expect(result).toHaveLength(1);
       expect(result[0].itemGuid).toBe('guid-2');
     });
 
-    it('query 不区分大小写', async () => {
+    it('keywords 不区分大小写', async () => {
       mockParseURL.mockResolvedValueOnce({ items: FIXTURE_ITEMS });
-      const result = await fetcher.search(
-        { url: 'https://example.com/rss' },
-        'nestjs',
-      );
+      const result = await fetcher.fetch(makeSource(), {
+        keywords: ['nestjs'],
+      });
       expect(result).toHaveLength(1);
       expect(result[0].itemGuid).toBe('guid-1');
     });
 
+    it('多 keyword 走 OR 语义：命中任一即返回', async () => {
+      mockParseURL.mockResolvedValueOnce({ items: FIXTURE_ITEMS });
+      const result = await fetcher.fetch(makeSource(), {
+        keywords: ['NestJS', 'Performance'],
+      });
+      // guid-1 (NestJS) + guid-3 (Performance Guide)
+      expect(result).toHaveLength(2);
+      expect(result.map((r) => r.itemGuid).sort()).toEqual([
+        'guid-1',
+        'guid-3',
+      ]);
+    });
+
     it('无匹配时返回空数组', async () => {
       mockParseURL.mockResolvedValueOnce({ items: FIXTURE_ITEMS });
-      const result = await fetcher.search(
-        { url: 'https://example.com/rss' },
-        'xxxxxxxxxxxxxxx',
-      );
+      const result = await fetcher.fetch(makeSource(), {
+        keywords: ['xxxxxxxxxxxxxxx'],
+      });
       expect(result).toHaveLength(0);
     });
-  });
 
-  // Case 7: readFull 找不到 itemGuid 抛 Error
-  describe('readFull', () => {
-    it('找到 itemGuid 且有 content:encoded 时应返回全文', async () => {
+    it('空 keywords 数组等价于不过滤', async () => {
       mockParseURL.mockResolvedValueOnce({ items: FIXTURE_ITEMS });
-      const result = await fetcher.readFull(
-        { url: 'https://example.com/rss' },
-        'guid-1',
-      );
-      expect(result).toBe('<article>Full content of NestJS 10 post</article>');
-    });
-
-    it('找到 itemGuid 但无 content:encoded 时应 throw Error', async () => {
-      mockParseURL.mockResolvedValueOnce({ items: FIXTURE_ITEMS });
-      await expect(
-        fetcher.readFull({ url: 'https://example.com/rss' }, 'guid-2'),
-      ).rejects.toThrow('rss: full content not available');
-    });
-
-    it('找不到 itemGuid 时应 throw Error', async () => {
-      mockParseURL.mockResolvedValueOnce({ items: FIXTURE_ITEMS });
-      await expect(
-        fetcher.readFull(
-          { url: 'https://example.com/rss' },
-          'non-existent-guid',
-        ),
-      ).rejects.toThrow('rss: full content not available');
+      const result = await fetcher.fetch(makeSource(), { keywords: [] });
+      expect(result).toHaveLength(3);
     });
   });
 });

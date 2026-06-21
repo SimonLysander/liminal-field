@@ -39,6 +39,7 @@ import type { SmartTopicConfig } from '../../smart-topic-config.entity';
 import type { ContentItem } from '../../../content/content-item.entity';
 import type { InfoSource } from '../../info-source.entity';
 import { InfoSourceType, InfoSourceCategory } from '../../info-source.entity';
+import { FetcherKind } from '../../fetchers/fetcher.interface';
 
 function makePromptManager(): PromptManagerService {
   return {
@@ -114,6 +115,7 @@ function makeInfoSource(id: string, name: string): InfoSource {
   return {
     _id: id,
     type: InfoSourceType.rss,
+    fetcherKind: FetcherKind.rss,
     name,
     config: { url: `https://example.com/${id}.rss` },
     enabled: true,

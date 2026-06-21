@@ -21,10 +21,19 @@ import {
   FetchStatus,
   InfoSourceCategory,
 } from '../info-source.entity';
+import { FetcherKind } from '../fetchers/fetcher.interface';
 
 export class CreateInfoSourceDto {
   @IsEnum(InfoSourceType)
   type!: InfoSourceType;
+
+  /**
+   * Fetcher 插件 v2 抓取方式（可选）。不传默认 'rss'，向后兼容旧客户端。
+   * 老 UI 只填 type=rss 时，service 兜底 fetcherKind=FetcherKind.rss。
+   */
+  @IsEnum(FetcherKind)
+  @IsOptional()
+  fetcherKind?: FetcherKind;
 
   @IsString()
   @MinLength(1)
@@ -53,6 +62,11 @@ export class UpdateInfoSourceDto {
   @IsEnum(InfoSourceType)
   @IsOptional()
   type?: InfoSourceType;
+
+  /** Fetcher 插件 v2 抓取方式（可选）。 */
+  @IsEnum(FetcherKind)
+  @IsOptional()
+  fetcherKind?: FetcherKind;
 
   @IsString()
   @MinLength(1)
@@ -95,6 +109,8 @@ export class ListInfoSourcesQueryDto {
 export interface InfoSourceDto {
   id: string;
   type: InfoSourceType;
+  /** Fetcher 插件 v2 抓取方式（前端选具体抓取方式用）。 */
+  fetcherKind: FetcherKind;
   name: string;
   config: Record<string, unknown>;
   enabled: boolean;

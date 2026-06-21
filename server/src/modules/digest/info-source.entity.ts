@@ -16,6 +16,7 @@
  * onModuleInit Step 1b 负责把数据库里残留的旧 enum 值 map 到新值。
  */
 import { modelOptions, prop, Severity } from '@typegoose/typegoose';
+import { FetcherKind } from './fetchers/fetcher.interface';
 
 export enum InfoSourceType {
   rss = 'rss',
@@ -51,6 +52,24 @@ export class InfoSource {
 
   @prop({ enum: InfoSourceType, required: true, index: true })
   type!: InfoSourceType;
+
+  /**
+   * Fetcher 路由 key（Fetcher 插件架构 v2，2026-06-21 引入）。
+   *
+   * type 是早期 4 大类 discriminator（rss/webpage/api/mailbox），粒度太粗 —
+   * 实测 23 个源里 13 个非 RSS（arxiv API / HN Firebase / 掘金 POST / 知乎日报 /
+   * GitHub Trending HTML / sitemap scrape），单靠 type 没法路由到具体抓取实现。
+   *
+   * fetcherKind 就是 FetcherRegistry 真正用的 key，对应 11 种 Fetcher 实现。
+   * 老数据由 onModuleInit Step 1c 兜底：type='rss' → fetcherKind='rss'。
+   */
+  @prop({
+    enum: FetcherKind,
+    required: true,
+    default: FetcherKind.rss,
+    index: true,
+  })
+  fetcherKind!: FetcherKind;
 
   @prop({ required: true, trim: true })
   name!: string;

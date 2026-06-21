@@ -1,21 +1,31 @@
 /**
- * RssFetcher — RSS 信息源的具体拉取实现。
+ * RssFetcher — 通用 RSS/Atom 信息源拉取实现（FetcherKind.rss）。
  *
- * 设计要点：
- * - 依赖 rss-parser 库，不手写 XML 解析；parseURL 走库内置 http(s) 请求。
- * - itemGuid 退化链：item.guid → item.link → `${url}#${index}`，确保不空。
- * - snippet 退化链：contentSnippet → stripHtml(content) → stripHtml(description) → ''，截 800 字符。
- * - options.since 过滤在排序后、limit 截断前执行（先按发布时间倒序）。
- * - readFull 从 rss-parser 扩展字段 'content:encoded' 读全文，不发第二次 HTTP。
+ * 适用范围：23 seed 源里 9 个走原生 RSS（量子位/Latent/Simon Willison/dev.to/Lobsters/
+ *   OpenAI/InfoQ/少数派/Pragmatic Engineer/Import AI/Every…）。
+ *
+ * v2 关键变化（Fetcher 插件架构重构）：
+ * - kind 字段（取代 type），新增 supportsServerQuery=false（RSS 协议无 query 参数）
+ * - fetch(source, opts) 新签名：第 1 参直接接 InfoSource 实例（让 fetcher 拿到 source.name 写日志）
+ * - 内置 keywords 本地过滤：title + snippet 任一含 keywords 中任一关键词即命中（OR 语义、不区分大小写）
+ *   对调用方透明 —— browse 工具不用感知 RSS 没有原生 query
+ * - 删 search? / readFull?（外部无调用，能力被 keywords + web_fetch 替代）
+ *
+ * 实现要点：
+ * - 依赖 rss-parser 库（不手写 XML）；parseURL 走库内置 http(s)
+ * - itemGuid 退化链：item.guid → item.link → `${url}#${index}`，保证非空
+ * - snippet 退化链：contentSnippet → stripHtml(content:encoded) → stripHtml(description) → ''，截 800 字符
+ * - options.since 过滤在排序后、limit 截断前；keywords 过滤在 since 之后
  */
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import Parser from 'rss-parser';
 
-import { InfoSourceType } from '../info-source.entity';
-import type {
-  SourceFetcher,
-  FetchedItem,
-  FetchOptions,
+import type { InfoSource } from '../info-source.entity';
+import {
+  FetcherKind,
+  type SourceFetcher,
+  type FetchedItem,
+  type FetchOptions,
 } from './fetcher.interface';
 
 // rss-parser 自定义字段：让 content:encoded 出现在类型里
@@ -57,28 +67,34 @@ function isValidHttpUrl(url: unknown): url is string {
 
 @Injectable()
 export class RssFetcher implements SourceFetcher {
-  readonly type = InfoSourceType.rss;
+  readonly kind = FetcherKind.rss;
+  // RSS 协议无原生 query 参数，keywords 只能本地过滤最近窗口（agent prompt 会提示这一点）
+  readonly supportsServerQuery = false;
+
   private readonly logger = new Logger(RssFetcher.name);
 
   /**
    * 拉 RSS 源最新条目并转换为 FetchedItem[]。
-   * 流程：校验 url → parseURL → 转换 → 排序 → since 过滤 → limit 截断
+   * 流程：校验 url → parseURL → 排序 → since 过滤 → keywords 过滤 → limit 截断
    */
   async fetch(
-    config: Record<string, unknown>,
+    source: InfoSource,
     options?: FetchOptions,
   ): Promise<FetchedItem[]> {
-    const { url } = config as { url?: string };
+    const { url } = source.config as { url?: string };
 
     if (!isValidHttpUrl(url)) {
-      throw new BadRequestException('rss: url invalid');
+      throw new BadRequestException(
+        `rss: source 「${source.name}」 的 config.url 不合法 (${String(url)})`,
+      );
     }
 
     const limit = options?.limit ?? DEFAULT_LIMIT;
     const since = options?.since;
+    const keywords = options?.keywords;
 
     this.logger.debug(
-      `[RssFetcher.fetch] 开始拉取 url=${url} limit=${limit} since=${since?.toISOString() ?? 'none'}`,
+      `[fetch] 「${source.name}」 url=${url} limit=${limit} since=${since?.toISOString() ?? 'none'} keywords=${keywords?.join('|') ?? 'none'}`,
     );
     const t0 = Date.now();
 
@@ -97,12 +113,12 @@ export class RssFetcher implements SourceFetcher {
       const feed = await parser.parseURL(url);
       rawItems = feed.items;
       this.logger.debug(
-        `[RssFetcher.fetch] 拉取完成 items=${rawItems.length} duration=${Date.now() - t0}ms`,
+        `[fetch] 「${source.name}」 拉取完成 items=${rawItems.length} duration=${Date.now() - t0}ms`,
       );
     } catch (err) {
       const e = err instanceof Error ? err : new Error(String(err));
       this.logger.error(
-        `[RssFetcher.fetch] parseURL 失败 url=${url} err=${e.message}`,
+        `[fetch] 「${source.name}」 parseURL 失败 url=${url} err=${e.message}`,
         e.stack,
       );
       throw new Error('rss: fetch failed');
@@ -111,9 +127,7 @@ export class RssFetcher implements SourceFetcher {
     // 转换为统一 FetchedItem
     const items: FetchedItem[] = rawItems.map((item, index) => {
       const itemGuid = item.guid ?? item.link ?? `${url}#${index}`;
-
       const publishedAt = parseDate(item.isoDate ?? item.pubDate);
-
       const snippet = buildSnippet(item);
 
       return {
@@ -134,82 +148,21 @@ export class RssFetcher implements SourceFetcher {
     });
 
     // since 过滤：只保留 publishedAt > since 的条目
-    const filtered = since
+    const afterSince = since
       ? items.filter((it) => it.publishedAt && it.publishedAt > since)
       : items;
 
-    const result = filtered.slice(0, limit);
+    // keywords 过滤：title + snippet 任一含任一 keyword 即命中（不区分大小写、OR 语义）
+    const afterKeywords =
+      keywords && keywords.length > 0
+        ? afterSince.filter((it) => matchesAnyKeyword(it, keywords))
+        : afterSince;
+
+    const result = afterKeywords.slice(0, limit);
     this.logger.log(
-      `[RssFetcher.fetch] 完成 url=${url} total=${rawItems.length} after_filter=${filtered.length} returned=${result.length}`,
+      `[fetch] 「${source.name}」 完成 total=${rawItems.length} afterSince=${afterSince.length} afterKeywords=${afterKeywords.length} returned=${result.length}`,
     );
     return result;
-  }
-
-  /**
-   * 在 fetch 结果里做 full-text 过滤（title + snippet 含 query 子串）。
-   */
-  async search(
-    config: Record<string, unknown>,
-    query: string,
-    options?: FetchOptions,
-  ): Promise<FetchedItem[]> {
-    this.logger.debug(`[RssFetcher.search] query="${query}"`);
-    const items = await this.fetch(config, options);
-    const q = query.toLowerCase();
-    return items.filter(
-      (it) =>
-        it.title.toLowerCase().includes(q) ||
-        it.snippet.toLowerCase().includes(q),
-    );
-  }
-
-  /**
-   * 返回指定 itemGuid 的全文（content:encoded）。
-   * 因为 rss-parser 不支持单条请求，需重新 fetch 整个 feed 再找。
-   * 如果 content:encoded 不存在则抛错。
-   */
-  async readFull(
-    config: Record<string, unknown>,
-    itemGuid: string,
-  ): Promise<string> {
-    this.logger.debug(`[RssFetcher.readFull] itemGuid=${itemGuid}`);
-
-    const { url } = config as { url?: string };
-    if (!isValidHttpUrl(url)) {
-      throw new BadRequestException('rss: url invalid');
-    }
-
-    const parser = new Parser<Record<string, unknown>, CustomItem>({
-      customFields: {
-        item: [['content:encoded', 'content:encoded']],
-      },
-    });
-
-    let rawItems: RssItem[];
-    try {
-      const feed = await parser.parseURL(url);
-      rawItems = feed.items;
-    } catch (err) {
-      const e = err instanceof Error ? err : new Error(String(err));
-      this.logger.error(
-        `[RssFetcher.readFull] parseURL 失败 url=${url}`,
-        e.stack,
-      );
-      throw new Error('rss: fetch failed');
-    }
-
-    // 找到 guid 或 link 匹配的条目
-    const found = rawItems.find(
-      (item, index) =>
-        (item.guid ?? item.link ?? `${url}#${index}`) === itemGuid,
-    );
-
-    const fullContent = found?.['content:encoded'];
-    if (!fullContent) {
-      throw new Error('rss: full content not available');
-    }
-
-    return fullContent;
   }
 }
 
@@ -229,4 +182,10 @@ function buildSnippet(item: RssItem): string {
     stripHtml(item.summary) ??
     '';
   return raw.slice(0, SNIPPET_MAX_LENGTH);
+}
+
+/** 不区分大小写、OR 语义：title 或 snippet 含 keywords 中任一即返回 true */
+function matchesAnyKeyword(item: FetchedItem, keywords: string[]): boolean {
+  const haystack = `${item.title} ${item.snippet}`.toLowerCase();
+  return keywords.some((k) => haystack.includes(k.toLowerCase()));
 }

@@ -13,10 +13,13 @@ import {
   InfoSourceType,
   InfoSourceCategory,
 } from './info-source.entity';
+import { FetcherKind } from './fetchers/fetcher.interface';
 
 export interface SaveInfoSourceInput {
   _id: string;
   type: InfoSourceType;
+  /** Fetcher 插件 v2 抓取方式（必填）。 */
+  fetcherKind: FetcherKind;
   name: string;
   config: Record<string, unknown>;
   enabled: boolean;
@@ -28,6 +31,8 @@ export interface SaveInfoSourceInput {
 
 export interface UpdateInfoSourceInput {
   type?: InfoSourceType;
+  /** Fetcher 插件 v2 抓取方式更新（可选）。 */
+  fetcherKind?: FetcherKind;
   name?: string;
   config?: Record<string, unknown>;
   enabled?: boolean;

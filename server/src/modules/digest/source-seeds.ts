@@ -9,12 +9,24 @@
  * 不收录纯娱乐/纯社交/反爬严重的站点。
  */
 import { InfoSourceCategory } from './info-source.entity';
+import { FetcherKind } from './fetchers/fetcher.interface';
 
 export interface SeedSource {
   name: string;
   category: InfoSourceCategory;
-  rssUrl: string; // 可含 {rsshub} 占位符
+  rssUrl: string; // 可含 {rsshub} 占位符（PR2 落地 arxiv/hf/HN/掘金 等具体 fetcher 后这些字段会改用对应 config）
   description: string;
+  /**
+   * Fetcher 插件 v2 抓取方式（PR2 落地具体 Fetcher 后使用）。
+   * PR1 阶段所有 seed 都默认走 rss，PR2 完成后这里改为 'arxiv'/'hf_papers'/'hn_firebase' 等。
+   */
+  fetcherKind?: FetcherKind;
+  /**
+   * 额外 config 字段（合并进 InfoSource.config）。
+   * 例如：arxiv 用 `{ category: 'cs.AI' }`、github_trending 用 `{ language: 'typescript' }`。
+   * url 字段由 rssUrl 自动生成，不要在这里重复。
+   */
+  config?: Record<string, unknown>;
   /**
    * 默认 true。curl 验证 URL 不通且无原生 RSS 替代时设 false，
    * 保留条目以备将来重新启用，不影响正常采集。

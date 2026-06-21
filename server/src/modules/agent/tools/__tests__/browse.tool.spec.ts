@@ -15,7 +15,10 @@ import type { FetcherRegistry } from '../../../digest/fetchers/fetcher-registry.
 import type { ProcessedFeedItemRepository } from '../../../digest/processed-feed-item.repository';
 import type { DigestTaskContext } from '../digest-task-context';
 import type { InfoSource } from '../../../digest/info-source.entity';
-import type { FetchedItem } from '../../../digest/fetchers/fetcher.interface';
+import {
+  type FetchedItem,
+  FetcherKind,
+} from '../../../digest/fetchers/fetcher.interface';
 import {
   InfoSourceType,
   InfoSourceCategory,
@@ -41,6 +44,7 @@ function makeSource(enabled = true): InfoSource {
   return {
     _id: 'src_001',
     type: InfoSourceType.rss,
+    fetcherKind: FetcherKind.rss,
     name: 'HN',
     config: { url: 'https://hn.algolia.com/feed' },
     enabled,
@@ -56,10 +60,10 @@ function makeInfoSourceRepo(source: InfoSource | null): InfoSourceRepository {
 }
 
 function makeFetcherRegistry(items: FetchedItem[]): FetcherRegistry {
+  // v2: browse.tool 改成调 registry.fetch(source, opts) 直接走单源入口
+  // mock 顶层 fetch 方法即可，不再需要 get(...).fetch 链
   return {
-    get: jest.fn().mockReturnValue({
-      fetch: jest.fn().mockResolvedValue(items),
-    }),
+    fetch: jest.fn().mockResolvedValue(items),
   } as unknown as FetcherRegistry;
 }
 

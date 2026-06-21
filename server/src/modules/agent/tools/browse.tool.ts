@@ -83,11 +83,11 @@ export function createBrowseTool(deps: BrowseDeps) {
         }
 
         const since = new Date(Date.now() - SINCE_DAYS * 24 * 60 * 60 * 1000);
-        const fetcher = fetcherRegistry.get(infoSource.type);
 
-        let rawItems: Awaited<ReturnType<typeof fetcher.fetch>>;
+        // Fetcher v2: 路由 key 改为 source.fetcherKind，fetch 第 1 参直接接 source 实例
+        let rawItems: import('../../digest/fetchers/fetcher.interface').FetchedItem[];
         try {
-          rawItems = await fetcher.fetch(infoSource.config, { since });
+          rawItems = await fetcherRegistry.fetch(infoSource, { since });
         } catch (fetchErr: unknown) {
           const reason =
             fetchErr instanceof Error ? fetchErr.message : String(fetchErr);

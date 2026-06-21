@@ -12,6 +12,7 @@ import {
   FetchStatus,
 } from './info-source.entity';
 import type { InfoSource } from './info-source.entity';
+import { FetcherKind } from './fetchers/fetcher.interface';
 import { SmartTopicConfigRepository } from './smart-topic-config.repository';
 import type { SmartTopicConfig } from './smart-topic-config.entity';
 
@@ -46,6 +47,7 @@ function makeEntity(overrides: Partial<InfoSource> = {}): InfoSource {
   return {
     _id: 'src_aabbcc001122',
     type: InfoSourceType.rss,
+    fetcherKind: FetcherKind.rss,
     name: 'Test Feed',
     config: { url: 'https://example.com/feed.xml' },
     enabled: true,
