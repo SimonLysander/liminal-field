@@ -343,7 +343,11 @@ export function DigestTab() {
           </DialogHeader>
           {/* 26 条 seed 源 + 表单字段会撑爆 dialog；外层 max-h 限高 + 内层 overflow-y-auto 才能滚 */}
           <div className="-mr-4 min-h-0 flex-1 overflow-y-auto pr-4">
-            <DigestTopicForm onSubmit={(d) => void handleCreate(d)} onCancel={() => setCreating(false)} />
+            <DigestTopicForm
+              onSubmit={(d) => void handleCreate(d)}
+              onCancel={() => setCreating(false)}
+              submitting={submitting}
+            />
           </div>
         </DialogContent>
       </Dialog>
@@ -361,6 +365,7 @@ export function DigestTab() {
                 initial={editingInitial}
                 onSubmit={(d) => void handleUpdate(d)}
                 onCancel={() => setEditingDetail(null)}
+                submitting={submitting}
               />
             )}
           </div>

@@ -262,10 +262,13 @@ export function DigestTopicForm({
   initial,
   onSubmit,
   onCancel,
+  submitting = false,
 }: {
   initial?: TopicFormInitial;
   onSubmit: (draft: TopicDraft) => void;
   onCancel: () => void;
+  /** 父组件 API 调用进行时为 true,按钮防重复点击 */
+  submitting?: boolean;
 }) {
   const [draft, setDraft] = useState<TopicDraft>(() =>
     initial
@@ -447,10 +450,11 @@ export function DigestTopicForm({
       </div>
 
       <div className="flex gap-2 pt-2">
-        <PrimaryButton onClick={handleSubmit} disabled={!canSubmit}>
-          {initial ? '保存' : '创建'}
+        {/* submitting 期间 disable + 文案变化,防止多点击连续触发 N 次 onSubmit */}
+        <PrimaryButton onClick={handleSubmit} disabled={!canSubmit || submitting}>
+          {submitting ? (initial ? '保存中…' : '创建中…') : (initial ? '保存' : '创建')}
         </PrimaryButton>
-        <SecondaryButton onClick={onCancel}>取消</SecondaryButton>
+        <SecondaryButton onClick={onCancel} disabled={submitting}>取消</SecondaryButton>
       </div>
     </div>
   );
