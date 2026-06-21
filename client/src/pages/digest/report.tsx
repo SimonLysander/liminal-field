@@ -454,17 +454,17 @@ export default function DigestReportPage() {
         {isAuroraOpen && (
           <motion.aside
             key="aurora-panel"
-            initial={{ x: '100%' }}
+            initial={{ x: 440 }}
             animate={{ x: 0 }}
-            exit={{ x: '100%' }}
+            exit={{ x: 440 }}
             transition={{ duration: panelDuration, ease: notionEase }}
-            // fixed 钉屏幕右边缘 — 无视 PublicLayout 左 sidebar 边界,
-            // panel 从屏幕最右滑入而不是从 main content 中部冒出
+            // fixed 钉屏幕右边缘 — 无视 PublicLayout 左 sidebar 边界
+            // initial/exit 用精确 440px 而不是 '100%' — 避免 motion 库 measure
+            // 元素百分比时引起的 layout 微抖动(user 报告"向上移动一些")
             className="fixed bottom-0 right-0 top-0 z-40 w-[440px] overflow-hidden pt-12"
             style={{
               borderLeft: '1px solid var(--separator)',
               background: 'var(--paper-white)',
-              boxShadow: '-12px 0 36px -12px rgba(0,0,0,0.08)',
             }}
           >
             {/* 关闭按钮(左上角) — 右上角已被全局主题切换 icon + AdvisorSidebar
