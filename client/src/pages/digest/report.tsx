@@ -624,6 +624,8 @@ export default function DigestReportPage() {
                           reason: f.reason,
                           snippet: f.snippet,
                         })),
+                        // 订阅源,sub-agent browse 工具用
+                        sources: topic.sources ?? [],
                       },
                     }}
                     selectionAttachments={chatSelections}

@@ -32,7 +32,7 @@ import type { PromptManagerService } from '../../../../infrastructure/prompt/pro
 import type { SmartTopicConfigRepository } from '../../smart-topic-config.repository';
 import type { InfoSourceRepository } from '../../info-source.repository';
 import type { ContentRepository } from '../../../content/content.repository';
-import type { DigestToolsFactory } from '../../tools/digest-tools.factory';
+import type { ToolAssembler } from '../../../agent/lifecycle/tool.assembler';
 import type { SystemConfigService } from '../../../settings/system-config.service';
 import type { DigestTaskRepository } from '../../digest-task.repository';
 import type { SmartTopicConfig } from '../../smart-topic-config.entity';
@@ -66,23 +66,16 @@ function makeContentRepo(item: Partial<ContentItem> | null): ContentRepository {
   } as unknown as ContentRepository;
 }
 
-function makeToolsFactory(): DigestToolsFactory {
-  const ctx = {
-    taskId: 'dt_test',
-    topicId: 'ci_topic001',
-    refCounter: { item: 0 },
-    fetchedItemsMap: new Map(),
-  };
+function makeToolAssembler(): ToolAssembler {
   return {
-    createTaskContext: jest.fn().mockReturnValue(ctx),
-    buildToolset: jest.fn().mockReturnValue({
-      // v4: 4 工具（web_search 可选，这里都挂上）
+    // P3 重构后:digest workflow 走 agent 的 ToolAssembler.assemble(),拿 4 个工具
+    assemble: jest.fn().mockReturnValue({
       browse: {},
       web_search: {},
       web_fetch: {},
       pick: {},
     }),
-  } as unknown as DigestToolsFactory;
+  } as unknown as ToolAssembler;
 }
 
 function makeSystemConfig(): SystemConfigService {
@@ -147,7 +140,7 @@ describe('ReactAgentNode (v4)', () => {
           summary: '',
         },
       }),
-      makeToolsFactory(),
+      makeToolAssembler(),
       makeSystemConfig(),
       makeTaskRepository(),
     );
@@ -178,7 +171,7 @@ describe('ReactAgentNode (v4)', () => {
           summary: '',
         },
       }),
-      makeToolsFactory(),
+      makeToolAssembler(),
       makeSystemConfig(),
       makeTaskRepository(),
     );
@@ -209,7 +202,7 @@ describe('ReactAgentNode (v4)', () => {
           summary: '',
         },
       }),
-      makeToolsFactory(),
+      makeToolAssembler(),
       makeSystemConfig(),
       makeTaskRepository(),
     );
@@ -278,7 +271,7 @@ describe('ReactAgentNode (v4)', () => {
           summary: '',
         },
       }),
-      makeToolsFactory(),
+      makeToolAssembler(),
       makeSystemConfig(),
       taskRepo,
     );

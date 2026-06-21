@@ -138,9 +138,10 @@ export class SystemConfigService implements OnModuleInit {
       '- 不要泛泛而谈：报告里有的内容直接引用，不要绕开报告造一段无关解读\n' +
       '- 超出报告范围时:报告是 snapshot,聊起来用户经常会延伸("这论文最近还有相关研究吗""这领域还有谁在做")。这种情况调 web_search/web_fetch 去外面看,别说"我不知道"\n\n' +
       '风格：克制、有判断、不水。',
-    // 联网两件套:简报本身全篇注入(报告 markdown + findings 完整字段直接进 system prompt),
-    // sub-agent 不需要"读内容"类的工具;给 web_search + web_fetch 让它能延伸到外面世界。
-    tools: ['web_search', 'web_fetch'],
+    // 简报本身全篇注入(报告 markdown + findings 完整字段直接进 system prompt),
+    // 给 browse(浏览订阅源最新 7 天) + web_search(任意搜) + web_fetch(读 URL 全文)。
+    // sub-agent 不需要"读内容"类的工具;这套覆盖"我订阅源还有啥/外面还有啥/这篇细节"3 个场景。
+    tools: ['browse', 'web_search', 'web_fetch'],
     tier: 'standard',
     providerId: '',
     flashProviderId: '',
@@ -254,13 +255,26 @@ export class SystemConfigService implements OnModuleInit {
         this.logger.log('补齐 gallery-caption-writer agent 配置');
       }
 
-      // 补齐 report-analyst:精选阅读页追问 agent(2026-06-20 新增)
+      // 补齐 report-analyst:简报阅读页追问 agent(2026-06-20 新增)
       if (!config.agentConfigs.some((c) => c.key === 'report-analyst')) {
         config.agentConfigs.push({
           ...SystemConfigService.REPORT_ANALYST_ENTRY,
         });
         await this.repo.patch({ agentConfigs: config.agentConfigs });
         this.logger.log('补齐 report-analyst agent 配置');
+      }
+
+      // Tools migration: 历史上 REPORT_ANALYST_ENTRY.tools 曾是 [](注明"纯对话无工具"),
+      // 但 tool.assembler 的 bug 让 [] 等价于全工具,Aurora 答"先读草稿" → 调 get_current_draft。
+      // bug 修了后 [] 真的是 0 工具,Aurora 答应"去搜"实际啥工具都没,只能 hallucinate。
+      // 一次性写默认 ['browse','web_search','web_fetch']。已被 admin 显式改过(非空)的不动。
+      const ra = config.agentConfigs.find((c) => c.key === 'report-analyst');
+      if (ra && (!ra.tools || ra.tools.length === 0)) {
+        ra.tools = ['browse', 'web_search', 'web_fetch'];
+        await this.repo.patch({ agentConfigs: config.agentConfigs });
+        this.logger.log(
+          'Migration: report-analyst.tools 由空补成 [browse, web_search, web_fetch]',
+        );
       }
     }
   }

@@ -22,11 +22,14 @@ import { PromptManagerService } from '../../../../infrastructure/prompt/prompt-m
 import { SmartTopicConfigRepository } from '../../smart-topic-config.repository';
 import { InfoSourceRepository } from '../../info-source.repository';
 import { ContentRepository } from '../../../content/content.repository';
-import { DigestToolsFactory } from '../../tools/digest-tools.factory';
 import { SystemConfigService } from '../../../settings/system-config.service';
 import { makeRepairToolCall } from '../../../agent/agent.utils';
 import { DigestTaskRepository } from '../../digest-task.repository';
 import type { AgentStep } from '../../digest-task.entity';
+// P3 重构:不再依赖 DigestToolsFactory(已删),改用 agent 的 ToolAssembler——
+// 工具池全项目共有,workflow 跑 react-agent 跟 report-analyst sub-agent 走同一套工具
+import { ToolAssembler } from '../../../agent/lifecycle/tool.assembler';
+import type { DigestTaskContext } from '../../../agent/tools/digest-task-context';
 
 @Injectable()
 export class ReactAgentNode {
@@ -37,7 +40,7 @@ export class ReactAgentNode {
     private readonly stcRepo: SmartTopicConfigRepository,
     private readonly infoSourceRepo: InfoSourceRepository,
     private readonly contentRepo: ContentRepository,
-    private readonly toolsFactory: DigestToolsFactory,
+    private readonly toolAssembler: ToolAssembler,
     private readonly systemConfigService: SystemConfigService,
     private readonly taskRepository: DigestTaskRepository,
   ) {}
@@ -75,8 +78,20 @@ export class ReactAgentNode {
       ? `${baseSystemPrompt}\n\n${subscribedSourcesSection}`
       : baseSystemPrompt;
 
-    const ctx = this.toolsFactory.createTaskContext(taskId, topicId);
-    const tools = this.toolsFactory.buildToolset(ctx);
+    // 构建 digest workflow 用的 task context(browse + pick 共享 state)
+    const digestTaskContext: DigestTaskContext = {
+      taskId,
+      topicId,
+      refCounter: { item: 0 },
+      fetchedItemsMap: new Map(),
+    };
+    // 走统一的 ToolAssembler — 工具池全项目共有
+    // workflow 入口配置可能没存,显式传 allowedTools 限定 4 个工具集
+    const tools = this.toolAssembler.assemble(
+      { digestTaskContext },
+      ['browse', 'web_search', 'web_fetch', 'pick'],
+      'standard',
+    );
 
     const aiConfig = await this.systemConfigService.getAiConfig('standard');
     const provider = createOpenAICompatible({

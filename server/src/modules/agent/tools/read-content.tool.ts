@@ -1,6 +1,6 @@
 import { tool, jsonSchema } from 'ai';
 import type { NoteViewService } from '../../workspace/note-view.service';
-import { extractHeadings } from './markdown.utils.js';
+import { extractHeadings } from './markdown.utils';
 import { toolResult } from './tool-result';
 
 const DEFAULT_CHUNK = 6000;

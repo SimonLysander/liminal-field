@@ -9,16 +9,16 @@
  */
 import { Logger } from '@nestjs/common';
 import { tool, jsonSchema } from 'ai';
-import type { DigestTaskRepository } from '../digest-task.repository';
-import type { Finding } from '../digest-task.entity';
-import type { TaskContext } from './digest-tools.factory';
-import { toolResult } from '../../agent/tools/tool-result';
+import type { DigestTaskRepository } from '../../digest/digest-task.repository';
+import type { Finding } from '../../digest/digest-task.entity';
+import type { DigestTaskContext } from './digest-task-context';
+import { toolResult } from './tool-result';
 
 const logger = new Logger('pick');
 
 export interface PickDeps {
   taskRepo: DigestTaskRepository;
-  ctx: TaskContext;
+  ctx: DigestTaskContext;
 }
 
 export function createPickTool(deps: PickDeps) {
@@ -69,8 +69,16 @@ export function createPickTool(deps: PickDeps) {
       items: Array<{ ref: string; reason: string }>;
     }) => {
       try {
+        // pick 只在 workflow 场景挂载,taskId 必存在;sub-agent reader 场景下根本拿不到此工具
+        if (!ctx.taskId) {
+          return toolResult('pick 仅在 digest workflow 内可用', undefined, {
+            status: 'error',
+            errorCode: 'PICK_NOT_AVAILABLE',
+          });
+        }
+        const taskId = ctx.taskId;
         // 查当前 task findings 数量，决定 citationId 起始值
-        const currentTask = await taskRepo.findById(ctx.taskId);
+        const currentTask = await taskRepo.findById(taskId);
         if (!currentTask) {
           return toolResult('任务不存在，无法保存 findings', undefined, {
             status: 'error',
@@ -148,7 +156,7 @@ export function createPickTool(deps: PickDeps) {
           );
         }
 
-        await taskRepo.appendFindings(ctx.taskId, newFindings);
+        await taskRepo.appendFindings(taskId, newFindings);
 
         const saved = newFindings.length;
         const skipped = skippedRefs.length;

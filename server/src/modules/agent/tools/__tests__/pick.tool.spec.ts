@@ -10,10 +10,10 @@
  */
 
 import { createPickTool } from '../pick.tool';
-import type { DigestTaskRepository } from '../../digest-task.repository';
-import type { TaskContext } from '../digest-tools.factory';
-import type { FetchedItem } from '../../fetchers/fetcher.interface';
-import type { DigestTask } from '../../digest-task.entity';
+import type { DigestTaskRepository } from '../../../digest/digest-task.repository';
+import type { DigestTaskContext } from '../digest-task-context';
+import type { FetchedItem } from '../../../digest/fetchers/fetcher.interface';
+import type { DigestTask } from '../../../digest/digest-task.entity';
 
 const run = (t: unknown, input: unknown): Promise<string> =>
   (t as { execute: (i: unknown, o: unknown) => Promise<string> }).execute(
@@ -54,7 +54,7 @@ function makeTaskRepo(task: DigestTask): DigestTaskRepository {
   } as unknown as DigestTaskRepository;
 }
 
-function makeCtx(itemRefs: Record<string, number> = {}): TaskContext {
+function makeCtx(itemRefs: Record<string, number> = {}): DigestTaskContext {
   // v4：fetchedItemsMap 存 sourceId（src_xxx），不再用 sourceRef（s1/s2）
   const fetchedItemsMap = new Map<
     string,

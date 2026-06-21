@@ -65,7 +65,16 @@ class GalleryContextDto {
   photos!: GalleryPhotoDto[];
 }
 
-/** 精选报告 finding 索引项(citationId/title/source);供 sub-agent 答用户追问。 */
+/** 简报订阅源条目;sub-agent browse 工具看 id 后才能 browse 那个 source */
+class DigestSourceDto {
+  @IsString()
+  id!: string;
+
+  @IsString()
+  name!: string;
+}
+
+/** 简报报告 finding 索引项(citationId/title/source);供 sub-agent 答用户追问。 */
 class DigestReportFindingDto {
   @IsNumber()
   citationId!: number;
@@ -123,6 +132,11 @@ class DigestReportContextDto {
   @ValidateNested({ each: true })
   @Type(() => DigestReportFindingDto)
   findings!: DigestReportFindingDto[];
+
+  /** 订阅信息源(为空数组也行,只是 sub-agent 没法 browse) */
+  @ValidateNested({ each: true })
+  @Type(() => DigestSourceDto)
+  sources!: DigestSourceDto[];
 }
 
 class EntryContextDto {

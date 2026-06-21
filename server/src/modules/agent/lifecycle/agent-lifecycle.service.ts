@@ -230,10 +230,24 @@ export class AgentLifecycle {
       enabledSkills,
     });
 
+    // 简报阅读页 sub-agent 想用 browse 工具时,要传 digestTaskContext 让 ToolAssembler
+    // 识别"digest 场景"。reader 模式:taskId 留空,topicId 用报告的 topicId,
+    // fetchedItemsMap 空(reader 不挂 pick,fetchedItemsMap 写了没人读)。
+    const entryContextWithDigest = dto.entryContext.digestReport
+      ? {
+          ...dto.entryContext,
+          digestTaskContext: {
+            topicId: dto.entryContext.digestReport.topicId,
+            refCounter: { item: 0 },
+            fetchedItemsMap: new Map(),
+          },
+        }
+      : dto.entryContext;
+
     // allowedTools 为空时使用全部工具；有白名单时按白名单过滤
     // enabledSkillIds 非空时叠加挂 Skill 工具(独立于 allowedTools 白名单)
     const tools = this.tools.assemble(
-      dto.entryContext,
+      entryContextWithDigest,
       aiConfig.allowedTools,
       aiConfig.tier,
       aiConfig.enabledSkillIds,

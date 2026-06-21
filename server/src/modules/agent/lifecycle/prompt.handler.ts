@@ -121,6 +121,8 @@ export interface BuildSystemPromptParams {
       reason?: string;
       snippet?: string;
     }[];
+    /** 本事项订阅的信息源(id + name);sub-agent 调 browse 工具时从这里选 sourceId */
+    sources?: { id: string; name: string }[];
   };
   /** 用户在设置中配置的全局自定义系统提示词（可选） */
   customSystemPrompt?: string;
@@ -330,6 +332,18 @@ ${ownerName} 正在整理画廊《${g.title || '未命名'}》——${g.photos.l
           if (f.reason) lines.push(`  事实摘要:${f.reason}`);
           if (f.snippet) lines.push(`  原文片段:${f.snippet}`);
           lines.push(`  URL:${f.url}`);
+        }
+      }
+      // 订阅源列表(给 browse 工具用)。读者问"我订阅的源今天还有啥"时,sub-agent 调
+      // browse(sourceId) 拿过去 7 天最新条目(已跟历史去重)。没 sources 字段(老接口)
+      // 时跳过——browse 工具可能也不会挂(取决于 agent-lifecycle 是否构造 digestTaskContext)。
+      if (r.sources && r.sources.length > 0) {
+        lines.push(``);
+        lines.push(
+          `${ownerName} 本事项订阅的信息源(用 browse 工具拉某个源过去 7 天):`,
+        );
+        for (const s of r.sources) {
+          lines.push(`  - ${s.id} : ${s.name}`);
         }
       }
       sections.push(`<digest_report>\n${lines.join('\n')}\n</digest_report>`);

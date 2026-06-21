@@ -51,6 +51,8 @@ import { WorkspaceModule } from '../workspace/workspace.module';
 import { SettingsModule } from '../settings/settings.module';
 // SkillModule:暴露 SkillService 供 ToolAssembler / PromptHandler 注入(Skill 工具 + <available_skills>)
 import { SkillModule } from '../skill/skill.module';
+// P3 重构:browse/pick 工具归 agent/tools/,需要 digest 的 repo + RssFetcher → 走 SharedModule
+import { DigestSharedModule } from '../digest/digest-shared.module';
 
 @Module({
   imports: [
@@ -69,6 +71,7 @@ import { SkillModule } from '../skill/skill.module';
     WorkspaceModule,
     SettingsModule,
     SkillModule,
+    DigestSharedModule,
   ],
   controllers: [AgentController],
   providers: [
@@ -91,6 +94,10 @@ import { SkillModule } from '../skill/skill.module';
     MemoryAgentService,
     MemoryViewService,
     SubAgentService,
+  ],
+  exports: [
+    // ToolAssembler 给 digest workflow 用(P3 重构:工具池全项目共有)
+    ToolAssembler,
   ],
 })
 export class AgentModule {}

@@ -56,6 +56,15 @@ import { AgentMemoryRepository } from '../memory/agent-memory.repository';
 import { SkillService } from '../../skill/skill.service';
 import { createSkillTool } from '../tools/skill.tool';
 import type { DocumentContext } from '../tools/get-current-document.tool';
+// P3 重构后 browse/pick 也归 agent/tools/(全项目共有工具池),
+// 跨场景:digest workflow 跑 react-agent 时用 / report-analyst sub-agent 读者追问也能用
+import { createBrowseTool } from '../tools/browse.tool';
+import { createPickTool } from '../tools/pick.tool';
+import type { DigestTaskContext } from '../tools/digest-task-context';
+import { InfoSourceRepository } from '../../digest/info-source.repository';
+import { FetcherRegistry } from '../../digest/fetchers/fetcher-registry.service';
+import { ProcessedFeedItemRepository } from '../../digest/processed-feed-item.repository';
+import { DigestTaskRepository } from '../../digest/digest-task.repository';
 
 export interface EntryContext {
   document?: DocumentContext;
@@ -64,6 +73,12 @@ export interface EntryContext {
   selectedText?: string;
   sessionKey?: string;
   agentInstanceKey?: string;
+  /**
+   * digest 场景上下文(workflow 跑 react-agent / report-analyst sub-agent 都用)。
+   * - workflow: taskId/topicId/refCounter/fetchedItemsMap 都有 → browse + pick 都挂
+   * - reader:   只有 topicId(+ refCounter/fetchedItemsMap),taskId 空 → 只挂 browse(只浏览不收藏)
+   */
+  digestTaskContext?: DigestTaskContext;
 }
 
 @Injectable()
@@ -86,6 +101,11 @@ export class ToolAssembler {
     private readonly observationRepo: AgentMemoryObservationRepository,
     // Skill 池(agent skills):agent 启用 skill 时按 name 调起、注入 body 作 tool_result
     private readonly skillService: SkillService,
+    // browse/pick 用的 digest repos —— 通过 DigestSharedModule 注入,无循环依赖
+    private readonly infoSourceRepo: InfoSourceRepository,
+    private readonly fetcherRegistry: FetcherRegistry,
+    private readonly pfiRepo: ProcessedFeedItemRepository,
+    private readonly digestTaskRepo: DigestTaskRepository,
   ) {}
 
   /**
@@ -198,6 +218,28 @@ export class ToolAssembler {
         : {}),
       // 联网读 URL:Jina 免 key 总能用,直接挂
       web_fetch: createWebFetchTool(webFetchProvider),
+      // ── digest 场景 browse/pick: 跨场景共享(workflow + report-analyst sub-agent) ──
+      // browse 在 workflow 和 reader 场景都挂(workflow 写 fetchedItemsMap 给 pick 用,
+      // reader 不挂 pick 所以 fetchedItemsMap 写了也没人读 — 无副作用)。
+      // pick 仅 workflow 场景挂(taskId 非空表示有归属 task,findings 才有去处)。
+      ...(entryContext.digestTaskContext
+        ? {
+            browse: createBrowseTool({
+              infoSourceRepo: this.infoSourceRepo,
+              fetcherRegistry: this.fetcherRegistry,
+              pfiRepo: this.pfiRepo,
+              ctx: entryContext.digestTaskContext,
+            }),
+            ...(entryContext.digestTaskContext.taskId
+              ? {
+                  pick: createPickTool({
+                    taskRepo: this.digestTaskRepo,
+                    ctx: entryContext.digestTaskContext,
+                  }),
+                }
+              : {}),
+          }
+        : {}),
     };
 
     // 按白名单过滤工具:语义区分三种情况——

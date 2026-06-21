@@ -104,6 +104,8 @@ export type AdvisorContext = {
       reason?: string;
       snippet?: string;
     }[];
+    /** 订阅信息源(id + name);sub-agent browse 工具看 id 选哪个源 */
+    sources: { id: string; name: string }[];
   };
 };
 

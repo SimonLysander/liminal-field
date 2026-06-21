@@ -15,6 +15,8 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ContentRepository } from '../content/content.repository';
 import { NavigationRepository } from '../navigation/navigation.repository';
 import { DigestReportRepository } from './digest-report.repository';
+import { SmartTopicConfigRepository } from './smart-topic-config.repository';
+import { InfoSourceRepository } from './info-source.repository';
 import { NavigationScope } from '../navigation/navigation.entity';
 import type {
   PublicReportDto,
@@ -31,6 +33,9 @@ export class DigestPublicService {
     private readonly contentRepository: ContentRepository,
     private readonly navigationRepository: NavigationRepository,
     private readonly digestReportRepository: DigestReportRepository,
+    // P3: sub-agent browse 工具需要知道本事项订阅了哪些源(id + name),从这两个 repo 拿
+    private readonly smartTopicConfigRepo: SmartTopicConfigRepository,
+    private readonly infoSourceRepo: InfoSourceRepository,
   ) {}
 
   async getReport(topicId: string, reportId: string): Promise<PublicReportDto> {
@@ -72,8 +77,29 @@ export class DigestPublicService {
           new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime(),
       );
 
+    // 拿订阅源(供 Aurora sub-agent browse 工具用)。sub-agent 系统提示里会列出这些 src_xxx,
+    // 模型从 prompt 看到后才能 browse 那个 sourceId。失败兜底空数组,功能优雅降级。
+    let sources: { id: string; name: string }[] = [];
+    try {
+      const stc =
+        await this.smartTopicConfigRepo.findByContentItemId(topicId);
+      if (stc?.sourceIds?.length) {
+        const sourceEntities = await this.infoSourceRepo.findManyByIds(
+          stc.sourceIds,
+        );
+        sources = sourceEntities.map((s) => ({
+          id: String(s._id),
+          name: s.name,
+        }));
+      }
+    } catch (err) {
+      this.logger.warn(
+        `getReport: 拿 sources 失败(忽略,sub-agent 没源就只能用 web_search): ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
     this.logger.debug(
-      `getReport: topicId=${topicId} reportId=${reportId} findings=${findings.length} siblings=${siblings.length}`,
+      `getReport: topicId=${topicId} reportId=${reportId} findings=${findings.length} siblings=${siblings.length} sources=${sources.length}`,
     );
 
     return {
@@ -81,6 +107,7 @@ export class DigestPublicService {
         id: topicId,
         name: topicContent.latestVersion?.title ?? '',
         description: topicContent.latestVersion?.summary ?? '',
+        sources,
       },
       report: {
         id: report._id,

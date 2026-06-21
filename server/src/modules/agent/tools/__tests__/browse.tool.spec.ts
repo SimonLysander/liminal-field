@@ -10,13 +10,16 @@
  */
 
 import { createBrowseTool } from '../browse.tool';
-import type { InfoSourceRepository } from '../../info-source.repository';
-import type { FetcherRegistry } from '../../fetchers/fetcher-registry.service';
-import type { ProcessedFeedItemRepository } from '../../processed-feed-item.repository';
-import type { TaskContext } from '../digest-tools.factory';
-import type { InfoSource } from '../../info-source.entity';
-import type { FetchedItem } from '../../fetchers/fetcher.interface';
-import { InfoSourceType, InfoSourceCategory } from '../../info-source.entity';
+import type { InfoSourceRepository } from '../../../digest/info-source.repository';
+import type { FetcherRegistry } from '../../../digest/fetchers/fetcher-registry.service';
+import type { ProcessedFeedItemRepository } from '../../../digest/processed-feed-item.repository';
+import type { DigestTaskContext } from '../digest-task-context';
+import type { InfoSource } from '../../../digest/info-source.entity';
+import type { FetchedItem } from '../../../digest/fetchers/fetcher.interface';
+import {
+  InfoSourceType,
+  InfoSourceCategory,
+} from '../../../digest/info-source.entity';
 
 const run = (t: unknown, input: unknown): Promise<string> =>
   (t as { execute: (i: unknown, o: unknown) => Promise<string> }).execute(
@@ -68,7 +71,7 @@ function makePfiRepo(
   } as unknown as ProcessedFeedItemRepository;
 }
 
-function makeCtx(): TaskContext {
+function makeCtx(): DigestTaskContext {
   return {
     taskId: 'dt_test',
     topicId: 'ci_topic001',

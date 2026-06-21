@@ -32,6 +32,8 @@ export interface PublicReportData {
     id: string;
     name: string;
     description: string;
+    /** 订阅信息源,Aurora sub-agent browse 工具用 */
+    sources: { id: string; name: string }[];
   };
   report: {
     id: string;

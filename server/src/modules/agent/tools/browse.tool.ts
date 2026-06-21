@@ -11,11 +11,11 @@
  */
 import { Logger } from '@nestjs/common';
 import { tool, jsonSchema } from 'ai';
-import type { InfoSourceRepository } from '../info-source.repository';
-import type { FetcherRegistry } from '../fetchers/fetcher-registry.service';
-import type { ProcessedFeedItemRepository } from '../processed-feed-item.repository';
-import type { TaskContext } from './digest-tools.factory';
-import { toolResult } from '../../agent/tools/tool-result';
+import type { InfoSourceRepository } from '../../digest/info-source.repository';
+import type { FetcherRegistry } from '../../digest/fetchers/fetcher-registry.service';
+import type { ProcessedFeedItemRepository } from '../../digest/processed-feed-item.repository';
+import type { DigestTaskContext } from './digest-task-context';
+import { toolResult } from './tool-result';
 
 const logger = new Logger('browse');
 
@@ -25,7 +25,7 @@ export interface BrowseDeps {
   infoSourceRepo: InfoSourceRepository;
   fetcherRegistry: FetcherRegistry;
   pfiRepo: ProcessedFeedItemRepository;
-  ctx: TaskContext;
+  ctx: DigestTaskContext;
 }
 
 export function createBrowseTool(deps: BrowseDeps) {
