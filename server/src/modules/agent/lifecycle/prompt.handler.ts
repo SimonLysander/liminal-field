@@ -90,6 +90,30 @@ export interface BuildSystemPromptParams {
       tags: Record<string, string>;
     }[];
   };
+  /**
+   * 精选阅读页场景(可选):报告元数据 + 章节列表 + findings 索引(含 reason/snippet)。
+   * 让 sub-agent("精选"分析师入口)在用户追问时不再两眼一抹黑——它能直接看到当前这期讲了啥、
+   * 引用了哪些文章、用户点的是 CIT 几号。
+   * 选区追问走 selectionAttachments(chip 机制),不走这里,与编辑器"添加到聊天"统一。
+   * 与 document/gallery 互斥(读报和写作不是一个场景)。
+   */
+  digestReport?: {
+    reportId: string;
+    topicId: string;
+    topicName: string;
+    topicPrompt: string;
+    headline: string;
+    publishedAt: string;
+    sections: string[];
+    findings: {
+      citationId: number;
+      title: string;
+      sourceName: string;
+      url: string;
+      reason?: string;
+      snippet?: string;
+    }[];
+  };
   /** 用户在设置中配置的全局自定义系统提示词（可选） */
   customSystemPrompt?: string;
   /** AgentEntryConfig 里为该 agent 入口配置的系统提示词（可选），优先级高于全局配置 */
@@ -255,6 +279,38 @@ ${ownerName} 当前正在编辑文档《${title || '未命名'}》(约 ${wordCou
 ${ownerName} 正在整理画廊《${g.title || '未命名'}》——${g.photos.length} 张照片${g.prose ? ',还配着一段随笔' : ''}。
 这些照片你看得见(想看哪张就看),清单、随笔、每张现有的图说也都能调出来读。${ownerName} 想聊照片、想要图说,顺着 ta 的话自然来就好。
 </gallery>`);
+    }
+
+    // ——— 精选阅读页场景(report-reader 入口) ———
+    // 把当期报告的元数据、章节列表、findings 索引全塞进 prompt——总量约 1-3k 字,
+    // 远低于工具往返成本(get_finding 单次 round-trip 至少 2k token + 等待延迟)。
+    // sub-agent 看到这些就能直接回答"这期讲了啥"、"CIT 3 是什么"、"为什么挑这条"。
+    // 用户划词追问不走这里,走 chip 机制(跟编辑器"添加到聊天"统一,引用块拼进 user text)。
+    if (params.digestReport) {
+      const r = params.digestReport;
+      const lines: string[] = [];
+      lines.push(
+        `${ownerName} 正在读「${r.topicName}」专栏 ${r.publishedAt} 这期:《${r.headline}》。`,
+      );
+      lines.push(`本期选题指引(${ownerName} 自己设的):「${r.topicPrompt}」`);
+      if (r.sections.length > 0) {
+        lines.push(``);
+        lines.push(`章节:`);
+        for (const s of r.sections) lines.push(`  · ${s}`);
+      }
+      if (r.findings.length > 0) {
+        lines.push(``);
+        lines.push(
+          `本期收录的 ${r.findings.length} 条 findings(正文里以 [CIT N] 角标引用):`,
+        );
+        for (const f of r.findings) {
+          lines.push(`[CIT ${f.citationId}] 《${f.title}》— ${f.sourceName}`);
+          if (f.reason) lines.push(`  事实摘要:${f.reason}`);
+          if (f.snippet) lines.push(`  原文片段:${f.snippet}`);
+          lines.push(`  URL:${f.url}`);
+        }
+      }
+      sections.push(`<digest_report>\n${lines.join('\n')}\n</digest_report>`);
     }
 
     // ——— 当前写作计划：有「未完成」任务才注入。

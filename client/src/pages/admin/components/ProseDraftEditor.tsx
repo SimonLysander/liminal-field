@@ -69,6 +69,9 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
   // 保存 live range attachment:chip 展示初始 preview;发送/高亮时读取当前 range。
   const [chatSelections, setChatSelections] = useState<ChatSelectionAttachment[]>([]);
   const chatSelectionsRef = useRef<ChatSelectionAttachment[]>([]);
+  // Aurora 侧栏开合(笔记/文集 admin 编辑页):默认开,X 关、顶栏 Sparkles 重开。
+  // grid 第三列宽度随它切——关时塌缩为 0,主内容占满。
+  const [advisorOpen, setAdvisorOpen] = useState(true);
 
   // ── v3 改稿透传链 ────────────────────────────────────────────────────────────
   // editor 桥 ref：由 PlateMarkdownEditor 内部的 EditorChildrenBridge 填充；
@@ -167,8 +170,13 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
         // 三栏(新):大纲(窄,左)| 编辑器(弹性,中,内容居中)| 顾问 Aurora(右,~26vw)。
         // 设计语言:各栏独立 52px 顶栏(无 borderBottom 横跨,跟 Notion 派对位),
         // 视线流自然递进 "结构 → 内容 → 对话"。返回按钮落在大纲栏顶左 = 真窗口左上角。
-        gridTemplateColumns: 'var(--layout-sidebar) minmax(0, 1fr) clamp(20rem, 26vw, 30rem)',
+        // 第三列宽度跟着 advisorOpen 切——关时塌缩为 0,主内容占满;
+        // transition 让开/关有平滑过渡(跟 digest report 页一个心智)。
+        gridTemplateColumns: `var(--layout-sidebar) minmax(0, 1fr) ${
+          advisor?.enabled && advisorOpen ? 'clamp(20rem, 26vw, 30rem)' : '0px'
+        }`,
         gridTemplateRows: '48px 1fr',
+        transition: 'grid-template-columns 280ms cubic-bezier(0.32, 0.72, 0, 1)',
       }}
     >
       <ThresholdOverlay visible={editor.committing} label="正在提交版本..." />
@@ -334,6 +342,26 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
               </PopoverContent>
             </Popover>
 
+            {/* 重开 Aurora —— 仅在 advisor 已启用且当前折叠态显示。
+                用鸢尾"种子"那一帧(/garden/iris-seed.webp)作标——跟"凝思中"动画
+                (seed→bud→half→bloom)的起点同帧:关闭=Aurora 入定回到种子,点击=唤醒、
+                生长循环重启。语义闭环,比通用 Sparkles 有灵魂。 */}
+            {advisor?.enabled && !advisorOpen && (
+              <button
+                className="flex h-7 w-7 items-center justify-center rounded-md outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none"
+                onClick={() => setAdvisorOpen(true)}
+                aria-label="打开 Aurora"
+                title="打开 Aurora"
+              >
+                <img
+                  src="/garden/iris-seed.webp"
+                  alt=""
+                  draggable={false}
+                  className="h-[18px] w-[18px] opacity-75 transition-opacity hover:opacity-100"
+                />
+              </button>
+            )}
+
             {/* 主题切换 — 编辑页是独立路由(不在 AdminShell 内,没 IconRail),
                 所以主题按钮留在 toolbar 内, 跟保存/提交/⋯ 一组 */}
             <button
@@ -441,11 +469,12 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
               getEditorChildren,
               getEditor,
               onProposalChange: handleProposalChange,
-              selectionAttachments: chatSelections,
-              onRemoveSelectionAttachment: removeChatSelection,
-              onClearSelectedText: clearChatSelections,
               inApproval: !!proposalUi,
             }}
+            selectionAttachments={chatSelections}
+            onRemoveSelectionAttachment={removeChatSelection}
+            onClearSelectedText={clearChatSelections}
+            onClose={() => setAdvisorOpen(false)}
           />
         </div>
       ) : (

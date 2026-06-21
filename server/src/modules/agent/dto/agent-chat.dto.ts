@@ -10,6 +10,7 @@
 import { Type } from 'class-transformer';
 import {
   Allow,
+  IsArray,
   IsIn,
   IsNumber,
   IsOptional,
@@ -64,6 +65,62 @@ class GalleryContextDto {
   photos!: GalleryPhotoDto[];
 }
 
+/** 精选报告 finding 索引项(citationId/title/source);供 sub-agent 答用户追问。 */
+class DigestReportFindingDto {
+  @IsNumber()
+  citationId!: number;
+
+  @IsString()
+  title!: string;
+
+  @IsString()
+  sourceName!: string;
+
+  @IsString()
+  url!: string;
+
+  @IsString()
+  @IsOptional()
+  reason?: string;
+
+  @IsString()
+  @IsOptional()
+  snippet?: string;
+}
+
+/**
+ * 精选阅读页场景上下文:报告元数据 + 章节列表 + findings 索引。
+ * 选区追问不走这里——用户划词后点"追问 Aurora"是走 selectionAttachments(chip 机制),
+ * 跟编辑器"添加到聊天"同一套,chip 发送瞬间拼成 markdown 引用块进 user text。
+ */
+class DigestReportContextDto {
+  @IsString()
+  reportId!: string;
+
+  @IsString()
+  topicId!: string;
+
+  @IsString()
+  topicName!: string;
+
+  @IsString()
+  topicPrompt!: string;
+
+  @IsString()
+  headline!: string;
+
+  @IsString()
+  publishedAt!: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  sections!: string[];
+
+  @ValidateNested({ each: true })
+  @Type(() => DigestReportFindingDto)
+  findings!: DigestReportFindingDto[];
+}
+
 class EntryContextDto {
   // notes-editor = 编辑器侧栏写作顾问;agent-page = 全页总助手 Lux;gallery-editor = 画廊图说写手;report-reader = 公开端精选阅读页追问
   @IsIn(['notes-editor', 'agent-page', 'gallery-editor', 'report-reader'])
@@ -79,6 +136,12 @@ class EntryContextDto {
   @Type(() => GalleryContextDto)
   @IsOptional()
   gallery?: GalleryContextDto;
+
+  /** 精选阅读页:报告元数据 + findings 索引 + 可选用户划词。传了即注入 <digest_report>。 */
+  @ValidateNested()
+  @Type(() => DigestReportContextDto)
+  @IsOptional()
+  digestReport?: DigestReportContextDto;
 
   @IsString()
   @IsOptional()

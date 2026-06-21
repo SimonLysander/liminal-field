@@ -221,6 +221,8 @@ export class AgentLifecycle {
       sessionMemory: sessionMem?.content || undefined,
       document,
       gallery: dto.entryContext.gallery,
+      // 精选阅读页(report-reader):报告元数据 + findings 索引 + 可选选区,prompt 内全塞,不走工具
+      digestReport: dto.entryContext.digestReport,
       customSystemPrompt: aiConfig.aiSystemPrompt,
       entrySystemPrompt: aiConfig.entrySystemPrompt,
       tasks,

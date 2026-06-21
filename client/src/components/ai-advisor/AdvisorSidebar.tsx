@@ -54,7 +54,7 @@ function pickGreeting() {
   return GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
 }
 
-/** 富文本编辑场景的可选适配:选区 chip + 改稿 overlay 桥接 + 审批态。画廊等非编辑器场景不传。 */
+/** 富文本编辑场景的可选适配:改稿 overlay 桥接 + 审批态。画廊等非编辑器场景不传。 */
 export interface AdvisorEditorBridge {
   /** v3 改稿:获取当前 editor.children,供 computeDocDiff 使用。 */
   getEditorChildren: () => Descendant[];
@@ -62,10 +62,6 @@ export interface AdvisorEditorBridge {
   getEditor: () => unknown;
   /** v3 改稿:最近 pendingProposal 变化时回调上层(交编辑器叠加审批)。 */
   onProposalChange: (proposal: Proposal | undefined) => void;
-  /** 已显式添加到聊天的编辑器选区引用(Cursor 式 add-to-chat)。 */
-  selectionAttachments?: ChatSelectionAttachment[];
-  onRemoveSelectionAttachment?: (id: string) => void;
-  onClearSelectedText?: () => void;
   /** 编辑器是否处于审批态 —— 顶栏据此加 accent 浅底。 */
   inApproval?: boolean;
 }
@@ -91,6 +87,16 @@ export interface AdvisorSidebarProps {
   /** 富文本编辑场景的可选适配(画廊等不传) */
   editorBridge?: AdvisorEditorBridge;
   /**
+   * 已显式添加到聊天的引用 chip("Cursor 式 add-to-chat" / 报告页"追问"按钮)。
+   * 升级出 editorBridge:不限编辑器场景——报告页选区追问也复用同一 chip 机制,
+   * 用户心智里它就是"把这段加到对话上下文里"这一件事。chip 在输入框上方,
+   * 发送瞬间拼成 markdown 引用块进 user text。
+   */
+  selectionAttachments?: ChatSelectionAttachment[];
+  onRemoveSelectionAttachment?: (id: string) => void;
+  /** chip 全清(发送后或会话切换时);上层可顺手做收尾(清高亮/重置选区 state)。 */
+  onClearSelectedText?: () => void;
+  /**
    * 可选关闭回调。传了的话, toolbar 末尾会渲染一个 X 按钮供用户关闭右栏。
    * 适配场景: digest 公开报告页(右栏可 toggle), 编辑页面想加关闭也能用同样钩子。
    */
@@ -106,16 +112,16 @@ export function AdvisorSidebar({
   greeting: greetingProp,
   renderToolCard,
   editorBridge,
+  selectionAttachments,
+  onRemoveSelectionAttachment,
+  onClearSelectedText,
   onClose,
 }: AdvisorSidebarProps) {
-  // 编辑器适配:解构成与原 body 一致的局部名,使下方逻辑无需改动
+  // 编辑器专属适配(改稿桥/审批态)解构,通用名维持以减小内部改动
   const {
     getEditorChildren,
     getEditor,
     onProposalChange,
-    selectionAttachments,
-    onRemoveSelectionAttachment,
-    onClearSelectedText,
     inApproval,
   } = editorBridge ?? {};
 

@@ -306,6 +306,69 @@ describe('PromptHandler.buildSystemPrompt', () => {
     });
   });
 
+  describe('digest_report —— 精选阅读页场景(report-reader 入口)', () => {
+    const sampleReport = {
+      reportId: 'rep_1',
+      topicId: 'top_1',
+      topicName: 'AI 周报',
+      topicPrompt: '关注 LLM 训练前沿',
+      headline: '本周 LLM 三件事',
+      publishedAt: '2026-06-21',
+      sections: ['训练新法', '部署成本', '行业并购'],
+      findings: [
+        {
+          citationId: 1,
+          title: 'ZigZag-2 训练范式',
+          sourceName: 'arXiv',
+          url: 'https://arxiv.org/abs/2026.0001',
+          reason: '提出三段式稀疏注意力,2倍吞吐',
+          snippet: '我们引入三段式注意力,在 32K 上下文下吞吐提升至 2.1x...',
+        },
+        {
+          citationId: 2,
+          title: 'GPT-X 部署成本下降',
+          sourceName: 'TechCrunch',
+          url: 'https://example.com/2',
+        },
+      ],
+    };
+
+    it('有 digestReport → 注入 <digest_report>,含 topic/期号/章节/findings 索引', () => {
+      const out = handler.buildSystemPrompt(
+        baseParams({ digestReport: sampleReport }),
+      );
+      expect(out).toContain('<digest_report>');
+      expect(out).toContain('AI 周报');
+      expect(out).toContain('2026-06-21');
+      expect(out).toContain('本周 LLM 三件事');
+      expect(out).toContain('关注 LLM 训练前沿');
+      expect(out).toContain('训练新法');
+      expect(out).toContain('[CIT 1]');
+      expect(out).toContain('ZigZag-2 训练范式');
+      expect(out).toContain('事实摘要:提出三段式');
+      expect(out).toContain('原文片段:我们引入');
+      expect(out).toContain('[CIT 2]');
+    });
+
+    it('findings 缺 reason/snippet → 不报错,只省略对应行', () => {
+      const out = handler.buildSystemPrompt(
+        baseParams({ digestReport: sampleReport }),
+      );
+      // CIT 2 没 reason/snippet,标题后直接接 URL,中间不出现"事实摘要/原文片段"
+      const cit2Idx = out.indexOf('[CIT 2]');
+      const nextCitOrEnd = out.indexOf('</digest_report>', cit2Idx);
+      const cit2Block = out.slice(cit2Idx, nextCitOrEnd);
+      expect(cit2Block).not.toContain('事实摘要');
+      expect(cit2Block).not.toContain('原文片段');
+      expect(cit2Block).toContain('https://example.com/2');
+    });
+
+    it('无 digestReport → 不注入 <digest_report>', () => {
+      const out = handler.buildSystemPrompt(baseParams());
+      expect(out).not.toContain('<digest_report>');
+    });
+  });
+
   it('不泄露产品名或模型名', () => {
     const out = handler.buildSystemPrompt(
       baseParams({

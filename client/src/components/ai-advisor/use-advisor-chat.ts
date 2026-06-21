@@ -78,9 +78,13 @@ export type AdvisorContext = {
    *
    * - topicPrompt: 让 Aurora 知道用户当初创建事项时的关注点
    * - sections: 章节标题列表,作为"目录索引"
-   * - findings: citationId + title + sourceName + url 轻量索引(reason/snippet 等大字段不塞 context
-   *   避免单次 prompt 撑爆,后续走 get_finding 工具按需取)
-   * - selection: 用户划词追问时附带的选中文本(Aurora 自行推断引用归属)
+   * - findings: citationId + title + sourceName + url + reason(事实摘要) + snippet(原文片段)
+   *   全量塞 prompt——一期 10-15 条 findings × 200 字 ≈ 2-3k 字,远低于走 get_finding 工具
+   *   按需取的 round-trip 成本(单次工具调用至少 2k token + 等待);sub-agent 看完整索引能更
+   *   稳准地回答"为啥挑这条/这段讲了啥/哪条对应 CIT N"。
+   *
+   * 选区追问不在这里——走 selectionAttachments(chip 机制),跟编辑器"添加到聊天"统一,
+   * chip 发送瞬间被拼成 markdown 引用块进 user text。
    */
   digestReport?: {
     reportId: string;
@@ -95,10 +99,9 @@ export type AdvisorContext = {
       title: string;
       sourceName: string;
       url: string;
+      reason?: string;
+      snippet?: string;
     }[];
-    selection?: {
-      text: string;
-    };
   };
 };
 
@@ -543,6 +546,8 @@ function buildAgentRequestBody({
         : undefined,
       // 画廊场景:照片清单+随笔。后端 get_current_draft(画廊版) 从这里 read,prompt 不塞内容。
       gallery: context?.gallery,
+      // 精选阅读页:报告元数据 + findings 索引 + 可选用户划词。后端拼进 <digest_report> system 段。
+      digestReport: context?.digestReport,
     },
   };
 }
