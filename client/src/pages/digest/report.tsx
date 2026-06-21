@@ -252,10 +252,11 @@ export default function DigestReportPage() {
         <Moon size={14} strokeWidth={1.5} className="theme-icon-dark" />
       </motion.button>
 
-      {/* ── 主体阅读区(不动 width 避免长文 reflow, 只加 right padding 让 Notion 风 panel 占位) ── */}
+      {/* ── 主体阅读区(width 动画跟着收缩, 让 mx-auto 正文居中在新可视区,
+              视觉对称。Notion ease-out 240ms, 长文 reflow 实测平滑) ── */}
       <motion.div
         className="h-full overflow-y-auto"
-        animate={{ paddingRight: isAuroraOpen ? 440 : 0 }}
+        animate={{ width: isAuroraOpen ? 'calc(100% - 440px)' : '100%' }}
         transition={{ duration: panelDuration, ease: notionEase }}
         style={{ paddingTop: '4rem', paddingBottom: '4rem' }}
       >
@@ -457,8 +458,14 @@ export default function DigestReportPage() {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ duration: panelDuration, ease: notionEase }}
-            className="absolute bottom-0 right-0 top-0 w-[440px] overflow-hidden pt-12"
-            style={{ borderLeft: '0.5px solid var(--separator)', background: 'var(--paper-white)' }}
+            // fixed 钉屏幕右边缘 — 无视 PublicLayout 左 sidebar 边界,
+            // panel 从屏幕最右滑入而不是从 main content 中部冒出
+            className="fixed bottom-0 right-0 top-0 z-40 w-[440px] overflow-hidden pt-12"
+            style={{
+              borderLeft: '1px solid var(--separator)',
+              background: 'var(--paper-white)',
+              boxShadow: '-12px 0 36px -12px rgba(0,0,0,0.08)',
+            }}
           >
             {/* 关闭按钮(左上角) — 右上角已被全局主题切换 icon + AdvisorSidebar
                 的"新会话"按钮占据,叠在一起,所以挪到 panel 左上 */}
