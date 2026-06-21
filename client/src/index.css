@@ -1322,20 +1322,26 @@ body.gallery-immersive aside {
   font-variant-numeric: oldstyle-nums proportional-nums;  /* 老式数字, 期刊味 */
   letter-spacing: 0.005em;
 }
-/* 段落: 不缩进 / 段间 1.4em / 最后段无下间距 */
-.digest-report-body p {
+/* 段落: 不缩进 / 段间 1.4em / 最后段无下间距。
+ * 兼容两种渲染: Plate readonly 出 .slate-p(实际渲染),原生 markdown 出 <p>(保留兜底) */
+.digest-report-body p,
+.digest-report-body .slate-p {
   margin: 0 0 1.4em 0;
   text-align: justify;            /* 两端对齐, 期刊版式 */
   text-justify: inter-character;  /* 中文两端对齐用字符间距而非词间 */
   hyphens: auto;
 }
-.digest-report-body p:last-child { margin-bottom: 0; }
+.digest-report-body p:last-child,
+.digest-report-body .slate-p:last-child { margin-bottom: 0; }
 
 /* 首段 dropcap(Stratechery / Every / The Atlantic 派开篇仪式):
- * 文档级第一个 <p> 首字符放大 3.3em float left 跨 3 行;宋体 italic 保留期刊温度。
- * 跨章节后段不做(只命中 .digest-report-body 直接子级第一个 p——MarkdownBody 渲染下
- * 通常是 H2 之后的"开篇正文"),避免每个 section 都重复仪式感反而稀释。 */
-.digest-report-body > p:first-of-type::first-letter {
+ * 开篇第一段首字符放大 3.3em float left 跨 3 行;宋体 italic 保留期刊温度。
+ *
+ * Plate readonly 把段落渲染成 <div class="slate-p"> 而非 <p>(实测 chrome-devtools
+ * 验证),所以用 `.slate-p` 类选择器。选 `h2:first-of-type + .slate-p`——紧跟第一个
+ * H2 的第一段,语义清晰("章节起篇")且不会蔓延到每个 H2 后第一段。 */
+.digest-report-body h2:first-of-type + .slate-p::first-letter,
+.digest-report-body p:first-of-type::first-letter {
   float: left;
   font-family:
     "Source Han Serif SC",
