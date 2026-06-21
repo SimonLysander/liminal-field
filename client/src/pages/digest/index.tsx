@@ -72,7 +72,7 @@ export default function DigestPublicPage() {
             className="mb-4 text-7xl font-bold leading-[0.95] tracking-tight max-[520px]:text-5xl"
             style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
           >
-            DIGEST · 精选
+            DIGEST · 简报
           </h1>
 
           {/* 副标题 tagline — italic serif */}
@@ -82,7 +82,7 @@ export default function DigestPublicPage() {
           >
             {topics.length > 0
               ? topics.map((t) => t.name).join(' · ')
-              : '智能采集 · AI 精选'}
+              : '智能采集 · AI 简报'}
           </p>
 
           {/* 报头下方 3px 粗黑横线 */}

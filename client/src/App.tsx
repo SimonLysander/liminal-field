@@ -172,7 +172,7 @@ function MainLayout() {
               <Route path="/note" element={<NotePage />} />
               <Route path="/anthology" element={<AnthologyPage />} />
               <Route path="/gallery" element={<GalleryPage />} />
-              {/* 智能小应用 · 自动信息收集 — 公开端「精选」。
+              {/* 智能小应用 · 自动信息收集 — 公开端「简报」。
                   路由顺序：/:topicId/:reportId 必须在 /:topicId 之后，React Router 优先最先匹配。 */}
               <Route path="/digest" element={<DigestPublicPage />} />
               <Route path="/digest/:topicId" element={<DigestTopicPage />} />

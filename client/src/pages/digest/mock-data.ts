@@ -36,7 +36,7 @@ export interface MockReport {
   picks: MockPick[];
   /** 期号（1-based，决定展示"第 N 期"；接 API 后由服务端提供） */
   issueNumber: number;
-  /** 本期编辑标题（可选，无则默认"本期精选"） */
+  /** 本期编辑标题（可选，无则默认"本期简报"） */
   headline?: string;
 }
 

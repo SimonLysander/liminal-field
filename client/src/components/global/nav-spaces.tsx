@@ -5,7 +5,7 @@
  * 值与 Sidebar.tsx 原定义完全一致（2026-05-23 抽出）。
  */
 
-import { Home, FileText, BookOpen, Image, Sparkles, type LucideIcon } from 'lucide-react';
+import { Home, FileText, BookOpen, Image, Newspaper, type LucideIcon } from 'lucide-react';
 
 export type Space = 'home' | 'notes' | 'anthology' | 'gallery' | 'digest';
 
@@ -17,7 +17,7 @@ export const labels: Record<Space, string> = {
   notes: '笔记',
   anthology: '文集',
   gallery: '画廊',
-  digest: '精选',
+  digest: '简报',
 };
 
 export const NavIcons: Record<Space, LucideIcon> = {
@@ -25,7 +25,7 @@ export const NavIcons: Record<Space, LucideIcon> = {
   notes: FileText,
   anthology: BookOpen,
   gallery: Image,
-  digest: Sparkles,
+  digest: Newspaper,
 };
 
 export function spaceToPath(space: Space): string {

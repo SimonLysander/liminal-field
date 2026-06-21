@@ -289,7 +289,7 @@ export function DigestTab() {
             智能采集
           </h1>
           <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-            配置关注事项，自动从订阅信息源里采集，AI 判定相关性，生成精选报告。
+            配置关注事项，自动从订阅信息源里采集，AI 判定相关性，生成简报。
           </p>
         </div>
         <PrimaryButton onClick={() => setCreating(true)}>
