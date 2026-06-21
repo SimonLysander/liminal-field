@@ -20,6 +20,10 @@ import type { Schedule } from './scheduleUtils';
 /** 表单内部状态 */
 export interface TopicDraft {
   name: string;
+  /** 栏目宗旨 — 给读者看的一句话定位(报纸 standfirst);写进 ContentItem.summary,
+   *  公开端 /digest 列表卡片 + /digest/:topicId 栏目报头展示。
+   *  ≠ prompt(prompt 是给 agent 的工作指令,文风偏命令式) */
+  tagline: string;
   prompt: string;          // 即"任务描述"，对应后端 prompt 字段
   schedule: Schedule;
   sourceIds: string[];
@@ -274,6 +278,7 @@ export function DigestTopicForm({
     initial
       ? {
           name: initial.name,
+          tagline: initial.description,
           prompt: initial.aiPrompt,
           schedule: cronToSchedule(initial.cron),
           sourceIds: initial.sourceIds,
@@ -282,6 +287,7 @@ export function DigestTopicForm({
         }
       : {
           name: '',
+          tagline: '',
           prompt: '',
           schedule: DEFAULT_SCHEDULE,
           sourceIds: [],
@@ -328,6 +334,25 @@ export function DigestTopicForm({
           value={draft.name}
           onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
           placeholder="AI 应用发展"
+          className={inputClass}
+          style={inputStyle}
+        />
+      </div>
+
+      {/* 栏目宗旨 — 报纸 standfirst:给读者一句话定位 */}
+      <div>
+        <FieldLabel>
+          栏目宗旨
+          <span className="ml-2 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            （给读者一句话定位,公开端栏目页展示）
+          </span>
+        </FieldLabel>
+        <input
+          type="text"
+          value={draft.tagline}
+          onChange={(e) => setDraft((d) => ({ ...d, tagline: e.target.value }))}
+          placeholder="为关注 AI 工程落地的开发者每天精选一份内容"
+          maxLength={120}
           className={inputClass}
           style={inputStyle}
         />

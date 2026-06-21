@@ -81,8 +81,7 @@ export class DigestPublicService {
     // 模型从 prompt 看到后才能 browse 那个 sourceId。失败兜底空数组,功能优雅降级。
     let sources: { id: string; name: string }[] = [];
     try {
-      const stc =
-        await this.smartTopicConfigRepo.findByContentItemId(topicId);
+      const stc = await this.smartTopicConfigRepo.findByContentItemId(topicId);
       if (stc?.sourceIds?.length) {
         const sourceEntities = await this.infoSourceRepo.findManyByIds(
           stc.sourceIds,
@@ -144,10 +143,17 @@ export class DigestPublicService {
         node.contentItemId,
       );
 
+      // 拿 SmartTopicConfig 算 byline 用的 cadence + sourceCount
+      const stc = await this.smartTopicConfigRepo.findByContentItemId(
+        node.contentItemId,
+      );
+
       results.push({
         id: node.contentItemId,
         name: topicContent.latestVersion?.title ?? '',
         description: topicContent.latestVersion?.summary ?? '',
+        cadence: stc ? cronToHumanCadence(stc.cron) : undefined,
+        sourceCount: stc?.sourceIds.length,
         reports: reports.map((r) => ({
           id: r._id,
           headline: r.headline,
@@ -171,12 +177,15 @@ export class DigestPublicService {
     }
 
     const reports = await this.digestReportRepository.findByTopic(topicId);
+    const stc = await this.smartTopicConfigRepo.findByContentItemId(topicId);
     this.logger.debug(`getTopic: topicId=${topicId} reports=${reports.length}`);
 
     return {
       id: topicId,
       name: topicContent.latestVersion?.title ?? '',
       description: topicContent.latestVersion?.summary ?? '',
+      cadence: stc ? cronToHumanCadence(stc.cron) : undefined,
+      sourceCount: stc?.sourceIds.length,
       reports: reports.map((r) => ({
         id: r._id,
         headline: r.headline,
@@ -185,4 +194,31 @@ export class DigestPublicService {
       })),
     };
   }
+}
+
+/**
+ * cron 表达式翻成人话 — 给报刊 byline 用("每天 08:00")。
+ * 仅识别项目内常见三类:每天/每周/手动(空字符串当 manual 触发模式)。
+ * 复杂表达式无解析时退化为原 cron 字符串(admin 自定义场景兜底)。
+ */
+function cronToHumanCadence(cron: string): string {
+  if (!cron || cron.trim().length === 0) return '手动触发';
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length !== 5) return cron;
+  const [minute, hour, dayOfMonth, , dayOfWeek] = parts;
+  if (!/^\d+$/.test(minute) || !/^\d+$/.test(hour)) return cron;
+  const hh = String(parseInt(hour, 10)).padStart(2, '0');
+  const mm = String(parseInt(minute, 10)).padStart(2, '0');
+  // 每周(0-6 单值)
+  if (dayOfMonth === '*' && /^[0-6]$/.test(dayOfWeek)) {
+    const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][
+      parseInt(dayOfWeek, 10)
+    ];
+    return `每${weekday} ${hh}:${mm}`;
+  }
+  // 每天
+  if (dayOfMonth === '*' && dayOfWeek === '*') {
+    return `每天 ${hh}:${mm}`;
+  }
+  return cron;
 }

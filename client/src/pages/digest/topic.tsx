@@ -110,17 +110,22 @@ export default function DigestTopicPage() {
   if (!data) return null;
 
   const { reports } = data;
+  // 本期 LEAD = 最新一期(reports 已按 publishedAt 倒序);其余进 archive grid
+  const lead = reports[0];
+  const archive = reports.slice(1);
+  const totalIssues = reports.length;
+  const firstIssueAt = reports[reports.length - 1]?.publishedAt;
 
   return (
     <div className="flex-1 overflow-y-auto" style={{ background: 'var(--paper)' }}>
-      <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 py-16 max-[520px]:px-5">
+      <div className="mx-auto w-full max-w-[1240px] px-10 py-16 max-[520px]:px-5">
 
         {/* ── breadcrumb ── */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3, ease: appleEase }}
-          className="mb-10"
+          className="mb-8"
         >
           <Link
             to="/digest"
@@ -131,86 +136,166 @@ export default function DigestTopicPage() {
           </Link>
         </motion.div>
 
-        {/* ── 栏目报头 ── */}
+        {/* ── 栏目报头(masthead 占满宽) ── */}
         <motion.header
           className="mb-0"
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, ease: appleEase }}
         >
-          {/* 专栏标签行 */}
           <p
-            className="mb-4 text-[11px] font-bold uppercase tracking-[0.28em]"
+            className="mb-3 text-[11px] font-bold uppercase tracking-[0.28em]"
             style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
           >
             Column · 专栏
           </p>
 
-          {/* 巨型栏目名 */}
           <h1
-            className="mb-4 text-6xl font-bold leading-[1.0] tracking-tight max-[520px]:text-4xl"
+            className="mb-3 text-6xl font-bold leading-[1.0] tracking-tight max-[520px]:text-4xl"
             style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
           >
             {data.name}
           </h1>
 
-          {/* italic 副标题描述 */}
           {data.description && (
             <p
-              className="mb-5 text-xl italic leading-snug"
+              className="mb-4 text-xl italic leading-snug"
               style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
             >
               {data.description}
             </p>
           )}
 
-          {/* meta 行 small caps */}
           <p
             className="mb-6 text-[11px] font-bold uppercase tracking-[0.22em]"
             style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
           >
-            本栏目
+            Edited by Aurora
+            {data.cadence && (
+              <>
+                <span className="mx-3">·</span>
+                {data.cadence}
+              </>
+            )}
+            {typeof data.sourceCount === 'number' && data.sourceCount > 0 && (
+              <>
+                <span className="mx-3">·</span>
+                {data.sourceCount} 信息源
+              </>
+            )}
             <span className="mx-3">·</span>
-            共 {reports.length} 期
+            共 {totalIssues} 期
           </p>
 
-          {/* 报头下方 3px 粗横线 */}
           <div style={{ borderBottom: '3px solid var(--ink)' }} />
         </motion.header>
 
-        {/* ── 往期列表 ── */}
-        <motion.section
+        {/* ── 主体:2 栏非对称(左 ⅔ Lead+Grid / 右 ⅓ Sidebar) ── */}
+        <motion.div
+          className="mt-10 grid grid-cols-1 gap-12 lg:grid-cols-12 lg:gap-14"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3, delay: 0.12, ease: appleEase }}
         >
-          {reports.length === 0 ? (
-            <EmptyReports />
-          ) : (
-            <div className="flex flex-col">
-              {/* reports 按 publishedAt 倒序，期号取倒序位置（最新 = 最大期号） */}
-              {reports.map((report, i) => (
-                <IssueRow
-                  key={report.id}
-                  report={report}
-                  topicId={data.id}
-                  issueNumber={reports.length - i}
-                />
-              ))}
+          {/* ─── 左 8/12:本期 LEAD HERO + Archive Grid ─── */}
+          <div className="lg:col-span-8">
+            {reports.length === 0 ? (
+              <EmptyReports />
+            ) : (
+              <>
+                {/* 本期 LEAD HERO — 占满宽,大标题 + 长摘要 */}
+                {lead && (
+                  <LeadHero
+                    report={lead}
+                    topicId={data.id}
+                    issueNumber={totalIssues}
+                  />
+                )}
+
+                {/* 次级标题:更早期号 */}
+                {archive.length > 0 && (
+                  <>
+                    <p
+                      className="mb-5 mt-14 text-[11px] font-bold uppercase tracking-[0.28em]"
+                      style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+                    >
+                      往期回顾 · Archive
+                    </p>
+                    <div style={{ borderTop: '1px solid var(--ink)' }} />
+
+                    {/* archive grid 2 列网格 */}
+                    <div className="grid grid-cols-1 gap-x-10 md:grid-cols-2">
+                      {archive.map((report, i) => (
+                        <ArchiveCard
+                          key={report.id}
+                          report={report}
+                          topicId={data.id}
+                          issueNumber={archive.length - i}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* ─── 右 4/12:Sidebar(关于本栏目) ─── */}
+          <aside className="lg:col-span-4">
+            <div
+              className="lg:sticky lg:top-16 lg:pl-8"
+              style={{ borderLeft: '1px solid var(--separator)' }}
+            >
+              <p
+                className="mb-3 text-[10px] font-bold uppercase tracking-[0.28em]"
+                style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+              >
+                Colophon · 关于本栏目
+              </p>
+
+              {/* sidebar 元数据列表 */}
+              <dl className="space-y-4">
+                <SidebarEntry label="编辑" value="Aurora" />
+                {data.cadence && (
+                  <SidebarEntry label="出刊节奏" value={data.cadence} />
+                )}
+                {typeof data.sourceCount === 'number' && data.sourceCount > 0 && (
+                  <SidebarEntry
+                    label="订阅信息源"
+                    value={`${data.sourceCount} 个`}
+                  />
+                )}
+                <SidebarEntry label="总期数" value={`${totalIssues} 期`} />
+                {firstIssueAt && (
+                  <SidebarEntry
+                    label="开刊"
+                    value={formatDateShort(firstIssueAt)}
+                  />
+                )}
+              </dl>
+
+              <div className="mt-8" style={{ borderTop: '1px solid var(--separator)' }} />
+
+              <p
+                className="mt-6 text-xs italic leading-relaxed"
+                style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+              >
+                由 Aurora 编辑出版,每期内容由订阅信息源自动采集 · AI 编排成文。
+              </p>
             </div>
-          )}
-        </motion.section>
+          </aside>
+        </motion.div>
 
         {/* ── 页尾 ── */}
         <motion.footer
-          className="mt-16"
+          className="mt-20"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3, delay: 0.25, ease: appleEase }}
         >
           <div style={{ borderTop: '3px solid var(--ink)' }} />
           <p
-            className="mt-5 text-[10px] font-bold uppercase tracking-[0.28em]"
+            className="mt-5 text-center text-[10px] font-bold uppercase tracking-[0.28em]"
             style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
           >
             由 Aurora 自动采集整理 &nbsp;·&nbsp; 欢迎订阅
@@ -223,10 +308,9 @@ export default function DigestTopicPage() {
 }
 
 /* ================================================================
- * IssueRow — 单期行式条目（期号 / 标题+摘要 / 日期箭头三段式）
+ * LeadHero — 本期 LEAD(报纸头条 hero,大标题 + 长摘要)
  * ================================================================ */
-
-function IssueRow({
+function LeadHero({
   report,
   topicId,
   issueNumber,
@@ -236,57 +320,113 @@ function IssueRow({
   issueNumber: number;
 }) {
   return (
-    <div style={{ borderTop: '1px solid var(--ink)' }}>
-      <Link
-        to={`/digest/${topicId}/${report.id}`}
-        className="group flex items-start gap-8 py-7 transition-opacity duration-150 hover:opacity-70 max-[520px]:flex-col max-[520px]:gap-3"
-        aria-label={`第 ${issueNumber} 期 · ${report.headline}`}
+    <Link
+      to={`/digest/${topicId}/${report.id}`}
+      className="group block"
+      aria-label={`本期 · 第 ${issueNumber} 期 · ${report.headline}`}
+    >
+      <p
+        className="mb-3 text-[11px] font-bold uppercase tracking-[0.28em]"
+        style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
       >
-        {/* 左：期号大字 + 日期（垂直） */}
-        <div className="w-20 shrink-0 pt-0.5 max-[520px]:w-auto max-[520px]:flex max-[520px]:gap-3 max-[520px]:items-baseline">
-          <p
-            className="text-2xl font-bold leading-none tracking-tight"
-            style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
-          >
-            第{issueNumber}期
-          </p>
-          <p
-            className="mt-2 text-[10px] font-bold uppercase tracking-[0.22em] max-[520px]:mt-0"
-            style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
-          >
-            {formatDateShort(report.publishedAt)}
-          </p>
-        </div>
+        本期 · Latest Issue
+        <span className="mx-3">·</span>
+        Iss. {String(issueNumber).padStart(2, '0')}
+        <span className="mx-3">·</span>
+        {formatDateShort(report.publishedAt)}
+      </p>
 
-        {/* 中：标题 + 摘要 */}
-        <div className="min-w-0 flex-1">
-          {report.headline && (
-            <p
-              className="mb-1.5 text-xl font-bold leading-snug tracking-tight"
-              style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
-            >
-              {report.headline}
-            </p>
-          )}
+      <h2
+        className="mb-4 text-4xl font-bold leading-[1.1] tracking-tight transition-opacity duration-150 group-hover:opacity-70 max-[520px]:text-3xl"
+        style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
+      >
+        {report.headline}
+      </h2>
 
-          {report.summary && (
-            <p
-              className="text-sm italic leading-snug"
-              style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
-            >
-              {report.summary}
-            </p>
-          )}
-        </div>
-
-        {/* 右：阅读箭头 */}
-        <div
-          className="shrink-0 pt-0.5 text-base font-bold transition-transform duration-150 group-hover:translate-x-1 max-[520px]:self-end"
-          style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+      {report.summary && (
+        <p
+          className="text-base italic leading-relaxed line-clamp-5"
+          style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
         >
-          →
-        </div>
-      </Link>
+          {report.summary.replace(/^\s*##?\s*/, '')}
+        </p>
+      )}
+
+      <p
+        className="mt-4 text-[11px] font-bold uppercase tracking-[0.28em] transition-transform duration-150 group-hover:translate-x-1"
+        style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+      >
+        阅读本期全文 →
+      </p>
+    </Link>
+  );
+}
+
+/* ================================================================
+ * ArchiveCard — 往期单卡片(网格内的小卡片)
+ * ================================================================ */
+function ArchiveCard({
+  report,
+  topicId,
+  issueNumber,
+}: {
+  report: PublicTopicData['reports'][0];
+  topicId: string;
+  issueNumber: number;
+}) {
+  return (
+    <Link
+      to={`/digest/${topicId}/${report.id}`}
+      className="group block py-6 transition-opacity duration-150 hover:opacity-70"
+      style={{ borderTop: '1px solid var(--separator)' }}
+      aria-label={`第 ${issueNumber} 期 · ${report.headline}`}
+    >
+      <p
+        className="mb-2 text-[10px] font-bold uppercase tracking-[0.28em]"
+        style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+      >
+        第 {issueNumber} 期
+        <span className="mx-2">·</span>
+        {formatDateShort(report.publishedAt)}
+      </p>
+
+      <h3
+        className="mb-2 text-lg font-bold leading-snug tracking-tight"
+        style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
+      >
+        {report.headline}
+      </h3>
+
+      {report.summary && (
+        <p
+          className="text-xs italic leading-relaxed line-clamp-2"
+          style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
+        >
+          {report.summary.replace(/^\s*##?\s*/, '').slice(0, 120)}
+        </p>
+      )}
+    </Link>
+  );
+}
+
+/* ================================================================
+ * SidebarEntry — sidebar 单条 label/value 行(<dt>/<dd> 语义)
+ * ================================================================ */
+function SidebarEntry({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt
+        className="text-[10px] font-bold uppercase tracking-[0.28em]"
+        style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+      >
+        {label}
+      </dt>
+      <dd
+        className="mt-1 text-sm leading-snug"
+        style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
+      >
+        {value}
+      </dd>
     </div>
   );
 }

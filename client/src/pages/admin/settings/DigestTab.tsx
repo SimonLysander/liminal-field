@@ -193,7 +193,7 @@ export function DigestTab() {
       // schedule → cron 转换在此完成，keywords/description 发空值（后端字段不变）
       await topicsApi.create({
         name: draft.name.trim(),
-        description: '',
+        description: draft.tagline.trim(),
         cron: scheduleToCron(draft.schedule),
         sourceIds: draft.sourceIds,
         keywords: [],
@@ -219,7 +219,7 @@ export function DigestTab() {
       // schedule → cron 转换，keywords/description 发空值保持后端接口兼容
       await topicsApi.update(editingDetail.id, {
         name: draft.name.trim(),
-        description: '',
+        description: draft.tagline.trim(),
         cron: scheduleToCron(draft.schedule),
         sourceIds: draft.sourceIds,
         keywords: [],
