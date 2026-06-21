@@ -20,9 +20,9 @@ import {
   type FetchedItem,
   type FetchOptions,
 } from './fetcher.interface';
+import { httpGetText } from './http.utils';
 
 const DEFAULT_LIMIT = 25;
-const DEFAULT_UA = 'Mozilla/5.0 (LimialFieldBot/1.0)';
 
 @Injectable()
 export class GithubTrendingFetcher implements SourceFetcher {
@@ -50,12 +50,7 @@ export class GithubTrendingFetcher implements SourceFetcher {
 
     let html: string;
     try {
-      const res = await fetch(url, {
-        signal: AbortSignal.timeout(10_000),
-        headers: { 'User-Agent': DEFAULT_UA },
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-      html = await res.text();
+      html = await httpGetText(url, { label: source.name });
       this.logger.debug(
         `[fetch] 「${source.name}」 拉取完成 htmlLen=${html.length} duration=${Date.now() - t0}ms`,
       );

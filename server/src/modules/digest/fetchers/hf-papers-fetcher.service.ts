@@ -16,10 +16,10 @@ import {
   type FetchedItem,
   type FetchOptions,
 } from './fetcher.interface';
+import { httpGetJson } from './http.utils';
 
 const DEFAULT_LIMIT = 30;
 const SNIPPET_MAX_LENGTH = 800;
-const DEFAULT_UA = 'Mozilla/5.0 (LimialFieldBot/1.0)';
 const ENDPOINT = 'https://huggingface.co/api/daily_papers';
 
 interface HfPaperItem {
@@ -55,12 +55,9 @@ export class HfPapersFetcher implements SourceFetcher {
 
     let rawData: HfPaperItem[];
     try {
-      const res = await fetch(ENDPOINT, {
-        signal: AbortSignal.timeout(10_000),
-        headers: { 'User-Agent': DEFAULT_UA },
+      rawData = await httpGetJson<HfPaperItem[]>(ENDPOINT, {
+        label: source.name,
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-      rawData = (await res.json()) as HfPaperItem[];
       this.logger.debug(
         `[fetch] 「${source.name}」 拉取完成 items=${rawData.length} duration=${Date.now() - t0}ms`,
       );

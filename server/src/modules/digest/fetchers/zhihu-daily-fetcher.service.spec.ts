@@ -1,6 +1,6 @@
 /**
  * ZhihuDailyFetcher 单元测试
- * - mock 全局 fetch
+ * - mock ./http.utils（httpGetJson）
  * - Case 1: 正常响应 → FetchedItem[]，publishedAt 从 YYYYMMDD 解析正确
  * - Case 2: HTTP 非 2xx → throw Error
  * - Case 3: keywords 本地过滤
@@ -13,6 +13,16 @@ import {
   InfoSourceType,
   InfoSourceCategory,
 } from '../info-source.entity';
+
+jest.mock('./http.utils', () => ({
+  httpGetJson: jest.fn(),
+  httpGetText: jest.fn(),
+  httpPostJson: jest.fn(),
+  httpFetch: jest.fn(),
+}));
+
+import { httpGetJson } from './http.utils';
+const mockHttpGetJson = httpGetJson as jest.MockedFunction<typeof httpGetJson>;
 
 function makeSource(): InfoSource {
   return {
@@ -45,24 +55,15 @@ const SAMPLE_RESPONSE = {
   ],
 };
 
-function mockOkJson(data: unknown): unknown {
-  return { ok: true, json: jest.fn().mockResolvedValue(data) };
-}
-
 describe('ZhihuDailyFetcher', () => {
   let fetcher: ZhihuDailyFetcher;
-  let fetchSpy: jest.SpyInstance;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [ZhihuDailyFetcher],
     }).compile();
     fetcher = module.get(ZhihuDailyFetcher);
-    fetchSpy = jest.spyOn(global, 'fetch');
-  });
-
-  afterEach(() => {
-    fetchSpy.mockRestore();
+    jest.clearAllMocks();
   });
 
   it('kind 属性正确', () => {
@@ -72,7 +73,7 @@ describe('ZhihuDailyFetcher', () => {
 
   // Case 1: 正常解析，publishedAt 从 YYYYMMDD 解析
   it('正常响应 → FetchedItem[]，publishedAt 解析为 UTC 0 点', async () => {
-    fetchSpy.mockResolvedValueOnce(mockOkJson(SAMPLE_RESPONSE));
+    mockHttpGetJson.mockResolvedValueOnce(SAMPLE_RESPONSE);
 
     const items = await fetcher.fetch(makeSource(), { limit: 10 });
 
@@ -87,11 +88,11 @@ describe('ZhihuDailyFetcher', () => {
 
   // Case 2: HTTP 错误
   it('HTTP 非 2xx → throw Error 含 zhihu_daily 前缀', async () => {
-    fetchSpy.mockResolvedValueOnce({
-      ok: false,
-      status: 403,
-      statusText: 'Forbidden',
-    });
+    mockHttpGetJson.mockRejectedValueOnce(
+      new Error(
+        'HTTP 403 Forbidden url=https://news-at.zhihu.com/api/4/news/latest',
+      ),
+    );
 
     await expect(fetcher.fetch(makeSource())).rejects.toThrow(
       /zhihu_daily: fetch failed/,
@@ -100,7 +101,7 @@ describe('ZhihuDailyFetcher', () => {
 
   // Case 3: keywords 过滤
   it('keywords 过滤：只返回命中的条目', async () => {
-    fetchSpy.mockResolvedValueOnce(mockOkJson(SAMPLE_RESPONSE));
+    mockHttpGetJson.mockResolvedValueOnce(SAMPLE_RESPONSE);
 
     const items = await fetcher.fetch(makeSource(), { keywords: ['程序员'] });
 

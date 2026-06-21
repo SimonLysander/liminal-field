@@ -16,10 +16,10 @@ import {
   type FetchedItem,
   type FetchOptions,
 } from './fetcher.interface';
+import { httpGetJson } from './http.utils';
 
 const DEFAULT_LIMIT = 30;
 const SNIPPET_MAX_LENGTH = 800;
-const DEFAULT_UA = 'Mozilla/5.0 (LimialFieldBot/1.0)';
 const ENDPOINT = 'https://news-at.zhihu.com/api/4/news/latest';
 
 interface ZhihuStory {
@@ -66,12 +66,9 @@ export class ZhihuDailyFetcher implements SourceFetcher {
 
     let data: ZhihuDailyResponse;
     try {
-      const res = await fetch(ENDPOINT, {
-        signal: AbortSignal.timeout(10_000),
-        headers: { 'User-Agent': DEFAULT_UA },
+      data = await httpGetJson<ZhihuDailyResponse>(ENDPOINT, {
+        label: source.name,
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-      data = (await res.json()) as ZhihuDailyResponse;
       this.logger.debug(
         `[fetch] 「${source.name}」 拉取完成 date=${data.date} items=${data.stories?.length ?? 0} duration=${Date.now() - t0}ms`,
       );

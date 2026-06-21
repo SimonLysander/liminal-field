@@ -63,7 +63,12 @@ export class InfoSource {
    * fetcherKind 就是 FetcherRegistry 真正用的 key，对应 11 种 Fetcher 实现。
    * 老数据由 onModuleInit Step 1c 兜底：type='rss' → fetcherKind='rss'。
    */
+  // type: String 必填——SWC builder(nest.js start --builder swc)不生成
+  // reflect-metadata,typegoose 没法从外部 import 的 enum 推断字段 type,
+  // 启动直接 InvalidTypeError E009。同文件内的 InfoSourceCategory 推断走得通是
+  // 因为同文件类型信息可见。这条与代理/网络无关,纯 SWC 限制。
   @prop({
+    type: String,
     enum: FetcherKind,
     required: true,
     default: FetcherKind.rss,

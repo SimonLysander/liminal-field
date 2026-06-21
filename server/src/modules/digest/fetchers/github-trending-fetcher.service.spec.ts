@@ -1,6 +1,6 @@
 /**
  * GithubTrendingFetcher 单元测试
- * - mock 全局 fetch（返回 HTML 字符串）
+ * - mock ./http.utils（httpGetText）
  * - Case 1: 正常 HTML → 解析出 owner/repo 和 description
  * - Case 2: HTTP 非 2xx → throw Error
  * - Case 3: keywords 本地过滤
@@ -13,6 +13,16 @@ import {
   InfoSourceType,
   InfoSourceCategory,
 } from '../info-source.entity';
+
+jest.mock('./http.utils', () => ({
+  httpGetJson: jest.fn(),
+  httpGetText: jest.fn(),
+  httpPostJson: jest.fn(),
+  httpFetch: jest.fn(),
+}));
+
+import { httpGetText } from './http.utils';
+const mockHttpGetText = httpGetText as jest.MockedFunction<typeof httpGetText>;
 
 function makeSource(
   config: Record<string, unknown> = { language: 'typescript' },
@@ -55,24 +65,15 @@ const SAMPLE_HTML = `
 </body></html>
 `;
 
-function mockOkText(text: string): unknown {
-  return { ok: true, text: jest.fn().mockResolvedValue(text) };
-}
-
 describe('GithubTrendingFetcher', () => {
   let fetcher: GithubTrendingFetcher;
-  let fetchSpy: jest.SpyInstance;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [GithubTrendingFetcher],
     }).compile();
     fetcher = module.get(GithubTrendingFetcher);
-    fetchSpy = jest.spyOn(global, 'fetch');
-  });
-
-  afterEach(() => {
-    fetchSpy.mockRestore();
+    jest.clearAllMocks();
   });
 
   it('kind 属性正确', () => {
@@ -82,7 +83,7 @@ describe('GithubTrendingFetcher', () => {
 
   // Case 1: 正常 HTML 解析
   it('正常 HTML → 解析出 repo 条目（owner/repo + description）', async () => {
-    fetchSpy.mockResolvedValueOnce(mockOkText(SAMPLE_HTML));
+    mockHttpGetText.mockResolvedValueOnce(SAMPLE_HTML);
 
     const items = await fetcher.fetch(makeSource(), { limit: 10 });
 
@@ -97,11 +98,11 @@ describe('GithubTrendingFetcher', () => {
 
   // Case 2: HTTP 错误
   it('HTTP 非 2xx → throw Error 含 github_trending 前缀', async () => {
-    fetchSpy.mockResolvedValueOnce({
-      ok: false,
-      status: 429,
-      statusText: 'Too Many Requests',
-    });
+    mockHttpGetText.mockRejectedValueOnce(
+      new Error(
+        'HTTP 429 Too Many Requests url=https://github.com/trending/typescript?since=daily',
+      ),
+    );
 
     await expect(fetcher.fetch(makeSource())).rejects.toThrow(
       /github_trending: fetch failed/,
@@ -110,7 +111,7 @@ describe('GithubTrendingFetcher', () => {
 
   // Case 3: keywords 过滤
   it('keywords 过滤：只返回 title 或 snippet 含 keyword 的条目', async () => {
-    fetchSpy.mockResolvedValueOnce(mockOkText(SAMPLE_HTML));
+    mockHttpGetText.mockResolvedValueOnce(SAMPLE_HTML);
 
     const items = await fetcher.fetch(makeSource(), {
       keywords: ['Salesforce'],

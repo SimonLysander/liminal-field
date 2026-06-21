@@ -17,9 +17,9 @@ import {
   type FetchedItem,
   type FetchOptions,
 } from './fetcher.interface';
+import { httpGetText } from './http.utils';
 
 const DEFAULT_LIMIT = 30;
-const DEFAULT_UA = 'Mozilla/5.0 (LimialFieldBot/1.0)';
 const ENDPOINT = 'https://alphasignal.ai/sitemap.xml';
 
 @Injectable()
@@ -44,12 +44,7 @@ export class AlphaSignalFetcher implements SourceFetcher {
 
     let xml: string;
     try {
-      const res = await fetch(ENDPOINT, {
-        signal: AbortSignal.timeout(10_000),
-        headers: { 'User-Agent': DEFAULT_UA },
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-      xml = await res.text();
+      xml = await httpGetText(ENDPOINT, { label: source.name });
       this.logger.debug(
         `[fetch] 「${source.name}」 拉取完成 xmlLen=${xml.length} duration=${Date.now() - t0}ms`,
       );

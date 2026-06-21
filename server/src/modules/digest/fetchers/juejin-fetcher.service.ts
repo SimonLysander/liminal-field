@@ -15,10 +15,10 @@ import {
   type FetchedItem,
   type FetchOptions,
 } from './fetcher.interface';
+import { httpPostJson } from './http.utils';
 
 const DEFAULT_LIMIT = 20;
 const SNIPPET_MAX_LENGTH = 800;
-const DEFAULT_UA = 'Mozilla/5.0 (LimialFieldBot/1.0)';
 const ENDPOINT =
   'https://api.juejin.cn/recommend_api/v1/article/recommend_cate_feed';
 
@@ -63,24 +63,18 @@ export class JuejinFetcher implements SourceFetcher {
 
     let body: JuejinResponse;
     try {
-      const res = await fetch(ENDPOINT, {
-        method: 'POST',
-        signal: AbortSignal.timeout(10_000),
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': DEFAULT_UA,
-        },
-        body: JSON.stringify({
+      body = await httpPostJson<JuejinResponse>(
+        ENDPOINT,
+        {
           id_type: 2,
           client_type: 2608,
           sort_type: 200,
           cate_id: cateId,
           cursor: '0',
           limit: limit,
-        }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-      body = (await res.json()) as JuejinResponse;
+        },
+        { label: source.name },
+      );
       this.logger.debug(
         `[fetch] 「${source.name}」 拉取完成 items=${body.data?.length ?? 0} duration=${Date.now() - t0}ms`,
       );

@@ -19,10 +19,10 @@ import {
   type FetchedItem,
   type FetchOptions,
 } from './fetcher.interface';
+import { httpGetText } from './http.utils';
 
 const DEFAULT_LIMIT = 20;
 const SNIPPET_MAX_LENGTH = 800;
-const DEFAULT_UA = 'Mozilla/5.0 (LimialFieldBot/1.0)';
 const ENDPOINT = 'https://www.deeplearning.ai/the-batch/';
 
 @Injectable()
@@ -47,12 +47,7 @@ export class TheBatchFetcher implements SourceFetcher {
 
     let html: string;
     try {
-      const res = await fetch(ENDPOINT, {
-        signal: AbortSignal.timeout(10_000),
-        headers: { 'User-Agent': DEFAULT_UA },
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-      html = await res.text();
+      html = await httpGetText(ENDPOINT, { label: source.name });
       this.logger.debug(
         `[fetch] 「${source.name}」 拉取完成 htmlLen=${html.length} duration=${Date.now() - t0}ms`,
       );
@@ -94,9 +89,9 @@ function parseTheBatch(html: string): FetchedItem[] {
   const items: FetchedItem[] = [];
   const seen = new Set<string>();
 
-  // 匹配 /the-batch/issue-NNN/ 链接（最确定的期刊链接）
+  // 兼容 /the-batch/issue-NNN 和 /the-batch/issue-NNN/(实际 HTML 通常无尾斜杠)
   const issueRe =
-    /href="(\/the-batch\/issue-(\d+)\/)"[^>]*>([\s\S]*?)(?=href="|<\/a>)/g;
+    /href="(\/the-batch\/issue-(\d+)\/?)"[^>]*>([\s\S]*?)(?=href="|<\/a>)/g;
   let m: RegExpExecArray | null;
 
   while ((m = issueRe.exec(html)) !== null) {

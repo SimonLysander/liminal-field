@@ -1,6 +1,6 @@
 /**
  * JuejinFetcher 单元测试
- * - mock 全局 fetch
+ * - mock ./http.utils（httpPostJson）
  * - Case 1: 正常 POST 响应 → FetchedItem[]
  * - Case 2: err_no !== 0 → throw Error
  * - Case 3: keywords 本地过滤
@@ -13,6 +13,18 @@ import {
   InfoSourceType,
   InfoSourceCategory,
 } from '../info-source.entity';
+
+jest.mock('./http.utils', () => ({
+  httpGetJson: jest.fn(),
+  httpGetText: jest.fn(),
+  httpPostJson: jest.fn(),
+  httpFetch: jest.fn(),
+}));
+
+import { httpPostJson } from './http.utils';
+const mockHttpPostJson = httpPostJson as jest.MockedFunction<
+  typeof httpPostJson
+>;
 
 function makeSource(
   config: Record<string, unknown> = { cateId: '6809637767543259144' },
@@ -51,24 +63,15 @@ const SAMPLE_RESPONSE = {
   ],
 };
 
-function mockOkJson(data: unknown): unknown {
-  return { ok: true, json: jest.fn().mockResolvedValue(data) };
-}
-
 describe('JuejinFetcher', () => {
   let fetcher: JuejinFetcher;
-  let fetchSpy: jest.SpyInstance;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [JuejinFetcher],
     }).compile();
     fetcher = module.get(JuejinFetcher);
-    fetchSpy = jest.spyOn(global, 'fetch');
-  });
-
-  afterEach(() => {
-    fetchSpy.mockRestore();
+    jest.clearAllMocks();
   });
 
   it('kind 属性正确', () => {
@@ -78,7 +81,7 @@ describe('JuejinFetcher', () => {
 
   // Case 1: 正常解析
   it('正常 POST 响应 → 返回正确 FetchedItem[]', async () => {
-    fetchSpy.mockResolvedValueOnce(mockOkJson(SAMPLE_RESPONSE));
+    mockHttpPostJson.mockResolvedValueOnce(SAMPLE_RESPONSE);
 
     const items = await fetcher.fetch(makeSource(), { limit: 10 });
 
@@ -96,9 +99,11 @@ describe('JuejinFetcher', () => {
 
   // Case 2: API 错误码
   it('err_no !== 0 → throw Error 含 juejin 前缀', async () => {
-    fetchSpy.mockResolvedValueOnce(
-      mockOkJson({ err_no: 10001, err_msg: 'rate limit', data: [] }),
-    );
+    mockHttpPostJson.mockResolvedValueOnce({
+      err_no: 10001,
+      err_msg: 'rate limit',
+      data: [],
+    });
 
     await expect(fetcher.fetch(makeSource())).rejects.toThrow(
       /juejin: API error/,
@@ -107,7 +112,7 @@ describe('JuejinFetcher', () => {
 
   // Case 3: keywords 过滤
   it('keywords 过滤：只返回命中的条目', async () => {
-    fetchSpy.mockResolvedValueOnce(mockOkJson(SAMPLE_RESPONSE));
+    mockHttpPostJson.mockResolvedValueOnce(SAMPLE_RESPONSE);
 
     const items = await fetcher.fetch(makeSource(), { keywords: ['React'] });
 

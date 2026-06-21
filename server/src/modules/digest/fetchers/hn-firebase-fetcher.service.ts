@@ -22,10 +22,10 @@ import {
   type FetchedItem,
   type FetchOptions,
 } from './fetcher.interface';
+import { httpGetJson } from './http.utils';
 
 const DEFAULT_LIMIT = 30;
 const SNIPPET_MAX_LENGTH = 800;
-const DEFAULT_UA = 'Mozilla/5.0 (LimialFieldBot/1.0)';
 const TOPSTORIES_URL = 'https://hacker-news.firebaseio.com/v0/topstories.json';
 const ITEM_URL = (id: number) =>
   `https://hacker-news.firebaseio.com/v0/item/${id}.json`;
@@ -64,12 +64,7 @@ export class HnFirebaseFetcher implements SourceFetcher {
     // Step 1: 拉 topstories ID 列表
     let ids: number[];
     try {
-      const res = await fetch(TOPSTORIES_URL, {
-        signal: AbortSignal.timeout(10_000),
-        headers: { 'User-Agent': DEFAULT_UA },
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-      ids = (await res.json()) as number[];
+      ids = await httpGetJson<number[]>(TOPSTORIES_URL, { label: source.name });
     } catch (err) {
       const e = err instanceof Error ? err : new Error(String(err));
       this.logger.error(
@@ -82,18 +77,15 @@ export class HnFirebaseFetcher implements SourceFetcher {
     // Step 2: 截取前 limit 个
     const topIds = ids.slice(0, limit);
 
-    // Step 3: 并行拉详情（每个 item 都加独立 timeout）
+    // Step 3: 并行拉详情（httpGetJson 各自带 label，单条失败不阻塞整批）
     const rawItems = await Promise.all(
       topIds.map(async (id): Promise<HnItem | null> => {
         try {
-          const res = await fetch(ITEM_URL(id), {
-            signal: AbortSignal.timeout(10_000),
-            headers: { 'User-Agent': DEFAULT_UA },
+          return await httpGetJson<HnItem>(ITEM_URL(id), {
+            label: `${source.name}/item${id}`,
           });
-          if (!res.ok) return null;
-          return (await res.json()) as HnItem;
         } catch {
-          return null; // 单条失败不阻塞整批
+          return null;
         }
       }),
     );

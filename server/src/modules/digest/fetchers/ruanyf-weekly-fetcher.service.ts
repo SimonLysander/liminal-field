@@ -16,10 +16,10 @@ import {
   type FetchedItem,
   type FetchOptions,
 } from './fetcher.interface';
+import { httpGetJson } from './http.utils';
 
 const DEFAULT_LIMIT = 30;
 const SNIPPET_MAX_LENGTH = 800;
-const DEFAULT_UA = 'Mozilla/5.0 (LimialFieldBot/1.0)';
 
 interface GithubIssue {
   number: number;
@@ -53,15 +53,10 @@ export class RuanyfWeeklyFetcher implements SourceFetcher {
 
     let rawData: GithubIssue[];
     try {
-      const res = await fetch(url, {
-        signal: AbortSignal.timeout(10_000),
-        headers: {
-          Accept: 'application/vnd.github+json',
-          'User-Agent': DEFAULT_UA,
-        },
+      rawData = await httpGetJson<GithubIssue[]>(url, {
+        label: source.name,
+        headers: { Accept: 'application/vnd.github+json' },
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-      rawData = (await res.json()) as GithubIssue[];
       this.logger.debug(
         `[fetch] 「${source.name}」 拉取完成 items=${rawData.length} duration=${Date.now() - t0}ms`,
       );

@@ -1,6 +1,6 @@
 /**
  * V2exFetcher 单元测试
- * - mock 全局 fetch
+ * - mock ./http.utils（httpGetJson）
  * - Case 1: 正常 JSON 解析 → FetchedItem[]
  * - Case 2: HTTP 非 2xx → throw Error
  * - Case 3: keywords 本地过滤
@@ -13,6 +13,16 @@ import {
   InfoSourceType,
   InfoSourceCategory,
 } from '../info-source.entity';
+
+jest.mock('./http.utils', () => ({
+  httpGetJson: jest.fn(),
+  httpGetText: jest.fn(),
+  httpPostJson: jest.fn(),
+  httpFetch: jest.fn(),
+}));
+
+import { httpGetJson } from './http.utils';
+const mockHttpGetJson = httpGetJson as jest.MockedFunction<typeof httpGetJson>;
 
 function makeSource(): InfoSource {
   return {
@@ -48,24 +58,15 @@ const SAMPLE_DATA = [
   },
 ];
 
-function mockOkJson(data: unknown): unknown {
-  return { ok: true, json: jest.fn().mockResolvedValue(data) };
-}
-
 describe('V2exFetcher', () => {
   let fetcher: V2exFetcher;
-  let fetchSpy: jest.SpyInstance;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [V2exFetcher],
     }).compile();
     fetcher = module.get(V2exFetcher);
-    fetchSpy = jest.spyOn(global, 'fetch');
-  });
-
-  afterEach(() => {
-    fetchSpy.mockRestore();
+    jest.clearAllMocks();
   });
 
   it('kind 属性正确', () => {
@@ -75,7 +76,7 @@ describe('V2exFetcher', () => {
 
   // Case 1: 正常解析
   it('正常 JSON 响应 → 返回正确 FetchedItem[]', async () => {
-    fetchSpy.mockResolvedValueOnce(mockOkJson(SAMPLE_DATA));
+    mockHttpGetJson.mockResolvedValueOnce(SAMPLE_DATA);
 
     const items = await fetcher.fetch(makeSource(), { limit: 10 });
 
@@ -92,11 +93,11 @@ describe('V2exFetcher', () => {
 
   // Case 2: HTTP 错误
   it('HTTP 非 2xx → throw Error 含 v2ex 前缀', async () => {
-    fetchSpy.mockResolvedValueOnce({
-      ok: false,
-      status: 429,
-      statusText: 'Too Many Requests',
-    });
+    mockHttpGetJson.mockRejectedValueOnce(
+      new Error(
+        'HTTP 429 Too Many Requests url=https://www.v2ex.com/api/topics/latest.json',
+      ),
+    );
 
     await expect(fetcher.fetch(makeSource())).rejects.toThrow(
       /v2ex: fetch failed/,
@@ -105,7 +106,7 @@ describe('V2exFetcher', () => {
 
   // Case 3: keywords 过滤
   it('keywords 过滤：只返回命中的条目', async () => {
-    fetchSpy.mockResolvedValueOnce(mockOkJson(SAMPLE_DATA));
+    mockHttpGetJson.mockResolvedValueOnce(SAMPLE_DATA);
 
     const items = await fetcher.fetch(makeSource(), { keywords: ['Bun'] });
 

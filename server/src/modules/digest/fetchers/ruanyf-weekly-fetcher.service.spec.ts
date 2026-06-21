@@ -1,6 +1,6 @@
 /**
  * RuanyfWeeklyFetcher 单元测试
- * - mock 全局 fetch
+ * - mock ./http.utils（httpGetJson）
  * - Case 1: 正常 GitHub Issues 响应 → FetchedItem[]
  * - Case 2: HTTP 非 2xx → throw Error
  * - Case 3: since 过滤
@@ -13,6 +13,16 @@ import {
   InfoSourceType,
   InfoSourceCategory,
 } from '../info-source.entity';
+
+jest.mock('./http.utils', () => ({
+  httpGetJson: jest.fn(),
+  httpGetText: jest.fn(),
+  httpPostJson: jest.fn(),
+  httpFetch: jest.fn(),
+}));
+
+import { httpGetJson } from './http.utils';
+const mockHttpGetJson = httpGetJson as jest.MockedFunction<typeof httpGetJson>;
 
 function makeSource(): InfoSource {
   return {
@@ -44,24 +54,15 @@ const SAMPLE_DATA = [
   },
 ];
 
-function mockOkJson(data: unknown): unknown {
-  return { ok: true, json: jest.fn().mockResolvedValue(data) };
-}
-
 describe('RuanyfWeeklyFetcher', () => {
   let fetcher: RuanyfWeeklyFetcher;
-  let fetchSpy: jest.SpyInstance;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [RuanyfWeeklyFetcher],
     }).compile();
     fetcher = module.get(RuanyfWeeklyFetcher);
-    fetchSpy = jest.spyOn(global, 'fetch');
-  });
-
-  afterEach(() => {
-    fetchSpy.mockRestore();
+    jest.clearAllMocks();
   });
 
   it('kind 属性正确', () => {
@@ -71,7 +72,7 @@ describe('RuanyfWeeklyFetcher', () => {
 
   // Case 1: 正常解析
   it('正常 GitHub Issues 响应 → FetchedItem[]', async () => {
-    fetchSpy.mockResolvedValueOnce(mockOkJson(SAMPLE_DATA));
+    mockHttpGetJson.mockResolvedValueOnce(SAMPLE_DATA);
 
     const items = await fetcher.fetch(makeSource(), { limit: 10 });
 
@@ -89,11 +90,11 @@ describe('RuanyfWeeklyFetcher', () => {
 
   // Case 2: HTTP 错误
   it('HTTP 非 2xx → throw Error 含 ruanyf_weekly 前缀', async () => {
-    fetchSpy.mockResolvedValueOnce({
-      ok: false,
-      status: 403,
-      statusText: 'Forbidden',
-    });
+    mockHttpGetJson.mockRejectedValueOnce(
+      new Error(
+        'HTTP 403 Forbidden url=https://api.github.com/repos/ruanyf/weekly/issues',
+      ),
+    );
 
     await expect(fetcher.fetch(makeSource())).rejects.toThrow(
       /ruanyf_weekly: fetch failed/,
@@ -102,7 +103,7 @@ describe('RuanyfWeeklyFetcher', () => {
 
   // Case 3: since 过滤
   it('since 过滤：只返回 since 之后的 issue', async () => {
-    fetchSpy.mockResolvedValueOnce(mockOkJson(SAMPLE_DATA));
+    mockHttpGetJson.mockResolvedValueOnce(SAMPLE_DATA);
 
     const since = new Date('2026-06-21T00:00:00Z');
     const items = await fetcher.fetch(makeSource(), { since });

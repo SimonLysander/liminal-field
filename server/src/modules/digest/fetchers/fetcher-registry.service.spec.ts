@@ -15,6 +15,14 @@ jest.mock('rss-parser', () => {
   return jest.fn().mockImplementation(() => ({ parseURL: jest.fn() }));
 });
 
+// mock http.utils 避免 undici 在旧 Node 版本抛 webidl.util.markAsUncloneable 错
+jest.mock('./http.utils', () => ({
+  httpGetJson: jest.fn(),
+  httpGetText: jest.fn(),
+  httpPostJson: jest.fn(),
+  httpFetch: jest.fn(),
+}));
+
 import { FetcherRegistry } from './fetcher-registry.service';
 import { RssFetcher } from './rss-fetcher.service';
 import { ArxivFetcher } from './arxiv-fetcher.service';

@@ -1,6 +1,6 @@
 /**
  * AlphaSignalFetcher 单元测试
- * - mock 全局 fetch（返回 sitemap XML 字符串）
+ * - mock ./http.utils（httpGetText）
  * - Case 1: 正常 sitemap XML → 解析出 /news/ 条目
  * - Case 2: HTTP 非 2xx → throw Error
  * - Case 3: since 过滤（按 lastmod）
@@ -13,6 +13,16 @@ import {
   InfoSourceType,
   InfoSourceCategory,
 } from '../info-source.entity';
+
+jest.mock('./http.utils', () => ({
+  httpGetJson: jest.fn(),
+  httpGetText: jest.fn(),
+  httpPostJson: jest.fn(),
+  httpFetch: jest.fn(),
+}));
+
+import { httpGetText } from './http.utils';
+const mockHttpGetText = httpGetText as jest.MockedFunction<typeof httpGetText>;
 
 function makeSource(): InfoSource {
   return {
@@ -43,24 +53,15 @@ const SAMPLE_SITEMAP = `<?xml version="1.0" encoding="UTF-8"?>
   </url>
 </urlset>`;
 
-function mockOkText(text: string): unknown {
-  return { ok: true, text: jest.fn().mockResolvedValue(text) };
-}
-
 describe('AlphaSignalFetcher', () => {
   let fetcher: AlphaSignalFetcher;
-  let fetchSpy: jest.SpyInstance;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [AlphaSignalFetcher],
     }).compile();
     fetcher = module.get(AlphaSignalFetcher);
-    fetchSpy = jest.spyOn(global, 'fetch');
-  });
-
-  afterEach(() => {
-    fetchSpy.mockRestore();
+    jest.clearAllMocks();
   });
 
   it('kind 属性正确', () => {
@@ -70,7 +71,7 @@ describe('AlphaSignalFetcher', () => {
 
   // Case 1: 正常解析
   it('正常 sitemap XML → 解析出 /news/ 条目，title = slug 转可读', async () => {
-    fetchSpy.mockResolvedValueOnce(mockOkText(SAMPLE_SITEMAP));
+    mockHttpGetText.mockResolvedValueOnce(SAMPLE_SITEMAP);
 
     const items = await fetcher.fetch(makeSource(), { limit: 10 });
 
@@ -90,11 +91,9 @@ describe('AlphaSignalFetcher', () => {
 
   // Case 2: HTTP 错误
   it('HTTP 非 2xx → throw Error 含 alpha_signal 前缀', async () => {
-    fetchSpy.mockResolvedValueOnce({
-      ok: false,
-      status: 404,
-      statusText: 'Not Found',
-    });
+    mockHttpGetText.mockRejectedValueOnce(
+      new Error('HTTP 404 Not Found url=https://alphasignal.ai/sitemap.xml'),
+    );
 
     await expect(fetcher.fetch(makeSource())).rejects.toThrow(
       /alpha_signal: fetch failed/,
@@ -103,7 +102,7 @@ describe('AlphaSignalFetcher', () => {
 
   // Case 3: since 过滤
   it('since 过滤：只返回 lastmod > since 的条目', async () => {
-    fetchSpy.mockResolvedValueOnce(mockOkText(SAMPLE_SITEMAP));
+    mockHttpGetText.mockResolvedValueOnce(SAMPLE_SITEMAP);
 
     const since = new Date('2026-06-21T00:00:00Z');
     const items = await fetcher.fetch(makeSource(), { since });

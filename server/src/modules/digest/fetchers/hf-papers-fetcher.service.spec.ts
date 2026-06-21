@@ -1,6 +1,6 @@
 /**
  * HfPapersFetcher 单元测试
- * - mock 全局 fetch
+ * - mock ./http.utils（httpGetJson）
  * - Case 1: 正常 JSON 解析 → FetchedItem[]
  * - Case 2: HTTP 非 2xx → throw Error
  * - Case 3: keywords 本地过滤
@@ -13,6 +13,16 @@ import {
   InfoSourceType,
   InfoSourceCategory,
 } from '../info-source.entity';
+
+jest.mock('./http.utils', () => ({
+  httpGetJson: jest.fn(),
+  httpGetText: jest.fn(),
+  httpPostJson: jest.fn(),
+  httpFetch: jest.fn(),
+}));
+
+import { httpGetJson } from './http.utils';
+const mockHttpGetJson = httpGetJson as jest.MockedFunction<typeof httpGetJson>;
 
 function makeSource(): InfoSource {
   return {
@@ -50,25 +60,15 @@ const SAMPLE_DATA = [
   },
 ];
 
-/** 构造 fetch mock 响应（ok=true，json() 返回数据） */
-function mockOkJson(data: unknown): unknown {
-  return { ok: true, json: jest.fn().mockResolvedValue(data) };
-}
-
 describe('HfPapersFetcher', () => {
   let fetcher: HfPapersFetcher;
-  let fetchSpy: jest.SpyInstance;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [HfPapersFetcher],
     }).compile();
     fetcher = module.get(HfPapersFetcher);
-    fetchSpy = jest.spyOn(global, 'fetch');
-  });
-
-  afterEach(() => {
-    fetchSpy.mockRestore();
+    jest.clearAllMocks();
   });
 
   it('kind 属性正确', () => {
@@ -78,7 +78,7 @@ describe('HfPapersFetcher', () => {
 
   // Case 1: 正常解析
   it('正常 JSON 响应 → 返回正确 FetchedItem[]', async () => {
-    fetchSpy.mockResolvedValueOnce(mockOkJson(SAMPLE_DATA));
+    mockHttpGetJson.mockResolvedValueOnce(SAMPLE_DATA);
 
     const items = await fetcher.fetch(makeSource(), { limit: 10 });
 
@@ -95,11 +95,11 @@ describe('HfPapersFetcher', () => {
 
   // Case 2: HTTP 错误
   it('HTTP 非 2xx → throw Error 含 hf_papers 前缀', async () => {
-    fetchSpy.mockResolvedValueOnce({
-      ok: false,
-      status: 503,
-      statusText: 'Service Unavailable',
-    });
+    mockHttpGetJson.mockRejectedValueOnce(
+      new Error(
+        'HTTP 503 Service Unavailable url=https://huggingface.co/api/daily_papers',
+      ),
+    );
 
     await expect(fetcher.fetch(makeSource())).rejects.toThrow(
       /hf_papers: fetch failed/,
@@ -108,7 +108,7 @@ describe('HfPapersFetcher', () => {
 
   // Case 3: keywords 本地过滤
   it('keywords 过滤：只返回 title/snippet 含 keyword 的条目', async () => {
-    fetchSpy.mockResolvedValueOnce(mockOkJson(SAMPLE_DATA));
+    mockHttpGetJson.mockResolvedValueOnce(SAMPLE_DATA);
 
     const items = await fetcher.fetch(makeSource(), { keywords: ['RAG'] });
 

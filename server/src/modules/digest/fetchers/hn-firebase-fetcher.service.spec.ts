@@ -1,6 +1,6 @@
 /**
  * HnFirebaseFetcher 单元测试
- * - mock 全局 fetch（topstories 列表 + item 详情各自 mock）
+ * - mock ./http.utils（httpGetJson）
  * - Case 1: 正常流程（topstories + 并行详情）→ FetchedItem[]
  * - Case 2: topstories 请求失败 → throw Error
  * - Case 3: since 过滤
@@ -13,6 +13,16 @@ import {
   InfoSourceType,
   InfoSourceCategory,
 } from '../info-source.entity';
+
+jest.mock('./http.utils', () => ({
+  httpGetJson: jest.fn(),
+  httpGetText: jest.fn(),
+  httpPostJson: jest.fn(),
+  httpFetch: jest.fn(),
+}));
+
+import { httpGetJson } from './http.utils';
+const mockHttpGetJson = httpGetJson as jest.MockedFunction<typeof httpGetJson>;
 
 function makeSource(): InfoSource {
   return {
@@ -47,24 +57,15 @@ const SAMPLE_ITEM_2 = {
   type: 'story',
 };
 
-function mockOkJson(data: unknown): unknown {
-  return { ok: true, json: jest.fn().mockResolvedValue(data) };
-}
-
 describe('HnFirebaseFetcher', () => {
   let fetcher: HnFirebaseFetcher;
-  let fetchSpy: jest.SpyInstance;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [HnFirebaseFetcher],
     }).compile();
     fetcher = module.get(HnFirebaseFetcher);
-    fetchSpy = jest.spyOn(global, 'fetch');
-  });
-
-  afterEach(() => {
-    fetchSpy.mockRestore();
+    jest.clearAllMocks();
   });
 
   it('kind 属性正确', () => {
@@ -75,10 +76,10 @@ describe('HnFirebaseFetcher', () => {
   // Case 1: 正常流程
   it('topstories + item 详情 → 返回正确 FetchedItem[]', async () => {
     // 第一次调用：topstories（limit=2 只取前 2 条）
-    fetchSpy
-      .mockResolvedValueOnce(mockOkJson([40123456, 40123457]))
-      .mockResolvedValueOnce(mockOkJson(SAMPLE_ITEM))
-      .mockResolvedValueOnce(mockOkJson(SAMPLE_ITEM_2));
+    mockHttpGetJson
+      .mockResolvedValueOnce([40123456, 40123457])
+      .mockResolvedValueOnce(SAMPLE_ITEM)
+      .mockResolvedValueOnce(SAMPLE_ITEM_2);
 
     const items = await fetcher.fetch(makeSource(), { limit: 2 });
 
@@ -96,11 +97,11 @@ describe('HnFirebaseFetcher', () => {
 
   // Case 2: topstories 失败
   it('topstories 请求失败 → throw Error 含 hn_firebase 前缀', async () => {
-    fetchSpy.mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-      statusText: 'Internal Server Error',
-    });
+    mockHttpGetJson.mockRejectedValueOnce(
+      new Error(
+        'HTTP 500 Internal Server Error url=https://hacker-news.firebaseio.com/v0/topstories.json',
+      ),
+    );
 
     await expect(fetcher.fetch(makeSource())).rejects.toThrow(
       /hn_firebase: topstories fetch failed/,
@@ -109,10 +110,10 @@ describe('HnFirebaseFetcher', () => {
 
   // Case 3: since 过滤
   it('since 过滤：只返回 since 之后发布的 story', async () => {
-    fetchSpy
-      .mockResolvedValueOnce(mockOkJson([40123456, 40123457]))
-      .mockResolvedValueOnce(mockOkJson(SAMPLE_ITEM))
-      .mockResolvedValueOnce(mockOkJson(SAMPLE_ITEM_2));
+    mockHttpGetJson
+      .mockResolvedValueOnce([40123456, 40123457])
+      .mockResolvedValueOnce(SAMPLE_ITEM)
+      .mockResolvedValueOnce(SAMPLE_ITEM_2);
 
     // since 设为 2025-01-01，只有 SAMPLE_ITEM（2025-06-21）通过
     const since = new Date('2025-01-01T00:00:00Z');

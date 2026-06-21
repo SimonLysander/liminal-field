@@ -1,6 +1,6 @@
 /**
  * TheBatchFetcher 单元测试
- * - mock 全局 fetch（返回 HTML 字符串）
+ * - mock ./http.utils（httpGetText）
  * - Case 1: 含 issue 链接的 HTML → 解析出期刊条目
  * - Case 2: HTTP 非 2xx → throw Error
  * - Case 3: keywords 本地过滤（title 匹配）
@@ -13,6 +13,16 @@ import {
   InfoSourceType,
   InfoSourceCategory,
 } from '../info-source.entity';
+
+jest.mock('./http.utils', () => ({
+  httpGetJson: jest.fn(),
+  httpGetText: jest.fn(),
+  httpPostJson: jest.fn(),
+  httpFetch: jest.fn(),
+}));
+
+import { httpGetText } from './http.utils';
+const mockHttpGetText = httpGetText as jest.MockedFunction<typeof httpGetText>;
 
 function makeSource(): InfoSource {
   return {
@@ -40,24 +50,15 @@ const SAMPLE_HTML = `
 </body></html>
 `;
 
-function mockOkText(text: string): unknown {
-  return { ok: true, text: jest.fn().mockResolvedValue(text) };
-}
-
 describe('TheBatchFetcher', () => {
   let fetcher: TheBatchFetcher;
-  let fetchSpy: jest.SpyInstance;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [TheBatchFetcher],
     }).compile();
     fetcher = module.get(TheBatchFetcher);
-    fetchSpy = jest.spyOn(global, 'fetch');
-  });
-
-  afterEach(() => {
-    fetchSpy.mockRestore();
+    jest.clearAllMocks();
   });
 
   it('kind 属性正确', () => {
@@ -67,7 +68,7 @@ describe('TheBatchFetcher', () => {
 
   // Case 1: 正常 HTML 解析
   it('含 issue 链接的 HTML → 解析出期刊条目', async () => {
-    fetchSpy.mockResolvedValueOnce(mockOkText(SAMPLE_HTML));
+    mockHttpGetText.mockResolvedValueOnce(SAMPLE_HTML);
 
     const items = await fetcher.fetch(makeSource(), { limit: 10 });
 
@@ -82,11 +83,11 @@ describe('TheBatchFetcher', () => {
 
   // Case 2: HTTP 错误
   it('HTTP 非 2xx → throw Error 含 the_batch 前缀', async () => {
-    fetchSpy.mockResolvedValueOnce({
-      ok: false,
-      status: 503,
-      statusText: 'Service Unavailable',
-    });
+    mockHttpGetText.mockRejectedValueOnce(
+      new Error(
+        'HTTP 503 Service Unavailable url=https://www.deeplearning.ai/the-batch/',
+      ),
+    );
 
     await expect(fetcher.fetch(makeSource())).rejects.toThrow(
       /the_batch: fetch failed/,
@@ -95,7 +96,7 @@ describe('TheBatchFetcher', () => {
 
   // Case 3: keywords 过滤（通过 title 匹配，title 来自 slug 或 h2）
   it('keywords 过滤：只返回 title 含 keyword 的条目', async () => {
-    fetchSpy.mockResolvedValueOnce(mockOkText(SAMPLE_HTML));
+    mockHttpGetText.mockResolvedValueOnce(SAMPLE_HTML);
 
     const items = await fetcher.fetch(makeSource(), {
       keywords: ['Transformers'],
