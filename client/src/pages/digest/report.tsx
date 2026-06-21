@@ -453,18 +453,15 @@ export default function DigestReportPage() {
               {report.headline}
             </h1>
 
-            {/* Deck(导语副标): 本期选题指引——报纸主标下两三行 italic 大字,
-                说清"本期讲什么 + 为何重要"。报纸版面解剖里 deck 是仅次于 headline
-                的核心元素;以前我们漏了这一层,直接 headline → byline → 正文,
-                少了从大字标题到正文之间的"中场缓冲"。 */}
-            {topic.description && (
-              <p
-                className="mb-7 text-lg italic leading-[1.55] max-[520px]:text-base"
-                style={{ color: 'var(--ink-soft)' }}
-              >
-                {topic.description}
-              </p>
-            )}
+            {/* Deck(本期目录式概要): 紧贴 headline 下方的 italic 大字,
+                告诉读者"本期有哪几篇/讲什么"——由 compose-report 节点产出 report.deck,
+                跟栏目宗旨(整个栏目讲什么)不同,严格"本期独有"信息,不透传上层。 */}
+            <p
+              className="mb-7 text-lg italic leading-[1.55] max-[520px]:text-base"
+              style={{ color: 'var(--ink-soft)' }}
+            >
+              {report.deck}
+            </p>
 
             {/* Byline(署名): italic + tracking,报纸经典署名样式 */}
             <p

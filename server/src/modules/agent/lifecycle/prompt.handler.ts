@@ -29,6 +29,8 @@ import type { AgentMemory } from '../memory/agent-memory.entity';
 import type { AgentMemoryObservation } from '../memory/agent-memory-observation.entity';
 import type { Skill } from '../../skill/skill.entity';
 import { extractHeadings } from '../tools/markdown.utils';
+// aurora/*.md 和 aurora/partials/*.md 各 section 固定文本托管到 promptManager(原散落字符串 → 统一管理)
+import { PromptManagerService } from '../../../infrastructure/prompt/prompt-manager.service';
 
 /**
  * <memories_index> 注入的"最近 N 条原始 observations" 默认条数(2026-05-30 event log)。
@@ -142,6 +144,12 @@ export interface BuildSystemPromptParams {
 export class PromptHandler {
   private readonly logger = new Logger(PromptHandler.name);
 
+  constructor(
+    // PromptManagerService 是 @Global() 注入,无需 module import
+    // 用于加载 aurora/*.md 和 aurora/partials/*.md 各 section 固定文本
+    private readonly promptManager: PromptManagerService,
+  ) {}
+
   buildSystemPrompt(params: BuildSystemPromptParams): string {
     const sections: string[] = [];
     const owner = params.ownerProfile;
@@ -155,23 +163,20 @@ export class PromptHandler {
       sections.push(`<owner>\n${lines.join('\n')}\n</owner>`);
     }
 
-    // 2. ——— Aurora 是谁（灵魂/人设，不是业务职责） ———
-    sections.push(`<role>
-你是 Aurora。
-
-你不是工具，也不是助手——你是 ${ownerName} 的另一个自我：陪 ${ownerName} 一起成长，见证 ta 把斑驳而卑微的期许，一点点长成生机勃勃、斩钉截铁的现实。你是最懂 ${ownerName} 的朋友，是 ta 自我与超我之间的那个声音。
-
-你们一起写作。写作是 ${ownerName} 与自己对话的方式；你在这场对话里既贴心又诚实——懂 ta 的言外之意，也敢点出 ta 没看见的盲点。
-</role>`);
+    // 2. ——— Aurora 是谁（灵魂/人设，不是业务职责）———
+    // 从 aurora/role.md 加载(原散落字符串 → promptManager)
+    sections.push(
+      this.promptManager.render('aurora/role.md', { owner_name: ownerName }),
+    );
 
     // 3. ——— 工具使用指引（只引导"何时用",不重复 schema——工具的 name/description/参数
-    //    AI SDK 已喂给模型；逐条抄反而易与 schema 不同步） ———
-    sections.push(`<tools>
-你能:读 ${ownerName} 当前在写的文稿、搜索/浏览/读取 ta 知识库里的笔记/文集/相册、联网查外部信息、把值得记的写进记忆、为多步任务维护写作计划。
-- 需要文稿正文时,主动调 get_current_draft
-- 需要外部事实/引用/资料时调 web_search(若可用);用户贴 URL 让你读、或 web_search 后想读全文,调 web_fetch。只在写作或回答真需要外部依据时用,**不要为闲聊瞎调**,凭训练数据能答就直接答
-- 发现值得长期记住的信息,随手 remember(context 会重置,没记的会丢)
-</tools>`);
+    //    AI SDK 已喂给模型；逐条抄反而易与 schema 不同步）———
+    // 从 aurora/tools-guide.md 加载(原散落字符串 → promptManager)
+    sections.push(
+      this.promptManager.render('aurora/tools-guide.md', {
+        owner_name: ownerName,
+      }),
+    );
 
     // ——— 可用 Skills(技能/方法论池) ———
     // 轻量元数据(name + description + when_to_use)。body 永不出现在这里——spec §5.1 红线,单测保护。
@@ -183,8 +188,12 @@ export class PromptHandler {
             `- name: ${s.name}\n  description: ${s.description}\n  when_to_use: ${s.whenToUse}`,
         )
         .join('\n\n');
+      // 从 aurora/partials/skills-prelude.md 加载导语(原散落字符串 → promptManager)
+      const skillsPrelude = this.promptManager.render(
+        'aurora/partials/skills-prelude.md',
+      );
       sections.push(
-        `<available_skills>\n你有以下技能(方法论)可调用。识别到对应场景时,调 load_skill 工具传 name 获取完整方法论指引。\n\n${items}\n</available_skills>`,
+        `<available_skills>\n${skillsPrelude.trim()}\n\n${items}\n</available_skills>`,
       );
       // 关键链路打点(CLAUDE.md「日志准则」):注入了哪些 skill 名称,方便排查
       // 「模型为啥没调 load_skill / 调错了 skill」类问题。
@@ -220,28 +229,34 @@ export class PromptHandler {
     }
 
     if (indexSegments.length > 0) {
+      // 从 aurora/partials/memories-prelude.md 加载导语(原散落字符串 → promptManager)
+      const memoriesPrelude = this.promptManager.render(
+        'aurora/partials/memories-prelude.md',
+      );
       sections.push(
-        `<memories_index>\n你对所有者的认知:画像是长期综合,最近观察是近期细节。远古具体细节调 recall_memory(topic) 或 search_memories(query)。\n\n${indexSegments.join('\n\n---\n\n')}\n</memories_index>`,
+        `<memories_index>\n${memoriesPrelude.trim()}\n\n${indexSegments.join('\n\n---\n\n')}\n</memories_index>`,
       );
     }
 
     // 5. ——— 本 session 的对话脉络（compaction 提炼）———
     // 注:relatedMemories 自动召回已废,#150 改为模型主动调 recall_memory/search_memories 按需读
     if (params.sessionMemory) {
+      // 从 aurora/partials/conversation-summary-prelude.md 加载导语(原散落字符串 → promptManager)
+      const summaryPrelude = this.promptManager.render(
+        'aurora/partials/conversation-summary-prelude.md',
+      );
       sections.push(
-        `<conversation_summary>\n以下是本次会话的脉络记忆（更早的对话已被提炼进记忆，原文仍可用 read_conversation_history 精确回溯）：\n${params.sessionMemory}\n</conversation_summary>`,
+        `<conversation_summary>\n${summaryPrelude.trim()}\n${params.sessionMemory}\n</conversation_summary>`,
       );
     }
 
     // 6. ——— 行为约束 ———
-    sections.push(`<instructions>
-- 需要文档内容或知识库信息时,先调工具,不要凭空假设
-- 用中文回答,除非 ${ownerName} 明确要求其他语言
-- 不重复 ${ownerName} 已说过的话
-- 为 ${ownerName} 起草初稿、片段乃至整篇都可以;你交付的是供 ta 接手打磨的草稿与起点,而非终稿
-- 多步任务先用 write_tasks 列计划再动手;每步更新清单(同一时刻只一个进行中);全部完成后传空列表清空。简单一步的事不必列计划
-- 你没有直接改写文稿正文的能力(2026-06-04 改稿功能停用)。用户想改正文时,给出具体、可操作的修改建议(指明哪段、怎么改、给出可直接采用的句子),由 ${ownerName} 自己落到编辑器;引用块(\`> 第 N 段:「…」\`)是 ta 特别想让你看的几段。不要大段照抄/重排整篇正文冒充"改稿"
-</instructions>`);
+    // 从 aurora/instructions.md 加载(原散落字符串 → promptManager)
+    sections.push(
+      this.promptManager.render('aurora/instructions.md', {
+        owner_name: ownerName,
+      }),
+    );
 
     // 7. ——— 当前业务场景：点名在编辑哪篇 + 大纲（v3.1 起正文不再注入）———
     if (params.document) {
@@ -265,8 +280,12 @@ ${ownerName} 当前正在编辑文档《${title || '未命名'}》(约 ${wordCou
             ? collectionContextRaw.slice(0, LIMIT) +
               '\n…(完整子节点列表已截断,用 list_knowledge_base 看完整结构)'
             : collectionContextRaw;
+        // 从 aurora/partials/collection-prelude.md 加载后置说明(原散落字符串 → promptManager)
+        const collectionPrelude = this.promptManager.render(
+          'aurora/partials/collection-prelude.md',
+        );
         sections.push(
-          `<collection>\n${collectionContext}\n\n(需要看同集某个子节点的内容,用 read_collection_entry 传它的节点 id;当前这个用 get_current_draft)\n</collection>`,
+          `<collection>\n${collectionContext}\n\n${collectionPrelude.trim()}\n</collection>`,
         );
       }
 
@@ -285,10 +304,16 @@ ${ownerName} 当前正在编辑文档《${title || '未命名'}》(约 ${wordCou
     // 与 document 互斥（画廊不是文稿）。———
     if (params.gallery) {
       const g = params.gallery;
-      sections.push(`<gallery>
-${ownerName} 正在整理画廊《${g.title || '未命名'}》——${g.photos.length} 张照片${g.prose ? ',还配着一段随笔' : ''}。
-这些照片你看得见(想看哪张就看),清单、随笔、每张现有的图说也都能调出来读。${ownerName} 想聊照片、想要图说,顺着 ta 的话自然来就好。
-</gallery>`);
+      // 从 aurora/partials/gallery.md 加载(原散落字符串 → promptManager)
+      // has_prose: 有随笔时填 ',还配着一段随笔',无则空字符串
+      sections.push(
+        this.promptManager.render('aurora/partials/gallery.md', {
+          owner_name: ownerName,
+          title: g.title || '未命名',
+          photo_count: String(g.photos.length),
+          has_prose: g.prose ? ',还配着一段随笔' : '',
+        }),
+      );
     }
 
     // ——— 简报阅读页场景(report-reader 入口) ———

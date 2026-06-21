@@ -50,7 +50,8 @@ export default function DigestPublicPage() {
 
   return (
     <div className="flex-1 overflow-y-auto" style={{ background: 'var(--paper)' }}>
-      <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 py-16 max-[520px]:px-5">
+      {/* 容器宽度统一 1240(跟 /digest/:topicId 栏目页一致),避免翻页时边界忽宽忽窄 */}
+      <div className="mx-auto w-full max-w-[1240px] px-10 py-16 max-[520px]:px-5">
 
         {/* ── 报头区 ── */}
         <motion.header
@@ -168,8 +169,7 @@ export default function DigestPublicPage() {
 
 function TopicRow({ topic, index }: { topic: PublicTopicData; index: number }) {
   const count = topic.reports.length;
-  // 最新报告时间（reports 已按 publishedAt 倒序，取第一个）
-  const lastReportAt = topic.reports[0]?.publishedAt;
+  const latest = topic.reports[0];
 
   return (
     <div>
@@ -178,51 +178,107 @@ function TopicRow({ topic, index }: { topic: PublicTopicData; index: number }) {
 
       <Link
         to={`/digest/${topic.id}`}
-        className="group flex items-baseline justify-between gap-6 py-6 transition-opacity duration-150 hover:opacity-70"
+        className="group block py-10 transition-opacity duration-150 hover:opacity-80"
         style={{ animationDelay: `${0.06 * index}s` }}
       >
-        {/* 左侧：栏目名 + italic 描述 */}
-        <div className="min-w-0 flex-1">
-          <h2
-            className="text-3xl font-bold leading-snug tracking-tight"
-            style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
-          >
-            {topic.name}
-          </h2>
-          {topic.description && (
-            <p
-              className="mt-1.5 text-base italic leading-relaxed"
-              style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
-            >
-              {topic.description}
-            </p>
-          )}
-        </div>
+        {/* broadsheet 横块:左栏目元信息(masthead+宗旨+byline) | 右本期 hero — 非对称 7:5 比 */}
+        <div className="grid grid-cols-1 gap-10 md:grid-cols-12">
 
-        {/* 右侧：small caps meta + ASCII 箭头 */}
-        <div className="flex shrink-0 items-center gap-6">
-          <div className="text-right">
+          {/* ── 左 7/12:栏目元信息 ── */}
+          <div className="md:col-span-7 flex flex-col">
+            {/* kicker 小字标签 */}
             <p
-              className="text-[10px] font-bold uppercase tracking-[0.28em]"
-              style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
+              className="mb-2 text-[10px] font-bold uppercase tracking-[0.28em]"
+              style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
             >
+              专栏 · COLUMN
+            </p>
+
+            {/* masthead 大字栏目名 */}
+            <h2
+              className="text-4xl font-bold leading-[1.05] tracking-tight md:text-5xl"
+              style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
+            >
+              {topic.name}
+            </h2>
+
+            {/* standfirst italic 栏目宗旨 */}
+            {topic.description && (
+              <p
+                className="mt-3 text-lg italic leading-snug"
+                style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
+              >
+                {topic.description}
+              </p>
+            )}
+
+            {/* 栏目元信息行 — 节奏/源数/期数都是本栏独有,不再写 Aurora
+                (刊头已经说"由 AURORA 编辑",这层透传过来就是噪音) */}
+            <p
+              className="mt-auto pt-4 text-[10px] font-bold uppercase tracking-[0.22em]"
+              style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+            >
+              {topic.cadence ?? '手动出刊'}
+              {typeof topic.sourceCount === 'number' && topic.sourceCount > 0 && (
+                <>
+                  <span className="mx-2">·</span>
+                  {topic.sourceCount} 信息源
+                </>
+              )}
+              <span className="mx-2">·</span>
               {count} 期
             </p>
-            {lastReportAt && (
+          </div>
+
+          {/* ── 右 5/12:本期 hero — 类似报纸 lead story 预告 ── */}
+          <div className="md:col-span-5 md:border-l md:pl-8" style={{ borderColor: 'var(--separator)' }}>
+            {latest ? (
+              <>
+                {/* small caps:LATEST ISSUE · 期号 · 日期 */}
+                <p
+                  className="mb-2 text-[10px] font-bold uppercase tracking-[0.28em]"
+                  style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+                >
+                  最新一期 · Iss. {String(count).padStart(2, '0')}
+                  <span className="mx-2">·</span>
+                  {daysAgo(latest.publishedAt)}
+                </p>
+
+                {/* hero 标题 */}
+                <p
+                  className="mb-3 text-xl font-bold leading-snug tracking-tight"
+                  style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
+                >
+                  {latest.headline}
+                </p>
+
+                {/* 摘要 2-3 行截断 — italic 跟报刊统一 */}
+                {latest.summary && (
+                  <p
+                    className="text-sm italic leading-relaxed line-clamp-3"
+                    style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
+                  >
+                    {latest.summary.replace(/^\s*##?\s*/, '').slice(0, 180)}
+                  </p>
+                )}
+
+                {/* 阅读箭头 small caps */}
+                <p
+                  className="mt-4 text-[10px] font-bold uppercase tracking-[0.28em] transition-transform duration-150 group-hover:translate-x-1"
+                  style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+                >
+                  阅读本期 →
+                </p>
+              </>
+            ) : (
               <p
-                className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.22em]"
+                className="text-[10px] font-bold uppercase tracking-[0.28em]"
                 style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
               >
-                {daysAgo(lastReportAt)} 更新
+                尚无出刊记录
               </p>
             )}
           </div>
-          <span
-            className="text-base font-bold transition-transform duration-150 group-hover:translate-x-1"
-            style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
-          >
-            →
-          </span>
         </div>
       </Link>
     </div>

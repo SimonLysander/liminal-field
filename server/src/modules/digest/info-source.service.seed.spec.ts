@@ -11,6 +11,7 @@
 import { InfoSourceService } from './info-source.service';
 import { InfoSourceRepository } from './info-source.repository';
 import { InfoSourceCategory } from './info-source.entity';
+import { FetcherKind } from './fetchers/fetcher.interface';
 import { SmartTopicConfigRepository } from './smart-topic-config.repository';
 import { SEED_SOURCES } from './source-seeds';
 
@@ -119,12 +120,15 @@ describe('InfoSourceService.onModuleInit', () => {
     // 检查每条 create 调用的 category 与 SEED_SOURCES 一一对应
     model.create.mock.calls.forEach((call: any[], idx: number) => {
       const createdDoc = call[0] as Record<string, unknown>;
-      expect(createdDoc.category).toBe(SEED_SOURCES[idx].category);
+      const seed = SEED_SOURCES[idx];
+      expect(createdDoc.category).toBe(seed.category);
       expect(createdDoc.type).toBe('rss');
+      // Fetcher v2: seed.fetcherKind ?? 'rss' 兜底（PR1 阶段全部 seed 都走 rss）
+      expect(createdDoc.fetcherKind).toBe(seed.fetcherKind ?? FetcherKind.rss);
       expect(typeof createdDoc._id).toBe('string');
       expect((createdDoc._id as string).startsWith('src_')).toBe(true);
       // enabled 透传 seed.enabled ?? true：URL 不通的源设 false，其余 true
-      expect(createdDoc.enabled).toBe(SEED_SOURCES[idx].enabled ?? true);
+      expect(createdDoc.enabled).toBe(seed.enabled ?? true);
     });
 
     // 验证新 5 类 category 均有对应源被插入（覆盖精简后的所有分类）

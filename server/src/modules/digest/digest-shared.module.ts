@@ -27,6 +27,16 @@ import { DigestReport } from './digest-report.entity';
 import { DigestReportRepository } from './digest-report.repository';
 
 import { RssFetcher } from './fetchers/rss-fetcher.service';
+import { ArxivFetcher } from './fetchers/arxiv-fetcher.service';
+import { HfPapersFetcher } from './fetchers/hf-papers-fetcher.service';
+import { HnFirebaseFetcher } from './fetchers/hn-firebase-fetcher.service';
+import { V2exFetcher } from './fetchers/v2ex-fetcher.service';
+import { JuejinFetcher } from './fetchers/juejin-fetcher.service';
+import { ZhihuDailyFetcher } from './fetchers/zhihu-daily-fetcher.service';
+import { RuanyfWeeklyFetcher } from './fetchers/ruanyf-weekly-fetcher.service';
+import { GithubTrendingFetcher } from './fetchers/github-trending-fetcher.service';
+import { TheBatchFetcher } from './fetchers/the-batch-fetcher.service';
+import { AlphaSignalFetcher } from './fetchers/alpha-signal-fetcher.service';
 import { FetcherRegistry } from './fetchers/fetcher-registry.service';
 
 // TypegooseModule.forFeature 是 DynamicModule;export 它让外部模块也能拿到 models
@@ -49,6 +59,16 @@ const typegoose = TypegooseModule.forFeature([
     DigestTaskRepository,
     DigestReportRepository,
     RssFetcher,
+    ArxivFetcher,
+    HfPapersFetcher,
+    HnFirebaseFetcher,
+    V2exFetcher,
+    JuejinFetcher,
+    ZhihuDailyFetcher,
+    RuanyfWeeklyFetcher,
+    GithubTrendingFetcher,
+    TheBatchFetcher,
+    AlphaSignalFetcher,
     FetcherRegistry,
   ],
   exports: [

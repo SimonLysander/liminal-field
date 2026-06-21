@@ -74,9 +74,11 @@ describe('MemoryAgentService.forget — design §3.6 数据安全契约', () => 
       ),
       deleteByTitle: deleteSpy,
     };
+    // MemoryAgentService 现在需要 PromptManagerService(第三个参数),forget 不用 prompt,给空 mock
     return new MemoryAgentService(
       memoryRepo as never,
       {} as never, // systemConfigService 不参与 forget
+      {} as never, // promptManager 不参与 forget
     );
   };
 

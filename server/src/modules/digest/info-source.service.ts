@@ -34,6 +34,7 @@ import {
   InfoSourceType,
   InfoSourceCategory,
 } from './info-source.entity';
+import { FetcherKind } from './fetchers/fetcher.interface';
 import { SmartTopicConfigRepository } from './smart-topic-config.repository';
 import { SEED_SOURCES, resolveSeedUrl } from './source-seeds';
 import type {
@@ -100,6 +101,23 @@ export class InfoSourceService implements OnModuleInit {
       }
     }
 
+    // ── Step 1c: Fetcher 插件架构 v2 迁移（2026-06-21）──────────────────────
+    // 老数据没有 fetcherKind 字段(此前 fetcher 路由用的是 type='rss')。
+    // 老 type='rss' 数据全部补 fetcherKind='rss'，保持原 RSS 抓取行为不变。
+    // 其他 type（webpage/api/mailbox）此前并未有 fetcher 实现，遇到也补 'rss' 兜底
+    // —— 反正没有可用 fetcher，禁用 / 重配是 admin 自己的事。
+    const fetcherKindMigrate = await this.infoSourceModel
+      .updateMany(
+        { fetcherKind: { $exists: false } },
+        { $set: { fetcherKind: FetcherKind.rss } },
+      )
+      .exec();
+    if (fetcherKindMigrate.modifiedCount > 0) {
+      this.logger.log(
+        `migrate: 补 fetcherKind='rss' ${fetcherKindMigrate.modifiedCount} 条老数据`,
+      );
+    }
+
     // ── Step 2: seed 内置源 ─────────────────────────────────────────────────
     let seededCount = 0;
     for (const seed of SEED_SOURCES) {
@@ -114,8 +132,11 @@ export class InfoSourceService implements OnModuleInit {
       await this.infoSourceModel.create({
         _id: `src_${randomUUID().replace(/-/g, '').slice(0, 12)}`,
         type: InfoSourceType.rss,
+        // Fetcher 插件 v2：seed 默认走 'rss'，PR2 落地具体 Fetcher 后再回来把
+        // arXiv/HF/HN/掘金/知乎日报 等改成对应 FetcherKind + 适配 config
+        fetcherKind: seed.fetcherKind ?? FetcherKind.rss,
         name: seed.name,
-        config: { url: resolvedUrl },
+        config: { url: resolvedUrl, ...(seed.config ?? {}) },
         category: seed.category,
         description: seed.description,
         // 透传 seed 的 enabled 标记：URL 不通或无原生 RSS 时 false，其余默认 true
@@ -142,6 +163,8 @@ export class InfoSourceService implements OnModuleInit {
     return {
       id: String(e._id),
       type: e.type,
+      // Fetcher 插件 v2：fetcherKind 上行给前端，admin 后台能选具体抓取方式
+      fetcherKind: e.fetcherKind ?? FetcherKind.rss,
       name: e.name,
       config: e.config,
       enabled: e.enabled,
@@ -196,12 +219,14 @@ export class InfoSourceService implements OnModuleInit {
     this.validateType(dto.type, dto.config);
     const id = this.buildId();
     this.logger.log(
-      `creating info-source id=${id} type=${dto.type} name=${dto.name}`,
+      `creating info-source id=${id} type=${dto.type} fetcherKind=${dto.fetcherKind ?? FetcherKind.rss} name=${dto.name}`,
     );
     // category 由 DTO 层 @IsEnum 强制校验，service 不再兜底 default（Task #42）
+    // fetcherKind 由 DTO 层 @IsEnum 校验；未传时默认 'rss'（兼容旧客户端只填 type=rss 的请求）
     const entity = await this.repo.create({
       _id: id,
       type: dto.type,
+      fetcherKind: dto.fetcherKind ?? FetcherKind.rss,
       name: dto.name,
       config: dto.config,
       enabled: dto.enabled ?? true,
@@ -225,8 +250,10 @@ export class InfoSourceService implements OnModuleInit {
       `updating info-source id=${id} name=${dto.name ?? '(unchanged)'}`,
     );
     // Task #42：category / description 若有传则写入，undefined 时 repo.update 忽略
+    // Fetcher v2: fetcherKind 同样可选，undefined 时不动 DB 原值
     const updated = await this.repo.update(id, {
       type: dto.type,
+      fetcherKind: dto.fetcherKind,
       name: dto.name,
       config: dto.config,
       enabled: dto.enabled,

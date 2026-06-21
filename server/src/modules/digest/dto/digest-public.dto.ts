@@ -38,6 +38,8 @@ export interface PublicReportDto {
   report: {
     id: string;
     headline: string;
+    /** 本期 deck:"本期 N 篇:主题 1 / 主题 2 / ..." 目录式概要,标题下方 italic 大字渲染。required */
+    deck: string;
     /** 报告正文 markdown（从最新 ContentSnapshot 读取） */
     markdown: string;
     findings: PublicFindingDto[];
@@ -51,7 +53,12 @@ export interface PublicReportDto {
 export interface PublicTopicDto {
   id: string;
   name: string;
+  /** 栏目宗旨(报纸 standfirst) — admin 配的"栏目宗旨"字段 */
   description: string;
+  /** 出刊频率人话(报纸 byline 用),如"每天 08:00" / "每周一 08:00" / "手动触发" */
+  cadence?: string;
+  /** 订阅信息源数(报纸 byline 用) */
+  sourceCount?: number;
   /** 报告列表，按 publishedAt 倒序（最新在前） */
   reports: Array<{
     id: string;

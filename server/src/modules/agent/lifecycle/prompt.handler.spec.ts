@@ -11,6 +11,7 @@
 import { PromptHandler, type BuildSystemPromptParams } from './prompt.handler';
 import type { AgentMemory } from '../memory/agent-memory.entity';
 import type { Skill } from '../../skill/skill.entity';
+import type { PromptManagerService } from '../../../infrastructure/prompt/prompt-manager.service';
 
 // 构造最小记忆对象:buildSystemPrompt 只读 title/content,其余字段无关,故安全 cast。
 const mem = (title: string, content: string): AgentMemory =>
@@ -24,10 +25,51 @@ const baseParams = (
   ...over,
 });
 
+/**
+ * PromptManagerService mock:render 根据 .md 文件名返回包含关键字的最小内容,
+ * 保证 prompt.handler 的结构断言(XML 标签、分节顺序、关键词)仍然通过。
+ * 变量用 {{var_name}} 占位替换(模拟 Mustache 行为)。
+ */
+function makeMockPromptManager(): PromptManagerService {
+  const templates: Record<string, string> = {
+    'aurora/role.md':
+      '<role>\n你是 Aurora。\n\n你不是工具，也不是助手——你是 {{owner_name}} 的另一个自我。你是最懂 {{owner_name}} 的朋友。\n</role>',
+    'aurora/tools-guide.md':
+      '<tools>\n你能:读 {{owner_name}} 当前在写的文稿。\n- 需要文稿正文时,主动调 get_current_draft\n- 发现值得长期记住的信息,随手 remember\n</tools>',
+    'aurora/instructions.md':
+      '<instructions>\n- 需要文档内容或知识库信息时,先调工具\n- 用中文回答,除非 {{owner_name}} 明确要求其他语言\n- 不重复 {{owner_name}} 已说过的话\n</instructions>',
+    'aurora/partials/skills-prelude.md':
+      '你有以下技能(方法论)可调用。识别到对应场景时,调 load_skill 工具传 name 获取完整方法论指引。\n',
+    'aurora/partials/memories-prelude.md':
+      '你对所有者的认知:画像是长期综合,最近观察是近期细节。远古具体细节调 recall_memory(topic) 或 search_memories(query)。\n',
+    'aurora/partials/conversation-summary-prelude.md':
+      '以下是本次会话的脉络记忆（更早的对话已被提炼进记忆，原文仍可用 read_conversation_history 精确回溯）：\n',
+    'aurora/partials/collection-prelude.md':
+      '(需要看同集某个子节点的内容,用 read_collection_entry 传它的节点 id;当前这个用 get_current_draft)\n',
+    'aurora/partials/gallery.md':
+      '<gallery>\n{{owner_name}} 正在整理画廊《{{title}}》——{{photo_count}} 张照片{{has_prose}}。\n</gallery>',
+    'aurora/partials/digest-report-prelude.md':
+      '你在陪 {{owner_name}} 阅读「简报」。\n',
+  };
+
+  return {
+    render(name: string, vars: Record<string, string> = {}): string {
+      const tmpl = templates[name];
+      if (!tmpl) throw new Error(`mock: prompt not found: ${name}`);
+      return tmpl.replace(
+        /\{\{(\w+)\}\}/g,
+        (_m, k: string) => vars[k] ?? `{{${k}}}`,
+      );
+    },
+    listLoaded: () => Object.keys(templates),
+  } as unknown as PromptManagerService;
+}
+
 describe('PromptHandler.buildSystemPrompt', () => {
   let handler: PromptHandler;
   beforeEach(() => {
-    handler = new PromptHandler();
+    // PromptHandler 现在需要 PromptManagerService,注入 mock(包含 aurora/*.md 最小内容)
+    handler = new PromptHandler(makeMockPromptManager());
   });
 
   it('始终注入 role 分节,且 role 里点名 Aurora', () => {

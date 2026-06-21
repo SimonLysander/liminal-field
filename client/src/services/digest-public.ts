@@ -38,6 +38,8 @@ export interface PublicReportData {
   report: {
     id: string;
     headline: string;
+    /** 本期目录式概要("本期 N 篇: 主题1 / 主题2 / ..."), 紧贴标题下方 italic 渲染。 */
+    deck: string;
     /** 完整 markdown 正文 */
     markdown: string;
     findings: PublicFinding[];
@@ -51,7 +53,12 @@ export interface PublicReportData {
 export interface PublicTopicData {
   id: string;
   name: string;
+  /** 栏目宗旨(报纸 standfirst) */
   description: string;
+  /** 出刊频率人话(报纸 byline 用),如"每天 08:00" */
+  cadence?: string;
+  /** 订阅信息源数(报纸 byline 用) */
+  sourceCount?: number;
   /** 报告列表，按 publishedAt 倒序（最新在前） */
   reports: Array<{
     id: string;

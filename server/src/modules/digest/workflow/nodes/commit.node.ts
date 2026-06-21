@@ -57,7 +57,7 @@ export class CommitNode {
 
   async run(task: DigestTask, compose: ComposeOutput): Promise<CommitOutput> {
     const { topicId, _id: taskId, findings } = task;
-    const { headline, markdown } = compose;
+    const { headline, deck, markdown } = compose;
 
     this.logger.log(
       `[commit] 开始 taskId=${taskId} topicId=${topicId} headline="${headline}"`,
@@ -71,6 +71,7 @@ export class CommitNode {
       topicId,
       taskId,
       headline,
+      deck,
       markdown,
       findings,
       publishedAt,

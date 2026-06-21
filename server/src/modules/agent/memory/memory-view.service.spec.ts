@@ -28,13 +28,23 @@ function mkRepo(opts: Partial<MockRepo> = {}): MockRepo {
   };
 }
 
+/** 最小 PromptManagerService mock:render 直接返回含 {{observations}} 的文本即可 */
+const mockPromptManager = {
+  render(_name: string, vars: Record<string, string> = {}): string {
+    // profile-renderer.md 只需要 observations 占位替换
+    return vars['observations'] ?? '';
+  },
+} as never;
+
 function mkService(
   repo: MockRepo,
   llmResult: string | Error,
 ): MemoryViewService {
+  // MemoryViewService 现在需要 PromptManagerService(第三个参数)
   const svc = new MemoryViewService(
     repo as unknown as AgentMemoryObservationRepository,
     {} as never,
+    mockPromptManager,
   );
   const spy = jest.spyOn(
     svc as unknown as { callViewLLM: jest.Mock },

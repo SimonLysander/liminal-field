@@ -104,4 +104,8 @@ server/liminal-field-kb/
 server/liminal-field-kb-archives/
 
 # 一次性开发探针/E2E 脚本(本地验证用,不入库不部署)
-server/scripts/
+# 但 smoke-fetchers.ts 是 fetcher 实测验证脚本(11 fetcher 真实 HTTP),
+# 留 git 里以便环境重置后能直接跑;其他临时脚本继续忽略
+server/scripts/*
+!server/scripts/smoke-fetchers.ts
+!server/scripts/prod-clean-and-reseed.sh

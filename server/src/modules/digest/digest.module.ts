@@ -20,7 +20,6 @@ import { DigestSharedModule } from './digest-shared.module';
 import { InfoSourceService } from './info-source.service';
 import { InfoSourceController } from './info-source.controller';
 
-import { DigestReportMigrationService } from './digest-report-migration.service';
 
 import { TopicService } from './topic.service';
 import { TopicController } from './topic.controller';
@@ -61,7 +60,6 @@ import { DigestSchedulerService } from './digest-scheduler.service';
     // 公开端服务
     DigestPublicService,
     // 一次性迁移老 ContentItem 时代的 digest 报告(onModuleInit 自动跑)
-    DigestReportMigrationService,
   ],
   exports: [
     InfoSourceService,

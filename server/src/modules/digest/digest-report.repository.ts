@@ -15,6 +15,8 @@ export interface CreateDigestReportInput {
   topicId: string;
   taskId: string;
   headline: string;
+  /** 本期 deck(目录式概要),required */
+  deck: string;
   markdown: string;
   findings: Finding[];
   publishedAt: Date;
@@ -41,6 +43,12 @@ export class DigestReportRepository {
     let q = this.model.find({ topicId }).sort({ publishedAt: -1 });
     if (limit !== undefined) q = q.limit(limit);
     return q.exec();
+  }
+
+  /** 拿事项的最新一期报告 — react-agent 计算"本期收集窗口"用(since = lastReport.publishedAt)。
+   *  无报告返 null,调用方需兜底(比如按 cron period 倒推)。 */
+  async findLatestByTopic(topicId: string): Promise<DigestReport | null> {
+    return this.model.findOne({ topicId }).sort({ publishedAt: -1 }).exec();
   }
 
   async countByTopic(topicId: string): Promise<number> {

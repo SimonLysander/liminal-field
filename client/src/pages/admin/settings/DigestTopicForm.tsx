@@ -20,6 +20,10 @@ import type { Schedule } from './scheduleUtils';
 /** 表单内部状态 */
 export interface TopicDraft {
   name: string;
+  /** 栏目宗旨 — 给读者看的一句话定位(报纸 standfirst);写进 ContentItem.summary,
+   *  公开端 /digest 列表卡片 + /digest/:topicId 栏目报头展示。
+   *  ≠ prompt(prompt 是给 agent 的工作指令,文风偏命令式) */
+  tagline: string;
   prompt: string;          // 即"任务描述"，对应后端 prompt 字段
   schedule: Schedule;
   sourceIds: string[];
@@ -274,6 +278,7 @@ export function DigestTopicForm({
     initial
       ? {
           name: initial.name,
+          tagline: initial.description,
           prompt: initial.aiPrompt,
           schedule: cronToSchedule(initial.cron),
           sourceIds: initial.sourceIds,
@@ -282,6 +287,7 @@ export function DigestTopicForm({
         }
       : {
           name: '',
+          tagline: '',
           prompt: '',
           schedule: DEFAULT_SCHEDULE,
           sourceIds: [],
@@ -333,17 +339,41 @@ export function DigestTopicForm({
         />
       </div>
 
-      {/* 任务描述（原"AI 判定 Prompt"） */}
+      {/* 栏目宗旨 — 给"读者"看的 (与下面的"任务描述"区分) */}
       <div>
-        <FieldLabel>任务描述</FieldLabel>
+        <FieldLabel>
+          栏目宗旨 <span className="ml-2 text-xs" style={{ color: 'var(--accent)' }}>给读者</span>
+        </FieldLabel>
+        <input
+          type="text"
+          value={draft.tagline}
+          onChange={(e) => setDraft((d) => ({ ...d, tagline: e.target.value }))}
+          placeholder="一句话定位 — 公开端栏目页展示给读者看(如:为关注 AI 工程落地的开发者每天精选一份内容)"
+          maxLength={120}
+          className={inputClass}
+          style={inputStyle}
+        />
+        <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+          报刊业内叫 standfirst — 紧贴栏目大字下方那行 italic 副标,告诉读者"这个栏目讲什么、为谁讲"。
+        </p>
+      </div>
+
+      {/* 任务描述 — 给"AI agent"看的 (跟栏目宗旨完全不同语义) */}
+      <div>
+        <FieldLabel>
+          任务描述 <span className="ml-2 text-xs" style={{ color: 'var(--accent)' }}>给 agent</span>
+        </FieldLabel>
         <textarea
           value={draft.prompt}
           onChange={(e) => setDraft((d) => ({ ...d, prompt: e.target.value }))}
-          placeholder="我想关注 AI 应用发展，特别是大模型新进展和 Agent 框架"
+          placeholder="给 AI agent 的工作指令 — 描述你关心什么、什么算相关(如:关注 AI 应用进展、Agent 框架、大模型新发布,倾向工程实操,不要纯学术)"
           rows={6}
           className={inputClass}
           style={{ ...inputStyle, resize: 'vertical' }}
         />
+        <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+          AI agent 跑工作流时按这段指令判定"什么 finding 算相关",**不会**展示给读者。
+        </p>
       </div>
 
       {/* 运行节奏 */}
