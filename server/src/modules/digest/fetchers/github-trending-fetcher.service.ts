@@ -20,7 +20,7 @@ import {
   type FetchedItem,
   type FetchOptions,
 } from './fetcher.interface';
-import { httpGetText } from './http.utils';
+import { httpGetText, applyTimeWindow } from './http.utils';
 
 const DEFAULT_LIMIT = 25;
 
@@ -39,6 +39,7 @@ export class GithubTrendingFetcher implements SourceFetcher {
     const language = cfg?.language ?? '';
     const limit = options?.limit ?? DEFAULT_LIMIT;
     const since = options?.since;
+    const until = options?.until;
     const keywords = options?.keywords;
 
     const url = `https://github.com/trending/${encodeURIComponent(language)}?since=daily`;
@@ -65,9 +66,7 @@ export class GithubTrendingFetcher implements SourceFetcher {
 
     const items = parseGithubTrending(html);
 
-    const afterSince = since
-      ? items.filter((it) => it.publishedAt && it.publishedAt > since)
-      : items;
+    const afterSince = applyTimeWindow(items, since, until);
 
     const afterKeywords =
       keywords && keywords.length > 0

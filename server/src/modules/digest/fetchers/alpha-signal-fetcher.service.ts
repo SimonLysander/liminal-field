@@ -17,7 +17,7 @@ import {
   type FetchedItem,
   type FetchOptions,
 } from './fetcher.interface';
-import { httpGetText } from './http.utils';
+import { httpGetText, applyTimeWindow } from './http.utils';
 
 const DEFAULT_LIMIT = 30;
 const ENDPOINT = 'https://alphasignal.ai/sitemap.xml';
@@ -35,6 +35,7 @@ export class AlphaSignalFetcher implements SourceFetcher {
   ): Promise<FetchedItem[]> {
     const limit = options?.limit ?? DEFAULT_LIMIT;
     const since = options?.since;
+    const until = options?.until;
     const keywords = options?.keywords;
 
     this.logger.debug(
@@ -67,9 +68,7 @@ export class AlphaSignalFetcher implements SourceFetcher {
       return b.publishedAt.getTime() - a.publishedAt.getTime();
     });
 
-    const afterSince = since
-      ? items.filter((it) => it.publishedAt && it.publishedAt > since)
-      : items;
+    const afterSince = applyTimeWindow(items, since, until);
 
     const afterKeywords =
       keywords && keywords.length > 0

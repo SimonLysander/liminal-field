@@ -16,12 +16,16 @@ jest.mock('rss-parser', () => {
 });
 
 // mock http.utils 避免 undici 在旧 Node 版本抛 webidl.util.markAsUncloneable 错
-jest.mock('./http.utils', () => ({
-  httpGetJson: jest.fn(),
-  httpGetText: jest.fn(),
-  httpPostJson: jest.fn(),
-  httpFetch: jest.fn(),
-}));
+jest.mock('./http.utils', () => {
+  const actual = jest.requireActual('./http.utils');
+  return {
+    ...actual,
+    httpGetJson: jest.fn(),
+    httpGetText: jest.fn(),
+    httpPostJson: jest.fn(),
+    httpFetch: jest.fn(),
+  };
+});
 
 import { FetcherRegistry } from './fetcher-registry.service';
 import { RssFetcher } from './rss-fetcher.service';

@@ -144,3 +144,28 @@ export async function httpPostJson<T = unknown>(
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+/**
+ * 应用本期收集窗口 since/until 过滤。
+ *
+ * 语义:
+ *   since < publishedAt <= until
+ *
+ * - since 不传 → 不限下界
+ * - until 不传 → 不限上界
+ * - 两都不传 → 不过滤(老调用方兼容)
+ * - publishedAt 不存在 + 任一边界存在 → 剔除(无时间的条目无法判断窗口内,保守剔)
+ */
+export function applyTimeWindow<T extends { publishedAt?: Date }>(
+  items: T[],
+  since?: Date,
+  until?: Date,
+): T[] {
+  if (!since && !until) return items;
+  return items.filter((it) => {
+    if (!it.publishedAt) return false;
+    if (since && it.publishedAt <= since) return false;
+    if (until && it.publishedAt > until) return false;
+    return true;
+  });
+}

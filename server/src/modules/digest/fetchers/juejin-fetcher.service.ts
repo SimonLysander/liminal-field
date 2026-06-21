@@ -15,7 +15,7 @@ import {
   type FetchedItem,
   type FetchOptions,
 } from './fetcher.interface';
-import { httpPostJson } from './http.utils';
+import { httpPostJson, applyTimeWindow } from './http.utils';
 
 const DEFAULT_LIMIT = 20;
 const SNIPPET_MAX_LENGTH = 800;
@@ -54,6 +54,7 @@ export class JuejinFetcher implements SourceFetcher {
     const cateId = cfg?.cateId ?? '6809637767543259144';
     const limit = options?.limit ?? DEFAULT_LIMIT;
     const since = options?.since;
+    const until = options?.until;
     const keywords = options?.keywords;
 
     this.logger.debug(
@@ -110,9 +111,7 @@ export class JuejinFetcher implements SourceFetcher {
       return b.publishedAt.getTime() - a.publishedAt.getTime();
     });
 
-    const afterSince = since
-      ? items.filter((it) => it.publishedAt && it.publishedAt > since)
-      : items;
+    const afterSince = applyTimeWindow(items, since, until);
 
     const afterKeywords =
       keywords && keywords.length > 0

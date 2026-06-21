@@ -35,7 +35,9 @@ import { toolResult } from './tool-result';
 
 const logger = new Logger('browse');
 
-const SINCE_DAYS = 7;
+// agent 不传 since 时的兜底窗口(防漏传整次 fail)。
+// 正常应由 react-agent 在 prompt 里告诉 agent "本期收集窗口",agent 显式传。
+const DEFAULT_SINCE_DAYS = 7;
 const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 100;
 
@@ -58,8 +60,9 @@ export function createBrowseTool(deps: BrowseDeps) {
 
   return tool({
     description:
-      '扫订阅信箱,并行拉全部(或指定)订阅源过去 7 天的最新条目。' +
+      '扫订阅信箱,并行拉全部(或指定)订阅源在 since/until 窗口内的条目。' +
       '不传 sourceIds 默认扫当前事项订阅的所有源;' +
+      'since/until 是本期收集窗口(ISO 8601 字符串),由 system prompt 给出,务必传;' +
       'keywords 传一个或多个关键词时,工具会尽力按相关性过滤(部分源支持服务端检索命中历史,' +
       '其他源仅本地过滤最近窗口)。' +
       '已历史去重(剔除本期 findings 已收录的)。' +
@@ -68,6 +71,8 @@ export function createBrowseTool(deps: BrowseDeps) {
     inputSchema: jsonSchema<{
       sourceIds?: string[];
       keywords?: string[];
+      since?: string;
+      until?: string;
       limit?: number;
     }>({
       type: 'object',
@@ -84,25 +89,56 @@ export function createBrowseTool(deps: BrowseDeps) {
           description:
             '可选,关键词过滤(OR 语义,不区分大小写)。能服务端 query 的源(arxiv)走 server,其他源本地过滤最近窗口',
         },
+        since: {
+          type: 'string',
+          description:
+            '本期窗口起点(ISO 8601,如 "2026-06-20T08:00:00Z")。从 system prompt 复制,不传则兜底过去 7 天',
+          examples: ['2026-06-20T08:00:00Z'],
+        },
+        until: {
+          type: 'string',
+          description:
+            '本期窗口终点(ISO 8601)。从 system prompt 复制,不传则默认现在',
+          examples: ['2026-06-21T08:00:00Z'],
+        },
         limit: {
           type: 'number',
           description: '最多返回多少条(合并去重后),1-100,默认 30',
         },
       },
       examples: [
-        {},
-        { keywords: ['MoE routing'] },
-        { sourceIds: ['src_abc123'], keywords: ['transformer'] },
-        { limit: 50 },
+        {
+          since: '2026-06-20T08:00:00Z',
+          until: '2026-06-21T08:00:00Z',
+        },
+        {
+          keywords: ['MoE routing'],
+          since: '2026-06-20T08:00:00Z',
+          until: '2026-06-21T08:00:00Z',
+        },
+        {
+          sourceIds: ['src_abc123'],
+          keywords: ['transformer'],
+          since: '2026-06-20T08:00:00Z',
+          until: '2026-06-21T08:00:00Z',
+        },
       ],
     }),
     execute: async (input: {
       sourceIds?: string[];
       keywords?: string[];
+      since?: string;
+      until?: string;
       limit?: number;
     }) => {
       const limit = Math.min(input.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
       const keywords = input.keywords?.filter((k) => k && k.trim().length > 0);
+      // 解析 since/until ISO 字符串;无效或没传 → 走兜底
+      const since = parseIsoOrFallback(
+        input.since,
+        new Date(Date.now() - DEFAULT_SINCE_DAYS * 24 * 60 * 60 * 1000),
+      );
+      const until = parseIsoOrFallback(input.until, new Date());
 
       try {
         // ── Step 1: 决定要扫哪些源 ──────────────────────────────────────────
@@ -160,9 +196,9 @@ export function createBrowseTool(deps: BrowseDeps) {
         }
 
         // ── Step 2: 多源并行 fetch ───────────────────────────────────────────
-        const since = new Date(Date.now() - SINCE_DAYS * 24 * 60 * 60 * 1000);
         const fetchResults = await fetcherRegistry.fetchMany(targetSources, {
           since,
+          until,
           keywords,
         });
 
@@ -273,6 +309,7 @@ export function createBrowseTool(deps: BrowseDeps) {
         return toolResult(summaryParts.join(' · '), undefined, {
           status,
           since: since.toISOString(),
+          until: until.toISOString(),
           totalFetched: allItems.length,
           afterDedupe: deduped.length,
           returned: items.length,
@@ -295,4 +332,11 @@ export function createBrowseTool(deps: BrowseDeps) {
       }
     },
   });
+}
+
+/** ISO 8601 解析;无效/空返 fallback */
+function parseIsoOrFallback(raw: string | undefined, fallback: Date): Date {
+  if (!raw) return fallback;
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? fallback : d;
 }

@@ -27,6 +27,7 @@ import {
   type FetchedItem,
   type FetchOptions,
 } from './fetcher.interface';
+import { applyTimeWindow } from './http.utils';
 
 // rss-parser 自定义字段：让 content:encoded 出现在类型里
 type CustomItem = {
@@ -91,6 +92,7 @@ export class RssFetcher implements SourceFetcher {
 
     const limit = options?.limit ?? DEFAULT_LIMIT;
     const since = options?.since;
+    const until = options?.until;
     const keywords = options?.keywords;
 
     this.logger.debug(
@@ -148,9 +150,7 @@ export class RssFetcher implements SourceFetcher {
     });
 
     // since 过滤：只保留 publishedAt > since 的条目
-    const afterSince = since
-      ? items.filter((it) => it.publishedAt && it.publishedAt > since)
-      : items;
+    const afterSince = applyTimeWindow(items, since, until);
 
     // keywords 过滤：title + snippet 任一含任一 keyword 即命中（不区分大小写、OR 语义）
     const afterKeywords =

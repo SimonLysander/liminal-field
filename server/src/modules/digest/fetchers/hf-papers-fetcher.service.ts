@@ -16,7 +16,7 @@ import {
   type FetchedItem,
   type FetchOptions,
 } from './fetcher.interface';
-import { httpGetJson } from './http.utils';
+import { httpGetJson, applyTimeWindow } from './http.utils';
 
 const DEFAULT_LIMIT = 30;
 const SNIPPET_MAX_LENGTH = 800;
@@ -46,6 +46,7 @@ export class HfPapersFetcher implements SourceFetcher {
   ): Promise<FetchedItem[]> {
     const limit = options?.limit ?? DEFAULT_LIMIT;
     const since = options?.since;
+    const until = options?.until;
     const keywords = options?.keywords;
 
     this.logger.debug(
@@ -86,9 +87,7 @@ export class HfPapersFetcher implements SourceFetcher {
       return b.publishedAt.getTime() - a.publishedAt.getTime();
     });
 
-    const afterSince = since
-      ? items.filter((it) => it.publishedAt && it.publishedAt > since)
-      : items;
+    const afterSince = applyTimeWindow(items, since, until);
 
     const afterKeywords =
       keywords && keywords.length > 0

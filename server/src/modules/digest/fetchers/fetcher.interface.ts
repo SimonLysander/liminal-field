@@ -60,8 +60,14 @@ export interface FetchedItem {
 export interface FetchOptions {
   /** 取多少条（fetcher 内部硬上限，比如 RSS 一般 50） */
   limit?: number;
-  /** 只要这个时间之后发的 */
+  /** 只要这个时间之后发的（含端点的"之后",即 publishedAt > since） */
   since?: Date;
+  /**
+   * 只要这个时间之前发的（含端点,即 publishedAt <= until）。
+   * since/until 共同构成"本期收集窗口"，react-agent 算好后让 LLM 显式传给 browse,
+   * browse 透传给 fetcher 内层过滤。两端都不传 = 不限时(老调用方兼容)。
+   */
+  until?: Date;
   /**
    * 关键词过滤（OR 语义：命中任一即返回）。
    * 能服务端 query 的源（arxiv/HN Algolia） → 拼进 query 参数；

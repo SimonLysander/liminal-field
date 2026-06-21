@@ -17,6 +17,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText, stepCountIs } from 'ai';
 import type { StepResult, ToolSet } from 'ai';
+import { CronTime } from 'cron';
 // import type 用于 @Injectable 构造器参数会导致 NestJS IoC 运行时无法解析，改为正式 import
 import { PromptManagerService } from '../../../../infrastructure/prompt/prompt-manager.service';
 import { SmartTopicConfigRepository } from '../../smart-topic-config.repository';
@@ -25,11 +26,53 @@ import { ContentRepository } from '../../../content/content.repository';
 import { SystemConfigService } from '../../../settings/system-config.service';
 import { makeRepairToolCall } from '../../../agent/agent.utils';
 import { DigestTaskRepository } from '../../digest-task.repository';
+import { DigestReportRepository } from '../../digest-report.repository';
 import type { AgentStep } from '../../digest-task.entity';
 // P3 重构:不再依赖 DigestToolsFactory(已删),改用 agent 的 ToolAssembler——
 // 工具池全项目共有,workflow 跑 react-agent 跟 report-analyst sub-agent 走同一套工具
 import { ToolAssembler } from '../../../agent/lifecycle/tool.assembler';
 import type { DigestTaskContext } from '../../../agent/tools/digest-task-context';
+
+/**
+ * "本期收集窗口"兜底:无上期报告时,按 stc.cron 算 period 倒推。
+ * 思路:CronTime.sendAt() 给下次,再 getNextDateFrom 给再下次 → 两次差就是 period。
+ * 解析失败兜底 7 天。
+ */
+function periodFromCron(cron: string): number {
+  try {
+    const ct = new CronTime(cron);
+    const next1 = ct.sendAt().toJSDate();
+    const next2 = ct.getNextDateFrom(next1).toJSDate();
+    return next2.getTime() - next1.getTime();
+  } catch {
+    return 7 * 24 * 60 * 60 * 1000; // 7 天兜底
+  }
+}
+
+/**
+ * 把 Date 格式化为带时区 offset 的本地 ISO 8601:
+ *   2026-06-21T20:09:45+08:00
+ *
+ * 为什么不直接用 toISOString():
+ *   toISOString() 始终输出 UTC(尾 Z),给 agent 看会语义错位(server 跑在 Asia/Shanghai
+ *   时,agent 看到 12:09 但实际本地 20:09,它去 web_search "this week" 时容易跟内容
+ *   时间对不上 8h)。带 offset 的 ISO 既本地可读又仍是标准 ISO 8601,
+ *   new Date(str) 也能正确解析为同一时间点。
+ */
+function toLocalIso(d: Date): string {
+  // getTimezoneOffset() 返回相对 UTC 的分钟差,且符号反着(东 +8 时返 -480)
+  const offsetMin = -d.getTimezoneOffset();
+  const sign = offsetMin >= 0 ? '+' : '-';
+  const offH = String(Math.floor(Math.abs(offsetMin) / 60)).padStart(2, '0');
+  const offM = String(Math.abs(offsetMin) % 60).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}${sign}${offH}:${offM}`;
+}
 
 @Injectable()
 export class ReactAgentNode {
@@ -43,6 +86,8 @@ export class ReactAgentNode {
     private readonly toolAssembler: ToolAssembler,
     private readonly systemConfigService: SystemConfigService,
     private readonly taskRepository: DigestTaskRepository,
+    // 算"本期收集窗口"需要上期 report.publishedAt(首选)
+    private readonly digestReportRepository: DigestReportRepository,
   ) {}
 
   /**
@@ -60,6 +105,28 @@ export class ReactAgentNode {
     const topicName = item?.latestVersion?.title ?? '未命名事项';
     const topicPrompt = stc?.prompt ?? '请收集相关信息';
 
+    // ── 算"本期收集窗口" since/until ─────────────────────────────────────────
+    // until = 现在(本次触发时刻);since 优先用上期 report.publishedAt
+    // 没有上期则按 stc.cron period 倒推(日报 24h、周报 7d、月报 ~30d)
+    const until = new Date();
+    let since: Date;
+    const lastReport =
+      await this.digestReportRepository.findLatestByTopic(topicId);
+    if (lastReport?.publishedAt) {
+      since = lastReport.publishedAt;
+      this.logger.log(
+        `[react-agent] 窗口=上期报告 since=${toLocalIso(since)} until=${toLocalIso(until)}`,
+      );
+    } else {
+      const periodMs = stc?.cron
+        ? periodFromCron(stc.cron)
+        : 7 * 24 * 60 * 60 * 1000;
+      since = new Date(until.getTime() - periodMs);
+      this.logger.log(
+        `[react-agent] 窗口=cron 倒推(${stc?.cron}) periodMs=${periodMs} since=${toLocalIso(since)} until=${toLocalIso(until)}`,
+      );
+    }
+
     // 拉订阅源列表，拼成 system prompt 后缀（运行时 DB 数据，不能放 md 模板里）
     const subscribedSourcesSection = await this.buildSubscribedSourcesSection(
       stc?.sourceIds ?? [],
@@ -70,6 +137,12 @@ export class ReactAgentNode {
       {
         topic_name: topicName,
         topic_prompt: topicPrompt,
+        // 本期收集窗口注入 prompt;agent 需要在 browse({since,until}) 里
+        // 显式复制这两个时间,在 web_search query 里也加时间限定词。
+        // 用带时区 offset 的本地 ISO(如 2026-06-21T20:09:45+08:00),
+        // 既本地可读又仍是标准 ISO 8601 — new Date(str) 解析为同一时间点
+        since_iso: toLocalIso(since),
+        until_iso: toLocalIso(until),
       },
     );
 

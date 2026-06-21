@@ -35,6 +35,7 @@ import type { ContentRepository } from '../../../content/content.repository';
 import type { ToolAssembler } from '../../../agent/lifecycle/tool.assembler';
 import type { SystemConfigService } from '../../../settings/system-config.service';
 import type { DigestTaskRepository } from '../../digest-task.repository';
+import type { DigestReportRepository } from '../../digest-report.repository';
 import type { SmartTopicConfig } from '../../smart-topic-config.entity';
 import type { ContentItem } from '../../../content/content-item.entity';
 import type { InfoSource } from '../../info-source.entity';
@@ -95,6 +96,19 @@ function makeTaskRepository(): jest.Mocked<DigestTaskRepository> {
   } as unknown as jest.Mocked<DigestTaskRepository>;
 }
 
+// PR5: react-agent 用 lastReport.publishedAt 算"本期收集窗口"
+function makeReportRepo(
+  lastPublishedAt?: Date,
+): jest.Mocked<DigestReportRepository> {
+  return {
+    findLatestByTopic: jest
+      .fn()
+      .mockResolvedValue(
+        lastPublishedAt ? { publishedAt: lastPublishedAt } : null,
+      ),
+  } as unknown as jest.Mocked<DigestReportRepository>;
+}
+
 function makeConfig(sourceIds: string[] = []): SmartTopicConfig {
   return {
     _id: 'stc_001',
@@ -145,6 +159,7 @@ describe('ReactAgentNode (v4)', () => {
       makeToolAssembler(),
       makeSystemConfig(),
       makeTaskRepository(),
+      makeReportRepo(),
     );
 
     await node.run('dt_test', 'ci_topic001');
@@ -176,14 +191,21 @@ describe('ReactAgentNode (v4)', () => {
       makeToolAssembler(),
       makeSystemConfig(),
       makeTaskRepository(),
+      makeReportRepo(),
     );
 
     await node.run('dt_test', 'ci_topic001');
 
-    expect(promptManager.render).toHaveBeenCalledWith('digest/react-agent.md', {
-      topic_name: '量子计算',
-      topic_prompt: '关注 AI 进展',
-    });
+    expect(promptManager.render).toHaveBeenCalledWith(
+      'digest/react-agent.md',
+      expect.objectContaining({
+        topic_name: '量子计算',
+        topic_prompt: '关注 AI 进展',
+        // PR5: react-agent 注入"本期收集窗口"
+        since_iso: expect.any(String),
+        until_iso: expect.any(String),
+      }),
+    );
   });
 
   it('Case 3: 订阅源列表被拼入 system prompt', async () => {
@@ -207,6 +229,7 @@ describe('ReactAgentNode (v4)', () => {
       makeToolAssembler(),
       makeSystemConfig(),
       makeTaskRepository(),
+      makeReportRepo(),
     );
 
     await node.run('dt_test', 'ci_topic001');
@@ -276,6 +299,7 @@ describe('ReactAgentNode (v4)', () => {
       makeToolAssembler(),
       makeSystemConfig(),
       taskRepo,
+      makeReportRepo(),
     );
 
     await node.run('dt_test', 'ci_topic001');

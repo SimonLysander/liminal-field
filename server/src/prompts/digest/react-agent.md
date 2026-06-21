@@ -8,10 +8,21 @@
 # 事项关注点
 {{topic_prompt}}
 
+# 本期收集窗口(关键, 严格遵守)
+
+- **since**: `{{since_iso}}`  ← 本期窗口起点(上期报告发布时间 / cron 频率倒推)
+- **until**: `{{until_iso}}`  ← 本期窗口终点(本次触发时刻)
+
+只收集**这段时间内发布**的内容。窗口外的(无论上期已收过的还是更早的)即使主题相关也跳过。
+
+调用 `browse` 时**务必传 since/until**(直接复制上面的 ISO 字符串)。
+调用 `web_search` 时,query 里**加时间限定词**(如年月日 "2026-06"、"this week"、"latest")让 Tavily 优先返回窗口内结果;返回后判断 url 内容时间是否在窗口内,跨期则跳过。
+
 # 可用工具(4 个, 职责互斥)
 
-- `browse({ sourceIds?, keywords?, limit? })`
-  扫订阅信箱 — 并行拉所有(或指定)订阅源过去 7 天的新条目,已历史去重,返回 ref(i1, i2...)
+- `browse({ sourceIds?, keywords?, since, until, limit? })`
+  扫订阅信箱 — 并行拉所有(或指定)订阅源在 since-until 窗口内的条目,已历史去重,返回 ref(i1, i2...)
+  - **since/until 必传**(从上面窗口段复制 ISO 字符串)
   - 不传 sourceIds → 默认扫**当前事项订阅的全部源**(常用)
   - 传 sourceIds: ['src_xxx'] → 锁定子集
   - 传 keywords: ['transformer'] → 工具会尽力按相关性过滤(部分源支持服务端检索命中历史,其他源仅本地过滤最近窗口)
@@ -27,9 +38,9 @@
 
 # 流程
 
-1. 默认从 `browse()` 起手 — 一次拿到本事项订阅圈过去 7 天的新条目
-2. 觉得初轮内容不够覆盖主题 → `web_search(...)` 在全网补刀,也可以再调 `browse({ keywords: [...]})` 在订阅圈做关键词过滤
-3. 对挑出的候选,**一律 `web_fetch` 拉全文**(snippet 太短无法写出完整事实摘要)
+1. 默认从 `browse({since, until})` 起手 — 一次拿到本事项订阅圈在 since-until 窗口内的条目
+2. 觉得初轮内容不够覆盖主题 → `web_search(...)` 在全网补刀(query 加时间限定),也可以再调 `browse({keywords:[...], since, until})` 在订阅圈做关键词过滤
+3. 对挑出的候选,**一律 `web_fetch` 拉全文**(snippet 太短无法写出完整事实摘要),并判断该 URL 发布时间是否在窗口内
 4. 把"事实摘要"写进 `pick` 的 reason 字段(详见下方"reason 字段约定")
 5. 可多轮,主题宽时多挖几轮
 

@@ -14,12 +14,16 @@ import {
   InfoSourceCategory,
 } from '../info-source.entity';
 
-jest.mock('./http.utils', () => ({
-  httpGetJson: jest.fn(),
-  httpGetText: jest.fn(),
-  httpPostJson: jest.fn(),
-  httpFetch: jest.fn(),
-}));
+jest.mock('./http.utils', () => {
+  const actual = jest.requireActual('./http.utils');
+  return {
+    ...actual,
+    httpGetJson: jest.fn(),
+    httpGetText: jest.fn(),
+    httpPostJson: jest.fn(),
+    httpFetch: jest.fn(),
+  };
+});
 
 import { httpGetJson } from './http.utils';
 const mockHttpGetJson = httpGetJson as jest.MockedFunction<typeof httpGetJson>;

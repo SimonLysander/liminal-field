@@ -20,6 +20,7 @@ import {
   type FetchedItem,
   type FetchOptions,
 } from './fetcher.interface';
+import { applyTimeWindow } from './http.utils';
 
 const DEFAULT_LIMIT = 30;
 const SNIPPET_MAX_LENGTH = 800;
@@ -50,6 +51,7 @@ export class ArxivFetcher implements SourceFetcher {
     const category = cfg?.category ?? 'cs.AI';
     const limit = options?.limit ?? DEFAULT_LIMIT;
     const since = options?.since;
+    const until = options?.until;
     const keywords = options?.keywords;
 
     // keywords 拼进 server 端 query（title 字段，OR 语义，空格用 +）
@@ -122,9 +124,7 @@ export class ArxivFetcher implements SourceFetcher {
     });
 
     // since 过滤
-    const afterSince = since
-      ? items.filter((it) => it.publishedAt && it.publishedAt > since)
-      : items;
+    const afterSince = applyTimeWindow(items, since, until);
 
     // supportsServerQuery=true → keywords 已传给 server，不在本地二次过滤
     const result = afterSince.slice(0, limit);
