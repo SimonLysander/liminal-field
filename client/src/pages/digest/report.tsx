@@ -23,10 +23,11 @@
  *   - click 委托强制 window.open(_blank) 确保跨源链接在新标签打开
  *   - 不再展示底部「参考资料」section
  */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Sparkles } from 'lucide-react';
+import type { ChatSelectionAttachment } from '@/pages/admin/lib/live-chat-selection';
 import { appleEase } from '@/lib/motion';
 import { AdvisorSidebar } from '@/components/ai-advisor/AdvisorSidebar';
 import { useAuthStatus } from '@/hooks/use-auth-status';
@@ -34,6 +35,7 @@ import MarkdownBody from '@/components/shared/MarkdownBody';
 import { digestPublicApi } from '@/services/digest-public';
 import type { PublicReportData, PublicSibling } from '@/services/digest-public';
 import { isApiError } from '@/services/request';
+import { MarginColumn } from './MarginColumn';
 
 /** 从 markdown 抽 ## 章节标题列表,作为 Aurora 的目录索引 */
 function extractSections(md: string): string[] {
@@ -69,6 +71,19 @@ export default function DigestReportPage() {
   const [error, setError] = useState<string | null>(null);
   /** Aurora 抽屉开关 — 右上按钮 / 报告末尾入口 / ⌘+K 三处触发 */
   const [isAuroraOpen, setIsAuroraOpen] = useState(false);
+  /** 划词工具条状态: 选中文本 + 浮窗位置(top/left, viewport 坐标) */
+  const [selection, setSelection] = useState<{ text: string; top: number; left: number } | null>(null);
+  /**
+   * 已"追问"过的引用 chip 列表 —— 跟编辑器"添加到聊天"是同一套机制(ChatSelectionAttachment)。
+   * 用户心智里就是"把这段加到对话上下文里"这件事:报告页选区 ←→ 编辑器选区,UI/数据流统一。
+   * 报告页是静态 markdown 渲染(非 Plate editor),所以 anchor/highlight/dispose 用 noop stub,
+   * 只保留 id/preview/getText —— sidebar 拼 markdown 引用块进 user text 时只读这些。
+   */
+  const [chatSelections, setChatSelections] = useState<ChatSelectionAttachment[]>([]);
+  /** 主文滚动容器 ref:scroll spy 计算"哪一节正在视口里" + 章节跳转用 */
+  const mainScrollRef = useRef<HTMLDivElement>(null);
+  /** scroll spy 命中的当前章节 idx,传给 MarginColumn 高亮 */
+  const [activeSection, setActiveSection] = useState(0);
 
   // 全局键盘监听: ⌘+K(mac) / Ctrl+K(win) 切换 Aurora
   useEffect(() => {
@@ -79,10 +94,52 @@ export default function DigestReportPage() {
       }
       if (e.key === 'Escape') {
         setIsAuroraOpen(false);
+        setSelection(null);
       }
     }
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  /**
+   * 划词检测: mouseup 后看是否选中了 .digest-report-body 内的正文,
+   * 是则在选中区上方弹工具条(fixed 浮窗,跟随 viewport 滚动)。
+   *
+   * 用 fixed 浮窗是 web 平台标准做法(divider tooltip / popover 类 UI),
+   * 不算"布局元素的绝对定位", 不破坏页面 layout 可预测性。
+   */
+  useEffect(() => {
+    function handleMouseUp() {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) {
+        setSelection(null);
+        return;
+      }
+      const text = sel.toString().trim();
+      if (text.length < 2 || text.length > 800) {
+        setSelection(null);
+        return;
+      }
+      const range = sel.getRangeAt(0);
+      const container = range.commonAncestorContainer;
+      const reportBody =
+        (container.nodeType === Node.ELEMENT_NODE
+          ? (container as Element)
+          : container.parentElement
+        )?.closest('.digest-report-body');
+      if (!reportBody) {
+        setSelection(null);
+        return;
+      }
+      const rect = range.getBoundingClientRect();
+      setSelection({
+        text,
+        top: rect.top - 40,
+        left: rect.left + rect.width / 2,
+      });
+    }
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => document.removeEventListener('mouseup', handleMouseUp);
   }, []);
 
   useEffect(() => {
@@ -168,6 +225,54 @@ export default function DigestReportPage() {
     return () => document.removeEventListener('click', handleClick);
   }, []);
 
+  /**
+   * Scroll spy:在主文滚动容器里监听滚动,根据每个 <h2> 距容器顶的位置算"当前是哪一节"。
+   * 算法 = 从下往上找第一个 top <= threshold 的 heading;阈值取容器 top + 100 给点提前量
+   * (用户还没"到"那一节也算开始读它,体验更自然)。
+   *
+   * 依赖 [data]:必须在 data 加载完(主体 DOM 渲染好)后才能拿到 container 和 headings——
+   * loading 早期 return 时连主体 div 都没渲染,空依赖会让 effect 一次跑空就再也不重绑,
+   * 之前 scroll spy 失灵就是栽在这。
+   */
+  useEffect(() => {
+    if (!data) return;
+    const container = mainScrollRef.current;
+    if (!container) return;
+    const handler = () => {
+      const headings = container.querySelectorAll('h2');
+      if (headings.length === 0) {
+        setActiveSection(0);
+        return;
+      }
+      const threshold = container.getBoundingClientRect().top + 100;
+      for (let i = headings.length - 1; i >= 0; i--) {
+        if (headings[i].getBoundingClientRect().top <= threshold) {
+          setActiveSection(i);
+          return;
+        }
+      }
+      setActiveSection(0);
+    };
+    handler(); // 初始一次
+    container.addEventListener('scroll', handler, { passive: true });
+    return () => container.removeEventListener('scroll', handler);
+  }, [data]);
+
+  /** §N 跳转:主文容器内滚到第 idx 个 <h2>,留 40px 顶距以便看到上方 ✦ 装饰 */
+  const scrollToSection = useCallback((idx: number) => {
+    const container = mainScrollRef.current;
+    if (!container) return;
+    const headings = container.querySelectorAll('h2');
+    const target = headings[idx];
+    if (!target) return;
+    const offset =
+      target.getBoundingClientRect().top -
+      container.getBoundingClientRect().top +
+      container.scrollTop -
+      40;
+    container.scrollTo({ top: offset, behavior: 'smooth' });
+  }, []);
+
   /* ── loading 骨架 ── */
   if (loading) {
     return (
@@ -228,11 +333,64 @@ export default function DigestReportPage() {
   /* 期号 = 当前在 siblings 中的位置（1-based） */
   const issueNumber = currentIdx + 1;
 
+  /**
+   * "追问 Aurora" = 把选中文字推进 chatSelections,作为输入框上方的引用 chip。
+   * 跟编辑器"添加到聊天"完全同一套机制;chip 发送瞬间被拼成 markdown 引用块进 user text。
+   * 报告页没有 live editor range,anchor/highlight/dispose 都是 noop stub。
+   */
+  function handleAskAboutSelection() {
+    if (!selection) return;
+    const text = selection.text;
+    const id =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `report-sel-${Date.now()}`;
+    const attachment: ChatSelectionAttachment = {
+      id,
+      preview: text.slice(0, 40),
+      getText: () => text,
+      getAnchor: () => ({ type: 'none' }),
+      highlight: () => false,
+      clearHighlight: () => {},
+      dispose: () => {},
+    };
+    setChatSelections((prev) => [...prev, attachment]);
+    setIsAuroraOpen(true);
+    setSelection(null);
+    window.getSelection()?.removeAllRanges();
+  }
+
   return (
     <div className="flex h-full w-full overflow-hidden">
+      {/* 划词工具条 — fixed 浮窗(标准 tooltip 模式, 跟随选中区位置), 关闭后消失 */}
+      {selection && (
+        <div
+          className="fixed z-50 flex items-center gap-1 rounded-full px-1.5 py-1"
+          style={{
+            top: selection.top,
+            left: selection.left,
+            transform: 'translateX(-50%)',
+            background: 'var(--paper-white)',
+            border: '0.5px solid var(--separator)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+          }}
+        >
+          <button
+            type="button"
+            onClick={handleAskAboutSelection}
+            className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] italic transition-colors hover:bg-[var(--shelf)]"
+            style={{ color: 'var(--ink-soft)' }}
+          >
+            <Sparkles size={11} strokeWidth={1.5} />
+            <span>追问 Aurora</span>
+          </button>
+        </div>
+      )}
+
 
       {/* ── 主体阅读区 — flex-1 自动适应 panel 宽度变化 ── */}
       <div
+        ref={mainScrollRef}
         className="flex-1 overflow-y-auto"
         style={{ paddingTop: '4rem', paddingBottom: '4rem' }}
       >
@@ -262,26 +420,10 @@ export default function DigestReportPage() {
               </Link>
             </div>
 
-            {/* 中栏 toolbar 右侧: 只剩 Aurora 切换按钮
-                主题切换全站统一在左 Sidebar 底部, 不在每页 toolbar 重复 */}
-            {!isAuroraOpen && (
-              <button
-                type="button"
-                onClick={() => setIsAuroraOpen(true)}
-                className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] italic transition-all duration-150 hover:opacity-100"
-                style={{
-                  color: 'var(--ink-soft)',
-                  border: '0.5px solid var(--separator)',
-                  fontFamily:
-                    '"Source Han Serif SC","Noto Serif SC","Songti SC","Iowan Old Style",Georgia,serif',
-                  opacity: 0.85,
-                }}
-                title="问 Aurora (⌘K)"
-              >
-                <Sparkles size={11} strokeWidth={1.5} />
-                <span>Aurora</span>
-              </button>
-            )}
+            {/* 右上 Aurora 按钮已删:右栏永远有内容(margin notes 或 Aurora),
+                "打开 Aurora"语义不是"展开右栏"而是"切换右栏内容"——入口移到
+                MarginColumn 底部的"叫 Aurora ✦"按钮 + ⌘K 快捷键 + 文末软入口。
+                右上孤悬胶囊按钮会跟面包屑形成视觉冲突,删后顶栏更干净。 */}
           </motion.nav>
 
           {/* ── 报头（Stratechery 现代严肃 newsletter 风）── */}
@@ -295,32 +437,50 @@ export default function DigestReportPage() {
                 '"Source Han Serif SC","Noto Serif SC","Songti SC","SimSun","Source Serif Pro","Iowan Old Style",Charter,Georgia,serif',
             }}
           >
-            {/* Kicker: AI · VOL. 1 · 第 X 期 — small caps + tracking-widest */}
+            {/* Kicker(眉题): topic.name · VOL · ISSUE — 报纸眉题位置,小帽签 */}
             <p
-              className="mb-6 text-[11px] font-semibold uppercase tracking-[0.32em]"
+              className="mb-7 text-[11px] font-semibold uppercase tracking-[0.3em]"
               style={{ color: 'var(--ink-ghost)' }}
             >
               {topic.name} &nbsp;·&nbsp; VOL.&nbsp;1 &nbsp;·&nbsp; ISSUE&nbsp;{issueNumber.toString().padStart(2, '0')}
             </p>
 
-            {/* 本期标题（稍克制, 不要 6xl 那么夸张） */}
+            {/* Headline(主标题): 本期标题,版面视觉锚点 */}
             <h1
-              className="mb-5 text-5xl font-bold leading-[1.1] tracking-tight max-[520px]:text-4xl"
+              className="mb-7 text-5xl font-bold leading-[1.05] tracking-tight max-[520px]:text-4xl"
               style={{ color: 'var(--ink)' }}
             >
               {report.headline}
             </h1>
 
-            {/* 出版信息: italic, 现代 newsletter 那种克制副信息 */}
+            {/* Deck(导语副标): 本期选题指引——报纸主标下两三行 italic 大字,
+                说清"本期讲什么 + 为何重要"。报纸版面解剖里 deck 是仅次于 headline
+                的核心元素;以前我们漏了这一层,直接 headline → byline → 正文,
+                少了从大字标题到正文之间的"中场缓冲"。 */}
+            {topic.description && (
+              <p
+                className="mb-7 text-lg italic leading-[1.55] max-[520px]:text-base"
+                style={{ color: 'var(--ink-soft)' }}
+              >
+                {topic.description}
+              </p>
+            )}
+
+            {/* Byline(署名): italic + tracking,报纸经典署名样式 */}
             <p
-              className="mb-8 text-sm italic"
-              style={{ color: 'var(--ink-faded)' }}
+              className="mb-5 text-xs italic"
+              style={{ color: 'var(--ink-faded)', letterSpacing: '0.04em' }}
             >
-              {formatDateTime(report.publishedAt)} &nbsp;·&nbsp; 编辑 Aurora &nbsp;·&nbsp; 本期 {report.findings.length} 条参考
+              编辑 Aurora &nbsp;·&nbsp; {formatDateTime(report.publishedAt)} &nbsp;·&nbsp; 本期 {report.findings.length} 条参考
             </p>
 
-            {/* 报头下方 hairline 分隔(0.5px, 不再 3px 粗黑横线那么 heavy) */}
-            <div style={{ borderBottom: '0.5px solid var(--separator)' }} />
+            {/* Double rule(报头下分隔): 粗细两条线一组——严肃日报报头下方的标准
+                印刷做法,用"粗+细"对告诉读者"以上是报头,以下是正文"。比单一 hairline
+                的层级感强 N 倍。 */}
+            <div aria-hidden>
+              <div style={{ borderTop: '1.5px solid var(--ink-soft)' }} />
+              <div style={{ borderTop: '0.5px solid var(--ink-soft)', marginTop: '3px' }} />
+            </div>
           </motion.header>
 
           {/* ── 报告正文（MarkdownBody）──
@@ -395,89 +555,91 @@ export default function DigestReportPage() {
               </div>
             )}
 
-            {/* 末尾 italic 入口: 阅读完想综合讨论时给的柔和钩子(不是按钮) */}
-            {!isAuroraOpen && (
-              <p
-                className="mt-10 text-center text-xs italic"
-                style={{ color: 'var(--ink-ghost)' }}
-              >
-                还想问 Aurora?{' '}
-                <button
-                  type="button"
-                  onClick={() => setIsAuroraOpen(true)}
-                  className="underline decoration-dotted underline-offset-2 transition-opacity duration-150 hover:opacity-60"
-                  style={{ color: 'var(--ink-soft)' }}
-                >
-                  提个问题 ✦
-                </button>
-                {' '}&nbsp;·&nbsp; 或按{' '}
-                <kbd
-                  className="rounded px-1.5 py-0.5 text-[10px] not-italic"
-                  style={{ background: 'var(--shelf)', border: '0.5px solid var(--separator)' }}
-                >
-                  ⌘ K
-                </kbd>
-              </p>
-            )}
+            {/* 文末 Aurora 入口已删:margin 列顶部已有"叫 Aurora"软入口
+                + ⌘K 快捷键,文末再来一个就是重复 affordance,克制不重复。 */}
           </motion.div>
 
         </div>
       </div>
 
-      {/* ── Aurora panel — flex 子, CSS width transition(0/440), 不 absolute 不 motion ──
-          内部 AdvisorSidebar 固定 440 宽, 外壳 width 0 时被 overflow-hidden 截断,
-          width 动画期间内容不 rewrap(因为内层固定宽度)
-          关闭按钮: 后续给 AdvisorSidebar 加 onClose prop 由它内部 toolbar 渲染 */}
+      {/* ── 右栏:MarginColumn(关) ↔ AdvisorSidebar(开)互斥 ──
+          两者本质都是"辅助阅读",同时存在会让主文被挤成细条。互斥共用同一栏位:
+          关 = margin 旁注(288px,章节进度 + findings 索引);开 = Aurora(440px)。
+          切换走 CSS width transition,内容用 conditional render(内容里没有"两栏并存"问题,
+          所以不需要 fade)。Aurora 关时仍保留 borderLeft,因为永远有内容,边线是栏之间的真实分隔。 */}
       <aside
         className="shrink-0 overflow-hidden"
         style={{
-          width: isAuroraOpen ? '440px' : '0px',
+          width: isAuroraOpen ? '440px' : '288px',
           transition: 'width 240ms cubic-bezier(0.32, 0.72, 0, 1)',
-          borderLeft: isAuroraOpen ? '1px solid var(--separator)' : 'none',
+          borderLeft: '1px solid var(--separator)',
         }}
       >
-        <div className="h-full w-[440px]" style={{ background: 'var(--paper-white)' }}>
-          {authStatus === 'checking' && (
-            <div className="flex flex-col gap-3 px-6 pt-6">
-              <div className="h-3 w-24 animate-pulse rounded" style={{ background: 'var(--shelf)' }} />
-              <div className="h-16 animate-pulse rounded-lg" style={{ background: 'var(--shelf)' }} />
-            </div>
-          )}
+        <div
+          className="h-full"
+          style={{
+            width: isAuroraOpen ? 440 : 288,
+            background: 'var(--paper-white)',
+          }}
+        >
+          {isAuroraOpen ? (
+            <>
+              {authStatus === 'checking' && (
+                <div className="flex flex-col gap-3 px-6 pt-6">
+                  <div className="h-3 w-24 animate-pulse rounded" style={{ background: 'var(--shelf)' }} />
+                  <div className="h-16 animate-pulse rounded-lg" style={{ background: 'var(--shelf)' }} />
+                </div>
+              )}
 
-          {authStatus === 'unauthenticated' && (
-            <div className="px-6 pt-6">
-              <AuroraPlaceholder />
-            </div>
-          )}
+              {authStatus === 'unauthenticated' && (
+                <div className="px-6 pt-6">
+                  <AuroraPlaceholder />
+                </div>
+              )}
 
-          {authStatus === 'authenticated' && (
-            <div className="flex h-full flex-col">
-              <AdvisorSidebar
-                sessionKey={`digest-report-${reportId}`}
-                agentInstanceKey={`digest-topic-${topicId}`}
-                agentKey="report-analyst"
-                source="report-reader"
-                context={{
-                  digestReport: {
-                    reportId: report.id,
-                    topicId: topic.id,
-                    topicName: topic.name,
-                    topicPrompt: topic.description,
-                    headline: report.headline,
-                    publishedAt: report.publishedAt,
-                    sections: extractSections(report.markdown),
-                    findings: report.findings.map((f) => ({
-                      citationId: f.citationId,
-                      title: f.title,
-                      sourceName: f.sourceName,
-                      url: f.url,
-                    })),
-                  },
-                }}
-                greeting="想聊哪条？"
-                onClose={() => setIsAuroraOpen(false)}
-              />
-            </div>
+              {authStatus === 'authenticated' && (
+                <div className="flex h-full flex-col">
+                  <AdvisorSidebar
+                    sessionKey={`digest-report-${reportId}`}
+                    agentInstanceKey={`digest-topic-${topicId}`}
+                    agentKey="report-analyst"
+                    source="report-reader"
+                    context={{
+                      digestReport: {
+                        reportId: report.id,
+                        topicId: topic.id,
+                        topicName: topic.name,
+                        topicPrompt: topic.description,
+                        headline: report.headline,
+                        publishedAt: report.publishedAt,
+                        sections: extractSections(report.markdown),
+                        findings: report.findings.map((f) => ({
+                          citationId: f.citationId,
+                          title: f.title,
+                          sourceName: f.sourceName,
+                          url: f.url,
+                        })),
+                      },
+                    }}
+                    selectionAttachments={chatSelections}
+                    onRemoveSelectionAttachment={(id) =>
+                      setChatSelections((prev) => prev.filter((c) => c.id !== id))
+                    }
+                    onClearSelectedText={() => setChatSelections([])}
+                    greeting="想聊哪条？"
+                    onClose={() => setIsAuroraOpen(false)}
+                  />
+                </div>
+              )}
+            </>
+          ) : (
+            <MarginColumn
+              sections={extractSections(report.markdown)}
+              findings={report.findings}
+              activeSection={activeSection}
+              onScrollToSection={scrollToSection}
+              onAskAurora={() => setIsAuroraOpen(true)}
+            />
           )}
         </div>
       </aside>

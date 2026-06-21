@@ -1281,25 +1281,24 @@ body.gallery-immersive aside {
  * href 形如 "https://external.url/article#cit-N"——前半段是目标网页，#cit-N 仅供选择器命中。
  * 渲染效果：行内 superscript 紫色小数字，hover 有淡底，click 由 JS 委托强制新标签打开。
  * ─────────────────────────────────────────────────────────────────────────────── */
+/* citation 上标:Stratechery 派纯上标小灰数字,不带 [ ] 装饰、不抢色。
+ * hover 时染上 accent 表明可点。比早期紫色+方括号克制许多,贴严肃 newsletter 体例。 */
 .digest-report-body a[href*="#cit-"] {
   display: inline;
-  font-size: 0.7em;
+  font-size: 0.65em;
   vertical-align: super;
   line-height: 1;
   margin: 0 1px;
-  padding: 0 3px;
-  color: var(--accent);
-  font-weight: 600;
+  padding: 0 1px;
+  color: var(--ink-faded);
+  font-weight: 500;
   text-decoration: none;
-  border-radius: 3px;
-  transition: background-color 150ms ease;
+  transition: color 150ms ease;
   cursor: pointer;
 }
 .digest-report-body a[href*="#cit-"]:hover {
-  background-color: var(--accent-soft);
+  color: var(--accent);
 }
-.digest-report-body a[href*="#cit-"]::before { content: '['; opacity: 0.5; }
-.digest-report-body a[href*="#cit-"]::after  { content: ']'; opacity: 0.5; }
 
 /* ── Digest 报告正文 期刊体例(Stratechery 现代严肃) ──────────────────────────
  * 用宋体严肃 stack(Source Han Serif / Songti SC / SimSun)替代默认的 LXGW 文楷,
@@ -1332,22 +1331,72 @@ body.gallery-immersive aside {
 }
 .digest-report-body p:last-child { margin-bottom: 0; }
 
-/* H2: 章节标题用 small caps + tracking, 配 hairline 分隔 */
+/* 首段 dropcap(Stratechery / Every / The Atlantic 派开篇仪式):
+ * 文档级第一个 <p> 首字符放大 3.3em float left 跨 3 行;宋体 italic 保留期刊温度。
+ * 跨章节后段不做(只命中 .digest-report-body 直接子级第一个 p——MarkdownBody 渲染下
+ * 通常是 H2 之后的"开篇正文"),避免每个 section 都重复仪式感反而稀释。 */
+.digest-report-body > p:first-of-type::first-letter {
+  float: left;
+  font-family:
+    "Source Han Serif SC",
+    "Noto Serif SC",
+    "Songti SC",
+    "SimSun",
+    Georgia,
+    serif;
+  font-size: 3.3em;
+  line-height: 0.88;
+  font-weight: 600;
+  font-style: italic;
+  margin: 0.08em 0.12em 0 0;
+  color: var(--ink);
+}
+
+/* H2 章节标题(印刷开篇符):
+ * 居中 italic 小标题,顶部 hairline 正中悬一颗 ✦(::before 用 paper 背景遮断 hairline,
+ * 形成印刷品里那种"section opener"——细线中间嵌一个装饰符)。
+ * tracking 从 0.18em 降到 0.04em:之前的视觉是"等宽 mono"错觉,字间距大到丢了宋体味;
+ * 现在恢复正常字间距,让宋体 italic 自然的优雅出来。 */
 .digest-report-body h2 {
-  margin: 3.5em 0 1.2em;
+  position: relative;
+  margin: 4em 0 1.4em;
   padding-top: 1.8em;
+  font-family:
+    "Source Han Serif SC",
+    "Noto Serif SC",
+    "Songti SC",
+    "SimSun",
+    Georgia,
+    serif;
   font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: 0.18em;        /* tracking-widest 风 */
-  text-transform: none;          /* 中文章节不要 uppercase, 但保留 letter-spacing */
+  font-style: italic;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-align: center;
   color: var(--ink);
   border-top: 0.5px solid var(--separator);
   line-height: 1.4;
+}
+.digest-report-body h2::before {
+  content: '✦';
+  position: absolute;
+  top: -0.55em;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 0.7em;
+  background: var(--paper);
+  color: var(--ink-faded);
+  font-size: 0.85em;
+  font-style: normal;
+  line-height: 1;
 }
 .digest-report-body h2:first-child {
   margin-top: 0;
   padding-top: 0;
   border-top: none;
+}
+.digest-report-body h2:first-child::before {
+  display: none;
 }
 
 /* H3: 三级标题(段落小标题), 仅 weight + 微大 */
@@ -1372,13 +1421,50 @@ body.gallery-immersive aside {
   font-style: italic;
 }
 
-/* 引用块: italic + 左 border + 右缩进 */
+/* Pull Quote(拎语):报纸里"从正文拉一句金句拼大字"的版面做法。
+ * 不用左 border + 缩进的"普通 blockquote"样式(那种像引用文档,弱);
+ * 改成上下细线 + 居中 + italic 大字——读者扫到这里会主动停留,提供"不读全文也能抓住要害"
+ * 的入口。markdown 里写 `> "金句"` 即可,渲染时自动出 pull quote 视觉。 */
 .digest-report-body blockquote {
-  margin: 2em 0;
-  padding: 0 1.5em;
-  border-left: 3px solid var(--ink-soft);
+  position: relative;
+  margin: 2.4em auto;
+  padding: 1.2em 1.5em;
+  max-width: 88%;
+  border-top: 0.5px solid var(--separator);
+  border-bottom: 0.5px solid var(--separator);
+  border-left: none;
+  font-family:
+    "Source Han Serif SC",
+    "Noto Serif SC",
+    "Songti SC",
+    "SimSun",
+    Georgia,
+    serif;
+  font-size: 1.22em;
   font-style: italic;
-  color: var(--ink-soft);
+  font-weight: 500;
+  text-align: center;
+  line-height: 1.55;
+  color: var(--ink);
+}
+.digest-report-body blockquote p {
+  margin: 0;
+  text-align: center;     /* 覆盖正文 p 的 justify */
+  text-indent: 0;
+}
+/* 上下细线中央装饰符——跟 H2 ✦ 同构,做"拎语开篇/收尾"标记 */
+.digest-report-body blockquote::before {
+  content: '✦';
+  position: absolute;
+  top: -0.58em;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 0.7em;
+  background: var(--paper);
+  color: var(--ink-faded);
+  font-size: 0.7em;
+  font-style: normal;
+  line-height: 1;
 }
 
 /* 行内 code: 等宽体 + 浅底 */
