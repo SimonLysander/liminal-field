@@ -1350,11 +1350,14 @@ body.gallery-immersive aside {
     "SimSun",
     Georgia,
     serif;
-  font-size: 3.3em;
-  line-height: 0.88;
-  font-weight: 600;
-  font-style: italic;
-  margin: 0.08em 0.12em 0 0;
+  font-size: 3.4em;
+  line-height: 1;
+  /* 中文宋体没有真 italic 字形,浏览器会用 oblique skew transform 模拟 → 字会歪掉
+   * 像截图里那样。改成 normal + weight 700,字立得正,跟 Stratechery / 三联 这类期刊
+   * 印刷品里的实际处理一致。 */
+  font-style: normal;
+  font-weight: 700;
+  margin: 0.05em 0.12em -0.05em 0;
   color: var(--ink);
 }
 

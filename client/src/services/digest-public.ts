@@ -6,13 +6,17 @@
  */
 import { request } from './request';
 
-/** 报告里的参考资料条目 */
+/** 报告里的参考资料条目。
+ * reason / snippet 仅给 Aurora sub-agent context 用(margin 列表不展示);
+ * 后端可能不返(老数据),所以可选。 */
 export interface PublicFinding {
   citationId: number;
   title: string;
   url: string;
   sourceName: string;
   publishedAt: string | null;
+  reason?: string;
+  snippet?: string;
 }
 
 /** 同专栏其他期（prev/next 导航用） */

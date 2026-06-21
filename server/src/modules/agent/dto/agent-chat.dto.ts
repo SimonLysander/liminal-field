@@ -89,7 +89,7 @@ class DigestReportFindingDto {
 }
 
 /**
- * 精选阅读页场景上下文:报告元数据 + 章节列表 + findings 索引。
+ * 简报阅读页场景上下文:全篇注入 — 报告完整 markdown + findings 完整字段。
  * 选区追问不走这里——用户划词后点"追问 Aurora"是走 selectionAttachments(chip 机制),
  * 跟编辑器"添加到聊天"同一套,chip 发送瞬间拼成 markdown 引用块进 user text。
  */
@@ -111,6 +111,10 @@ class DigestReportContextDto {
 
   @IsString()
   publishedAt!: string;
+
+  /** 报告正文 markdown 完整全文(~4500 字),sub-agent 直接读原文不走工具 */
+  @IsString()
+  markdown!: string;
 
   @IsArray()
   @IsString({ each: true })

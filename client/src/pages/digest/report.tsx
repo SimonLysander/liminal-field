@@ -612,12 +612,17 @@ export default function DigestReportPage() {
                         topicPrompt: topic.description,
                         headline: report.headline,
                         publishedAt: report.publishedAt,
+                        // 全篇注入:报告 markdown 完整全文 + findings 完整字段(含 reason/snippet)
+                        // 一并传给 sub-agent context,后端拼进 <digest_report> system 段
+                        markdown: report.markdown,
                         sections: extractSections(report.markdown),
                         findings: report.findings.map((f) => ({
                           citationId: f.citationId,
                           title: f.title,
                           sourceName: f.sourceName,
                           url: f.url,
+                          reason: f.reason,
+                          snippet: f.snippet,
                         })),
                       },
                     }}

@@ -118,8 +118,12 @@ export class SystemConfigService implements OnModuleInit {
   ];
 
   /**
-   * report-analyst 入口:精选阅读页追问,纯对话无工具。
-   * 管理员可在 UI 修改 systemPrompt,启动不会覆盖已有记录(补齐策略:只补缺失 key)。
+   * report-analyst 入口:简报阅读页追问 sub-agent。
+   * 设计:简报全篇(完整 markdown + findings 含 reason/snippet)通过 <digest_report>
+   * system 段全篇注入(prompt.handler 自动拼,不走工具),所以 sub-agent 自带"全局视野"。
+   * 工具只给联网两件套——简报是 snapshot,聊起来一定会延伸到外面新信息;给 Aurora 一个出口。
+   *
+   * 管理员可在 UI 修改 systemPrompt 与 tools,启动不会覆盖已有记录(补齐策略:只补缺失 key)。
    */
   private static readonly REPORT_ANALYST_ENTRY = {
     key: 'report-analyst',
@@ -132,10 +136,11 @@ export class SystemConfigService implements OnModuleInit {
       '你的职责：\n' +
       '- 帮用户深挖：用户问「第 3 条文章的核心论点是什么」「为什么三种 agent 框架在状态管理上差异这么大」之类的问题时，基于当前报告 context 给出有依据、有判断的回答\n' +
       '- 不要泛泛而谈：报告里有的内容直接引用，不要绕开报告造一段无关解读\n' +
-      '- 必要时承认信息盲点：报告只是摘要，原文你看不到，如果用户问的细节超出摘要范围，明说"摘要里没说，建议看原文"\n\n' +
+      '- 超出报告范围时:报告是 snapshot,聊起来用户经常会延伸("这论文最近还有相关研究吗""这领域还有谁在做")。这种情况调 web_search/web_fetch 去外面看,别说"我不知道"\n\n' +
       '风格：克制、有判断、不水。',
-    // 报告分析不需要工具(不写文件、不查数据库),纯对话
-    tools: [],
+    // 联网两件套:简报本身全篇注入(报告 markdown + findings 完整字段直接进 system prompt),
+    // sub-agent 不需要"读内容"类的工具;给 web_search + web_fetch 让它能延伸到外面世界。
+    tools: ['web_search', 'web_fetch'],
     tier: 'standard',
     providerId: '',
     flashProviderId: '',

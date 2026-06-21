@@ -200,9 +200,17 @@ export class ToolAssembler {
       web_fetch: createWebFetchTool(webFetchProvider),
     };
 
-    // 按白名单过滤工具：allowedTools 不为空时只保留白名单内的工具
+    // 按白名单过滤工具:语义区分三种情况——
+    //   allowedTools = undefined → 未配置,挂全部工具(默认行为)
+    //   allowedTools = []        → 显式空白名单,不挂任何工具(用于"纯对话"sub-agent)
+    //   allowedTools = ['a','b'] → 只挂白名单内
+    //
+    // 之前的逻辑(`length > 0`)把 [] 也当成"未配置",导致 report-analyst 这种
+    // 注明"纯对话无工具"的 sub-agent 实际拿到全部工具,会去调 get_current_draft
+    // 等编辑器场景才有的工具,体验上很怪(实测 chrome-devtools 在简报阅读页
+    // 划词追问时 Aurora 答"先读一下当前草稿..."然后调 get_current_draft)。
     const filteredTools =
-      allowedTools && allowedTools.length > 0
+      allowedTools != null
         ? Object.fromEntries(
             Object.entries(rawTools).filter(([name]) =>
               allowedTools.includes(name),

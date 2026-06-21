@@ -93,6 +93,8 @@ export type AdvisorContext = {
     topicPrompt: string;
     headline: string;
     publishedAt: string;
+    /** 报告正文 markdown 完整全文,sub-agent 直接读原文不走工具 */
+    markdown: string;
     sections: string[];
     findings: {
       citationId: number;

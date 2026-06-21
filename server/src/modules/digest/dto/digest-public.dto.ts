@@ -3,13 +3,20 @@
  * task #52：/digest/topics/:topicId/reports/:reportId 与 /digest/topics/:topicId 端点。
  */
 
-/** 报告里的参考资料条目（来自 DigestTask.findings） */
+/** 报告里的参考资料条目（来自 DigestTask.findings）。
+ * reason / snippet 是 AI 挑选时写入的"为啥选这条"和"原文片段",前端 margin
+ * 列表只展示 title+source,但给 Aurora 追问 sub-agent 的 context 里必须带上
+ * —— 不然它只看得到标题答不深。 */
 export interface PublicFindingDto {
   citationId: number;
   title: string;
   url: string;
   sourceName: string;
   publishedAt: string | null;
+  /** AI 挑选时写的事实摘要(为啥这条值得读),~100-200 字 */
+  reason?: string;
+  /** 原文片段(若 finding 有保存),供 sub-agent 引用具体段落 */
+  snippet?: string;
 }
 
 /** prev/next 导航用的同专栏其他期简要信息 */

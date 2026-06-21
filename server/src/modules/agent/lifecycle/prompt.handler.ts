@@ -91,11 +91,17 @@ export interface BuildSystemPromptParams {
     }[];
   };
   /**
-   * 精选阅读页场景(可选):报告元数据 + 章节列表 + findings 索引(含 reason/snippet)。
-   * 让 sub-agent("精选"分析师入口)在用户追问时不再两眼一抹黑——它能直接看到当前这期讲了啥、
-   * 引用了哪些文章、用户点的是 CIT 几号。
-   * 选区追问走 selectionAttachments(chip 机制),不走这里,与编辑器"添加到聊天"统一。
+   * 简报阅读页场景(可选):**全篇注入**——报告完整 markdown + findings 完整字段(含
+   * reason 事实摘要 + snippet 原文片段),让 sub-agent 不需要任何工具调用就能基于
+   * 完整内容回答用户追问。
+   *
+   * 设计哲学:简报本身是小数据集(~5k 中文字),没必要假装是大数据要按需取。
+   * 现代 LLM context window 200k+,塞 10k 完全 OK,多轮对话靠 prompt caching 摊销。
+   * 这是 Stage 2 最早设计的"全篇注入"——之前因为公开 API 漏返 reason/snippet,
+   * 实际只塞了标题索引,导致 Aurora 答"摘要里没说"。这一版补上。
+   *
    * 与 document/gallery 互斥(读报和写作不是一个场景)。
+   * 选区追问走 selectionAttachments(chip 机制),不走这里。
    */
   digestReport?: {
     reportId: string;
@@ -104,6 +110,8 @@ export interface BuildSystemPromptParams {
     topicPrompt: string;
     headline: string;
     publishedAt: string;
+    /** 报告正文 markdown 完整全文(~4500 字)。全塞,不再走 get_section 工具 */
+    markdown: string;
     sections: string[];
     findings: {
       citationId: number;
@@ -281,10 +289,15 @@ ${ownerName} 正在整理画廊《${g.title || '未命名'}》——${g.photos.l
 </gallery>`);
     }
 
-    // ——— 精选阅读页场景(report-reader 入口) ———
-    // 把当期报告的元数据、章节列表、findings 索引全塞进 prompt——总量约 1-3k 字,
-    // 远低于工具往返成本(get_finding 单次 round-trip 至少 2k token + 等待延迟)。
-    // sub-agent 看到这些就能直接回答"这期讲了啥"、"CIT 3 是什么"、"为什么挑这条"。
+    // ——— 简报阅读页场景(report-reader 入口) ———
+    // **全篇注入**:报告完整 markdown(~4500 字)+ findings 完整字段(含 reason/snippet)
+    // 全塞进 prompt。总量约 8-10k tokens,现代 LLM 200k context 完全 OK,多轮对话靠
+    // prompt caching 摊销 90% 成本。
+    //
+    // 设计哲学:简报是小数据集(~5k 中文字),没必要假装是大数据要按需取。
+    // sub-agent 一眼看完整内容 → 答得深 + 答得快(零工具往返),用户问"为啥 96.5%"
+    // 时能直接引用 finding 的 reason 和 markdown 里的具体段落。
+    //
     // 用户划词追问不走这里,走 chip 机制(跟编辑器"添加到聊天"统一,引用块拼进 user text)。
     if (params.digestReport) {
       const r = params.digestReport;
@@ -298,12 +311,21 @@ ${ownerName} 正在整理画廊《${g.title || '未命名'}》——${g.photos.l
         lines.push(`章节:`);
         for (const s of r.sections) lines.push(`  · ${s}`);
       }
+      // 报告正文 markdown 全文 —— sub-agent 直接读原文,不需要 get_section 工具
+      if (r.markdown?.trim()) {
+        lines.push(``);
+        lines.push(`报告正文(markdown,正文里 [CIT N] 是 finding 编号):`);
+        lines.push(`---`);
+        lines.push(r.markdown.trim());
+        lines.push(`---`);
+      }
       if (r.findings.length > 0) {
         lines.push(``);
         lines.push(
-          `本期收录的 ${r.findings.length} 条 findings(正文里以 [CIT N] 角标引用):`,
+          `本期收录的 ${r.findings.length} 条 findings(正文 [CIT N] 引用的就是这里):`,
         );
         for (const f of r.findings) {
+          lines.push(``);
           lines.push(`[CIT ${f.citationId}] 《${f.title}》— ${f.sourceName}`);
           if (f.reason) lines.push(`  事实摘要:${f.reason}`);
           if (f.snippet) lines.push(`  原文片段:${f.snippet}`);

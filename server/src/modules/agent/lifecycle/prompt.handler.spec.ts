@@ -306,7 +306,9 @@ describe('PromptHandler.buildSystemPrompt', () => {
     });
   });
 
-  describe('digest_report —— 精选阅读页场景(report-reader 入口)', () => {
+  describe('digest_report —— 简报阅读页场景(report-reader 入口,全篇注入)', () => {
+    const sampleMarkdown =
+      '## 训练新法\n\nZigZag-2 提出了三段式稀疏注意力 [CIT 1],在 32K 上下文上吞吐提升 2.1x。\n\n## 部署成本\n\nGPT-X 部署成本环比降 30% [CIT 2]。';
     const sampleReport = {
       reportId: 'rep_1',
       topicId: 'top_1',
@@ -314,6 +316,7 @@ describe('PromptHandler.buildSystemPrompt', () => {
       topicPrompt: '关注 LLM 训练前沿',
       headline: '本周 LLM 三件事',
       publishedAt: '2026-06-21',
+      markdown: sampleMarkdown,
       sections: ['训练新法', '部署成本', '行业并购'],
       findings: [
         {
@@ -333,7 +336,7 @@ describe('PromptHandler.buildSystemPrompt', () => {
       ],
     };
 
-    it('有 digestReport → 注入 <digest_report>,含 topic/期号/章节/findings 索引', () => {
+    it('有 digestReport → 注入 <digest_report>,含 topic/期号/章节/markdown 全文/findings 完整', () => {
       const out = handler.buildSystemPrompt(
         baseParams({ digestReport: sampleReport }),
       );
@@ -343,6 +346,10 @@ describe('PromptHandler.buildSystemPrompt', () => {
       expect(out).toContain('本周 LLM 三件事');
       expect(out).toContain('关注 LLM 训练前沿');
       expect(out).toContain('训练新法');
+      // 全篇注入:markdown 全文也在 prompt 里
+      expect(out).toContain('报告正文(markdown');
+      expect(out).toContain('ZigZag-2 提出了三段式稀疏注意力');
+      expect(out).toContain('GPT-X 部署成本环比降 30%');
       expect(out).toContain('[CIT 1]');
       expect(out).toContain('ZigZag-2 训练范式');
       expect(out).toContain('事实摘要:提出三段式');
@@ -350,12 +357,23 @@ describe('PromptHandler.buildSystemPrompt', () => {
       expect(out).toContain('[CIT 2]');
     });
 
+    it('markdown 为空字符串 → 不注入"报告正文"段(其他字段照常)', () => {
+      const out = handler.buildSystemPrompt(
+        baseParams({ digestReport: { ...sampleReport, markdown: '   ' } }),
+      );
+      expect(out).toContain('<digest_report>');
+      expect(out).not.toContain('报告正文(markdown');
+      // 其他段照常
+      expect(out).toContain('[CIT 1]');
+    });
+
     it('findings 缺 reason/snippet → 不报错,只省略对应行', () => {
       const out = handler.buildSystemPrompt(
         baseParams({ digestReport: sampleReport }),
       );
       // CIT 2 没 reason/snippet,标题后直接接 URL,中间不出现"事实摘要/原文片段"
-      const cit2Idx = out.indexOf('[CIT 2]');
+      // 用 lastIndexOf:markdown 段里也含 [CIT 2],要锁定 findings 列表里那个
+      const cit2Idx = out.lastIndexOf('[CIT 2]');
       const nextCitOrEnd = out.indexOf('</digest_report>', cit2Idx);
       const cit2Block = out.slice(cit2Idx, nextCitOrEnd);
       expect(cit2Block).not.toContain('事实摘要');

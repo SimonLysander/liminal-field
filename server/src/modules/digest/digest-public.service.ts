@@ -108,6 +108,10 @@ export class DigestPublicService {
         url: f.url,
         sourceName: f.sourceName,
         publishedAt: f.publishedAt ? f.publishedAt.toISOString() : null,
+        // reason + snippet 透传给前端 → 注入 Aurora sub-agent context,让追问能基于
+        // 完整摘要回答(不再只看到标题"摘要里没说")。前端 margin 列表不渲染这两字段。
+        reason: f.reason || undefined,
+        snippet: f.snippet || undefined,
       }),
     );
 
