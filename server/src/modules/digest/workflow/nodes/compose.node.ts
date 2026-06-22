@@ -2,15 +2,23 @@
  * ComposeNode — 工作流第 2 节点：把 findings 写成 markdown 报告。
  *
  * 输入：DigestTask（含 findings 列表，每条有 citationId / title / snippet / reason）。
- * 输出：{ headline, markdown }（zod 强校验）。
+ * 输出：{ headline, deck, markdown }（zod safeParse 强校验）。
  *
- * 使用 generateObject 而非 generateText——强制 LLM 输出符合 ComposeSchema 的 JSON，
- * 避免 parse 错误导致 commit 节点拿到无效数据。
+ * 为什么用 generateText 而非 generateObject:
+ *   generateObject 依赖 provider 的 structured outputs(json_schema)能力,而线上模型
+ *   deepseek-v4-pro 只支持 json_object(JSON mode)、不支持 json_schema——撞上去直接崩
+ *   "No object generated: response did not match schema"(线上简报因此全部生成失败)。
+ *   改用 generateText 走 JSON mode:prompt(compose-report.md)已要求输出合法 JSON 并给出
+ *   结构示例(满足 DeepSeek JSON mode 的"含 json 字样 + 给示例"要求),拿到文本后用
+ *   extractJSON 兜底提取、再用 ComposeSchema.safeParse 严格校验字段。
+ *   同款方案见 memory-agent.service —— 全项目对"provider 不支持 structured output"的统一解法。
  */
 import { Injectable, Logger } from '@nestjs/common';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { generateObject } from 'ai';
+import { generateText } from 'ai';
 import { z } from 'zod';
+// extractJSON:从 LLM 文本里兜底提取 JSON(纯 JSON / ```json 代码块 / 花括号截取)
+import { extractJSON } from '../../../agent/agent.utils';
 // import type 用于 @Injectable 构造器参数会导致 NestJS IoC 运行时无法解析，改为正式 import
 import { PromptManagerService } from '../../../../infrastructure/prompt/prompt-manager.service';
 import type { DigestTask } from '../../digest-task.entity'; // 非注入参数，保留 type import
@@ -75,11 +83,36 @@ export class ComposeNode {
     });
     const model = provider.chatModel(aiConfig.model);
 
-    const { object } = await generateObject({
+    const { text } = await generateText({
       model,
-      schema: ComposeSchema,
       prompt,
+      // 给足输出预算:正文 1500-3500 字,DeepSeek 默认 max_tokens 偏低会把 JSON 写到一半截断
+      // → extractJSON 拿到残缺 JSON 解析失败。8192 覆盖 headline+deck+markdown 的完整 JSON。
+      maxOutputTokens: 8192,
     });
+
+    // 1) 兜底提取 JSON(模型可能用 ```json 包裹或夹带说明文字)
+    let raw: unknown;
+    try {
+      raw = extractJSON<unknown>(text);
+    } catch (err) {
+      // 失败必带上下文:响应长度 + 头部摘要(不记全文——可能很长且含正文)
+      this.logger.error(
+        `[compose] JSON 提取失败 taskId=${task._id} textLen=${text.length} head="${text.slice(0, 200)}"`,
+      );
+      throw err;
+    }
+
+    // 2) zod 严格校验字段(headline≤50 / deck 1-200 / markdown 必填),保证 commit 拿到合法数据
+    const parsed = ComposeSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.logger.error(
+        `[compose] 输出不符合 ComposeSchema taskId=${task._id} textLen=${text.length} ` +
+          `head="${text.slice(0, 200)}" zodError=${parsed.error.message}`,
+      );
+      throw new Error('compose 输出不符合 ComposeSchema');
+    }
+    const object = parsed.data;
 
     this.logger.log(
       `[compose] 完成 taskId=${task._id} headline="${object.headline}" markdownLen=${object.markdown.length}`,

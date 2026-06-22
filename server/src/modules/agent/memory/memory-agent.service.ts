@@ -11,6 +11,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText } from 'ai';
 import { SystemConfigService } from '../../settings/system-config.service';
+// extractJSON 已上移到 agent.utils(LLM JSON 提取是 agent 通用工具,digest-compose 也复用)
+import { extractJSON } from '../agent.utils';
 import { AgentMemoryRepository } from './agent-memory.repository';
 import type { AgentMemory } from './agent-memory.entity';
 // 从 memory/owner-memory.md 和 memory/session-compactor.md 加载 prompt(原散落字符串 → promptManager 统一托管)
@@ -264,29 +266,4 @@ export function matchScore(description: string, target: string): number {
   if (words.length === 0) return 0;
   const hits = words.filter((w) => target.includes(w)).length;
   return hits / words.length;
-}
-
-/**
- * 从 LLM 文本响应中提取 JSON。纯函数，便于单测——提取失败会让记忆写入整链崩。
- * 兼容：纯 JSON、```json 代码块、花括号截取。
- */
-export function extractJSON<T>(text: string): T {
-  // 尝试直接解析
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    // 不是纯 JSON
-  }
-  // 尝试从 ```json ... ``` 代码块中提取
-  const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-  if (codeBlockMatch) {
-    return JSON.parse(codeBlockMatch[1]) as T;
-  }
-  // 尝试找到第一个 { 和最后一个 } 之间的内容
-  const firstBrace = text.indexOf('{');
-  const lastBrace = text.lastIndexOf('}');
-  if (firstBrace !== -1 && lastBrace > firstBrace) {
-    return JSON.parse(text.slice(firstBrace, lastBrace + 1)) as T;
-  }
-  throw new Error('LLM 响应中未找到有效 JSON');
 }

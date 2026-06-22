@@ -6,11 +6,9 @@
  * forget(2026-05-31 补,#150 续):design §3.6 风险最高的工具。覆盖四条路径:
  *   0 条 / 0 分匹配 → not_found;1 条命中 → ok + 删;多条强匹配 → ambiguous 不删;并列最高分 → ambiguous 不删。
  */
-import {
-  MemoryAgentService,
-  matchScore,
-  extractJSON,
-} from './memory-agent.service';
+import { MemoryAgentService, matchScore } from './memory-agent.service';
+// extractJSON 已上移到 agent.utils,从那里导入做契约测试
+import { extractJSON } from '../agent.utils';
 import type { AgentMemory } from './agent-memory.entity';
 
 describe('matchScore', () => {

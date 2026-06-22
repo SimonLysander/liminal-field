@@ -87,3 +87,33 @@ export async function retryOnce<T>(
     return await fn();
   }
 }
+
+/**
+ * 从 LLM 文本响应中提取 JSON。纯函数,便于单测——提取失败会让调用链崩。
+ * 兼容:纯 JSON、```json 代码块、花括号截取。
+ *
+ * 为什么要它:DeepSeek 等 OpenAI-compatible provider 不支持 structured outputs
+ * (json_schema),只能用 generateText 让模型吐 JSON 文本再手动解析。generateObject
+ * 走 json_schema 路径,撞上这类 provider 会直接崩(No object generated)。
+ * memory-agent / digest-compose 都靠这个函数兜住模型输出。
+ */
+export function extractJSON<T>(text: string): T {
+  // 尝试直接解析
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    // 不是纯 JSON
+  }
+  // 尝试从 ```json ... ``` 代码块中提取
+  const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (codeBlockMatch) {
+    return JSON.parse(codeBlockMatch[1]) as T;
+  }
+  // 尝试找到第一个 { 和最后一个 } 之间的内容
+  const firstBrace = text.indexOf('{');
+  const lastBrace = text.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    return JSON.parse(text.slice(firstBrace, lastBrace + 1)) as T;
+  }
+  throw new Error('LLM 响应中未找到有效 JSON');
+}
