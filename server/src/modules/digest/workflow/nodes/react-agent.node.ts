@@ -17,7 +17,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText, stepCountIs } from 'ai';
 import type { StepResult, ToolSet } from 'ai';
-import { CronTime } from 'cron';
 // import type 用于 @Injectable 构造器参数会导致 NestJS IoC 运行时无法解析，改为正式 import
 import { PromptManagerService } from '../../../../infrastructure/prompt/prompt-manager.service';
 import { SmartTopicConfigRepository } from '../../smart-topic-config.repository';
@@ -27,27 +26,13 @@ import { SystemConfigService } from '../../../settings/system-config.service';
 import { makeRepairToolCall } from '../../../agent/agent.utils';
 import { DigestTaskRepository } from '../../digest-task.repository';
 import { DigestReportRepository } from '../../digest-report.repository';
+// periodFromCron 收口到 period.util(commit 算 periodKey 也用同一份,消除重复定义)
+import { periodFromCron } from '../../period.util';
 import type { AgentStep } from '../../digest-task.entity';
 // P3 重构:不再依赖 DigestToolsFactory(已删),改用 agent 的 ToolAssembler——
 // 工具池全项目共有,workflow 跑 react-agent 跟 report-analyst sub-agent 走同一套工具
 import { ToolAssembler } from '../../../agent/lifecycle/tool.assembler';
 import type { DigestTaskContext } from '../../../agent/tools/digest-task-context';
-
-/**
- * "本期收集窗口"兜底:无上期报告时,按 stc.cron 算 period 倒推。
- * 思路:CronTime.sendAt() 给下次,再 getNextDateFrom 给再下次 → 两次差就是 period。
- * 解析失败兜底 7 天。
- */
-function periodFromCron(cron: string): number {
-  try {
-    const ct = new CronTime(cron);
-    const next1 = ct.sendAt().toJSDate();
-    const next2 = ct.getNextDateFrom(next1).toJSDate();
-    return next2.getTime() - next1.getTime();
-  } catch {
-    return 7 * 24 * 60 * 60 * 1000; // 7 天兜底
-  }
-}
 
 /**
  * 把 Date 格式化为带时区 offset 的本地 ISO 8601:

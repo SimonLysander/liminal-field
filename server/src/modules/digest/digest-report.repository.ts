@@ -13,6 +13,8 @@ import type { Finding } from './digest-task.entity';
 export interface CreateDigestReportInput {
   _id: string;
   topicId: string;
+  /** 所属「期」的周期标识(YYYY-MM-DD),与 topicId 组成唯一键 */
+  periodKey: string;
   taskId: string;
   headline: string;
   /** 本期 deck(目录式概要),required */
@@ -31,6 +33,28 @@ export class DigestReportRepository {
 
   async create(input: CreateDigestReportInput): Promise<DigestReport> {
     return this.model.create(input);
+  }
+
+  /**
+   * 按 (topicId, periodKey) upsert —「一期一条」的写入入口。
+   *
+   * 同一周期重复生成(cron 重触 / 管理员手动补)→ 命中同一条 → **硬覆盖**内容,
+   * 而非新增一期(修"生成几次就几期")。需求方决策:同期旧报告直接覆盖(硬删)。
+   *
+   * - $set 覆盖 taskId/headline/deck/markdown/findings/publishedAt(全部内容字段 + 更新发布时间);
+   * - $setOnInsert 仅新建时写 _id —— 保留已存在期的 _id 不变,公开端 URL(/reports/:id)稳定不漂。
+   */
+  async upsertByPeriod(input: CreateDigestReportInput): Promise<DigestReport> {
+    const { _id, topicId, periodKey, ...content } = input;
+    const doc = await this.model
+      .findOneAndUpdate(
+        { topicId, periodKey },
+        { $set: content, $setOnInsert: { _id } },
+        { upsert: true, returnDocument: 'after' },
+      )
+      .exec();
+    // upsert + returnDocument:'after' 必返回文档
+    return doc;
   }
 
   async findById(id: string): Promise<DigestReport | null> {

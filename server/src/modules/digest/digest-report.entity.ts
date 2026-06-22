@@ -12,17 +12,22 @@
  * 字段:
  *   _id          dr_xxx 业务 id (跟 DigestTask 一样 prefix 区分)
  *   topicId      关联 SmartTopicConfig._id (或者 topic 的 ContentItem id,phase 2 再统一)
+ *   periodKey    所属「期」的周期标识(YYYY-MM-DD,周期起点本地日期,见 period.util)
  *   taskId       关联 DigestTask._id (产出来源,前端可挂"调用链"按钮)
  *   headline     标题(compose 节点写的)
  *   markdown     正文 markdown 全文
  *   findings     复用 DigestTask.Finding 类型(citationId/title/url/sourceName/reason/snippet)
  *   publishedAt  发布时间 = createdAt 默认
  *
- * 索引: topicId + publishedAt(倒序) — 公开端 listByTopic 主路径
+ * 索引:
+ *   - topicId + publishedAt(倒序) — 公开端 listByTopic 主路径
+ *   - (topicId, periodKey) UNIQUE — 「一期一条」约束:同一周期重复生成走 upsert 硬覆盖,
+ *     而非新增一期(修"生成几次就几期"的根因)。
  */
-import { modelOptions, prop, Severity } from '@typegoose/typegoose';
+import { index, modelOptions, prop, Severity } from '@typegoose/typegoose';
 import { Finding } from './digest-task.entity';
 
+@index({ topicId: 1, periodKey: 1 }, { unique: true })
 @modelOptions({
   schemaOptions: { collection: 'digest_reports', timestamps: true },
   options: { allowMixed: Severity.ALLOW },
@@ -35,6 +40,12 @@ export class DigestReport {
   /** 关联 SmartTopicConfig._id (= 老的 topic ContentItem.id ci_xxx) */
   @prop({ required: true, index: true })
   topicId!: string;
+
+  /** 所属「期」的周期标识(YYYY-MM-DD,周期起点本地日期,由 period.util.computePeriodKey 算)。
+   *  与 topicId 组成唯一键:同一周期内重复生成 upsert 命中同一条 → 硬覆盖,实现"一期一条、旧的扔掉"。
+   *  required — 新生成必带;线上 digest_reports 为空,无老数据迁移负担(同 deck 字段的处理哲学)。 */
+  @prop({ required: true })
+  periodKey!: string;
 
   /** 关联 DigestTask._id (dt_xxx),前端"调用链"按钮跳转用 */
   @prop({ required: true })

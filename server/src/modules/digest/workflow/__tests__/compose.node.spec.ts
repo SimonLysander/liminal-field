@@ -1,95 +1,92 @@
 /**
- * ComposeNode 单元测试
+ * ComposeNode 单测 — 覆盖 compose 节点的核心契约。
  *
- * 覆盖：
- *   1. 正常运行：generateObject 被调用，返回 { headline, markdown }
- *   2. findings=0：findings_text 包含"无 findings"占位
+ * 重点:
+ *   - generateText 输出 JSON → extractJSON 提取 → ComposeSchema 校验 → 返回 ComposeOutput
+ *   - 兼容 ```json 代码块包裹
+ *   - schema 校验失败抛错(commit 不会拿到非法数据)
+ *
+ * 用 jest.mock 拦截 ai 的 generateText——不真打 LLM。
+ * extractJSON 是真纯函数(agent.utils),不 mock,让它真跑提取逻辑。
  */
+import { ComposeNode } from '../nodes/compose.node';
+import { PromptManagerService } from '../../../../infrastructure/prompt/prompt-manager.service';
+import { SystemConfigService } from '../../../settings/system-config.service';
+import { generateText } from 'ai';
 
-const mockGenerateObject = jest.fn();
+// mock ai 模块的 generateText(compose 改用 generateText 走 JSON mode,见 compose.node 注释)
 jest.mock('ai', () => ({
-  generateObject: (...args: unknown[]) => mockGenerateObject(...args),
+  generateText: jest.fn(),
 }));
+
+// mock openai-compatible provider:createOpenAICompatible 返回带 chatModel 方法的 provider 对象
 jest.mock('@ai-sdk/openai-compatible', () => ({
   createOpenAICompatible: jest.fn(() => ({
-    chatModel: jest.fn(() => ({})),
+    chatModel: jest.fn(() => 'mock-model'),
   })),
 }));
 
-import { ComposeNode } from '../nodes/compose.node';
-import type { PromptManagerService } from '../../../../infrastructure/prompt/prompt-manager.service';
-import type { SystemConfigService } from '../../../settings/system-config.service';
-import type { DigestTask } from '../../digest-task.entity';
-import { DigestTaskStatus } from '../../digest-task.entity';
-import type { Finding } from '../../digest-task.entity';
+const mockGenerateText = generateText as jest.MockedFunction<
+  typeof generateText
+>;
 
-function makePromptManager(): PromptManagerService {
-  return {
-    render: jest.fn().mockReturnValue('mock compose prompt'),
+const makeTask = (findings: unknown[]) =>
+  ({
+    _id: 'dt_test',
+    topicId: 'ci_test',
+    findings,
+  }) as never;
+
+const makeComposeNode = () => {
+  const promptManager = {
+    render: jest.fn(() => 'rendered-prompt'),
   } as unknown as PromptManagerService;
-}
-
-function makeSystemConfig(): SystemConfigService {
-  return {
+  const systemConfig = {
     getAiConfig: jest.fn().mockResolvedValue({
-      baseUrl: 'https://api.example.com',
-      apiKey: 'test-key',
-      model: 'test-model',
+      baseUrl: 'http://x',
+      apiKey: 'k',
+      model: 'deepseek-chat',
     }),
   } as unknown as SystemConfigService;
-}
-
-function makeFinding(n: number): Finding {
-  return {
-    citationId: n,
-    sourceId: 'src_001',
-    sourceName: 'Test Source',
-    itemGuid: `guid_${n}`,
-    title: `标题 ${n}`,
-    url: `https://example.com/${n}`,
-    snippet: '摘要内容',
-    reason: '相关',
-    publishedAt: new Date('2026-06-01'),
-  };
-}
-
-function makeTask(findings: Finding[]): DigestTask {
-  return {
-    _id: 'dt_test',
-    topicId: 'ci_topic001',
-    status: DigestTaskStatus.running,
-    findings,
-    steps: [],
-    traceId: 'trace_001',
-    iterations: 0,
-    llmCallsCount: 0,
-    startedAt: new Date(),
-  };
-}
+  return new ComposeNode(promptManager, systemConfig);
+};
 
 describe('ComposeNode', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockGenerateObject.mockResolvedValue({
-      object: { headline: '测试标题', markdown: '## 测试\n内容 [CIT 1]' },
-    });
+  beforeEach(() => jest.clearAllMocks());
+
+  it('generateText 输出纯 JSON → 解析 + 校验通过', async () => {
+    mockGenerateText.mockResolvedValue({
+      text: '{"headline":"H","deck":"D","markdown":"M"}',
+    } as never);
+
+    const node = makeComposeNode();
+    const result = await node.run(makeTask([]));
+
+    expect(result).toEqual({ headline: 'H', deck: 'D', markdown: 'M' });
+    expect(mockGenerateText).toHaveBeenCalledTimes(1);
   });
 
-  it('Case 1: 正常运行 — generateObject 被调用，返回 headline + markdown', async () => {
-    const node = new ComposeNode(makePromptManager(), makeSystemConfig());
-    const result = await node.run(makeTask([makeFinding(1), makeFinding(2)]));
+  it('generateText 输出 ```json 代码块包裹 → extractJSON 仍能提取', async () => {
+    mockGenerateText.mockResolvedValue({
+      text: '```json\n{"headline":"H2","deck":"D2","markdown":"M2"}\n```',
+    } as never);
 
-    expect(mockGenerateObject).toHaveBeenCalledTimes(1);
-    expect(result.headline).toBe('测试标题');
-    expect(result.markdown).toContain('[CIT 1]');
+    const node = makeComposeNode();
+    const result = await node.run(makeTask([]));
+
+    expect(result).toEqual({ headline: 'H2', deck: 'D2', markdown: 'M2' });
   });
 
-  it('Case 2: findings=0 — promptManager.render 传入包含"无 findings"的 findings_text', async () => {
-    const promptManager = makePromptManager();
-    const node = new ComposeNode(promptManager, makeSystemConfig());
-    await node.run(makeTask([]));
+  it('输出不符合 ComposeSchema(headline 超 50 字)→ 抛错,挡住非法数据', async () => {
+    mockGenerateText.mockResolvedValue({
+      text: JSON.stringify({
+        headline: 'x'.repeat(60),
+        deck: 'D',
+        markdown: 'M',
+      }),
+    } as never);
 
-    const renderCall = (promptManager.render as jest.Mock).mock.calls[0];
-    expect(renderCall[1].findings_text).toContain('无 findings');
+    const node = makeComposeNode();
+    await expect(node.run(makeTask([]))).rejects.toThrow('ComposeSchema');
   });
 });

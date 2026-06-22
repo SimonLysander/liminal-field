@@ -24,6 +24,9 @@ import { ProcessedFeedItemRepository } from '../../processed-feed-item.repositor
 import { DigestReportRepository } from '../../digest-report.repository';
 import type { DigestTask, Finding } from '../../digest-task.entity';
 import type { ComposeOutput } from './compose.node';
+import { SmartTopicConfigRepository } from '../../smart-topic-config.repository';
+// 按 stc.cron 推断本期周期标识 periodKey,实现"同周期 upsert 硬覆盖"
+import { computePeriodKey } from '../../period.util';
 
 export interface CommitInput {
   topicId: string;
@@ -53,6 +56,8 @@ export class CommitNode {
   constructor(
     private readonly digestReportRepo: DigestReportRepository,
     private readonly pfiRepo: ProcessedFeedItemRepository,
+    // 算 periodKey 需要 stc.cron(周期粒度由 cron 推断)
+    private readonly stcRepo: SmartTopicConfigRepository,
   ) {}
 
   async run(task: DigestTask, compose: ComposeOutput): Promise<CommitOutput> {
@@ -63,12 +68,17 @@ export class CommitNode {
       `[commit] 开始 taskId=${taskId} topicId=${topicId} headline="${headline}"`,
     );
 
-    const reportId = buildReportId();
     const publishedAt = new Date();
+    // 本期周期标识:同一周期(日/周/月,按 cron 推断)内重复生成对齐到同一 periodKey
+    const stc = await this.stcRepo.findByContentItemId(topicId);
+    const periodKey = computePeriodKey(stc?.cron, publishedAt);
 
-    await this.digestReportRepo.create({
-      _id: reportId,
+    // upsertByPeriod:同 (topicId, periodKey) 已存在则硬覆盖(沿用旧 _id,URL 稳定),否则新建。
+    // 返回文档的 _id 才是真实 id(覆盖时是旧 id),后续 pfi / task 回写都用它。
+    const report = await this.digestReportRepo.upsertByPeriod({
+      _id: buildReportId(),
       topicId,
+      periodKey,
       taskId,
       headline,
       deck,
@@ -76,6 +86,7 @@ export class CommitNode {
       findings,
       publishedAt,
     });
+    const reportId = report._id;
 
     // ProcessedFeedItem 去重记录,忽略重复键错误(幂等)
     const pfiWrites = findings.map((f) =>
@@ -100,7 +111,7 @@ export class CommitNode {
     await Promise.all(pfiWrites);
 
     this.logger.log(
-      `[commit] 完成 taskId=${taskId} reportId=${reportId} findings=${findings.length}`,
+      `[commit] 完成 taskId=${taskId} reportId=${reportId} periodKey=${periodKey} findings=${findings.length}`,
     );
 
     return { reportContentItemId: reportId };

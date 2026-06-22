@@ -20,7 +20,6 @@ import { DigestSharedModule } from './digest-shared.module';
 import { InfoSourceService } from './info-source.service';
 import { InfoSourceController } from './info-source.controller';
 
-
 import { TopicService } from './topic.service';
 import { TopicController } from './topic.controller';
 
