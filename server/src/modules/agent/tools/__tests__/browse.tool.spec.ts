@@ -275,7 +275,13 @@ describe('browse (v5 多源并行)', () => {
       infoSourceRepo: makeInfoSourceRepo([srcA, srcB, srcC]),
       smartTopicConfigRepo: makeStcRepo(['src_a', 'src_b', 'src_c']),
       fetcherRegistry: makeFetcherRegistry([
-        { source: srcA, status: 'failed', items: [], error: 'SSL', durationMs: 50 },
+        {
+          source: srcA,
+          status: 'failed',
+          items: [],
+          error: 'SSL',
+          durationMs: 50,
+        },
         // srcB / srcC fetch 成功但窗口内 0 条(预期 — 短窗口没新发布)
         { source: srcB, status: 'ok', items: [], durationMs: 60 },
         { source: srcC, status: 'ok', items: [], durationMs: 70 },

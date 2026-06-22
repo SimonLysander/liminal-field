@@ -6,10 +6,11 @@
  * 量产的 snapshot 完全错配,每个 hook 都要打补丁。改为直接写 DigestReport 一张表。
  *
  * 步骤:
- *   1. 生成 dr_xxx id
- *   2. DigestReportRepository.create(headline, markdown, findings, publishedAt, topicId, taskId)
+ *   1. computePeriodKey(按 stc.cron 推断周期粒度)→ 本期 periodKey
+ *   2. DigestReportRepository.upsertByPeriod:同 (topicId, periodKey) 硬覆盖、否则新建 dr_xxx
+ *      —— 实现「一期一条、同周期重复生成覆盖旧的」(返回文档 _id 才是真实 id)
  *   3. ProcessedFeedItemRepository.create × findings.length(去重记录)
- *   4. return { reportId }(供 workflow service 回写 task.reportContentItemId)
+ *   4. return { reportContentItemId }(供 workflow service 回写 task.reportContentItemId)
  *
  * 设计决策:
  * - reportId 沿用 ci_ prefix→ dr_xxx 新前缀(干净);老数据迁移由 DigestModule.onModuleInit 处理
@@ -22,19 +23,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { ProcessedFeedItemRepository } from '../../processed-feed-item.repository';
 import { DigestReportRepository } from '../../digest-report.repository';
-import type { DigestTask, Finding } from '../../digest-task.entity';
+import type { DigestTask } from '../../digest-task.entity';
 import type { ComposeOutput } from './compose.node';
 import { SmartTopicConfigRepository } from '../../smart-topic-config.repository';
 // 按 stc.cron 推断本期周期标识 periodKey,实现"同周期 upsert 硬覆盖"
 import { computePeriodKey } from '../../period.util';
-
-export interface CommitInput {
-  topicId: string;
-  taskId: string;
-  headline: string;
-  markdown: string;
-  findings: Finding[];
-}
 
 export interface CommitOutput {
   /** DigestReport._id (dr_xxx);workflow service 回写 task.reportContentItemId 沿用旧字段名 */

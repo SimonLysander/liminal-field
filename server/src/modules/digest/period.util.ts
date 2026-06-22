@@ -54,7 +54,10 @@ function currentPeriodStart(cron: string, at: Date): Date {
   const ct = new CronTime(cron);
   const back = periodFromCron(cron) * 2.2;
   let cursor = new Date(at.getTime() - back);
-  let last = cursor;
+  // last 初始化为 null:若 2.2 周期窗口内无任何调度事件(异常 cron / periodFromCron 严重低估
+  // 实际周期),不能把回溯起点(cursor,约 2.2 周期前)误当周期起点返回——那会静默写错 periodKey、
+  // 把当前期当成历史旧期新建。退化为 at(当前时刻 → 当天 key),保证落在当前期。
+  let last: Date | null = null;
   // 上限 64 次迭代防异常 cron 死循环(2.2 周期内正常只枚举 2~3 次就越过 at)
   for (let i = 0; i < 64; i++) {
     const next = ct.getNextDateFrom(cursor).toJSDate();
@@ -62,7 +65,7 @@ function currentPeriodStart(cron: string, at: Date): Date {
     last = next;
     cursor = next;
   }
-  return last;
+  return last ?? at;
 }
 
 /**
