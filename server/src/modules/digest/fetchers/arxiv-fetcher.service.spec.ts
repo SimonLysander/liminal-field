@@ -4,7 +4,7 @@
  * - Case 1: 正常 Atom XML 解析 → FetchedItem[]
  * - Case 2: 解析失败 → throw Error('arxiv: fetch failed ...')
  * - Case 3: since 过滤（排除过期条目）
- * - Case 4: keywords 拼入 server query（supportsServerQuery=true，不在本地二次过滤）
+ * - Case 4: keywords 改为本地正则过滤（supportsServerQuery=false），query 只含 cat:、不含 ti:
  */
 import { Test, TestingModule } from '@nestjs/testing';
 
@@ -69,7 +69,8 @@ describe('ArxivFetcher', () => {
 
   it('kind 和 supportsServerQuery 属性正确', () => {
     expect(fetcher.kind).toBe(FetcherKind.arxiv);
-    expect(fetcher.supportsServerQuery).toBe(true);
+    // keywords 改本地正则后,arxiv 不再服务端检索 → supportsServerQuery=false
+    expect(fetcher.supportsServerQuery).toBe(false);
   });
 
   // Case 1: 正常解析
@@ -110,19 +111,21 @@ describe('ArxivFetcher', () => {
     expect(items[0].title).toBe('How Transparent is DiffusionGemma?');
   });
 
-  // Case 4: keywords 已拼入 server query，不在本地过滤（supportsServerQuery=true）
-  it('有 keywords 时仍返回所有 server 返回的条目（不本地二次过滤）', async () => {
+  // Case 4: keywords 改为本地正则过滤(arxiv 不再服务端 ti:);query 只含 cat、不含 ti
+  it('有 keywords 时本地正则过滤,只返回命中条目;query 不含 ti:', async () => {
     mockParseURL.mockResolvedValueOnce({ items: SAMPLE_ITEMS });
 
-    // keywords=['Gemma'] 在本地过滤只有 1 条命中，但 supportsServerQuery=true 不过滤
+    // keywords=['Gemma'] 本地正则匹配 title+snippet:只有 DiffusionGemma 那条命中
     const items = await fetcher.fetch(makeSource(), {
       keywords: ['Gemma'],
       limit: 10,
     });
 
-    // 不做本地过滤，全部返回
-    expect(items).toHaveLength(2);
-    // 验证 parseURL 的 url 参数包含 ti:Gemma
-    expect(mockParseURL.mock.calls[0][0]).toContain('ti:Gemma');
+    expect(items).toHaveLength(1);
+    expect(items[0].title).toBe('How Transparent is DiffusionGemma?');
+    // arxiv 不再拼服务端 ti:,query 只按分类拉
+    const url = mockParseURL.mock.calls[0][0] as string;
+    expect(url).toContain('cat:cs.AI');
+    expect(url).not.toContain('ti:');
   });
 });

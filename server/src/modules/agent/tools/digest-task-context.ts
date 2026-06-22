@@ -26,4 +26,11 @@ export interface DigestTaskContext {
     string,
     { fetchedItem: FetchedItem; sourceId: string; sourceName: string }
   >;
+  /**
+   * url → web_fetch 抓到的原文正文(markdown)。
+   * react-agent 在 onStepFinish 拦截 web_fetch 结果写入,pick 时按 fetchedItem.url 取出存进
+   * finding.fulltext。这样 agent 不必把原文复制进 pick 参数(省 token、不丢字)。
+   * 可选:reader 场景(report-analyst)不收集原文,留空。
+   */
+  urlToFulltext?: Map<string, string>;
 }

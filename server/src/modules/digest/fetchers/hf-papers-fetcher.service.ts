@@ -17,6 +17,7 @@ import {
   type FetchOptions,
 } from './fetcher.interface';
 import { httpGetJson, applyTimeWindow } from './http.utils';
+import { matchesAnyKeyword } from './keyword-match.util';
 
 const DEFAULT_LIMIT = 30;
 const SNIPPET_MAX_LENGTH = 800;
@@ -100,9 +101,4 @@ export class HfPapersFetcher implements SourceFetcher {
     );
     return result;
   }
-}
-
-function matchesAnyKeyword(item: FetchedItem, keywords: string[]): boolean {
-  const haystack = `${item.title} ${item.snippet}`.toLowerCase();
-  return keywords.some((k) => haystack.includes(k.toLowerCase()));
 }

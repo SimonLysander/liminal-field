@@ -137,6 +137,12 @@ export function createPickTool(deps: PickDeps) {
             publishedAt: fetchedItem.publishedAt,
             snippet: fetchedItem.snippet.slice(0, 800),
             reason: reason.slice(0, 500),
+            // 关联 react-agent 留存的原文(按 url)→ compose 的一手素材。
+            // 只看 snippet 没 web_fetch 过的条目无原文,留空(compose 兜底 snippet)。30k 上限对齐 web_fetch。
+            // url 两端统一 trim:留存侧(captureFulltext)也 trim,否则首尾空白会让条目匹配不上自己的原文。
+            fulltext: ctx.urlToFulltext
+              ?.get(fetchedItem.url.trim())
+              ?.slice(0, 30000),
           });
           pickedRefs.push(ref);
           savedItems.push({ title: fetchedItem.title, reason, citationId });
@@ -161,8 +167,11 @@ export function createPickTool(deps: PickDeps) {
         const saved = newFindings.length;
         const skipped = skippedRefs.length;
 
+        // fulltext 命中率可观测:原文是 compose 一手素材,命中低=报告退回 snippet(质量打折)。
+        // url 对不上 / web_fetch 输出结构变 都会静默零命中,这条日志是唯一信号。
+        const withFulltext = newFindings.filter((f) => f.fulltext).length;
         logger.debug(
-          `pick: saved=${saved} skipped=${skipped} taskId=${ctx.taskId}`,
+          `pick: saved=${saved} skipped=${skipped} fulltext=${withFulltext}/${saved} taskId=${ctx.taskId}`,
         );
 
         const citationIds = savedItems.map((s) => s.citationId);

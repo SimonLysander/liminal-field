@@ -69,10 +69,9 @@ export interface FetchOptions {
    */
   until?: Date;
   /**
-   * 关键词过滤（OR 语义：命中任一即返回）。
-   * 能服务端 query 的源（arxiv/HN Algolia） → 拼进 query 参数；
-   * 不能的源 → fetcher 内部本地过滤 title+snippet。
-   * 对调用方完全透明。
+   * 关键词过滤(OR 语义:命中任一即返回)。每个元素是一个「正则」(不区分大小写),
+   * 全部源统一在本地对 title+snippet 做正则匹配(见 keyword-match.util.ts)。
+   * 非法正则自动降级为字面子串;中文无词边界,用交替正则(科技|大模型)表达。
    */
   keywords?: string[];
 }
@@ -82,9 +81,8 @@ export interface SourceFetcher {
   readonly kind: FetcherKind;
   /**
    * 是否原生支持服务端 keyword 检索。
-   * - true：keywords 传给 server，能命中历史而非仅最近窗口（arxiv / HN Algolia）
-   * - false：fetcher 内部本地过滤最近窗口（绝大多数 RSS / 第三方 API）
-   * 调用方目前无需关心，留作 prompt 提示用（"keyword 在这类源上仅过滤最近窗口"）。
+   * 现状:keywords 改为本地正则后,全部源都是本地过滤 → 此字段恒 false。
+   * 保留字段:留待未来真接入「服务端检索且能下推正则/查询」的源时用(届时该源置 true 并自行服务端筛)。
    */
   readonly supportsServerQuery: boolean;
 

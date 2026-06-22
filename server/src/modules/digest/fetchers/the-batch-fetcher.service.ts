@@ -20,6 +20,7 @@ import {
   type FetchOptions,
 } from './fetcher.interface';
 import { httpGetText, applyTimeWindow } from './http.utils';
+import { matchesAnyKeyword } from './keyword-match.util';
 
 const DEFAULT_LIMIT = 20;
 const SNIPPET_MAX_LENGTH = 800;
@@ -134,9 +135,4 @@ function parseTheBatch(html: string): FetchedItem[] {
   }
 
   return items;
-}
-
-function matchesAnyKeyword(item: FetchedItem, keywords: string[]): boolean {
-  const haystack = `${item.title} ${item.snippet}`.toLowerCase();
-  return keywords.some((k) => haystack.includes(k.toLowerCase()));
 }

@@ -48,13 +48,22 @@ export class Finding {
   @prop({ type: () => Date })
   publishedAt?: Date;
 
-  /** RSS 摘要 / 用户保留的全文片段，供 compose 节点引用 */
+  /** RSS 摘要（去 HTML 纯文本，≤800 字）— compose 的背景素材，原文缺失时的兜底 */
   @prop({ required: true })
   snippet!: string;
 
-  /** LLM 给的"为啥挑这条"，可观测性 */
+  /** LLM 给的"为啥挑这条 / 关键判断" — 降为导读层「理由」属性，让 compose 注意力集中 + 过程透明 */
   @prop({ required: true })
   reason!: string;
+
+  /**
+   * web_fetch 抓到的原文正文 — compose 写报告的【一手素材】。
+   * 由 react-agent 在 web_fetch 后按 url 自动留存(onStepFinish 拦截 detail),pick 时关联进来,
+   * agent 无需把原文复制进 pick 参数(省 token、不丢字)。实测每篇 2-4k 字符,存 task 无压力
+   * (1M context / 16MB 文档都绰绰有余)。可选:只看 snippet 就 pick、没 web_fetch 过的条目无此字段。
+   */
+  @prop()
+  fulltext?: string;
 }
 
 /**

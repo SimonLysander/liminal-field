@@ -21,6 +21,7 @@ import {
   type FetchOptions,
 } from './fetcher.interface';
 import { httpGetText, applyTimeWindow } from './http.utils';
+import { matchesAnyKeyword } from './keyword-match.util';
 
 const DEFAULT_LIMIT = 25;
 
@@ -149,9 +150,4 @@ function decodeHtmlEntities(str: string): string {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, ' ');
-}
-
-function matchesAnyKeyword(item: FetchedItem, keywords: string[]): boolean {
-  const haystack = `${item.title} ${item.snippet}`.toLowerCase();
-  return keywords.some((k) => haystack.includes(k.toLowerCase()));
 }

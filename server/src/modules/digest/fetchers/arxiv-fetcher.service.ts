@@ -1,8 +1,8 @@
 /**
  * ArxivFetcher — arXiv 官方 API 信息源拉取（FetcherKind.arxiv）。
  *
- * supportsServerQuery=true：keywords 直接拼进 ti:... AND cat:... query 参数，
- * 命中范围覆盖历史数据而非仅最近窗口（不同于 RSS 类 fetcher 的本地过滤）。
+ * keywords 走「本地正则过滤」(与其余 fetcher 统一):拉 cat:<category> 最近一批,本地按正则筛
+ * title+snippet。arxiv API 只认自有查询语法、收不了 JS 正则,故不再服务端 ti: 拼词。
  *
  * endpoint: http://export.arxiv.org/api/query?search_query=...&start=0&max_results=N&sortBy=submittedDate&sortOrder=descending
  * http:// 会 301 → https://，rss-parser 默认跟随 redirect。
@@ -21,6 +21,7 @@ import {
   type FetchOptions,
 } from './fetcher.interface';
 import { applyTimeWindow } from './http.utils';
+import { matchesAnyKeyword } from './keyword-match.util';
 
 const DEFAULT_LIMIT = 30;
 const SNIPPET_MAX_LENGTH = 800;
@@ -38,8 +39,8 @@ type ArxivEntry = {
 @Injectable()
 export class ArxivFetcher implements SourceFetcher {
   readonly kind = FetcherKind.arxiv;
-  // keywords 拼进 server 端 query，命中历史范围；本地不再二次过滤
-  readonly supportsServerQuery = true;
+  // keywords 走本地正则(全项目统一);arxiv API 收不了 JS 正则,不再服务端 ti:
+  readonly supportsServerQuery = false;
 
   private readonly logger = new Logger(ArxivFetcher.name);
 
@@ -54,18 +55,11 @@ export class ArxivFetcher implements SourceFetcher {
     const until = options?.until;
     const keywords = options?.keywords;
 
-    // keywords 拼进 server 端 query（title 字段，OR 语义，空格用 +）
-    let searchQuery: string;
-    if (keywords && keywords.length > 0) {
-      const tiPart = keywords
-        .map((k) => `ti:${k.replace(/\s+/g, '+')}`)
-        .join('+OR+');
-      searchQuery = `(${tiPart})+AND+cat:${category}`;
-    } else {
-      searchQuery = `cat:${category}`;
-    }
-
-    const url = `http://export.arxiv.org/api/query?search_query=${searchQuery}&start=0&max_results=${limit}&sortBy=submittedDate&sortOrder=descending`;
+    // arxiv 不收 JS 正则,只按分类拉最近一批,正则在本地筛(见下)。
+    // 拉取量放大到至少 100:keywords 本地过滤前要有足够候选,否则只拉 limit(默认 30)条按时间排、正则筛完所剩无几。
+    const fetchSize = Math.max(limit, 100);
+    const searchQuery = `cat:${category}`;
+    const url = `http://export.arxiv.org/api/query?search_query=${searchQuery}&start=0&max_results=${fetchSize}&sortBy=submittedDate&sortOrder=descending`;
 
     this.logger.debug(
       `[fetch] 「${source.name}」 url=${url} limit=${limit} since=${since?.toISOString() ?? 'none'} keywords=${keywords?.join('|') ?? 'none'}`,
@@ -126,10 +120,15 @@ export class ArxivFetcher implements SourceFetcher {
     // since 过滤
     const afterSince = applyTimeWindow(items, since, until);
 
-    // supportsServerQuery=true → keywords 已传给 server，不在本地二次过滤
-    const result = afterSince.slice(0, limit);
+    // keywords 本地正则过滤(与其余 fetcher 统一);无 keywords 则全留
+    const afterKeywords =
+      keywords && keywords.length > 0
+        ? afterSince.filter((it) => matchesAnyKeyword(it, keywords))
+        : afterSince;
+
+    const result = afterKeywords.slice(0, limit);
     this.logger.log(
-      `[fetch] 「${source.name}」 完成 total=${rawItems.length} afterSince=${afterSince.length} returned=${result.length}`,
+      `[fetch] 「${source.name}」 完成 total=${rawItems.length} afterSince=${afterSince.length} afterKeywords=${afterKeywords.length} returned=${result.length}`,
     );
     return result;
   }

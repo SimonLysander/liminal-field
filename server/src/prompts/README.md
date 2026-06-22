@@ -9,7 +9,8 @@
 | 路径 | 用途 | 调用方 | 变量 |
 |---|---|---|---|
 | `digest/react-agent.md` | digest workflow react-agent 主 prompt | `ReactAgentNode` | `topic_name`, `topic_prompt`, `since_iso`, `until_iso` |
-| `digest/compose-report.md` | digest 报告 compose 节点 | `ComposeNode` | `topic_name`, `findings_text` |
+| `digest/compose-plan.md` | digest compose 阶段1:分主题+定刊头 | `ComposeNode.plan` | `topic_name`, `findings_list` |
+| `digest/compose-write-section.md` | digest compose 阶段2:分主题写正文 | `ComposeNode.writeSection` | `topic_name`, `section_title`, `sources_xml` |
 | `sub-agent/researcher.md` | 通用研究助手 system prompt | `SubAgentService` | 无 |
 | `memory/profile-renderer.md` | Aurora 画像渲染器(从 observations 派生 markdown) | `MemoryViewService.callViewLLM` | `observations` |
 | `memory/owner-memory.md` | 记忆管理器(remember 工具调 LLM 决定 create/update) | `MemoryAgentService.callRememberLLM` | `existing_memories`, `new_content` |

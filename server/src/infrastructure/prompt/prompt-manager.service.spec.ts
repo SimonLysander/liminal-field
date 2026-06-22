@@ -43,7 +43,12 @@ describe('PromptManagerService', () => {
               isFile: () => true,
             },
             {
-              name: 'compose-report.md',
+              name: 'compose-plan.md',
+              isDirectory: () => false,
+              isFile: () => true,
+            },
+            {
+              name: 'compose-write-section.md',
               isDirectory: () => false,
               isFile: () => true,
             },
@@ -68,8 +73,8 @@ describe('PromptManagerService', () => {
         if (ps.endsWith('react-agent.md')) {
           return '你是「{{topic_name}}」的研究员。\n关注：{{topic_prompt}}';
         }
-        if (ps.endsWith('compose-report.md')) {
-          return '事实编辑 {{topic_name}}。\n输入：{{findings_text}}';
+        if (ps.endsWith('compose-plan.md')) {
+          return '主编 {{topic_name}}。\n清单：{{findings_list}}';
         }
         return '';
       },
@@ -90,18 +95,18 @@ describe('PromptManagerService', () => {
     expect(result).toContain('关注：关注 LLM 落地');
   });
 
-  // Case 2: 多变量替换（compose-report.md 有 2 个变量）
+  // Case 2: 多变量替换（compose-plan.md 有 2 个变量）
   it('render() — 多变量全部替换', () => {
     const service = makeService();
     service.onModuleInit();
 
-    const result = service.render('digest/compose-report.md', {
+    const result = service.render('digest/compose-plan.md', {
       topic_name: '全球科技周报',
-      findings_text: '[CIT 1] OpenAI 发布新模型',
+      findings_list: '[#1] OpenAI 发布新模型',
     });
 
-    expect(result).toContain('事实编辑 全球科技周报');
-    expect(result).toContain('输入：[CIT 1] OpenAI 发布新模型');
+    expect(result).toContain('主编 全球科技周报');
+    expect(result).toContain('清单：[#1] OpenAI 发布新模型');
   });
 
   // Case 3: 找不到 prompt 文件 → 抛 Error
@@ -136,8 +141,9 @@ describe('PromptManagerService', () => {
 
     const list = service.listLoaded();
     expect(list).toContain('digest/react-agent.md');
-    expect(list).toContain('digest/compose-report.md');
-    expect(list).toHaveLength(2);
+    expect(list).toContain('digest/compose-plan.md');
+    expect(list).toContain('digest/compose-write-section.md');
+    expect(list).toHaveLength(3);
   });
 
   // Case 6: prompts 目录不存在时 warn 不抛错，listLoaded 返回空

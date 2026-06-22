@@ -28,6 +28,7 @@ import {
   type FetchOptions,
 } from './fetcher.interface';
 import { applyTimeWindow } from './http.utils';
+import { matchesAnyKeyword } from './keyword-match.util';
 
 // rss-parser 自定义字段：让 content:encoded 出现在类型里
 type CustomItem = {
@@ -182,10 +183,4 @@ function buildSnippet(item: RssItem): string {
     stripHtml(item.summary) ??
     '';
   return raw.slice(0, SNIPPET_MAX_LENGTH);
-}
-
-/** 不区分大小写、OR 语义：title 或 snippet 含 keywords 中任一即返回 true */
-function matchesAnyKeyword(item: FetchedItem, keywords: string[]): boolean {
-  const haystack = `${item.title} ${item.snippet}`.toLowerCase();
-  return keywords.some((k) => haystack.includes(k.toLowerCase()));
 }

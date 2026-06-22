@@ -1327,49 +1327,16 @@ body.gallery-immersive aside {
 .digest-report-body p,
 .digest-report-body .slate-p {
   margin: 0 0 1.4em 0;
-  text-align: justify;            /* 两端对齐, 期刊版式 */
-  text-justify: inter-character;  /* 中文两端对齐用字符间距而非词间 */
-  hyphens: auto;
+  text-align: left;   /* 左对齐:网页/中文/移动端可读性最佳(justify 会产生字距不均的"河流"空隙,WCAG AAA 亦要求非 justify) */
 }
 .digest-report-body p:last-child,
 .digest-report-body .slate-p:last-child { margin-bottom: 0; }
 
-/* 首段 dropcap(Stratechery / Every / The Atlantic 派开篇仪式):
- * 开篇第一段首字符放大 3.3em float left 跨 3 行;宋体 italic 保留期刊温度。
- *
- * Plate readonly 把段落渲染成 <div class="slate-p"> 而非 <p>(实测 chrome-devtools
- * 验证),所以用 `.slate-p` 类选择器。选 `h2:first-of-type + .slate-p`——紧跟第一个
- * H2 的第一段,语义清晰("章节起篇")且不会蔓延到每个 H2 后第一段。 */
-.digest-report-body h2:first-of-type + .slate-p::first-letter,
-.digest-report-body p:first-of-type::first-letter {
-  float: left;
-  font-family:
-    "Source Han Serif SC",
-    "Noto Serif SC",
-    "Songti SC",
-    "SimSun",
-    Georgia,
-    serif;
-  font-size: 3.4em;
-  line-height: 1;
-  /* 中文宋体没有真 italic 字形,浏览器会用 oblique skew transform 模拟 → 字会歪掉
-   * 像截图里那样。改成 normal + weight 700,字立得正,跟 Stratechery / 三联 这类期刊
-   * 印刷品里的实际处理一致。 */
-  font-style: normal;
-  font-weight: 700;
-  margin: 0.05em 0.12em -0.05em 0;
-  color: var(--ink);
-}
-
-/* H2 章节标题(印刷开篇符):
- * 居中 italic 小标题,顶部 hairline 正中悬一颗 ✦(::before 用 paper 背景遮断 hairline,
- * 形成印刷品里那种"section opener"——细线中间嵌一个装饰符)。
- * tracking 从 0.18em 降到 0.04em:之前的视觉是"等宽 mono"错觉,字间距大到丢了宋体味;
- * 现在恢复正常字间距,让宋体 italic 自然的优雅出来。 */
+/* H2 章节标题:左对齐实义标题,靠字号 + 字重 + 留白建立层级(不居中、无 ✦、无分隔线、无首字下沉)。
+ * 调研(The Atlantic 等 editorial):正文层级靠字号/留白而非装饰符,"安静的权威";
+ * digest 是信息简报(偏新闻性),不用杂志/文学派的居中小标题 + ✦ + dropcap 那套仪式感。 */
 .digest-report-body h2 {
-  position: relative;
-  margin: 4em 0 1.4em;
-  padding-top: 1.8em;
+  margin: 2.4em 0 0.9em;
   font-family:
     "Source Han Serif SC",
     "Noto Serif SC",
@@ -1377,35 +1344,15 @@ body.gallery-immersive aside {
     "SimSun",
     Georgia,
     serif;
-  font-size: 1.05rem;
-  font-style: italic;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-align: center;
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-align: left;
   color: var(--ink);
-  border-top: 0.5px solid var(--separator);
-  line-height: 1.4;
-}
-.digest-report-body h2::before {
-  content: '✦';
-  position: absolute;
-  top: -0.55em;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 0 0.7em;
-  background: var(--paper);
-  color: var(--ink-faded);
-  font-size: 0.85em;
-  font-style: normal;
-  line-height: 1;
+  line-height: 1.45;
 }
 .digest-report-body h2:first-child {
   margin-top: 0;
-  padding-top: 0;
-  border-top: none;
-}
-.digest-report-body h2:first-child::before {
-  display: none;
 }
 
 /* H3: 三级标题(段落小标题), 仅 weight + 微大 */

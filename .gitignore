@@ -27,6 +27,9 @@ dist-ssr
 
 .superpowers
 
+# Playwright/Chrome MCP 验证产生的截图/日志(测试产物,不入库)
+.playwright-mcp/
+
 # 敏感配置（密码/密钥在 .env 中，不提交）
 .env
 server/.env

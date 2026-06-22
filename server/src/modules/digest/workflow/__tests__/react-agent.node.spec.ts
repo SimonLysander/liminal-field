@@ -312,4 +312,73 @@ describe('ReactAgentNode (v4)', () => {
     expect(stepArg.meta).toMatchObject({ totalFetched: 30, afterDedupe: 15 });
     expect(stepArg.error).toBeUndefined();
   });
+
+  it('Case 5: web_fetch step → 原文(detail)按 url 留存进 ctx.urlToFulltext(并 trim)', async () => {
+    // web_fetch 返回里 detail 是 markdown 原文;captureFulltext 拦截后按 url 留存,供 pick 关联进 finding.fulltext
+    const fetchOutput = JSON.stringify({
+      summary: 'web_fetch · https://example.com/a · 1234 字符',
+      detail: '# 标题\n这是抓到的原文正文……',
+      meta: { status: 'ok', length: 1234 },
+    });
+    mockGenerateText.mockImplementationOnce(
+      async (opts: Record<string, unknown>) => {
+        if (typeof opts.onStepFinish === 'function') {
+          await (opts.onStepFinish as (step: unknown) => Promise<void>)({
+            toolCalls: [
+              {
+                type: 'tool-call',
+                toolCallId: 'tc_f1',
+                toolName: 'web_fetch',
+                // 入参 url 带首尾空白 → 验证 captureFulltext 的 trim 归一化
+                input: { url: '  https://example.com/a  ' },
+              },
+            ],
+            toolResults: [
+              {
+                type: 'tool-result',
+                toolCallId: 'tc_f1',
+                toolName: 'web_fetch',
+                output: fetchOutput,
+              },
+            ],
+          });
+        }
+        return { steps: [] };
+      },
+    );
+
+    // 捕获 react-agent 内部创建的 digestTaskContext —— urlToFulltext 是其上的内部 state
+    let capturedCtx: { urlToFulltext?: Map<string, string> } | undefined;
+    const assembler = {
+      assemble: jest.fn((deps: { digestTaskContext: typeof capturedCtx }) => {
+        capturedCtx = deps.digestTaskContext;
+        return { browse: {}, web_search: {}, web_fetch: {}, pick: {} };
+      }),
+    } as unknown as ToolAssembler;
+
+    const node = new ReactAgentNode(
+      makePromptManager(),
+      makeStcRepo(makeConfig()),
+      makeInfoSourceRepo([]),
+      makeContentRepo({
+        latestVersion: {
+          title: 'AI 动态',
+          versionId: 'v1',
+          commitHash: '',
+          summary: '',
+        },
+      }),
+      assembler,
+      makeSystemConfig(),
+      makeTaskRepository(),
+      makeReportRepo(),
+    );
+
+    await node.run('dt_test', 'ci_topic001');
+
+    // 留存 key 已 trim,值是 detail 原文
+    expect(capturedCtx?.urlToFulltext?.get('https://example.com/a')).toBe(
+      '# 标题\n这是抓到的原文正文……',
+    );
+  });
 });

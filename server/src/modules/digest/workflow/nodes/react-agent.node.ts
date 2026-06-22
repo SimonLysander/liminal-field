@@ -142,6 +142,7 @@ export class ReactAgentNode {
       topicId,
       refCounter: { item: 0 },
       fetchedItemsMap: new Map(),
+      urlToFulltext: new Map(),
     };
     // 走统一的 ToolAssembler — 工具池全项目共有
     // workflow 入口配置可能没存,显式传 allowedTools 限定 4 个工具集
@@ -174,6 +175,11 @@ export class ReactAgentNode {
           const tr = step.toolResults?.find(
             (r) => r.toolCallId === tc.toolCallId,
           );
+          // web_fetch 原文留存:拦截 detail 按 url 存进 ctx,供 pick 关联进 finding.fulltext
+          // (writeAgentStep 仍只存摘要,原文不进 task.steps,避免 steps 膨胀)
+          if (tc.toolName === 'web_fetch' && tr?.output) {
+            this.captureFulltext(digestTaskContext, tc.input, tr.output);
+          }
           await this.writeAgentStep(taskId, tc, tr);
         }
       },
@@ -182,6 +188,36 @@ export class ReactAgentNode {
     this.logger.log(
       `[react-agent] 完成 taskId=${taskId} steps=${result.steps?.length ?? 0}`,
     );
+  }
+
+  /**
+   * 从 web_fetch 的 tool_call + result 里提取 (url → 原文),存进 ctx.urlToFulltext。
+   * web_fetch 入参是 { url },output(JSON)的 detail 字段是 markdown 原文。pick 时按
+   * fetchedItem.url 取出存进 finding.fulltext —— agent 无需把原文复制进 pick 参数。
+   * 留存失败不致命:compose 会兜底用 snippet。
+   */
+  private captureFulltext(
+    ctx: DigestTaskContext,
+    input: unknown,
+    output: unknown,
+  ): void {
+    try {
+      const url =
+        input && typeof input === 'object'
+          ? (input as Record<string, unknown>).url
+          : undefined;
+      const parsed: unknown =
+        typeof output === 'string' ? JSON.parse(output) : output;
+      const detail =
+        parsed && typeof parsed === 'object'
+          ? (parsed as Record<string, unknown>).detail
+          : undefined;
+      if (typeof url === 'string' && typeof detail === 'string' && detail) {
+        ctx.urlToFulltext?.set(url.trim(), detail);
+      }
+    } catch {
+      // 原文留存失败不致命,compose 兜底 snippet
+    }
   }
 
   /**
@@ -209,8 +245,9 @@ export class ReactAgentNode {
         if (parsed && typeof parsed === 'object') {
           const p = parsed as Record<string, unknown>;
           summary = typeof p.summary === 'string' ? p.summary : '';
-          // errorCode 来自工具 return toolResult(..., { errorCode: '...' })
-          if (typeof p.errorCode === 'string') error = p.errorCode;
+          // errorCode 在 meta 里:toolResult 序列化为 { summary, detail?, meta:{ errorCode } }
+          const m = p.meta as Record<string, unknown> | undefined;
+          if (m && typeof m.errorCode === 'string') error = m.errorCode;
           // meta：只取数值类型的字段，跳过 detail/list/items 等大对象
           if (p.meta && typeof p.meta === 'object') {
             const numericMeta: Record<string, number | string> = {};

@@ -1,25 +1,24 @@
 /**
- * ComposeNode 单测 — 覆盖 compose 节点的核心契约。
+ * ComposeNode 单测 — 覆盖「分而治之」三阶段契约(plan → 并行 write → assemble)。
  *
  * 重点:
- *   - generateText 输出 JSON → extractJSON 提取 → ComposeSchema 校验 → 返回 ComposeOutput
- *   - 兼容 ```json 代码块包裹
- *   - schema 校验失败抛错(commit 不会拿到非法数据)
+ *   - plan 输出 JSON(headline/deck/topics)→ extractJSON → PlanSchema 校验
+ *   - 按 topics 分主题并行 write,每节输出裸 markdown
+ *   - assemble 纯代码拼 `## 主题 + 正文`,最终 ComposeSchema 校验
+ *   - plan 漏掉的 findings 进兜底主题「其他」
  *
  * 用 jest.mock 拦截 ai 的 generateText——不真打 LLM。
- * extractJSON 是真纯函数(agent.utils),不 mock,让它真跑提取逻辑。
+ * mockResolvedValueOnce 按调用顺序喂:第 1 次 = plan,后续 = 各 section(顺序同 topics)。
  */
 import { ComposeNode } from '../nodes/compose.node';
 import { PromptManagerService } from '../../../../infrastructure/prompt/prompt-manager.service';
 import { SystemConfigService } from '../../../settings/system-config.service';
 import { generateText } from 'ai';
 
-// mock ai 模块的 generateText(compose 改用 generateText 走 JSON mode,见 compose.node 注释)
 jest.mock('ai', () => ({
   generateText: jest.fn(),
 }));
 
-// mock openai-compatible provider:createOpenAICompatible 返回带 chatModel 方法的 provider 对象
 jest.mock('@ai-sdk/openai-compatible', () => ({
   createOpenAICompatible: jest.fn(() => ({
     chatModel: jest.fn(() => 'mock-model'),
@@ -29,6 +28,16 @@ jest.mock('@ai-sdk/openai-compatible', () => ({
 const mockGenerateText = generateText as jest.MockedFunction<
   typeof generateText
 >;
+
+const makeFinding = (citationId: number, title = `篇${citationId}`) => ({
+  citationId,
+  title,
+  sourceName: 'arXiv',
+  url: 'http://x',
+  reason: 'r',
+  snippet: 's',
+  fulltext: 'body',
+});
 
 const makeTask = (findings: unknown[]) =>
   ({
@@ -51,42 +60,96 @@ const makeComposeNode = () => {
   return new ComposeNode(promptManager, systemConfig);
 };
 
-describe('ComposeNode', () => {
+const planText = (
+  headline: string,
+  deck: string,
+  topics: { title: string; citationIds: number[] }[],
+) => ({ text: JSON.stringify({ headline, deck, topics }) }) as never;
+
+describe('ComposeNode (分而治之三阶段)', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('generateText 输出纯 JSON → 解析 + 校验通过', async () => {
-    mockGenerateText.mockResolvedValue({
-      text: '{"headline":"H","deck":"D","markdown":"M"}',
-    } as never);
+  it('plan → 分主题 write → assemble:产出 headline/deck/markdown', async () => {
+    mockGenerateText
+      .mockResolvedValueOnce(
+        planText('H', 'D', [{ title: '主题A', citationIds: [1] }]),
+      )
+      .mockResolvedValueOnce({ text: '### 篇1\n正文 [@#CIT 1]' } as never);
 
     const node = makeComposeNode();
-    const result = await node.run(makeTask([]));
+    const result = await node.run(makeTask([makeFinding(1)]));
 
-    expect(result).toEqual({ headline: 'H', deck: 'D', markdown: 'M' });
-    expect(mockGenerateText).toHaveBeenCalledTimes(1);
+    expect(result.headline).toBe('H');
+    expect(result.deck).toBe('D');
+    expect(result.markdown).toContain('## 主题A');
+    expect(result.markdown).toContain('### 篇1');
+    // 1 次 plan + 1 次 section
+    expect(mockGenerateText).toHaveBeenCalledTimes(2);
   });
 
-  it('generateText 输出 ```json 代码块包裹 → extractJSON 仍能提取', async () => {
-    mockGenerateText.mockResolvedValue({
-      text: '```json\n{"headline":"H2","deck":"D2","markdown":"M2"}\n```',
-    } as never);
+  it('plan 输出 ```json 包裹 → extractJSON 仍能提取', async () => {
+    mockGenerateText
+      .mockResolvedValueOnce({
+        text:
+          '```json\n' +
+          JSON.stringify({
+            headline: 'H2',
+            deck: 'D2',
+            topics: [{ title: 'T', citationIds: [1] }],
+          }) +
+          '\n```',
+      } as never)
+      .mockResolvedValueOnce({ text: '### s\nbody' } as never);
 
     const node = makeComposeNode();
-    const result = await node.run(makeTask([]));
+    const result = await node.run(makeTask([makeFinding(1)]));
 
-    expect(result).toEqual({ headline: 'H2', deck: 'D2', markdown: 'M2' });
+    expect(result.headline).toBe('H2');
+    expect(result.markdown).toContain('## T');
   });
 
-  it('输出不符合 ComposeSchema(headline 超 50 字)→ 抛错,挡住非法数据', async () => {
-    mockGenerateText.mockResolvedValue({
-      text: JSON.stringify({
-        headline: 'x'.repeat(60),
-        deck: 'D',
-        markdown: 'M',
-      }),
-    } as never);
+  it('plan 不符合 PlanSchema(topics 空)→ 抛错', async () => {
+    mockGenerateText.mockResolvedValueOnce(planText('H', 'D', []));
 
     const node = makeComposeNode();
-    await expect(node.run(makeTask([]))).rejects.toThrow('ComposeSchema');
+    await expect(node.run(makeTask([makeFinding(1)]))).rejects.toThrow(
+      'PlanSchema',
+    );
+  });
+
+  it('多主题 → 并行写多节,markdown 含全部 ## 标题', async () => {
+    mockGenerateText
+      .mockResolvedValueOnce(
+        planText('H', 'D', [
+          { title: 'A', citationIds: [1] },
+          { title: 'B', citationIds: [2] },
+        ]),
+      )
+      .mockResolvedValueOnce({ text: '### a\nbody-a' } as never)
+      .mockResolvedValueOnce({ text: '### b\nbody-b' } as never);
+
+    const node = makeComposeNode();
+    const result = await node.run(makeTask([makeFinding(1), makeFinding(2)]));
+
+    expect(result.markdown).toContain('## A');
+    expect(result.markdown).toContain('## B');
+    expect(mockGenerateText).toHaveBeenCalledTimes(3); // plan + 2 sections
+  });
+
+  it('plan 漏掉的 findings 进兜底主题「其他」', async () => {
+    // plan 只覆盖 cit 1,finding 2 未覆盖 → 兜底「其他」节
+    mockGenerateText
+      .mockResolvedValueOnce(
+        planText('H', 'D', [{ title: 'A', citationIds: [1] }]),
+      )
+      .mockResolvedValueOnce({ text: '### a\nbody-a' } as never)
+      .mockResolvedValueOnce({ text: '### other\nbody-other' } as never);
+
+    const node = makeComposeNode();
+    const result = await node.run(makeTask([makeFinding(1), makeFinding(2)]));
+
+    expect(result.markdown).toContain('## A');
+    expect(result.markdown).toContain('## 其他');
+    expect(mockGenerateText).toHaveBeenCalledTimes(3);
   });
 });

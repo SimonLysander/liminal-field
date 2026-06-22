@@ -4,10 +4,8 @@
  * 新签名 `{ sourceIds?, keywords?, limit? }`（v4 → v5 关键升级）：
  * - 不传 sourceIds → 默认扫当前事项订阅的全部 enabled 源（由 ctx.topicId 反查 SmartTopicConfig）
  * - 传 sourceIds → 锁定子集（agent 主动收窄）
- * - keywords[] → 透传 fetcher 内部:
- *     · supportsServerQuery=true (arxiv) → 拼进 query 命中历史
- *     · supportsServerQuery=false (其他) → 本地 title+snippet OR 过滤最近窗口
- *   对 agent 完全透明
+ * - keywords[] → 透传 fetcher 内部:全部源统一**本地正则过滤**(title+snippet,OR 语义、
+ *   非法正则降级字面),对 agent 透明(见 keyword-match.util）
  *
  * 行为：
  * - FetcherRegistry.fetchMany 并行打所有目标源,Promise.allSettled 单源失败不挂整次
@@ -63,8 +61,8 @@ export function createBrowseTool(deps: BrowseDeps) {
       '扫订阅信箱,并行拉全部(或指定)订阅源在 since/until 窗口内的条目。' +
       '不传 sourceIds 默认扫当前事项订阅的所有源;' +
       'since/until 是本期收集窗口(ISO 8601 字符串),由 system prompt 给出,务必传;' +
-      'keywords 传一个或多个关键词时,工具会尽力按相关性过滤(部分源支持服务端检索命中历史,' +
-      '其他源仅本地过滤最近窗口)。' +
+      'keywords 可选:传【正则】数组按主题精筛(OR——命中任一即留),对所有源的标题+摘要本地匹配、不区分大小写;' +
+      '英文加词边界 \\bword\\b 防误中(\\bagent\\b 不会误中 agentic),中文用交替 大模型|智能体。' +
       '已历史去重(剔除本期 findings 已收录的)。' +
       '返回 items 含 ref(i1, i2...)、title、url、publishedAt、snippet。' +
       '搜索具体关键词找全网历史时,改用 web_search。',
@@ -74,6 +72,7 @@ export function createBrowseTool(deps: BrowseDeps) {
       since?: string;
       until?: string;
       limit?: number;
+      offset?: number;
     }>({
       type: 'object',
       properties: {
@@ -85,9 +84,10 @@ export function createBrowseTool(deps: BrowseDeps) {
         },
         keywords: {
           type: 'array',
-          items: { type: 'string', examples: ['transformer', 'MoE'] },
+          items: { type: 'string', examples: ['\\bagent\\b', '大模型|智能体'] },
           description:
-            '可选,关键词过滤(OR 语义,不区分大小写)。能服务端 query 的源(arxiv)走 server,其他源本地过滤最近窗口',
+            '可选。【正则】数组,OR 语义(命中任一即留),对标题+摘要本地匹配、不区分大小写。' +
+            '英文加词边界 \\bagent\\b 防误中 agentic;中文用交替 大模型|智能体;非法正则自动按字面处理',
         },
         since: {
           type: 'string',
@@ -103,7 +103,12 @@ export function createBrowseTool(deps: BrowseDeps) {
         },
         limit: {
           type: 'number',
-          description: '最多返回多少条(合并去重后),1-100,默认 30',
+          description: '本页最多返回多少条(合并去重后),1-100,默认 30',
+        },
+        offset: {
+          type: 'number',
+          description:
+            '分页偏移,默认 0。结果被截断(meta.hasMore=true)时,传 meta.nextOffset 续取下一页——不要重复同样的调用',
         },
       },
       examples: [
@@ -130,8 +135,13 @@ export function createBrowseTool(deps: BrowseDeps) {
       since?: string;
       until?: string;
       limit?: number;
+      offset?: number;
     }) => {
       const limit = Math.min(input.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
+      // 分页偏移:之前 slice(0, limit) 把去重后多出的条目静默丢弃(违反 tool-result「不静默丢」),
+      // 模型想要更多只能重复同样调用(白跑)或转 web_search。加 offset + meta.hasMore/nextOffset 让其翻页续取。
+      // 注:browse 无状态、每次重新实时抓取,offset 分页是 best-effort——两次调用间源若更新,分页边界可能轻微漂移。
+      const offset = Math.max(input.offset ?? 0, 0);
       const keywords = input.keywords?.filter((k) => k && k.trim().length > 0);
       // 解析 since/until ISO 字符串;无效或没传 → 走兜底
       const since = parseIsoOrFallback(
@@ -267,7 +277,10 @@ export function createBrowseTool(deps: BrowseDeps) {
           const tb = b.fetchedItem.publishedAt?.getTime() ?? 0;
           return tb - ta;
         });
-        const capped = deduped.slice(0, limit);
+        const capped = deduped.slice(offset, offset + limit);
+        // hasMore/nextOffset:去重后还有没翻到的条目 → 标记并给出续取偏移(对齐 tool-result 契约)
+        const hasMore = deduped.length > offset + limit;
+        const nextOffset = hasMore ? offset + limit : undefined;
 
         // ── Step 4: 分配 ref + 写 ctx.fetchedItemsMap ───────────────────────
         const items = capped.map(({ fetchedItem, sourceId, sourceName }) => {
@@ -310,6 +323,11 @@ export function createBrowseTool(deps: BrowseDeps) {
           summaryParts.push(`关键词 [${keywords.join('|')}]`);
         }
         summaryParts.push(`返回 ${items.length} 条`);
+        if (hasMore) {
+          summaryParts.push(
+            `还有 ${deduped.length - offset - items.length} 条未取(传 offset=${nextOffset} 续取,勿重复同样调用)`,
+          );
+        }
 
         logger.debug(
           `browse: targets=${targetSources.length} merged=${allItems.length} deduped=${deduped.length} returned=${items.length} failed=${failedSources.length} taskId=${ctx.taskId}`,
@@ -322,6 +340,9 @@ export function createBrowseTool(deps: BrowseDeps) {
           totalFetched: allItems.length,
           afterDedupe: deduped.length,
           returned: items.length,
+          offset,
+          hasMore,
+          nextOffset,
           items,
           perSourceCounts,
           failedSources: failedSources.length > 0 ? failedSources : undefined,
