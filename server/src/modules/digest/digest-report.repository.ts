@@ -60,4 +60,12 @@ export class DigestReportRepository {
   async deleteById(id: string): Promise<void> {
     await this.model.deleteOne({ _id: id }).exec();
   }
+
+  /**
+   * 全局最新 N 条简报，不限 topic，按 publishedAt 倒序。
+   * 供首页聚合用：无论哪个 topic，只取最近生成的几份简报摘要。
+   */
+  async findGlobalLatest(limit: number): Promise<DigestReport[]> {
+    return this.model.find().sort({ publishedAt: -1 }).limit(limit).exec();
+  }
 }

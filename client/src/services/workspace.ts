@@ -626,10 +626,29 @@ export interface HomeNoteItem extends ContentListItem {
   wordCount: number;
 }
 
+/** 首页文集条目（容器 + 条目数） */
+export interface HomeAnthologyItem {
+  id: string;
+  title: string;
+  entryCount: number;
+  date: string | null;
+}
+
+/** 首页简报条目（报刊风文字卡） */
+export interface HomeDigestItem {
+  topicId: string;
+  reportId: string;
+  headline: string;
+  deck: string;
+  publishedAt: string;
+}
+
 /** GET /home 返回结构 */
 export interface HomeData {
   notes: HomeNoteItem[];
   gallery: GalleryPublicListItem[];
+  anthology: HomeAnthologyItem[];
+  digest: HomeDigestItem[];
 }
 
 export const homeApi = {

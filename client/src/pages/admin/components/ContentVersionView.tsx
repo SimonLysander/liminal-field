@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useState } from 'react';
-import { MoreHorizontal, Pencil } from 'lucide-react';
+import { FilePlus2, MoreHorizontal, Pencil } from 'lucide-react';
 import { ActionButton } from '@/components/ui/action-button';
 import {
   DropdownMenu,
@@ -42,6 +42,7 @@ export const ContentVersionView = ({
   onEdit,
   onDelete,
   onMoveTo,
+  onAddChild,
   onPublishAll,
 }: ContentVersionViewProps) => {
   const confirm = useConfirm();
@@ -179,7 +180,7 @@ export const ContentVersionView = ({
           />
 
           {/* 低频管理操作 */}
-          {(onEdit || onDelete || onMoveTo || onPublishAll) && (
+          {(onEdit || onDelete || onMoveTo || onPublishAll || onAddChild) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -192,6 +193,16 @@ export const ContentVersionView = ({
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-[120px]">
+                {/* 新建子页面:在当前页面下建子节点。叶子不再钻入后,这是给它加子页面的入口。 */}
+                {onAddChild && (
+                  <>
+                    <DropdownMenuItem onClick={() => onAddChild(node)} className="gap-2">
+                      <FilePlus2 size={14} strokeWidth={1.5} />
+                      新建子页面
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 {/* 发布全部:仅对有子节点的节点显示,发布其子树 */}
                 {onPublishAll && (
                   <>

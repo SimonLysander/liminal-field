@@ -1,9 +1,11 @@
 import { ContentController } from '../content.controller';
 import { ContentService } from '../content.service';
 import { HomeController } from '../../home/home.controller';
+import type { ContentRepository } from '../content.repository';
 import type { ContentSnapshotRepository } from '../content-snapshot.repository';
 import type { NavigationRepository } from '../../navigation/navigation.repository';
 import type { GalleryViewService } from '../../workspace/gallery-view.service';
+import type { DigestReportRepository } from '../../digest/digest-report.repository';
 
 describe('ContentController', () => {
   let controller: ContentController;
@@ -37,14 +39,20 @@ describe('ContentController', () => {
 describe('HomeController', () => {
   let controller: HomeController;
   let contentService: jest.Mocked<ContentService>;
+  let contentRepository: jest.Mocked<ContentRepository>;
   let snapshotRepository: jest.Mocked<ContentSnapshotRepository>;
   let navigationRepository: jest.Mocked<NavigationRepository>;
   let galleryViewService: jest.Mocked<GalleryViewService>;
+  let digestReportRepository: jest.Mocked<DigestReportRepository>;
 
   beforeEach(() => {
     contentService = {
       getPublishedLatest: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<ContentService>;
+
+    contentRepository = {
+      findById: jest.fn().mockResolvedValue(null),
+    } as unknown as jest.Mocked<ContentRepository>;
 
     snapshotRepository = {
       findByVersionId: jest.fn().mockResolvedValue(null),
@@ -52,17 +60,24 @@ describe('HomeController', () => {
 
     navigationRepository = {
       listByScope: jest.fn().mockResolvedValue([]),
+      countChildrenByParentIds: jest.fn().mockResolvedValue({}),
     } as unknown as jest.Mocked<NavigationRepository>;
 
     galleryViewService = {
       listPublishedForHome: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<GalleryViewService>;
 
+    digestReportRepository = {
+      findGlobalLatest: jest.fn().mockResolvedValue([]),
+    } as unknown as jest.Mocked<DigestReportRepository>;
+
     controller = new HomeController(
       contentService,
+      contentRepository,
       snapshotRepository,
       navigationRepository,
       galleryViewService,
+      digestReportRepository,
     );
   });
 
@@ -71,7 +86,10 @@ describe('HomeController', () => {
 
     expect(result).toHaveProperty('notes');
     expect(result).toHaveProperty('gallery');
+    expect(result).toHaveProperty('anthology');
+    expect(result).toHaveProperty('digest');
     expect(contentService.getPublishedLatest).toHaveBeenCalled();
     expect(galleryViewService.listPublishedForHome).toHaveBeenCalled();
+    expect(digestReportRepository.findGlobalLatest).toHaveBeenCalled();
   });
 });

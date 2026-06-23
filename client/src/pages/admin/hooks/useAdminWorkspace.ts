@@ -163,8 +163,8 @@ export function useAdminWorkspace(options: { scope: 'notes' | 'anthology' } = { 
   const [deleteTarget, setDeleteTarget] = useState<StructureNode | null>(null);
   const [moveTarget, setMoveTarget] = useState<StructureNode | null>(null);
 
-  const openCreate = (parentId?: string) =>
-    setModal({ open: true, mode: 'create', parentId });
+  const openCreate = (parentId?: string, parentPath?: string) =>
+    setModal({ open: true, mode: 'create', parentId, parentPath });
   const openEdit = (node: StructureNode) =>
     setModal({ open: true, mode: 'edit', node });
   const closeModal = () => setModal({ open: false, mode: 'create' });

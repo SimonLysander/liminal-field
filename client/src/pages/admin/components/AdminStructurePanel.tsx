@@ -37,8 +37,9 @@ type AdminStructurePanelProps = {
   /** 顶部标题(笔记 admin="笔记"、文集 admin="文集"),默认沿用通用"内容管理" */
   sectionTitle?: string;
   onReload: () => void;
-  // onSelect 已移除：节点同质化后点击统一走 onEnterFolder（Route A），onSelect 是废死接口
   onEnterFolder: (node: StructureNode) => void;
+  // 叶子(无子节点)点击走 onSelectNode(选中不钻入),有子节点的走 onEnterFolder(钻入)。
+  onSelectNode: (node: StructureNode) => void;
   onGoToBreadcrumb: (index: number | null) => void;
   onAddChild: (parentId?: string) => void;
   onReorder: (nodeId: string, targetNodeId: string, position: DropPosition) => void;
@@ -52,6 +53,7 @@ function NodeItem({
   isDragging,
   dropTarget,
   onEnterFolder,
+  onSelectNode,
   onDragStart,
   onDragOver,
   onDragEnd,
@@ -61,8 +63,10 @@ function NodeItem({
   isSelected: boolean;
   isDragging: boolean;
   dropTarget: DropTarget | null;
-  // onSelect 已移除：节点同质化后点击统一走 onEnterFolder，不存在独立"选中不进入"路径
+  // 叶子(无子节点)钻入只会进空层,所以叶子改走 onSelectNode(选中并在右侧打开内容、不钻入),
+  // 有子节点的才 onEnterFolder(钻入看子节点)。
   onEnterFolder: (node: StructureNode) => void;
+  onSelectNode: (node: StructureNode) => void;
   onDragStart: (nodeId: string) => void;
   onDragOver: (e: React.DragEvent, nodeId: string) => void;
   onDragEnd: () => void;
@@ -104,7 +108,8 @@ function NodeItem({
         onDragOver={(e) => onDragOver(e, node.id)}
         onDragEnd={onDragEnd}
         onDrop={onDrop}
-        onClick={() => onEnterFolder(node)}
+        // 叶子点击只选中、不钻入——避免"点进去是空房间";有子节点的才钻入看子节点。
+        onClick={() => (hasChildren ? onEnterFolder(node) : onSelectNode(node))}
       >
         {/* 统一用 icon 区分节点类型,跟阅读端 sub-nav 节奏对齐:
             有子节点 = FileStack 多页(可钻入);叶子 = FileText 单页(可编辑)。
@@ -173,6 +178,7 @@ export function AdminStructurePanel({
   sectionTitle = '内容管理',
   onReload,
   onEnterFolder,
+  onSelectNode,
   onGoToBreadcrumb,
   onAddChild,
   onReorder,
@@ -390,6 +396,7 @@ export function AdminStructurePanel({
                   isDragging={draggedNodeId === node.id}
                   dropTarget={dropTarget}
                   onEnterFolder={onEnterFolder}
+                  onSelectNode={onSelectNode}
                   onDragStart={handleDragStart}
                   onDragOver={handleDragOver}
                   onDragEnd={handleDragEnd}

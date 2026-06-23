@@ -139,7 +139,7 @@ export const NodeFormModal = ({
       <Modal
         open
         onClose={onClose}
-        className="sm:max-w-xs"
+        className="sm:max-w-md"
         title={isCreate ? '新建' : '重命名'}
         footer={
           <>
@@ -159,6 +159,22 @@ export const NodeFormModal = ({
         }
       >
         <form id="node-form-modal-form" onSubmit={handleSubmit} className="space-y-4">
+          {/* 创建时说明在哪建:有父节点 → "在 完整路径 下创建子页面";否则 → 根目录。 */}
+          {isCreate && (
+            <p className="text-2xs leading-relaxed" style={{ color: 'var(--ink-ghost)' }}>
+              {modal.parentId ? (
+                <>
+                  在{' '}
+                  <span style={{ color: 'var(--ink-faded)', fontWeight: 500 }}>
+                    {modal.parentPath || '根目录'}
+                  </span>{' '}
+                  下创建子页面
+                </>
+              ) : (
+                '在根目录创建'
+              )}
+            </p>
+          )}
           <FieldLabel label="名称">
             <Input
               type="text"

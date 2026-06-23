@@ -24,6 +24,8 @@ export type ModalState = {
   mode: ModalMode;
   node?: StructureNode;
   parentId?: string;
+  /** 创建子页面时父节点的完整路径(如 "父 / 子文档A"),供弹窗显示"在 X 下创建";根目录为空。 */
+  parentPath?: string;
 };
 
 export type WorkspaceMode = 'formal' | 'draft';
@@ -88,6 +90,8 @@ export type ContentVersionViewProps = {
   onMoveTo?: (node: StructureNode) => void;
   /** 发布全部:仅对有子节点的节点提供,发布其子树。 */
   onPublishAll?: () => void | Promise<void>;
+  /** 在此页下新建子页面(叶子不再钻入后,这是给节点加子页面的入口)。 */
+  onAddChild?: (node: StructureNode) => void;
 };
 
 export type DraftWorkspaceProps = {

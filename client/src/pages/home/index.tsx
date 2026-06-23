@@ -22,21 +22,6 @@ function formatShortDate(iso: string): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-/** 从 ISO 日期提取日和月 */
-function parseDayMonth(iso: string): { day: string; month: string } {
-  const d = new Date(iso);
-  return {
-    day: String(d.getDate()).padStart(2, '0'),
-    month: `${d.getMonth() + 1}月`,
-  };
-}
-
-/** 字数格式化：1000 以下直接显示，以上用 k */
-function formatWordCount(count: number): string {
-  if (count < 1000) return `${count} 字`;
-  return `${(count / 1000).toFixed(1)}k 字`;
-}
-
 /* ---------- 动画 ---------- */
 
 const fadeUp = {
@@ -114,6 +99,54 @@ function Manifesto() {
   );
 }
 
+/* ---------- 区块标题(标题 + 查看全部) ---------- */
+
+function SectionHeader({ title, to, index }: { title: string; to: string; index: number }) {
+  return (
+    <motion.div
+      className="mb-4 flex items-baseline justify-between"
+      initial="hidden"
+      animate="show"
+      variants={fadeUp}
+      custom={index}
+    >
+      <h2 className="text-base font-bold" style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}>
+        {title}
+      </h2>
+      <Link
+        to={to}
+        className="group text-xs transition-colors duration-150"
+        style={{ color: 'var(--ink-ghost)' }}
+        onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink-faded)'; }}
+        onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-ghost)'; }}
+      >
+        查看全部 <span className="inline-block transition-transform duration-150 group-hover:translate-x-0.5">→</span>
+      </Link>
+    </motion.div>
+  );
+}
+
+/* ---------- 紧凑行(标题 + 右侧次要信息),笔记/文集/简报次条共用 ----------
+ * 全部去框、flush-left,靠 hover 底色和统一行高建立秩序(不靠边框)。 */
+
+function CompactRow({ to, title, meta }: { to: string; title: string; meta: string }) {
+  return (
+    <Link
+      to={to}
+      className="-mx-2 flex items-baseline justify-between gap-3 rounded-lg px-2 py-2 transition-colors duration-150"
+      onMouseOver={(e) => { e.currentTarget.style.background = 'var(--shelf)'; }}
+      onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
+    >
+      <span className="truncate text-md" style={{ color: 'var(--ink)' }}>
+        {title}
+      </span>
+      <span className="shrink-0 text-2xs tabular-nums" style={{ color: 'var(--ink-ghost)' }}>
+        {meta}
+      </span>
+    </Link>
+  );
+}
+
 /* ---------- Component ---------- */
 
 export default function HomePage() {
@@ -143,8 +176,11 @@ export default function HomePage() {
     };
   }, []);
 
-  const notes = data?.notes ?? [];
-  const galleries = (data?.gallery ?? []).slice(0, 4);
+  const notes = (data?.notes ?? []).slice(0, 5);
+  const digest = data?.digest ?? [];
+  const anthology = (data?.anthology ?? []).slice(0, 4);
+  const galleries = (data?.gallery ?? []).slice(0, 6);
+  const feature = digest[0];
 
   if (loading) return showLoader ? <LoadingState variant="full" /> : null;
 
@@ -163,199 +199,142 @@ export default function HomePage() {
       {/* ── 引言：打字效果，PaperGarden 和内容之间的定调 ── */}
       <Manifesto />
 
-      <div className="mx-auto w-full max-w-[var(--layout-reading-max)] pt-9">
-      {/* ── 最近笔记 ── */}
-      {notes.length > 0 && (
-        <div className="mb-10">
-          <motion.div
-            className="mb-3.5 flex items-baseline justify-between"
-            initial="hidden"
-            animate="show"
-            variants={fadeUp}
-            custom={0}
-          >
-            <h2
-              className="text-xl font-bold"
-              style={{
-                color: 'var(--ink)',
-                letterSpacing: '-0.02em',
-              }}
-            >
-              最近笔记
-            </h2>
-            <Link
-              to="/note"
-              className="group text-xs transition-colors duration-150"
-              style={{ color: 'var(--ink-ghost)' }}
-              onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink-faded)'; }}
-              onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-ghost)'; }}
-            >
-              查看全部 <span className="inline-block transition-transform duration-150 group-hover:translate-x-0.5">→</span>
-            </Link>
-          </motion.div>
+      {/* 编辑部版式:① 最新简报通栏头版特稿(无框,报刊风)→ ② 下方非对称两栏
+          (最近笔记主列 + 文集/图集右栏)。破掉 2×2 四方格,全部 flush-left 对齐,
+          靠统一留白与行高建立秩序,不靠边框。 */}
+      <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-6 pt-12 pb-4 max-[520px]:px-4">
 
-          <div className="flex flex-col">
-            {notes.map((note, i) => {
-              const { day, month } = parseDayMonth(note.updatedAt || note.createdAt);
-              return (
-                <motion.div
-                  key={note.id}
-                  custom={i + 1}
-                  initial="hidden"
-                  animate="show"
-                  variants={fadeUp}
-                >
-                  <Link
-                    to={`/note?node=${note.id}`}
-                    className="-mx-2 flex items-center gap-5 rounded-lg px-2 py-3.5 transition-colors duration-150"
-                    style={{ borderBottom: '0.5px solid var(--separator)' }}
-                    onMouseOver={(e) => {
-                      e.currentTarget.style.background = 'var(--shelf)';
-                    }}
-                    onMouseOut={(e) => {
-                      e.currentTarget.style.background = 'transparent';
-                    }}
-                  >
-                    {/* 日历式日期 */}
-                    <div
-                      className="flex w-12 shrink-0 flex-col items-end"
-                      style={{ paddingTop: 2 }}
-                    >
-                      <span
-                        className="text-2xl font-bold leading-none tabular-nums"
-                        style={{ color: 'var(--ink)' }}
-                      >
-                        {day}
-                      </span>
-                      <span
-                        className="mt-0.5 text-2xs"
-                        style={{ color: 'var(--ink-ghost)' }}
-                      >
-                        {month}
-                      </span>
-                    </div>
-
-                    {/* 标题 + 摘要 */}
-                    <div className="min-w-0 flex-1">
-                      <div
-                        className="truncate text-md font-semibold"
-                        style={{
-                          color: 'var(--ink)',
-                          letterSpacing: '-0.01em',
-                        }}
-                      >
-                        {note.title}
-                      </div>
-                      <div
-                        className="mt-1 truncate text-sm"
-                        style={{ color: 'var(--ink-ghost)' }}
-                      >
-                        {note.summary}
-                      </div>
-                    </div>
-
-                    {/* 字数 */}
-                    <span
-                      className="shrink-0 text-xs tabular-nums"
-                      style={{ color: 'var(--ink-faded)' }}
-                    >
-                      {formatWordCount(note.wordCount)}
-                    </span>
-                  </Link>
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ── 近期图集 ── */}
-      {galleries.length > 0 && (
-        <div>
-          <motion.div
-            className="mb-3.5 flex items-baseline justify-between"
-            initial="hidden"
-            animate="show"
-            variants={fadeUp}
-            custom={notes.length}
-          >
-            <h2
-              className="text-xl font-bold"
-              style={{
-                color: 'var(--ink)',
-                letterSpacing: '-0.02em',
-              }}
-            >
-              近期图集
-            </h2>
-            <Link
-              to="/gallery"
-              className="group text-xs transition-colors duration-150"
-              style={{ color: 'var(--ink-ghost)' }}
-              onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink-faded)'; }}
-              onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-ghost)'; }}
-            >
-              查看全部 <span className="inline-block transition-transform duration-150 group-hover:translate-x-0.5">→</span>
-            </Link>
-          </motion.div>
-
-          {/* 横排图集:窄屏行内横滑,不把整页撑宽溢出(桌面够宽则不出现滚动条) */}
-          <div className="flex gap-3.5 overflow-x-auto pb-1">
-            {galleries.map((gallery, i) => (
-              <motion.div
-                key={gallery.id}
-                style={{ width: 160, flexShrink: 0 }}
-                custom={i + notes.length}
-                initial="hidden"
-                animate="show"
-                variants={fadeUp}
+        {/* ── 头版:最新简报特稿(通栏,无框)── */}
+        {feature && (
+          <section className="mb-14">
+            <SectionHeader title="最新简报" to="/digest" index={0} />
+            <motion.div initial="hidden" animate="show" variants={fadeUp} custom={1}>
+              <Link
+                to={`/digest/${feature.topicId}/${feature.reportId}`}
+                className="group block"
               >
-                <Link
-                  to={`/gallery?post=${gallery.id}`}
-                  className="group block overflow-hidden rounded-lg transition-transform duration-200 ease-out hover:scale-[1.03]"
-                  style={{ border: '0.5px solid var(--separator)' }}
+                <h3
+                  className="text-2xl font-bold leading-snug transition-colors duration-150"
+                  style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)', letterSpacing: '-0.02em' }}
                 >
-                  {/* 封面：hover 微放大 */}
-                  <div
-                    className="overflow-hidden"
-                    style={{ aspectRatio: '4/3' }}
+                  {feature.headline}
+                </h3>
+                {feature.deck && (
+                  <p
+                    className="mt-2.5 line-clamp-2 max-w-[52ch] text-sm leading-relaxed"
+                    style={{ color: 'var(--ink-ghost)' }}
                   >
-                    {gallery.coverUrl ? (
-                      <img
-                        src={gallery.coverUrl}
-                        alt={gallery.title}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div
-                        className="h-full w-full"
-                        style={{ background: 'var(--paper-dark)' }}
-                      />
-                    )}
-                  </div>
+                    {feature.deck}
+                  </p>
+                )}
+                <div className="mt-3 flex items-baseline gap-3">
+                  <span className="text-2xs tabular-nums" style={{ color: 'var(--ink-ghost)' }}>
+                    {formatShortDate(feature.publishedAt)}
+                  </span>
+                  <span className="text-xs" style={{ color: 'var(--ink-faded)' }}>
+                    阅读本期 <span className="inline-block transition-transform duration-150 group-hover:translate-x-0.5">→</span>
+                  </span>
+                </div>
+              </Link>
+            </motion.div>
 
-                  {/* 文字 */}
-                  <div className="px-2.5 py-2">
-                    <div
-                      className="truncate text-sm font-semibold"
-                      style={{ color: 'var(--ink)' }}
-                    >
-                      {gallery.title}
-                    </div>
-                    <div
-                      className="mt-0.5 text-xs"
-                      style={{ color: 'var(--ink-ghost)' }}
-                    >
-                      {gallery.photoCount} 张
-                      {gallery.date && ` · ${formatShortDate(gallery.date)}`}
-                    </div>
+            {/* 其余期次 — 细行,顶部一条分隔线把"头条"和"往期"分开 */}
+            {digest.length > 1 && (
+              <div className="mt-5 pt-1" style={{ borderTop: '0.5px solid var(--separator)' }}>
+                {digest.slice(1).map((r, i) => (
+                  <motion.div key={r.reportId} initial="hidden" animate="show" variants={fadeUp} custom={2 + i}>
+                    <CompactRow
+                      to={`/digest/${r.topicId}/${r.reportId}`}
+                      title={r.headline}
+                      meta={formatShortDate(r.publishedAt)}
+                    />
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* ── 下半:最近笔记(主列)+ 文集/图集(右栏)── */}
+        <div className="flex flex-col gap-12 md:flex-row md:gap-16">
+
+          {/* 最近笔记 — 主列 */}
+          {notes.length > 0 && (
+            <section className="min-w-0 md:flex-[1.6]">
+              <SectionHeader title="最近笔记" to="/note" index={2} />
+              <div className="flex flex-col">
+                {notes.map((note, i) => (
+                  <motion.div key={note.id} initial="hidden" animate="show" variants={fadeUp} custom={3 + i}>
+                    <CompactRow
+                      to={`/note?node=${note.id}`}
+                      title={note.title}
+                      meta={formatShortDate(note.updatedAt || note.createdAt)}
+                    />
+                  </motion.div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* 右栏:近期文集 + 近期图集,纵向叠放 */}
+          {(anthology.length > 0 || galleries.length > 0) && (
+            <div className="flex min-w-0 flex-col gap-10 md:flex-1">
+              {anthology.length > 0 && (
+                <section>
+                  <SectionHeader title="近期文集" to="/anthology" index={3} />
+                  <div className="flex flex-col">
+                    {anthology.map((a, i) => (
+                      <motion.div key={a.id} initial="hidden" animate="show" variants={fadeUp} custom={4 + i}>
+                        <CompactRow
+                          to={`/anthology?node=${a.id}`}
+                          title={a.title}
+                          meta={`${a.entryCount} 篇`}
+                        />
+                      </motion.div>
+                    ))}
                   </div>
-                </Link>
-              </motion.div>
-            ))}
-          </div>
+                </section>
+              )}
+
+              {galleries.length > 0 && (
+                <section>
+                  <SectionHeader title="近期图集" to="/gallery" index={4} />
+                  <div className="flex gap-3 overflow-x-auto pb-1">
+                    {galleries.map((gallery, i) => (
+                      <motion.div
+                        key={gallery.id}
+                        style={{ width: 116, flexShrink: 0 }}
+                        initial="hidden"
+                        animate="show"
+                        variants={fadeUp}
+                        custom={4 + i}
+                      >
+                        <Link
+                          to={`/gallery?post=${gallery.id}`}
+                          className="group block"
+                        >
+                          <div
+                            className="overflow-hidden rounded-lg transition-transform duration-200 ease-out group-hover:scale-[1.03]"
+                            style={{ aspectRatio: '4/3' }}
+                          >
+                            {gallery.coverUrl ? (
+                              <img src={gallery.coverUrl} alt={gallery.title} className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="h-full w-full" style={{ background: 'var(--paper-dark)' }} />
+                            )}
+                          </div>
+                          <div className="mt-1.5 truncate text-xs" style={{ color: 'var(--ink-light)' }}>
+                            {gallery.title}
+                          </div>
+                        </Link>
+                      </motion.div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
         </div>
-      )}
       </div>
 
       </motion.div>

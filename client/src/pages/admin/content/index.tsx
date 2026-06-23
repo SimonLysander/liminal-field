@@ -135,8 +135,10 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
         sectionTitle={sectionTitle}
         onReload={workspace.reloadLevel}
         onEnterFolder={workspace.enterFolder}
+        onSelectNode={workspace.selectNode}
         onGoToBreadcrumb={workspace.goToBreadcrumb}
-        onAddChild={workspace.openCreate}
+        // 底部"新建"在当前层级下建子页面:带上当前层级的完整路径(面包屑),让弹窗说明"在 X 下创建"。
+        onAddChild={(pid) => workspace.openCreate(pid, workspace.breadcrumb.map((b) => b.name).join(' / '))}
         onReorder={workspace.reorderNodes}
       />
 
@@ -179,6 +181,17 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
                       onEdit={workspace.openEdit}
                       onDelete={workspace.setDeleteTarget}
                       onMoveTo={workspace.setMoveTarget}
+                      onAddChild={(n) =>
+                        workspace.openCreate(
+                          n.id,
+                          // 完整路径:面包屑(到当前层)+ 选中的是子节点时再加它自己。
+                          // (若 n 就是当前进入的文件夹,面包屑末端已含它,不重复加)
+                          [
+                            ...workspace.breadcrumb.map((b) => b.name),
+                            ...(workspace.selectedNode?.id === n.id ? [n.name] : []),
+                          ].join(' / '),
+                        )
+                      }
                       onPublishAll={activeNode.hasChildren ? handlePublishAll : undefined}
                     />
                   ) : (
