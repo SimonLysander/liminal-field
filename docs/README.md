@@ -33,5 +33,4 @@
 | [digest-workflow.md](agent/digest-workflow.md) | 简报:一种 agent 工作流的关键设计决策 |
 
 ## 其它
-- [series-feature.md](series-feature.md) — 💤 连载功能设计储备(未实现)
 - `figures/` — `.excalidraw` 结构图(简报工作流、版面解剖)
