@@ -44,6 +44,7 @@ const mockWorkflowService = {
 const mockTaskRepository = {
   findById: jest.fn(),
   findRecentByTopic: jest.fn(),
+  clearReportRef: jest.fn(),
 } as unknown as jest.Mocked<DigestTaskRepository>;
 
 const mockReportRepository = {
@@ -167,6 +168,45 @@ describe('DigestWorkflowController', () => {
         'ci_topic001',
         10,
       );
+    });
+  });
+
+  // ── DELETE /digest/topics/:topicId/reports/:reportId ─────────────────────
+  describe('deleteReport()', () => {
+    it('report 存在且属于 topic → 删 report + 级联清 task 产物引用', async () => {
+      mockReportRepository.findById.mockResolvedValue({
+        _id: 'dr_x',
+        topicId: 'ci_topic001',
+      } as never);
+      mockTaskRepository.clearReportRef.mockResolvedValue(2);
+
+      await controller.deleteReport('ci_topic001', 'dr_x');
+
+      expect(mockReportRepository.deleteById).toHaveBeenCalledWith('dr_x');
+      // 关键:级联清掉指向该 report 的 task 引用(否则前端再删报 NotFound 的 bug)
+      expect(mockTaskRepository.clearReportRef).toHaveBeenCalledWith('dr_x');
+    });
+
+    it('report 不存在 → NotFound,不删不清', async () => {
+      mockReportRepository.findById.mockResolvedValue(null);
+
+      await expect(
+        controller.deleteReport('ci_topic001', 'dr_x'),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockReportRepository.deleteById).not.toHaveBeenCalled();
+      expect(mockTaskRepository.clearReportRef).not.toHaveBeenCalled();
+    });
+
+    it('report 不属于该 topic → NotFound(防跨 topic 误删)', async () => {
+      mockReportRepository.findById.mockResolvedValue({
+        _id: 'dr_x',
+        topicId: 'ci_other',
+      } as never);
+
+      await expect(
+        controller.deleteReport('ci_topic001', 'dr_x'),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockReportRepository.deleteById).not.toHaveBeenCalled();
     });
   });
 });

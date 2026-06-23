@@ -22,6 +22,7 @@ const mockModel = {
   find: jest.fn(),
   findByIdAndUpdate: jest.fn(),
   updateOne: jest.fn(),
+  updateMany: jest.fn(),
 } as unknown as jest.Mocked<any>;
 
 function chainExec<T>(val: T) {
@@ -214,5 +215,18 @@ describe('DigestTaskRepository', () => {
       { _id: 'dt_aabbcc001122' },
       { $push: { steps: step } },
     );
+  });
+
+  // Case 9: clearReportRef() — 级联清掉指向某 report 的 task 产物引用
+  it('clearReportRef() — updateMany $unset reportContentItemId,返回 modifiedCount', async () => {
+    mockModel.updateMany.mockReturnValue(chainExec({ modifiedCount: 2 }));
+
+    const n = await repo.clearReportRef('dr_x');
+
+    expect(mockModel.updateMany).toHaveBeenCalledWith(
+      { reportContentItemId: 'dr_x' },
+      { $unset: { reportContentItemId: '' } },
+    );
+    expect(n).toBe(2);
   });
 });

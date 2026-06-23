@@ -130,6 +130,22 @@ export class DigestTaskRepository {
   }
 
   /**
+   * 清除指向某 report 的所有 task 的 reportContentItemId（产物引用）。
+   * 删除报告时级联调用：避免 task 行留下指向已删 report 的悬空引用
+   * （否则前端还显示"删除"按钮、再点删已删 report → NotFound)。
+   * 返回受影响的 task 数。
+   */
+  async clearReportRef(reportId: string): Promise<number> {
+    const r = await this.model
+      .updateMany(
+        { reportContentItemId: reportId },
+        { $unset: { reportContentItemId: '' } },
+      )
+      .exec();
+    return r.modifiedCount;
+  }
+
+  /**
    * 工作流成功完成时调用：写入 status=done + reportContentItemId + reportSummary + completedAt。
    * 与 updateStatus 分开是为了让调用方语义清晰，不必构造完整 patch 对象。
    */

@@ -15,6 +15,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ContentRepository } from '../content/content.repository';
 import { NavigationRepository } from '../navigation/navigation.repository';
 import { DigestReportRepository } from './digest-report.repository';
+import type { DigestReport } from './digest-report.entity';
 import { SmartTopicConfigRepository } from './smart-topic-config.repository';
 import { InfoSourceRepository } from './info-source.repository';
 import { NavigationScope } from '../navigation/navigation.entity';
@@ -63,9 +64,11 @@ export class DigestPublicService {
       snippet: f.snippet || undefined,
     }));
 
-    // siblings = 同 topic 所有报告。按 publishedAt 升序(期号小→大),跟前端 prev/next 一致
-    const siblingReports =
-      await this.digestReportRepository.findByTopic(topicId);
+    // siblings = 同 topic 每期最新一份(展示端去重:同周期多次运行只给读者看最新)。
+    // 按 publishedAt 升序(期号小→大),跟前端 prev/next 一致
+    const siblingReports = latestPerPeriod(
+      await this.digestReportRepository.findByTopic(topicId),
+    );
     const siblings: PublicSiblingDto[] = siblingReports
       .map((r) => ({
         id: r._id,
@@ -140,8 +143,8 @@ export class DigestPublicService {
       );
       if (!topicContent) continue;
 
-      const reports = await this.digestReportRepository.findByTopic(
-        node.contentItemId,
+      const reports = latestPerPeriod(
+        await this.digestReportRepository.findByTopic(node.contentItemId),
       );
 
       // 拿 SmartTopicConfig 算 byline 用的 cadence + sourceCount
@@ -177,7 +180,9 @@ export class DigestPublicService {
       throw new NotFoundException(`事项不存在: ${topicId}`);
     }
 
-    const reports = await this.digestReportRepository.findByTopic(topicId);
+    const reports = latestPerPeriod(
+      await this.digestReportRepository.findByTopic(topicId),
+    );
     const stc = await this.smartTopicConfigRepo.findByContentItemId(topicId);
     this.logger.debug(`getTopic: topicId=${topicId} reports=${reports.length}`);
 
@@ -195,6 +200,21 @@ export class DigestPublicService {
       })),
     };
   }
+}
+
+/**
+ * 每个 periodKey 只保留最新一份(入参须已按 publishedAt 倒序,findByTopic 即如此)。
+ * 展示端「每期一份」:同周期多次运行只给读者看最新那份,旧版留库但不展示。
+ */
+function latestPerPeriod(reports: DigestReport[]): DigestReport[] {
+  const seen = new Set<string>();
+  const out: DigestReport[] = [];
+  for (const r of reports) {
+    if (seen.has(r.periodKey)) continue;
+    seen.add(r.periodKey);
+    out.push(r);
+  }
+  return out;
 }
 
 /**

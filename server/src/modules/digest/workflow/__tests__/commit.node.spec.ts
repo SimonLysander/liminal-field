@@ -2,10 +2,10 @@
  * CommitNode 单元测试(重构后:写 DigestReport,不再走 ContentItem/NavNode)
  *
  * 覆盖:
- *   1. 正常运行:digestReportRepo.upsertByPeriod 调用 + pfi.create × findings.length
+ *   1. 正常运行:digestReportRepo.create 调用 + pfi.create × findings.length
  *   2. findings=0:pfi.create 不调用,流程正常完成
- *   3. reportId 用 dr_ 前缀(来自 upsertByPeriod 返回文档的 _id)
- *   4. DigestReport upsert 入参完整(headline / markdown / findings / topicId / taskId / publishedAt / periodKey)
+ *   3. reportId 用 dr_ 前缀(来自 create 返回文档的 _id)
+ *   4. DigestReport create 入参完整(headline / markdown / findings / topicId / taskId / publishedAt / periodKey)
  */
 
 import { CommitNode } from '../nodes/commit.node';
@@ -19,7 +19,7 @@ import type { ComposeOutput } from '../nodes/compose.node';
 
 function makeReportRepo(): DigestReportRepository {
   return {
-    upsertByPeriod: jest.fn().mockResolvedValue({ _id: 'dr_mockreportid' }),
+    create: jest.fn().mockResolvedValue({ _id: 'dr_mockreportid' }),
   } as unknown as DigestReportRepository;
 }
 
@@ -70,14 +70,14 @@ const compose: ComposeOutput = {
 };
 
 describe('CommitNode', () => {
-  it('Case 1: 正常运行 — digestReportRepo.upsertByPeriod + pfi.create 都调用', async () => {
+  it('Case 1: 正常运行 — digestReportRepo.create + pfi.create 都调用', async () => {
     const reportRepo = makeReportRepo();
     const pfiRepo = makePfiRepo();
     const node = new CommitNode(reportRepo, pfiRepo, makeStcRepo());
 
     const result = await node.run(makeTask([makeFinding(1)]), compose);
 
-    expect(reportRepo.upsertByPeriod).toHaveBeenCalledTimes(1);
+    expect(reportRepo.create).toHaveBeenCalledTimes(1);
     expect(pfiRepo.create).toHaveBeenCalledTimes(1);
     expect(result.reportContentItemId).toBe('dr_mockreportid');
   });
@@ -89,12 +89,12 @@ describe('CommitNode', () => {
 
     const result = await node.run(makeTask([]), compose);
 
-    expect(reportRepo.upsertByPeriod).toHaveBeenCalledTimes(1);
+    expect(reportRepo.create).toHaveBeenCalledTimes(1);
     expect(pfiRepo.create).not.toHaveBeenCalled();
     expect(result.reportContentItemId).toBe('dr_mockreportid');
   });
 
-  it('Case 3: DigestReport upsert 入参完整(headline / markdown / findings / topicId / taskId / publishedAt / periodKey)', async () => {
+  it('Case 3: DigestReport create 入参完整(headline / markdown / findings / topicId / taskId / publishedAt / periodKey)', async () => {
     const reportRepo = makeReportRepo();
     // 传入日刊 cron,验证 periodKey 有正确日期格式
     const node = new CommitNode(
@@ -106,8 +106,7 @@ describe('CommitNode', () => {
     const findings = [makeFinding(1), makeFinding(2)];
     await node.run(makeTask(findings), compose);
 
-    const upsertInput = (reportRepo.upsertByPeriod as jest.Mock).mock
-      .calls[0][0] as {
+    const createInput = (reportRepo.create as jest.Mock).mock.calls[0][0] as {
       _id: string;
       topicId: string;
       taskId: string;
@@ -117,14 +116,14 @@ describe('CommitNode', () => {
       publishedAt: Date;
       periodKey: string;
     };
-    expect(upsertInput._id).toMatch(/^dr_[a-f0-9]+$/);
-    expect(upsertInput.topicId).toBe('ci_topic001');
-    expect(upsertInput.taskId).toBe('dt_test');
-    expect(upsertInput.headline).toBe('测试标题');
-    expect(upsertInput.markdown).toBe(compose.markdown);
-    expect(upsertInput.findings).toHaveLength(2);
-    expect(upsertInput.publishedAt).toBeInstanceOf(Date);
+    expect(createInput._id).toMatch(/^dr_[a-f0-9]+$/);
+    expect(createInput.topicId).toBe('ci_topic001');
+    expect(createInput.taskId).toBe('dt_test');
+    expect(createInput.headline).toBe('测试标题');
+    expect(createInput.markdown).toBe(compose.markdown);
+    expect(createInput.findings).toHaveLength(2);
+    expect(createInput.publishedAt).toBeInstanceOf(Date);
     // periodKey 应为 YYYY-MM-DD 格式
-    expect(upsertInput.periodKey).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(createInput.periodKey).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });

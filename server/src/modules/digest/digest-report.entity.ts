@@ -20,14 +20,15 @@
  *   publishedAt  发布时间 = createdAt 默认
  *
  * 索引:
- *   - topicId + publishedAt(倒序) — 公开端 listByTopic 主路径
- *   - (topicId, periodKey) UNIQUE — 「一期一条」约束:同一周期重复生成走 upsert 硬覆盖,
- *     而非新增一期(修"生成几次就几期"的根因)。
+ *   - topicId + publishedAt(倒序) — 公开端 listByTopic / sibling 导航主路径
+ *   注:periodKey **不再 unique** —— 每次运行各存独立一份报告(旧版保留、不覆盖),
+ *   periodKey 只作"第几期"标记;展示端按 periodKey 分组取每期最新一份给读者,
+ *   管理端列出全部(每个 task ↔ 各自 report 一对一,删除清晰)。
  */
 import { index, modelOptions, prop, Severity } from '@typegoose/typegoose';
 import { Finding } from './digest-task.entity';
 
-@index({ topicId: 1, periodKey: 1 }, { unique: true })
+@index({ topicId: 1, publishedAt: -1 })
 @modelOptions({
   schemaOptions: { collection: 'digest_reports', timestamps: true },
   options: { allowMixed: Severity.ALLOW },
@@ -42,8 +43,8 @@ export class DigestReport {
   topicId!: string;
 
   /** 所属「期」的周期标识(YYYY-MM-DD,周期起点本地日期,由 period.util.computePeriodKey 算)。
-   *  与 topicId 组成唯一键:同一周期内重复生成 upsert 命中同一条 → 硬覆盖,实现"一期一条、旧的扔掉"。
-   *  required — 新生成必带;线上 digest_reports 为空,无老数据迁移负担(同 deck 字段的处理哲学)。 */
+   *  不再 unique:同一周期重复运行各存独立一份(旧版保留)。periodKey 用于展示端"按期取最新"分组。
+   *  required — 新生成必带。 */
   @prop({ required: true })
   periodKey!: string;
 

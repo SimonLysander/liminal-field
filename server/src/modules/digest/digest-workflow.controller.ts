@@ -126,5 +126,11 @@ export class DigestWorkflowController {
       throw new NotFoundException(`报告 ${reportId} 不属于事项 ${topicId}`);
     }
     await this.reportRepository.deleteById(reportId);
+    // 级联:清掉所有指向该 report 的 task 的产物引用,避免悬空——
+    // 否则删完前端 task 行还显示"删除"钮、再点删已删 report → NotFound(就是这个 bug)
+    const cleared = await this.taskRepository.clearReportRef(reportId);
+    this.logger.debug(
+      `DELETE report ${reportId} 完成,清理 ${cleared} 个 task 的产物引用`,
+    );
   }
 }

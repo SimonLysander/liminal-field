@@ -6,9 +6,9 @@
  * 量产的 snapshot 完全错配,每个 hook 都要打补丁。改为直接写 DigestReport 一张表。
  *
  * 步骤:
- *   1. computePeriodKey(按 stc.cron 推断周期粒度)→ 本期 periodKey
- *   2. DigestReportRepository.upsertByPeriod:同 (topicId, periodKey) 硬覆盖、否则新建 dr_xxx
- *      —— 实现「一期一条、同周期重复生成覆盖旧的」(返回文档 _id 才是真实 id)
+ *   1. computePeriodKey(按 stc.cron 推断周期粒度)→ 本期 periodKey(只作"第几期"标记)
+ *   2. DigestReportRepository.create:每次运行各存独立一份 dr_xxx(旧版保留、不覆盖)
+ *      —— 展示端按 periodKey 取每期最新给读者,管理端列全部(task ↔ report 一对一)
  *   3. ProcessedFeedItemRepository.create × findings.length(去重记录)
  *   4. return { reportContentItemId }(供 workflow service 回写 task.reportContentItemId)
  *
@@ -66,9 +66,9 @@ export class CommitNode {
     const stc = await this.stcRepo.findByContentItemId(topicId);
     const periodKey = computePeriodKey(stc?.cron, publishedAt);
 
-    // upsertByPeriod:同 (topicId, periodKey) 已存在则硬覆盖(沿用旧 _id,URL 稳定),否则新建。
-    // 返回文档的 _id 才是真实 id(覆盖时是旧 id),后续 pfi / task 回写都用它。
-    const report = await this.digestReportRepo.upsertByPeriod({
+    // 每次运行各存独立一份(旧版保留、不覆盖);periodKey 仅标记"第几期",展示端按它取每期最新。
+    // task ↔ report 因此一对一,管理端删除清晰(各删各的)。
+    const report = await this.digestReportRepo.create({
       _id: buildReportId(),
       topicId,
       periodKey,
