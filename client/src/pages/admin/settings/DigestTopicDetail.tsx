@@ -189,14 +189,14 @@ function TaskRow({
   topicId,
   expanded,
   onToggleExpand,
-  onDeleteReport,
+  onDeleteTask,
 }: {
   task: DigestTaskListItem;
   topicId: string;
   expanded: boolean;
   onToggleExpand: () => void;
-  /** task done 且 reportContentItemId 非空时点击删除产物 */
-  onDeleteReport?: (task: DigestTaskListItem) => void;
+  /** 删这次运行(task)+ 连带产物报告。失败/成功 task 都能删。 */
+  onDeleteTask?: (task: DigestTaskListItem) => void;
 }) {
   const [steps, setSteps] = useState<AgentStep[] | null>(null);
   const [loadingSteps, setLoadingSteps] = useState(false);
@@ -255,36 +255,36 @@ function TaskRow({
           )}
         </span>
 
-        {/* ⑤ 操作 — 固定宽:有产物时 查看 + 删除;无产物时占位 — */}
+        {/* ⑤ 操作 — 每行都可删(删这次运行 + 连带报告);有产物多一个"查看" */}
         <div className="flex items-center justify-end gap-0.5">
-          {hasReport ? (
-            <>
-              <a
-                href={`/digest/${topicId}/${task.reportContentItemId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                title="在新标签打开报告"
-                className="flex items-center gap-1 rounded px-2 py-1 text-2xs transition-colors hover:bg-[var(--shelf)]"
-                style={{ color: 'var(--ink-faded)' }}
-              >
-                <ExternalLink size={12} strokeWidth={1.75} />
-                <span>查看</span>
-              </a>
-              {onDeleteReport && (
-                <button
-                  type="button"
-                  onClick={() => onDeleteReport(task)}
-                  title="删除这一期报告(不可恢复)"
-                  className="flex items-center gap-1 rounded px-2 py-1 text-2xs transition-colors hover:bg-[var(--shelf)]"
-                  style={{ color: 'var(--ink-faded)' }}
-                >
-                  <Trash2 size={12} strokeWidth={1.75} />
-                  <span>删除</span>
-                </button>
-              )}
-            </>
-          ) : (
-            <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>—</span>
+          {hasReport && (
+            <a
+              href={`/digest/${topicId}/${task.reportContentItemId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="在新标签打开报告"
+              className="flex items-center gap-1 rounded px-2 py-1 text-2xs transition-colors hover:bg-[var(--shelf)]"
+              style={{ color: 'var(--ink-faded)' }}
+            >
+              <ExternalLink size={12} strokeWidth={1.75} />
+              <span>查看</span>
+            </a>
+          )}
+          {onDeleteTask && (
+            <button
+              type="button"
+              onClick={() => onDeleteTask(task)}
+              title={
+                hasReport
+                  ? '删除这次运行(连同报告,不可恢复)'
+                  : '删除这条运行记录'
+              }
+              className="flex items-center gap-1 rounded px-2 py-1 text-2xs transition-colors hover:bg-[var(--shelf)]"
+              style={{ color: 'var(--ink-faded)' }}
+            >
+              <Trash2 size={12} strokeWidth={1.75} />
+              <span>删除</span>
+            </button>
           )}
         </div>
 
@@ -402,26 +402,28 @@ export function DigestTopicDetail() {
   };
 
   /**
-   * 删除一期报告 = 调专用 DELETE /digest/topics/:topicId/reports/:reportId
-   * (重构 Phase 1:DigestReport 独立 entity,deleteOne 直接干净;不再绕 NavNode/ContentItem
-   * 那套也要 publishedVersion 检查的复杂路径)。
-   * task 记录保留作 audit trail,只删产物。
+   * 删一次运行(task)= 调 DELETE /digest/topics/:topicId/tasks/:taskId。
+   * 失败/卡住的 task 没产物 → 只删记录;成功 task 有产物 → 连带把报告一起删(后端级联),
+   * 不留孤立报告。这样任意 task(含失败)都能从前端清掉。
    */
-  const handleDeleteReport = useCallback(
+  const handleDeleteTask = useCallback(
     async (task: DigestTaskListItem) => {
-      if (!task.reportContentItemId || !id) return;
+      if (!id) return;
+      const hasReport = task.status === 'done' && !!task.reportContentItemId;
       const ok = await confirm({
-        title: '删了这一期报告？',
-        message: (
+        title: '删了这次运行？',
+        message: hasReport ? (
           <>
             <p>
-              删除后报告页就打不开了——
-              <strong>已经发过的 newsletter 订阅 / 外链都会变成 404</strong>。
+              这次运行产出了报告——删除后报告页打不开,
+              <strong>已发过的订阅 / 外链会变成 404</strong>。
             </p>
             <p className="mt-2" style={{ color: 'var(--ink-faded)' }}>
-              运行记录会保留(包括步骤、findings 摘要),只是失去了那篇正文。
+              运行记录和报告会一起删掉,其他运行不受影响。
             </p>
           </>
+        ) : (
+          <p>删除这条运行记录(失败/无产物),不影响其他运行。</p>
         ),
         confirmLabel: '确认删除',
         cancelLabel: '再想想',
@@ -429,7 +431,7 @@ export function DigestTopicDetail() {
       });
       if (!ok) return;
       try {
-        await digestTasksApi.deleteReport(id, task.reportContentItemId);
+        await digestTasksApi.deleteTask(id, task.id);
         banner.success('已删除');
         await loadData();
       } catch {
@@ -625,7 +627,7 @@ export function DigestTopicDetail() {
                       onToggleExpand={() =>
                         setExpandedId(expandedId === task.id ? null : task.id)
                       }
-                      onDeleteReport={handleDeleteReport}
+                      onDeleteTask={handleDeleteTask}
                     />
                   ))}
                 </div>

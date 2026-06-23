@@ -133,4 +133,35 @@ export class DigestWorkflowController {
       `DELETE report ${reportId} 完成,清理 ${cleared} 个 task 的产物引用`,
     );
   }
+
+  /**
+   * DELETE /digest/topics/:topicId/tasks/:taskId
+   * 删一条运行记录(task)+ 连带删它的产物报告(若有)。失败/成功 task 都能删——
+   * 失败 task 没产物只删记录;成功 task 连带把报告一起下架,不留孤立报告。
+   *
+   * 校验:task 必须属于该 topic,避免跨 topic 误删。
+   */
+  @Delete('topics/:topicId/tasks/:taskId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteTask(
+    @Param('topicId') topicId: string,
+    @Param('taskId') taskId: string,
+  ): Promise<void> {
+    this.logger.debug(`DELETE /digest/topics/${topicId}/tasks/${taskId}`);
+    const task = await this.taskRepository.findById(taskId);
+    if (!task) {
+      throw new NotFoundException(`任务不存在: ${taskId}`);
+    }
+    if (task.topicId !== topicId) {
+      throw new NotFoundException(`任务 ${taskId} 不属于事项 ${topicId}`);
+    }
+    // 连带删产物报告(若有),避免删了 task 留下孤立报告
+    if (task.reportContentItemId) {
+      await this.reportRepository.deleteById(task.reportContentItemId);
+    }
+    await this.taskRepository.deleteById(taskId);
+    this.logger.debug(
+      `DELETE task ${taskId} 完成(连带 report=${task.reportContentItemId ?? '-'})`,
+    );
+  }
 }

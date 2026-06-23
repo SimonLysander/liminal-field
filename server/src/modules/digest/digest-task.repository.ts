@@ -145,6 +145,11 @@ export class DigestTaskRepository {
     return r.modifiedCount;
   }
 
+  /** 删一条 task 记录(deleteTask 端点用:删运行记录,连带 report 由 controller 处理)。 */
+  async deleteById(id: string): Promise<void> {
+    await this.model.deleteOne({ _id: id }).exec();
+  }
+
   /**
    * 工作流成功完成时调用：写入 status=done + reportContentItemId + reportSummary + completedAt。
    * 与 updateStatus 分开是为了让调用方语义清晰，不必构造完整 patch 对象。

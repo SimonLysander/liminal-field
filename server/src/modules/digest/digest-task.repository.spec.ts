@@ -23,6 +23,7 @@ const mockModel = {
   findByIdAndUpdate: jest.fn(),
   updateOne: jest.fn(),
   updateMany: jest.fn(),
+  deleteOne: jest.fn(),
 } as unknown as jest.Mocked<any>;
 
 function chainExec<T>(val: T) {
@@ -228,5 +229,14 @@ describe('DigestTaskRepository', () => {
       { $unset: { reportContentItemId: '' } },
     );
     expect(n).toBe(2);
+  });
+
+  // Case 10: deleteById() — 删一条 task 记录
+  it('deleteById() — deleteOne 按 _id 删 task', async () => {
+    mockModel.deleteOne.mockReturnValue(chainExec({ deletedCount: 1 }));
+
+    await repo.deleteById('dt_x');
+
+    expect(mockModel.deleteOne).toHaveBeenCalledWith({ _id: 'dt_x' });
   });
 });

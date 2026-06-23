@@ -45,6 +45,7 @@ const mockTaskRepository = {
   findById: jest.fn(),
   findRecentByTopic: jest.fn(),
   clearReportRef: jest.fn(),
+  deleteById: jest.fn(),
 } as unknown as jest.Mocked<DigestTaskRepository>;
 
 const mockReportRepository = {
@@ -207,6 +208,56 @@ describe('DigestWorkflowController', () => {
         controller.deleteReport('ci_topic001', 'dr_x'),
       ).rejects.toThrow(NotFoundException);
       expect(mockReportRepository.deleteById).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── DELETE /digest/topics/:topicId/tasks/:taskId ─────────────────────────
+  describe('deleteTask()', () => {
+    it('task 有产物报告 → 连带删 report + 删 task', async () => {
+      mockTaskRepository.findById.mockResolvedValue({
+        _id: 'dt_x',
+        topicId: 'ci_topic001',
+        reportContentItemId: 'dr_y',
+      } as never);
+
+      await controller.deleteTask('ci_topic001', 'dt_x');
+
+      expect(mockReportRepository.deleteById).toHaveBeenCalledWith('dr_y');
+      expect(mockTaskRepository.deleteById).toHaveBeenCalledWith('dt_x');
+    });
+
+    it('失败 task 无产物 → 只删 task,不删 report', async () => {
+      mockTaskRepository.findById.mockResolvedValue({
+        _id: 'dt_x',
+        topicId: 'ci_topic001',
+        reportContentItemId: undefined,
+      } as never);
+
+      await controller.deleteTask('ci_topic001', 'dt_x');
+
+      expect(mockReportRepository.deleteById).not.toHaveBeenCalled();
+      expect(mockTaskRepository.deleteById).toHaveBeenCalledWith('dt_x');
+    });
+
+    it('task 不存在 → NotFound,不删', async () => {
+      mockTaskRepository.findById.mockResolvedValue(null);
+
+      await expect(
+        controller.deleteTask('ci_topic001', 'dt_x'),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockTaskRepository.deleteById).not.toHaveBeenCalled();
+    });
+
+    it('task 不属于该 topic → NotFound(防跨 topic 误删)', async () => {
+      mockTaskRepository.findById.mockResolvedValue({
+        _id: 'dt_x',
+        topicId: 'ci_other',
+      } as never);
+
+      await expect(
+        controller.deleteTask('ci_topic001', 'dt_x'),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockTaskRepository.deleteById).not.toHaveBeenCalled();
     });
   });
 });

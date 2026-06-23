@@ -128,4 +128,9 @@ export const digestTasksApi = {
     request<void>(`/digest/topics/${topicId}/reports/${reportId}`, {
       method: 'DELETE',
     }),
+  /** 删一次运行(task)+ 连带产物报告。失败/成功 task 都可删。 */
+  deleteTask: (topicId: string, taskId: string) =>
+    request<void>(`/digest/topics/${topicId}/tasks/${taskId}`, {
+      method: 'DELETE',
+    }),
 };
