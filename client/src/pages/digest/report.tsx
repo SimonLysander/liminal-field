@@ -9,7 +9,7 @@
  *   - 报头（标题 + 出版信息行）
  *   - MarkdownBody 渲染报告正文（AI 生成的 markdown，含 ## 章节 + citation 引用）
  *   - 页尾 prev/next 导航（按 siblings publishedAt 升序排列）
- *   - 右栏：已登录 → AdvisorSidebar；未登录 → 占位
+ *   - 右栏：MarginColumn（目录 + 本期参考索引，固定 288px）
  *
  * 三态处理：loading / error（含 404）/ success
  * 注意：report.tsx 不依赖 mock-data.ts，mock 文件保留供 index.tsx / topic.tsx 使用
@@ -26,18 +26,14 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Sparkles } from 'lucide-react';
-import type { ChatSelectionAttachment } from '@/pages/admin/lib/live-chat-selection';
 import { appleEase } from '@/lib/motion';
-import { AdvisorSidebar } from '@/components/ai-advisor/AdvisorSidebar';
-import { useAuthStatus } from '@/hooks/use-auth-status';
 import MarkdownBody from '@/components/shared/MarkdownBody';
 import { digestPublicApi } from '@/services/digest-public';
 import type { PublicReportData, PublicSibling } from '@/services/digest-public';
 import { isApiError } from '@/services/request';
 import { MarginColumn } from './MarginColumn';
 
-/** 从 markdown 抽 ## 章节标题列表,作为 Aurora 的目录索引 */
+/** 从 markdown 抽 ## 章节标题列表,供 MarginColumn 目录导航用 */
 function extractSections(md: string): string[] {
   return Array.from(md.matchAll(/^##\s+(.+)$/gm)).map((m) => m[1].trim());
 }
@@ -63,84 +59,15 @@ function formatDateTime(iso: string): string {
 
 export default function DigestReportPage() {
   const { topicId, reportId } = useParams<{ topicId: string; reportId: string }>();
-  const { status: authStatus } = useAuthStatus();
 
   const [data, setData] = useState<PublicReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** Aurora 抽屉开关 — 右上按钮 / 报告末尾入口 / ⌘+K 三处触发 */
-  const [isAuroraOpen, setIsAuroraOpen] = useState(false);
-  /** 划词工具条状态: 选中文本 + 浮窗位置(top/left, viewport 坐标) */
-  const [selection, setSelection] = useState<{ text: string; top: number; left: number } | null>(null);
-  /**
-   * 已"追问"过的引用 chip 列表 —— 跟编辑器"添加到聊天"是同一套机制(ChatSelectionAttachment)。
-   * 用户心智里就是"把这段加到对话上下文里"这件事:报告页选区 ←→ 编辑器选区,UI/数据流统一。
-   * 报告页是静态 markdown 渲染(非 Plate editor),所以 anchor/highlight/dispose 用 noop stub,
-   * 只保留 id/preview/getText —— sidebar 拼 markdown 引用块进 user text 时只读这些。
-   */
-  const [chatSelections, setChatSelections] = useState<ChatSelectionAttachment[]>([]);
   /** 主文滚动容器 ref:scroll spy 计算"哪一节正在视口里" + 章节跳转用 */
   const mainScrollRef = useRef<HTMLDivElement>(null);
   /** scroll spy 命中的当前章节 idx,传给 MarginColumn 高亮 */
   const [activeSection, setActiveSection] = useState(0);
-
-  // 全局键盘监听: ⌘+K(mac) / Ctrl+K(win) 切换 Aurora
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setIsAuroraOpen((o) => !o);
-      }
-      if (e.key === 'Escape') {
-        setIsAuroraOpen(false);
-        setSelection(null);
-      }
-    }
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, []);
-
-  /**
-   * 划词检测: mouseup 后看是否选中了 .digest-report-body 内的正文,
-   * 是则在选中区上方弹工具条(fixed 浮窗,跟随 viewport 滚动)。
-   *
-   * 用 fixed 浮窗是 web 平台标准做法(divider tooltip / popover 类 UI),
-   * 不算"布局元素的绝对定位", 不破坏页面 layout 可预测性。
-   */
-  useEffect(() => {
-    function handleMouseUp() {
-      const sel = window.getSelection();
-      if (!sel || sel.isCollapsed) {
-        setSelection(null);
-        return;
-      }
-      const text = sel.toString().trim();
-      if (text.length < 2 || text.length > 800) {
-        setSelection(null);
-        return;
-      }
-      const range = sel.getRangeAt(0);
-      const container = range.commonAncestorContainer;
-      const reportBody =
-        (container.nodeType === Node.ELEMENT_NODE
-          ? (container as Element)
-          : container.parentElement
-        )?.closest('.digest-report-body');
-      if (!reportBody) {
-        setSelection(null);
-        return;
-      }
-      const rect = range.getBoundingClientRect();
-      setSelection({
-        text,
-        top: rect.top - 40,
-        left: rect.left + rect.width / 2,
-      });
-    }
-    document.addEventListener('mouseup', handleMouseUp);
-    return () => document.removeEventListener('mouseup', handleMouseUp);
-  }, []);
 
   useEffect(() => {
     if (!topicId || !reportId) return;
@@ -333,61 +260,8 @@ export default function DigestReportPage() {
   /* 期号 = 当前在 siblings 中的位置（1-based） */
   const issueNumber = currentIdx + 1;
 
-  /**
-   * "追问 Aurora" = 把选中文字推进 chatSelections,作为输入框上方的引用 chip。
-   * 跟编辑器"添加到聊天"完全同一套机制;chip 发送瞬间被拼成 markdown 引用块进 user text。
-   * 报告页没有 live editor range,anchor/highlight/dispose 都是 noop stub。
-   */
-  function handleAskAboutSelection() {
-    if (!selection) return;
-    const text = selection.text;
-    const id =
-      typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : `report-sel-${Date.now()}`;
-    const attachment: ChatSelectionAttachment = {
-      id,
-      preview: text.slice(0, 40),
-      getText: () => text,
-      getAnchor: () => ({ type: 'none' }),
-      highlight: () => false,
-      clearHighlight: () => {},
-      dispose: () => {},
-    };
-    setChatSelections((prev) => [...prev, attachment]);
-    setIsAuroraOpen(true);
-    setSelection(null);
-    window.getSelection()?.removeAllRanges();
-  }
-
   return (
     <div className="flex h-full w-full overflow-hidden">
-      {/* 划词工具条 — fixed 浮窗(标准 tooltip 模式, 跟随选中区位置), 关闭后消失 */}
-      {selection && (
-        <div
-          className="fixed z-50 flex items-center gap-1 rounded-full px-1.5 py-1"
-          style={{
-            top: selection.top,
-            left: selection.left,
-            transform: 'translateX(-50%)',
-            background: 'var(--paper-white)',
-            border: '0.5px solid var(--separator)',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-          }}
-        >
-          <button
-            type="button"
-            onClick={handleAskAboutSelection}
-            className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] italic transition-colors hover:bg-[var(--shelf)]"
-            style={{ color: 'var(--ink-soft)' }}
-          >
-            <Sparkles size={11} strokeWidth={1.5} />
-            <span>追问 Aurora</span>
-          </button>
-        </div>
-      )}
-
-
       {/* ── 主体阅读区 — flex-1 自动适应 panel 宽度变化 ── */}
       <div
         ref={mainScrollRef}
@@ -560,141 +434,30 @@ export default function DigestReportPage() {
         </div>
       </div>
 
-      {/* ── 右栏:MarginColumn(关) ↔ AdvisorSidebar(开)互斥 ──
-          两者本质都是"辅助阅读",同时存在会让主文被挤成细条。互斥共用同一栏位:
-          关 = margin 旁注(288px,章节进度 + findings 索引);开 = Aurora(440px)。
-          切换走 CSS width transition,内容用 conditional render(内容里没有"两栏并存"问题,
-          所以不需要 fade)。Aurora 关时仍保留 borderLeft,因为永远有内容,边线是栏之间的真实分隔。 */}
+      {/* ── 右栏:MarginColumn — 章节进度 + findings 索引，固定 288px ── */}
       <aside
         className="shrink-0 overflow-hidden"
         style={{
-          width: isAuroraOpen ? '440px' : '288px',
-          transition: 'width 240ms cubic-bezier(0.32, 0.72, 0, 1)',
+          width: '288px',
           borderLeft: '1px solid var(--separator)',
         }}
       >
         <div
           className="h-full"
           style={{
-            width: isAuroraOpen ? 440 : 288,
+            width: 288,
             background: 'var(--paper-white)',
           }}
         >
-          {isAuroraOpen ? (
-            <>
-              {authStatus === 'checking' && (
-                <div className="flex flex-col gap-3 px-6 pt-6">
-                  <div className="h-3 w-24 animate-pulse rounded" style={{ background: 'var(--shelf)' }} />
-                  <div className="h-16 animate-pulse rounded-lg" style={{ background: 'var(--shelf)' }} />
-                </div>
-              )}
-
-              {authStatus === 'unauthenticated' && (
-                <div className="px-6 pt-6">
-                  <AuroraPlaceholder />
-                </div>
-              )}
-
-              {authStatus === 'authenticated' && (
-                <div className="flex h-full flex-col">
-                  <AdvisorSidebar
-                    sessionKey={`digest-report-${reportId}`}
-                    agentInstanceKey={`digest-topic-${topicId}`}
-                    agentKey="report-analyst"
-                    source="report-reader"
-                    context={{
-                      digestReport: {
-                        reportId: report.id,
-                        topicId: topic.id,
-                        topicName: topic.name,
-                        topicPrompt: topic.description,
-                        headline: report.headline,
-                        publishedAt: report.publishedAt,
-                        // 全篇注入:报告 markdown 完整全文 + findings 完整字段(含 reason/snippet)
-                        // 一并传给 sub-agent context,后端拼进 <digest_report> system 段
-                        markdown: report.markdown,
-                        sections: extractSections(report.markdown),
-                        findings: report.findings.map((f) => ({
-                          citationId: f.citationId,
-                          title: f.title,
-                          sourceName: f.sourceName,
-                          url: f.url,
-                          reason: f.reason,
-                          snippet: f.snippet,
-                        })),
-                        // 订阅源,sub-agent browse 工具用
-                        sources: topic.sources ?? [],
-                      },
-                    }}
-                    selectionAttachments={chatSelections}
-                    onRemoveSelectionAttachment={(id) =>
-                      setChatSelections((prev) => prev.filter((c) => c.id !== id))
-                    }
-                    onClearSelectedText={() => setChatSelections([])}
-                    greeting="想聊哪条？"
-                    onClose={() => setIsAuroraOpen(false)}
-                  />
-                </div>
-              )}
-            </>
-          ) : (
-            <MarginColumn
-              sections={extractSections(report.markdown)}
-              findings={report.findings}
-              activeSection={activeSection}
-              onScrollToSection={scrollToSection}
-              onAskAurora={() => setIsAuroraOpen(true)}
-            />
-          )}
+          <MarginColumn
+            sections={extractSections(report.markdown)}
+            findings={report.findings}
+            activeSection={activeSection}
+            onScrollToSection={scrollToSection}
+          />
         </div>
       </aside>
     </div>
   );
 }
 
-/* ================================================================
- * AuroraPlaceholder — 未登录状态的 Aurora 追问占位（纯排版，无 icon）
- * 由外层 motion.aside 控制动画，此组件只管内容。
- * ================================================================ */
-
-function AuroraPlaceholder() {
-  return (
-    <div className="sticky top-16 flex flex-col gap-5">
-      {/* 栏头 small caps */}
-      <div>
-        <p
-          className="mb-3 text-[10px] font-bold uppercase tracking-[0.28em]"
-          style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
-        >
-          Editorial · 编辑追问
-        </p>
-        <div style={{ borderBottom: '1px solid var(--ink)' }} />
-      </div>
-
-      {/* 说明文字 */}
-      <p
-        className="text-sm leading-relaxed"
-        style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-serif)' }}
-      >
-        登录后可与 Aurora 追问本期，深入挖掘你感兴趣的细节。
-      </p>
-
-      {/* 登录按钮（纯文字，无 icon） */}
-      <Link
-        to="/login"
-        className="text-[11px] font-bold uppercase tracking-[0.22em] transition-opacity duration-150 hover:opacity-60"
-        style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
-      >
-        登录后追问 →
-      </Link>
-
-      {/* Aurora 署名，纯文字 */}
-      <p
-        className="mt-2 text-[10px] font-bold uppercase tracking-[0.22em]"
-        style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
-      >
-        Aurora
-      </p>
-    </div>
-  );
-}

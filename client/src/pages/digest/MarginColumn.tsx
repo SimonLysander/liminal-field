@@ -1,14 +1,9 @@
 /*
  * MarginColumn — digest 报告阅读页的「边栏旁注」列(Tufte 派 margin-note 路子)。
  *
- * 跟 Aurora 抽屉互斥共用右栏栏位:Aurora 关时显示这一列,Aurora 开时让位给 Aurora。
- * 设计前提:两者本质都是「辅助阅读」,没必要同时存在——Aurora 开时你正在聊,
- * citation 注解可以直接问她;Aurora 关时你独自细读,旁注提供 finding 索引 + 章节进度。
- *
- * 内容三段:
+ * 固定占据右栏 288px,内容两段:
  *  1. 目录(§1 · §2 · §3 + 当前章节高亮)——scroll spy 联动,点击跳转
  *  2. 本期参考(N 条 findings 索引,citation 编号 + 标题 + 来源 + 外链)
- *  3. 底部"叫 Aurora"软入口
  */
 
 import type { PublicFinding } from '@/services/digest-public';
@@ -22,8 +17,8 @@ export interface MarginColumnProps {
   activeSection: number;
   /** 点击 §N 跳到正文对应 H2 */
   onScrollToSection: (idx: number) => void;
-  /** 点底部按钮 / "叫 Aurora" 切到 Aurora 列 */
-  onAskAurora: () => void;
+  /** 预留:外部切换到 Aurora 列（可选，当前不使用） */
+  onAskAurora?: () => void;
 }
 
 export function MarginColumn({
@@ -31,7 +26,6 @@ export function MarginColumn({
   findings,
   activeSection,
   onScrollToSection,
-  onAskAurora,
 }: MarginColumnProps) {
   return (
     <div
@@ -41,31 +35,6 @@ export function MarginColumn({
           '"Source Han Serif SC","Noto Serif SC","Songti SC","SimSun",Georgia,serif',
       }}
     >
-      {/* ── "叫 Aurora" 入口在最上面 ──
-          跟编辑页"打开 Aurora"按钮统一:鸢尾 seed 作标。
-          软化设计:无 border 无 bg,纯文字 + 鸢尾 + 虚线下划线——跟报告文末
-          "还想问 Aurora? 提个问题 ✦"同一种"软入口"语言,克制不抢戏。 */}
-      <button
-        type="button"
-        onClick={onAskAurora}
-        className="group flex items-center gap-1.5 text-xs italic transition-colors duration-150"
-        style={{ color: 'var(--ink-faded)', letterSpacing: '0.02em' }}
-        title="问 Aurora (⌘K)"
-      >
-        <img
-          src="/garden/iris-seed.webp"
-          alt=""
-          draggable={false}
-          className="h-[14px] w-[14px] opacity-60 transition-opacity duration-150 group-hover:opacity-100"
-        />
-        <span
-          className="underline decoration-dotted underline-offset-2 transition-colors duration-150 group-hover:text-[var(--ink)]"
-          style={{ textDecorationColor: 'var(--ink-ghost)' }}
-        >
-          她在听
-        </span>
-      </button>
-
       {/* ── 目录(章节进度)──
           §N 编号用 mono 字体 + ink-ghost,标题 italic,当前节加重并去 opacity */}
       {sections.length > 0 && (
