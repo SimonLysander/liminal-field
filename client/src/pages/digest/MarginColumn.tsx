@@ -131,31 +131,31 @@ export function MarginColumn({
                 href={f.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block transition-opacity duration-150 hover:opacity-100"
+                className="flex items-baseline gap-1.5 transition-opacity duration-150 hover:opacity-100"
                 style={{ opacity: 0.82 }}
               >
+                {/* 序号:定宽 + baseline 对齐标题首行(不再 super 上标,避免与标题错位) */}
                 <span
-                  className="mr-1.5 text-[10px]"
-                  style={{
-                    verticalAlign: 'super',
-                    color: 'var(--ink-ghost)',
-                    fontWeight: 500,
-                  }}
+                  className="w-3 shrink-0 text-right text-[10px] tabular-nums"
+                  style={{ color: 'var(--ink-ghost)', fontWeight: 500 }}
                 >
                   {f.citationId}
                 </span>
-                <span
-                  className="text-xs leading-snug"
-                  style={{ color: 'var(--ink-soft)' }}
-                >
-                  《{f.title}》
+                {/* 标题 + 来源:flex-1,换行与来源都缩进对齐标题首行(hanging indent) */}
+                <span className="min-w-0 flex-1">
+                  <span
+                    className="text-xs leading-snug"
+                    style={{ color: 'var(--ink-soft)' }}
+                  >
+                    《{f.title}》
+                  </span>
+                  <span
+                    className="mt-0.5 block text-[11px] italic leading-snug"
+                    style={{ color: 'var(--ink-ghost)' }}
+                  >
+                    {f.sourceName}
+                  </span>
                 </span>
-                <div
-                  className="mt-0.5 ml-3 text-[11px] italic leading-snug"
-                  style={{ color: 'var(--ink-ghost)' }}
-                >
-                  {f.sourceName}
-                </div>
               </a>
             </li>
           ))}
