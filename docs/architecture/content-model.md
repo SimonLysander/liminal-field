@@ -6,7 +6,7 @@
 
 ## 核心原则
 
-1. **Git 提交 ≠ 业务版本**——业务版本在 MongoDB 管理，Git 只做异步归档和灾难恢复，正常业务永远不从 Git 读数据
+1. **MongoDB 是一手源，Git 是异步归档**——业务版本在 MongoDB 管理，ContentSnapshot 用 nanoid 生成的 `_id` 作为版本标识（`versionId`），与 Git 无关。Git commit 完成后异步回填 `commitHash`，该字段仅作归档凭证，不参与任何业务版本控制逻辑。正常业务永远不从 Git 读数据。
 2. **所有 scope 的文件都有 frontmatter**——title 等元数据在 frontmatter 里，版本层的 title 是提取的副本
 3. **bodyMarkdown = 一个文件的内容**——版本层不解析，业务层按文件协议解析
 4. **索引 + 产物的统一模式**——Gallery 索引引用 OSS 里的照片，Anthology 索引引用 MongoDB snapshot 里的条目，读取模式一致
@@ -112,13 +112,16 @@ date: 2026-05-01
 
 main.md 是**索引**（条目目录）。**产物**（各篇正文）在 entries/ 里。
 
-### 三个 scope 的统一模式
+### 四个 scope 的统一模式
 
 | scope | main.md 是什么 | 产物是什么 | 产物在哪 |
 |-------|---------------|-----------|---------|
 | Notes | 正文本身 | 无 | — |
 | Gallery | 索引（照片列表）+ 随笔 | 照片文件 | assets/（OSS） |
 | Anthology | 索引（条目目录） | 各篇正文 | entries/（MongoDB snapshot） |
+| Digest | 索引（事项容器） | 各期报告 | entries/（MongoDB snapshot） |
+
+**Digest scope 说明**：Digest（智能简报）在文件结构上与 Anthology 同构——事项是容器（main.md），各期报告是子 entry。之所以不复用 anthology scope，是因为公开展示逻辑、管理入口、Aurora agent 类型以及发布语义与文集完全不同，业务必须严格隔离。详见 `server/src/modules/navigation/navigation.entity.ts` 中的注释。
 
 ---
 
@@ -192,6 +195,19 @@ snapshot e003-v1  fileName="entries/e003.md"  bodyMarkdown="---\ntitle: 灯塔\n
 **latestVersion 只跟踪 main.md（fileName=null）。** 其他文件的最新版本通过查询。
 
 新增索引：`{ contentItemId: 1, fileName: 1, createdAt: -1 }`
+
+---
+
+### EditorDraft 草稿隔离约定
+
+草稿的 `_id` 不是 ObjectId，而是按业务语义拼接的确定性字符串：
+
+- 单文件草稿（Notes/Gallery）：`"draft:{contentItemId}"`
+- Anthology/Digest 条目草稿：`"draft:{contentItemId}:{fileName}"`（如 `"draft:ci_anthology_sea:entries/e001.md"`）
+
+**设计意图**：同一内容同一文件同时只能有一份草稿（upsert 语义）。用确定性 `_id` 既避免了建额外唯一索引的开销，又让"按文件找草稿"降为 O(1) 主键查询，不需要跨 contentItemId + fileName 的复合索引。`fileName = null` 的约定保持了与原有 notes/gallery 逻辑的向后兼容。
+
+详见 `server/src/modules/workspace/editor-draft.entity.ts`。
 
 ---
 
@@ -354,16 +370,7 @@ Anthology：ViewService 拆成多文件
 
 ### 恢复（Git → MongoDB）
 
-```
-扫描 content/ 下所有 ci_xxx/：
-
-  1. 读 main.md frontmatter
-  2. 有 entries/ 子目录 → anthology
-     读 main.md → 创建 ContentItem + 索引 snapshot（fileName=null）
-     读 entries/*.md → 每个创建 snapshot（fileName="entries/e001.md" 等）
-  3. 有 photos 字段 → gallery
-  4. 都没有 → notes
-```
+Git 仅作灾备。MongoDB 的 `bodyMarkdown` 本身即一手源，常规运营无需从 Git 重建。灾备恢复路径的语义与实现见相关代码，此处不展开。
 
 ---
 
@@ -380,7 +387,7 @@ Anthology：ViewService 拆成多文件
 
 ## 读取模式对比
 
-三个 scope 的读取是一致的模式：**解析索引 → 按引用去拿产物**。
+四个 scope 的读取是一致的模式：**解析索引 → 按引用去拿产物**。
 
 ```
 Notes：

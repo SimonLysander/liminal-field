@@ -1,6 +1,6 @@
 # Liminal Field — 产品与架构设计文档
 
-> 版本：2026-05-01  
+> 版本：2026-06-23  
 > 这是一份独立的、完整的项目设计参考文档。涵盖产品定位、技术架构、数据模型、API 设计、前端架构和部署方案。
 
 ---
@@ -38,8 +38,8 @@
 - **管理端**：受保护的内容管理界面，单用户鉴权
 
 **核心设计原则**：
-- Git 作为内容的唯一可信历史来源（版本不可篡改）
-- MongoDB 只存储轻量元数据和指针（不存正文）
+- MongoDB 是内容的一手数据源：ContentSnapshot 存储每版正文；Git 是异步备份，保证历史不可篡改
+- ContentItem 只存版本头指针，正文不膨胀到 ContentItem 文档里
 - 展示端和管理端共享同一设计语言，视觉完全一致
 - 单色系 Apple 风格 UI，减少视觉噪声
 
@@ -52,7 +52,7 @@
 │                  liminal-field-web                  │
 │              (React 19 + Vite + PlateJS)            │
 │                                                     │
-│  展示端（/home, /note, /gallery）                    │
+│  展示端（/home, /note, /gallery, /digest…）          │
 │  管理端（/admin/*，JWT 保护）                        │
 └────────────────────┬────────────────────────────────┘
                      │ HTTP / REST API
@@ -61,15 +61,17 @@
 │                liminal-field-server                 │
 │            (NestJS 11 + Fastify + Pino)             │
 │                                                     │
-│  WorkspaceModule  ←→  ContentModule                 │
-│  NavigationModule ←→  AuthModule                   │
-│  MinioModule                                        │
+│  AuthModule    ContentModule   NavigationModule     │
+│  WorkspaceModule   HomeModule  DigestModule         │
+│  ImportModule  SkillModule  SettingsModule          │
+│  OssModule                                          │
 └──────┬──────────────────┬─────────────────┬─────────┘
        │                  │                 │
 ┌──────▼───┐      ┌───────▼───┐    ┌───────▼───┐
 │ MongoDB  │      │  Git 仓库  │    │   MinIO   │
-│（元数据） │      │（内容正文） │    │（草稿资源）│
-└──────────┘      └───────────┘    └───────────┘
+│（快照+   │      │（异步备份） │    │（草稿资源）│
+│ 元数据） │      └───────────┘    └───────────┘
+└──────────┘
 ```
 
 **技术栈**：
@@ -97,17 +99,23 @@
 服务端采用三层架构，职责严格分离：
 
 ```
-AuthModule          — 鉴权层（单用户 JWT）
-├── ContentModule   — 存储层（Git + MongoDB，无业务概念）
+AuthModule          — 鉴权层（多设备 JWT，bcrypt 密码验证）
+├── ContentModule   — 存储层（Snapshot + Git + MongoDB，无业务概念）
 ├── NavigationModule— 索引层（树形导航，scope 隔离）
-├── MinioModule     — 对象存储层（草稿资源生命周期）
+├── OssModule       — 对象存储层（MinIO，草稿资源生命周期）
+├── HomeModule      — 首页聚合（独立模块避免 ContentModule ↔ WorkspaceModule 循环依赖）
+├── ImportModule    — 内容导入（批量文件解析、session 状态机、确认写库）
+├── SkillModule     — Agent 技能注册（AI 工具插件，供 AgentModule 调用）
+├── DigestModule    — 智能简报（信息源管理、定时抓取、LLM 撰写、发布为 ContentItem）
+├── SettingsModule  — 系统配置（SystemConfig、归档/恢复、一键发布、Git 同步管理）
 └── WorkspaceModule — 业务层（跨 scope CRUD + 特化编排）
-    ├── WorkspaceService    — 通用 CRUD（create/update/delete/publish）
-    ├── NoteViewService     — Notes 特化（草稿、版本历史、资源上传）
-    └── GalleryViewService  — Gallery 特化（DTO 组装、封面图处理）
+    ├── WorkspaceService       — 通用 CRUD（create/update/delete/publish）
+    ├── NoteViewService        — Notes 特化（草稿、版本历史、资源上传）
+    ├── GalleryViewService     — Gallery 特化（DTO 组装、封面图处理）
+    └── AnthologyViewService   — Anthology 特化（多文件结构管理）
 ```
 
-**为什么这样分层**：`ContentModule` 只理解"内容"的物理存储（文件系统 + Git + MongoDB），不理解"笔记"或"画廊"的概念。`WorkspaceModule` 作为薄业务层负责编排，增加新 scope 只需扩展枚举值，不影响存储层。
+**为什么这样分层**：`ContentModule` 只理解"内容"的物理存储（Snapshot + Git + MongoDB），不理解"笔记"或"画廊"的概念。`WorkspaceModule` 作为薄业务层负责编排，增加新 scope 只需扩展枚举值，不影响存储层。`HomeModule` 单独存在是为了打破 ContentModule ↔ WorkspaceModule 之间的循环依赖。
 
 ### 3.2 内容状态机
 
@@ -119,24 +127,25 @@ AuthModule          — 鉴权层（单用户 JWT）
 │                                                        │
 │  editorDraft          最新草稿（MongoDB，autosave 缓冲）│
 │       ↓ commit                                         │
-│  latestVersion ────── Git commitHash（最新正式版本头）  │
+│  latestVersion ────── versionId（nanoid，指向 Snapshot）│
 │       ↓ publish                                        │
-│  publishedVersion ─── Git commitHash（当前公开版本头）  │
+│  publishedVersion ─── versionId（当前公开版本头）       │
 │                                                        │
-│  * publish 只切换指针，不创建新的 Git commit            │
-│  * Git 工作区永远干净（无 staged/unstaged 状态）        │
+│  * publish 只切换指针，不创建新的 Git commit/Snapshot   │
+│  * ContentSnapshot 是正文一手来源；Git commitHash 异步  │
+│    回填，不可用时不阻塞读                               │
 └────────────────────────────────────────────────────────┘
 ```
 
 **状态转换规则**：
 
-| 操作 | Git | MongoDB | 副作用 |
-|------|-----|---------|--------|
-| `saveDraft` | 无 | 写入 editorDraft | autosave，不产生版本 |
-| `commit` | 创建新 commit | 更新 latestVersion 指针 | 清理 editorDraft，MinIO 资源落盘 |
-| `publish` | 无 | publishedVersion := latestVersion | 内容对外可见 |
-| `unpublish` | 无 | publishedVersion := null | 内容对外不可见 |
-| `discardDraft` | 无 | 删除 editorDraft | 清理 MinIO 草稿资源 |
+| 操作 | MongoDB | Git | 副作用 |
+|------|---------|-----|--------|
+| `saveDraft` | 写入 editorDraft | 无 | autosave，不产生版本 |
+| `commit` | 创建 ContentSnapshot，更新 latestVersion 指针 | 异步创建 commit | 清理 editorDraft，MinIO 资源落盘 |
+| `publish` | publishedVersion := latestVersion | 无 | 内容对外可见 |
+| `unpublish` | publishedVersion := null | 无 | 内容对外不可见 |
+| `discardDraft` | 删除 editorDraft | 无 | 清理 MinIO 草稿资源 |
 
 ### 3.3 存储层设计
 
@@ -160,15 +169,16 @@ AuthModule          — 鉴权层（单用户 JWT）
 - **资源文件名** 经过消毒（小写 + 去特殊字符 + 8 位 UUID 后缀防冲突）
 - **分支策略**：`workspace/local`（本地工作分支），可配置推送远程
 
-#### MongoDB 元数据
+#### MongoDB 集合职责
 
-MongoDB 只存三类数据：
+MongoDB 是内容的一手数据源，存四类数据：
 
-1. **ContentItem** — 版本头指针（latestVersion / publishedVersion）
-2. **NavigationNode** — 树形导航索引（scope 隔离，支持多层级）
-3. **EditorDraft** — 草稿缓冲区（autosave 内容，与 ContentItem 解耦）
+1. **ContentItem** — 版本头指针（latestVersion / publishedVersion）及发布状态，不含正文。实体定义详见 `server/src/modules/content/content-item.entity.ts`。
+2. **ContentSnapshot** — 每次提交对应一个快照，存储该版本完整的 `bodyMarkdown`。**这是正文的权威来源**；独立集合避免 ContentItem 文档随版本累积无限膨胀（500 篇 × 20 版本 × 50 KB ≈ 500 MB 如果放 ContentItem 里）。详见 `server/src/modules/content/content-snapshot.entity.ts`。
+3. **NavigationNode** — 树形导航索引（scope 隔离，支持多层级）。详见 `server/src/modules/navigation/navigation.entity.ts`。
+4. **EditorDraft** — 草稿缓冲区（autosave 内容，与 ContentItem 解耦）。详见 `server/src/modules/workspace/editor-draft.entity.ts`。
 
-**设计原则**：正文 markdown、资产文件从不进入 MongoDB，查询开销永远恒定。
+**设计原则**：`ContentItem` 只存指针和状态，从不存正文；正文落在独立的 `ContentSnapshot` 集合，Git 异步回填 `commitHash` 作为备份锚点。查询复杂度与内容体量解耦。
 
 #### MinIO 草稿资源
 
@@ -197,29 +207,15 @@ MinIO 不可用时降级：启动日志打 WARN，草稿资源功能不可用，
 
 ### 3.4 认证与授权
 
-#### 单用户密码认证
+#### 多设备认证
 
-- 密码来源：环境变量 `ADMIN_PASSWORD`（明文，bcrypt hash 缓存内存）
-- 登录成功 → 签发 JWT（7 天有效期）→ 写入 httpOnly cookie
-- Cookie 配置：`sameSite: strict`、`secure: true`（生产）、`path: /api`
+单用户密码认证（`ADMIN_PASSWORD` + bcrypt），支持多设备信任令牌（device token）。登录成功签发 JWT，写入 httpOnly cookie。同时支持可信设备的免密登录、设备列表管理与单设备/全设备吊销。认证路由详见 `server/src/modules/auth/auth.controller.ts`。
 
 #### 全局 Guard 策略
 
 全局注册 `JwtAuthGuard`（`APP_GUARD`），默认所有路由需鉴权。通过 `@Public()` 装饰器显式标记公开路由，防止遗漏保护。
 
-**公开路由清单**：
-
-```
-POST  /auth/login          — 登录
-GET   /auth/check          — 检查登录态（前端路由守卫用）
-GET   /search              — 全局搜索（service 层强制 published 过滤）
-GET   /home                — 首页聚合
-GET   /spaces/:scope/items — 内容列表（service 层强制 published 过滤）
-GET   /spaces/:scope/items/:id — 内容详情（同上）
-GET   /spaces/:scope/items/:id/assets/:fileName — 资产直出
-```
-
-注意：公开路由在 service 层二次过滤 `visibility: published`，即使 JWT 被伪造也只能访问已发布内容。
+公开路由在 service 层二次过滤 `visibility: published`，即使 JWT 被伪造也只能访问已发布内容。
 
 ### 3.5 API 设计
 
@@ -285,61 +281,27 @@ GET    /api/v1/spaces/notes/items/:id/draft-assets/:fileName    → 代理草稿
 
 ## 4. 数据模型
 
-### ContentItem（MongoDB collection: `content_items`）
+核心集合及其设计意图如下。字段细节随代码演进，以各实体文件注释为准，此处只记录"为什么"。
 
-```typescript
-{
-  _id: string,                    // "ci_" + uuid 前12位，业务 ID
-  latestVersion: {
-    commitHash: string,           // Git SHA，最新正式 commit
-    title: string,
-    summary?: string,
-    changeNote?: string,
-    changeType?: 'patch' | 'major',
-    committedAt: Date,
-  },
-  publishedVersion?: {            // null = 未发布
-    commitHash: string,           // 与 latestVersion 相同或历史版本
-    title: string,
-    summary?: string,
-    publishedAt: Date,
-  },
-  changeLog?: ContentChangeLog[], // 历史版本列表（元数据，不含正文）
-  createdAt: Date,
-  updatedAt: Date,
-}
-```
+### ContentItem（`content_items`）
 
-### NavigationNode（MongoDB collection: `navigation_nodes`）
+保存两个版本头指针：`latestVersion`（最新提交）和 `publishedVersion`（当前公开版本）。Publish 只切换指针，不产生 Git commit；`publishedAt` 记录首次发布时间。正文永远不写入此文档。
+实体定义详见 `server/src/modules/content/content-item.entity.ts`。
 
-```typescript
-{
-  _id: ObjectId,                  // Mongo 原生 ID（前端用 string）
-  scope: 'notes' | 'gallery',    // scope 隔离
-  name: string,                   // 显示名称
-  parentId?: ObjectId,            // null = 根节点
-  nodeType: 'subject' | 'content', // 文件夹 vs 文件
-  contentItemId?: string,         // 关联 ContentItem._id（文件夹为空）
-  order: number,                  // 同级排序权重
-  createdAt: Date,
-  updatedAt?: Date,
-}
-```
+### ContentSnapshot（`content_snapshots`）
 
-### EditorDraft（MongoDB collection: `editor_drafts`）
+每次业务提交创建一个快照，存储该版本的完整 `bodyMarkdown`。这是正文的一手数据源，而非 Git 的读取结果。Git 的 `commitHash` 异步回填作为备份锚点，未完成时为空。独立集合的设计理由：避免把历次版本的正文全部塞进 ContentItem 文档导致单文档膨胀失控。
+实体定义详见 `server/src/modules/content/content-snapshot.entity.ts`。
 
-```typescript
-{
-  _id: ObjectId,
-  contentItemId: string,          // 关联 ContentItem._id
-  title: string,
-  summary: string,
-  bodyMarkdown: string,           // 草稿正文（可能含草稿资源 URL）
-  changeNote: string,
-  savedAt: Date,
-  savedBy: string,
-}
-```
+### NavigationNode（`navigation_nodes`）
+
+树形导航索引，通过 `scope` 字段（`notes | gallery | anthology | digest`）隔离业务模块。**2026-05-29 起节点同质化**：不再有 subject/content 二分，每个节点都必须挂一个 `contentItemId`（required）；"容器"的概念由运行时判断（有子节点 = 容器），不靠类型字段。
+实体定义详见 `server/src/modules/navigation/navigation.entity.ts`。
+
+### EditorDraft（`editor_drafts`）
+
+Autosave 草稿缓冲区，与 ContentItem 解耦。草稿随时可丢弃，commit 后清除。存储 `bodyMarkdown`（可能含 MinIO 草稿资源 URL）；commit 时正文改写资源 URL 后落入 ContentSnapshot。
+实体定义详见 `server/src/modules/workspace/editor-draft.entity.ts`。
 
 ---
 
@@ -559,10 +521,11 @@ transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
   → 服务端 NoteViewService.saveContent():
       1. MinIO 草稿资源落盘到 Git assets 目录
       2. markdown 中草稿 URL 改写为 ./assets/{name}
-      3. ContentGitService.commit() → git add && git commit
-      4. MongoDB ContentItem.latestVersion := 新 commitHash
-      5. MinIO 清理该 id 下所有对象
-      6. MongoDB EditorDraft 删除
+      3. 创建 ContentSnapshot（bodyMarkdown 落库，MongoDB 一手数据）
+      4. MongoDB ContentItem.latestVersion := 新 versionId（nanoid）
+      5. 异步触发 Git commit，commitHash 回填到 ContentSnapshot
+      6. MinIO 清理该 id 下所有对象
+      7. MongoDB EditorDraft 删除
   → 前端提示成功，跳转或留在编辑页
 ```
 
@@ -572,12 +535,12 @@ transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
 管理端点击「发布」
   → PUT /spaces/notes/items/:id/publish
   → 服务端: publishedVersion := latestVersion（仅更新 MongoDB 指针）
-  → 无 Git 操作，无新 commit
+  → 无 Git 操作，无新 commit/Snapshot
 
 展示端请求内容
   → GET /spaces/notes/items/:id（无 JWT）
-  → 服务端 visibility=public：读 publishedVersion.commitHash
-  → Git: git show {commitHash}:content/{id}/body.md
+  → 服务端 visibility=public：读 publishedVersion.versionId
+  → 查询 ContentSnapshot 取 bodyMarkdown（一手数据，不过 Git shell）
   → 返回内容（publishedVersion 对应的历史快照）
 ```
 
@@ -585,8 +548,8 @@ transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
 
 ```
 管理端点击历史版本条目
-  → GET /spaces/notes/items/:id/versions/:commitHash
-  → 服务端: git show {commitHash}:content/{id}/body.md
+  → GET /spaces/notes/items/:id/versions/:versionId
+  → 服务端: 查询 ContentSnapshot.bodyMarkdown（优先；Git 作为兜底）
   → 返回历史版本快照（只读）
 
 前端以只读模式展示历史正文
@@ -658,10 +621,10 @@ minio:
 
 | 服务 | 用途 | 必需 |
 |------|------|------|
-| MongoDB | 元数据存储 | 是 |
-| Git | 内容版本控制（本地，自动初始化） | 是 |
+| MongoDB | 内容快照 + 元数据（一手数据源） | 是 |
+| Git | 内容历史异步备份（本地，自动初始化） | 是 |
 | MinIO | 草稿资源临时存储 | 否（降级运行） |
-| Git Remote | 内容备份 / 同步 | 否（可选） |
+| Git Remote | 异地冗余备份 / 同步 | 否（可选） |
 
 **启动 MinIO（Docker）**：
 
@@ -698,14 +661,14 @@ pnpm build                  # 生产编译到 dist/
 
 ## 8. 关键设计决策
 
-### 8.1 为什么用 Git 做版本控制而不是数据库
+### 8.1 为什么同时用 Git 备份而不只用 MongoDB
 
-数据库版本化（在同一条记录里追加历史）会导致：
-- 字段无限增长
-- 正文无法做 diff
-- 历史无法独立检出
+`ContentSnapshot` 已是正文的一手数据源，Git 作为异步备份保留是因为：
+- Git 提供内容不可变历史和 diff 能力，任何版本可独立检出为纯文本
+- 作为本地文件系统备份，在 MongoDB 故障或数据迁移时提供兜底
+- 支持推送远程 Git 仓库（如 GitHub），做异地冗余
 
-Git 天然提供内容 diff、历史不可变性、分支管理。MongoDB 只存"指针"（commitHash），两者各司其职，互不侵入。
+MongoDB 的 ContentSnapshot 侧重"快速读写（不过 shell）"；Git 侧重"历史可证明"。两者角色互补，不冗余。
 
 ### 8.2 为什么 Publish 不创建新 Git commit
 
@@ -719,28 +682,25 @@ Git 天然提供内容 diff、历史不可变性、分支管理。MongoDB 只存
 
 额外好处：MinIO 未来可以扩展为其他类型临时文件的存储（附件预览、临时导出等）。
 
-### 8.4 为什么 MongoDB 不存正文
+### 8.4 为什么正文存在 ContentSnapshot 而非 ContentItem
 
-正文属于内容，内容的归宿是 Git。如果 MongoDB 也存一份正文：
-- 两个存储之间需要同步，产生一致性问题
-- MongoDB 文档大小有限制（16MB），长文章受限
-- 查询成本随内容增长线性增加
+最初的设计是"正文永远在 Git，MongoDB 只存指针"，但读 Git 有延迟且需要 shell 调用。演进后的方案：正文存在独立的 `ContentSnapshot` 集合，MongoDB 成为内容的一手数据源，Git 降为异步备份。
 
-MongoDB 只存"如何找到内容"（指针 + 元数据），实际内容永远在 Git。
+不把正文直接塞进 `ContentItem` 文档，是因为每次提交都会追加一份正文，500 篇 × 20 版本 × 50KB ≈ 500MB 全堆在 ContentItem 里会导致单文档超限（MongoDB 16MB 上限）和查询性能退化。独立 `ContentSnapshot` 集合让 ContentItem 永远轻量，按 `contentItemId + createdAt` 索引的快照集合支持高效历史查询。
 
 ### 8.5 为什么单用户而不做完整账号系统
 
-项目定位是个人内容管理系统，多用户会带来权限模型、账号管理、数据隔离等大量复杂度。单用户通过环境变量配置密码，架构最简，安全性足够（bcrypt + JWT httpOnly cookie）。
+项目定位是个人内容管理系统，多用户会带来权限模型、账号管理、数据隔离等大量复杂度。单用户通过环境变量配置密码，架构最简；多设备信任令牌（device token）解决了在不同设备上免重复输密码的体验问题，同时不引入多账号复杂度。
 
 ### 8.6 Scope 隔离设计
 
-Notes 和 Gallery 在存储层（NavigationNode、ContentItem）通过 `scope` 字段隔离，共享同一套 CRUD 逻辑。新增业务模块的步骤：
+Notes、Gallery、Anthology、Digest 四个业务模块在存储层（NavigationNode、ContentItem）通过 `scope` 字段隔离，共享同一套 CRUD 逻辑。新增业务模块的步骤：
 
-1. 在 `NavigationScope` 枚举中添加值
-2. 根据需要添加 ViewService（如 `BookViewService`）
+1. 在 `NavigationScope` 枚举中添加值（`server/src/modules/navigation/navigation.entity.ts`）
+2. 根据需要添加 ViewService（如 `AnthologyViewService`）
 3. 在 Controller 添加特化端点（如需要）
 
-存储层、API 路由、认证机制全部零改动。
+存储层、API 路由、认证机制全部零改动。Digest 虽然与 Anthology 结构同构，但业务语义（公开列表、Aurora agent kind、管理入口）完全不同，故独立 scope 而非复用。
 
 ---
 

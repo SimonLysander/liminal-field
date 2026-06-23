@@ -296,6 +296,152 @@ handle_email({
 
 ---
 
+## 设计原则
+
+以下原则是对两条核心的扩展，在拆工具时随时对照。
+
+### 1. 从 agent 视角，不是包装 API
+
+> "最适合 agent 的工具往往对人类来说也直观有用" — Anthropic
+
+不是把数据库 CRUD 暴露给 agent，而是从任务视角设计——agent 要做什么事，给它一个能做成这件事的工具。
+
+```
+✗ 数据库思维：list_memories + read_memory + write_memory + delete_memory
+✓ 任务思维：remember("用户不喜欢表格") → 系统自动处理分类、去重、合并
+```
+
+### 2. 外层粗，内层细
+
+主 agent 的工具要粗粒度——一次调用完成一件事。内部实现可以有多步操作。
+
+```
+主 agent：remember("用户不喜欢表格")   ← 一个参数，一步搞定
+  └── Memory Agent 内部：list → read → 判断 → write   ← 多步操作，主 agent 不关心
+```
+
+类比 Anthropic 的例子：`get_customer_context` 对外一步拿到客户全貌，内部可能查了 3 张表。
+
+### 3. description 是教程，不是一句话
+
+工具 description 不是一句话概述，要像给新员工介绍工具——写使用场景、参数写法（好/坏示例）、与其他工具的关系。在 JSON Schema 的 `examples` 字段提供调用示例。微小的 description 改进能产生显著的性能提升。
+
+### 4. 一次给够，不要二次往返
+
+工具返回的信息要让 agent 能直接做决策，不需要再调一次工具补信息。
+
+```
+✗ search 只返回 {id, title, snippet} → agent 要再调 read 才能判断相关性
+✓ search 返回 {id, title, scope, wordCount, updatedAt, snippet} → 一步到位
+```
+
+### 5. 如无必要，勿增实体
+
+不要用枚举字段来分类行为，用提示词和示例引导就够了。你不能保证模型填对枚举字段，但好的示例能教会模型正确行为。
+
+```
+✗ source: "user_explicit" | "agent_inferred"   ← 你保证不了模型填对
+✓ 用 description 里的示例教模型什么时候记、怎么写
+```
+
+### 6. 命名显而易见
+
+工具名要直接传达功能，避免过于泛化：
+
+```
+✗ get_content / read_doc / search
+✓ get_current_draft / read_document_content / search_knowledge_base
+```
+
+### 7. 错误返回要有可操作上下文
+
+错误说清楚"为什么"（对应两条核心），同时给出当前状态，让 agent 能据此决策。只有上下文才让 agent 能自主恢复，光一个错误码不够。
+
+```
+✗ "Error 404"
+✓ "没找到标题为「量子计算」的记忆。当前记忆：[写作偏好、职业背景]"
+```
+
+---
+
+## 项目工具返回约定
+
+本节是项目级实现契约，所有工具必须遵守。与上面的设计方法配合：设计阶段用 5 步法推演，实现阶段按此契约落地代码。
+
+### ToolResult 统一契约
+
+所有工具的 `execute` 一律返回 JSON 字符串，结构如下：
+
+```ts
+interface ToolResult {
+  summary: string;          // 一行人类可读（前端直接显示；也给模型 TL;DR）
+  detail?: string;          // 给模型的主体内容（正文 / 命中列表 / 结论），纯文本
+  meta?: {
+    status?: 'ok' | 'partial' | 'not_found' | 'ambiguous' | 'error';
+    total?: number;         // 命中 / 条目总数
+    shown?: number;         // 本次给了多少（条 / 字符）
+    hasMore?: boolean;      // 还有没有
+    nextOffset?: number;    // 续取用
+    list?: string[];        // 命中 / 候选标题数组（给前端 NestedList 渲染）
+    [k: string]: unknown;   // 工具特定字段
+  };
+}
+```
+
+**三字段分工：**
+
+- **模型**读整个 JSON（summary + detail + meta 都看得到，能据 meta 决定续取 / 重试）。
+- **前端 `ToolCallCard`** 只取 `summary` 展示，按 `meta.status` 加极简样式标记。前端不解析文本、不算统计、不拼接 ID。
+- **summary** 必须是人话，不含内部 ID；ID 放 `meta`（供模型续用，但不展示给用户）。
+
+非 JSON 的旧返回 → 前端回退显示原文首行（迁移期兼容）。
+
+### 五条边角铁律
+
+1. **不静默丢**：截断 / 超量 → 必给 `total + hasMore + nextOffset`，让 agent 能续取。
+2. **不静默失败**：找不到 / 没改成 → `status:'not_found'` + 明确 summary，绝不假装成功。
+3. **歧义不瞎猜**：匹配到多条 → `status:'ambiguous'` + 候选列表，**不执行破坏性操作**。
+4. **不完整要标记**：达步数 / 超时 → `status:'partial'`，summary 写明"结论可能不全"。
+5. **不泄漏内部物**：summary 里不出现原始 ID / 类型方括号；ID 放 `meta`（给模型续用）。
+
+---
+
+## 踩坑教训
+
+### 1. 不要用枚举字段代替提示词
+
+给工具参数加了 `source: "user_explicit" | "agent_inferred"` 这类枚举字段——你没法保证模型填对了，而填错了之后系统拿着错误分类继续运行，比没有这个字段更危险。经验：一段好的 description + 示例比枚举字段更可靠，且不引入无法验证的字段契约。
+
+**原则**：工具参数只放"做这件事本身需要的信息"（Step 3），不靠参数字段引导模型行为。
+
+### 2. generateObject 不是 agent
+
+用 `generateObject` 一次性输出 JSON 不是 agent，是函数调用。真正的 agent 有自己的工具集、能多步推理、能在查看已有数据后再决策（list → read → 判断 → write）。
+
+当某个"agent"只做了一次结构化输出时，说明它不需要 agent 形式——要么简化成函数调用，要么给它真正的工具让它多步运行。把 `generateObject` 穿上 agent 外衣只会引入不必要的复杂度，同时无法利用 agent 的多步推理优势。
+
+### 3. 数据类型设计：以加载策略为区分，而非内容语义
+
+最初设计了过多数据分类（4 种记忆类型），导致每次写入都要做额外判断，而且分类边界模糊。最终砍到 2 种，区分标准不是"内容是什么"，而是"加载策略是什么"——始终需要的全文注入，按需加载的只注入标题索引。
+
+**原则**：设计数据类型时先问"谁用、何时加载、怎么用"，不靠直觉分类内容语义。过度分类是架构噪音，简单的加载策略区分才是稳定的判断轴。
+
+### 4. 不要把业务概念混入基础设施
+
+记忆系统里不该有内容 ID、内容分区等业务字段；session key 应该是不透明字符串，业务层决定其语义。把业务概念硬编进基础设施，会在功能扩展时制造耦合——多个不同业务场景共用同一套基础设施时，各自的 key 语义完全不同，基础设施不应该感知业务差异。
+
+### 5. 复杂工具 / 子系统先调研，不要直接写
+
+最初想直接写向量搜索式记忆系统，调研后发现业界成熟做法（文件式 CRUD + LLM 判断去重）比预想简单得多，架构随之从复杂转向简单。复杂工具系统动手之前先看业界有没有现成范式，避免重复造轮子且容易踩坑。
+
+**规则**：功能明显有业界现成方案时，先调研再开干，不要什么都手写。
+
+### 6. 主 agent 工具要保持粗粒度，细节交给专职子 agent
+
+主 agent 的 `remember` 只接受一个 `content` 字符串——不传 type、不传 title、不传 key。分类、去重、合并全部由 Memory Agent 内部决策。如果主 agent 工具越来越细（传越来越多字段），说明正在把子 agent 的职责向上溢出，主 agent 的工具会逐渐退化成内部实现的映射，而不是面向任务的抽象。
+
+---
+
 ## 自检
 
 写完工具，每个工具问自己 5 个问题：
@@ -305,14 +451,3 @@ handle_email({
 3. **返回**：里面有没有 `next_action / suggestion / 建议 X` 这种字段？有 → 改成事实。
 4. **异常**：错误信息是"为什么挂了"，还是"该怎么办"？后者 → 改成前者。
 5. **反馈展示**：summary 是不是人话不含内部 ID？「碰了一组东西」的工具有没有 meta.list 给前端预览 / 日志聚合？
-
----
-
-## 项目沿用
-
-具体的字段命名规范（summary / detail / meta）、ToolResult JSON 契约、jsonSchema 风格、五条边角铁律 —— 见 `docs/agent-tools-redesign.md`。
-
-那些是**实现规范**，本 SKILL 是**设计方法**。两者配合用：
-
-- 设计阶段：用本 SKILL 的 4 步推演
-- 实现阶段：按 `agent-tools-redesign.md` 的字段规范落地代码

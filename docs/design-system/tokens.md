@@ -18,8 +18,28 @@
 见 `design-language.md` §3(底色 / 语义醒目档 / 草木)。**偏差:硬编码 hex ~101 → 全换 token。**
 
 ### 字号 — Tailwind `text-*`(已有)
-语义角色映射(见 index.css Type scale):Caption `text-2xs` · Subheadline `text-xs` · Callout `text-sm` · Body `text-base` · 卡片 `text-md` · 阅读 `text-lg` · h3/h2/h1 `text-xl/2xl/3xl` · 页面标题 `text-4xl` · 文章标题 `text-5xl`。
-**规则:禁 inline `fontSize`。偏差 ~188。**
+语义角色映射(见 index.css Type scale):Caption `text-2xs` · Subheadline `text-xs` · Callout `text-sm` · Body `text-base` · 卡片 `text-md` · 阅读 `text-lg` · h3/h2/h1 `text-xl/2xl/3xl` · 页面标题 `text-4xl` · 文章标题 `text-5xl` · 页面主标题 `text-6xl`(28px,首页问候语)。
+
+完整字号语义表:
+
+| token | px | Apple HIG 对应 | 典型场景 |
+|---|---|---|---|
+| `text-2xs` | 10 | Caption | section label、节点计数、分隔符 |
+| `text-xs` | 11 | Subheadline | 面包屑、加载状态、底部按钮 |
+| `text-sm` | 12 | Callout | TOC 条目、版本时间线 |
+| `text-base` | 13 | Body / Headline | 节点名、面板标题、导航菜单项 |
+| `text-md` | 14 | — | 卡片描述、表格、内联代码 |
+| `text-lg` | 15 | Title 3 | markdown body、对话消息、阅读正文 |
+| `text-xl` | 16 | — | markdown h3 |
+| `text-2xl` | 18 | — | markdown h2 |
+| `text-3xl` | 20 | — | markdown h1 |
+| `text-4xl` | 22 | Title 1 | 页面级标题 |
+| `text-5xl` | 26 | Large Title | 文章标题 |
+| `text-6xl` | 28 | — | 页面主标题、首页问候语 |
+
+> 值的定义在 `client/src/index.css` `@theme` 段(`--text-*`)，Type scale 语义注释在同文件 `:root` 内。本表不镜像 CSS 值，只说明「为什么这么分级」。
+
+**规则:禁 inline `fontSize`。相同语义角色两端(展示端/管理端)使用相同 token。偏差 ~188。**
 
 ### 间距 — Tailwind scale(不另造)
 4px 基数:`1=4 2=8 3=12 4=16 5=20 6=24 8=32 10=40`。用 `p-/m-/gap-/space-`。
@@ -39,7 +59,6 @@
 ### 层级 z-index(❌ 新建,写进 index.css)
 ```css
 --z-base: 0;        /* 常规流 */
---z-raised: 1;      /* 卡片 hover 抬升 */
 --z-sticky: 10;     /* sticky 顶栏 / 侧栏 */
 --z-dropdown: 1000; /* 下拉 / 气泡 / tooltip */
 --z-overlay: 2000;  /* Modal 遮罩 */
@@ -53,23 +72,20 @@
 
 ## L2 · 基础件(Primitives)— 优先定制现有 shadcn,不另造
 
-**`<Button>`** — base: `ui/button.tsx`
-- variant: `primary`(ink 底 / paper 字)· `ghost`(透明 / hover shelf)· `danger`(用 `--danger`)· `subtle`(shelf 底)
+**`<Button>`** — 已有(`ui/button.tsx`)
+- variant: `primary`(accent 紫底 / accent-contrast 字,即 `var(--accent)`)· `ghost`(透明 / hover shelf)· `danger`(用 `--danger`)· `subtle`(shelf 底)
 - size: `sm`(h-8)· `md`(h-9);`icon`(方形)
-- 收编:**12 处 inline 按钮色模式 + 各页自写按钮**
+  > **设计决策**:primary 用 `--accent`(长春花紫,daylight #6667AB / midnight #9091CE)而非 ink 全黑,视觉主动性更强,明确主操作 CTA 语义。注意:shadcn 兼容层的 `--color-primary` 仍映射到 `var(--ink)`,是为 Plate UI 等 shadcn 组件内部兼容,与我们 `Button` primary variant 走不同引用路径,互不干扰。
 
-**`<Input>` / `<Textarea>`** — base: `ui/input.tsx`
+**`<Input>` / `<Textarea>`** — 已有(`ui/input.tsx`)
 - 统一 h-9、`rounded-lg`、shelf 底、separator 边、focus 柔光环(已有全局样式)
-- 收编:仅 2 文件在用,其余 inline → 全换
 
-**`<Dot>`**(状态点)— 新建
+**`<Dot>`**(状态点)— 已有(`ui/dot.tsx`)
 - variant: `success/danger/warning/info`(语义色)· `herb`(草木,用户场景)· `neutral`
 - size: 默认 7px 圆
-- 收编:散落 `borderRadius:999px` 小圆点
 
-**`<Tag>` / `<Pill>`** — 新建
+**`<Tag>` / `<Pill>`** — 已有(`ui/tag.tsx`)
 - variant: `default`(shelf)· 可带前置 `<Dot>`
-- 收编:inline 标签/胶囊
 
 **`<Text>`** — 不建组件,用 Tailwind `text-*` + color token 即标准。
 **`<Icon>`** — lucide;**统一 `strokeWidth={2}`(操作)/ `1.5`(装饰)、size 阶梯 12/14/16/20**。
@@ -78,29 +94,28 @@
 
 ## L3 · 复合件(Components)
 
-**`<Modal>`** 🔴 最大头 — base: `ui/dialog.tsx`
+**`<Modal>`** — 已有(`shared/Modal.tsx`,base: `ui/dialog.tsx`)
 - 结构:`<Overlay>`(遮罩固定 `rgba(0,0,0,.4)` 纯暗化、**无 blur**、`z-overlay`)+ 居中卡(`paper`/`rounded-xl`/`shadow-xl`/`z-modal`)+ 可选 header/footer
 - props:`open / onClose / title? / footer?`;Esc / 点遮罩关闭
-- 收编:**11 个独立 Modal + 15 处自写遮罩**全部收编
 
 **确认弹框** — 已有 `ConfirmContext.confirm({title,message,confirmLabel,cancelLabel})`
 - 收编:各页自写的确认 Modal → 一律走 `confirm()`
 
-**`<StatusDot>` / `<SaveStatus>`** — 新建(收编 3 处重复定义)
+**`<SaveStatus>`** — 已有(`shared/SaveStatus.tsx`);**`<StatusDot>`** — 待建
 - `<SaveStatus state>`:`saving/dirty/saved/error` → 自动配 `<Dot>` + 文案,自动保存场景统一
+- `<StatusDot>`(待建):通用状态指示点,供非保存场景复用
 
-**`<EmptyState>`** — 新建(接住纸艺 todo #10)
+**`<EmptyState>`** — 已有(`shared/EmptyState.tsx`)
 - 结构:**统一一株纸艺植物**(GPT 素材,占位用 garden webp)+ 标题(`text-lg`/`ink-faded`)+ 可选副标题 + 可选 action
-- 收编:各页 lucide 图标+文字的空态
 
-**`<FieldError>` / `<FormError>`** — 新建(收编 14 处错误提示)
+**`<FieldError>`** — 已有(`ui/field-error.tsx`);**`<FormError>`** — 待建(页面级/全局表单错误)
 - 字号锁 `text-xs`、色 `--danger`,统一间距
 
-**`<Card>` / `<ListRow>`** — 新建
+**`<Card>` / `<ListRow>`** — 待建
 - `<ListRow>`:左(icon/日期)+ 中(标题+副标题,truncate)+ 右(meta/action);hover shelf。首页笔记行、列表页复用
 - `<Card>`:`rounded-lg`/separator 边/hover 升阴影
 
-**`<Field label error>`** — 包 `<Input>`,统一表单行(label + 控件 + 错误)
+**`<Field label error>`** — 待建;包 `<Input>`,统一表单行(label + 控件 + 错误)
 
 ---
 
@@ -164,6 +179,7 @@
 4. 优先定制现有 shadcn,不造轮子。
 
 ## 变更记录
+- **2026-06-23** 对齐 index.css 现状四项修正:① 字号表补 `text-6xl`(28px/页面主标题)并扩展为完整语义表;② Button primary 描述由"ink 底"更新为"accent 紫底"并记录 shadcn 兼容层与设计系统引用路径不冲突的决策;③ z-index 表删除 `--z-raised`(index.css 无此变量);④ L2/L3 组件状态更新——已建(Button/Input/Dot/Tag/FieldError/Modal/EmptyState/SaveStatus)标「已有」并补文件路径,未建(StatusDot/FormError/Card/ListRow/Field)标「待建」。
 - **2026-05-22** 初版纲要 → 完整设计。L1 补 z-index scale;L2/L3 列全标准件(variant/职责/收编),确立"设计完再实施"工作法。
 - **2026-05-22** 补响应式横切维度:范围分治(展示端响应式 / 管理端桌面优先)、统一断点 token(对齐 Tailwind,废 480/520/max-[)、滚动模型、容器查询策略。
 - **2026-05-23** 确立 **Notion 紧凑尺寸基准**(照 Notion DOM 实测):控件高 **28px**(sm 24)、图标 **20**(按钮内 18)、字号 主 **14** / 次·快捷键 **12**、圆角 控件 `sm` · 浮层 `xl`、**1px 细边**、菜单项行高 **28** · 图标 **16**(密集菜单行用 16,区别一般图标 20——20 在 28 行里占满显胖)、浮层宽 **~256**。Button / Input 已按此重做;菜单 / 就近浮层组件待建。
