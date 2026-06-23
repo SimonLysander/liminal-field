@@ -1,7 +1,7 @@
 # Client — multi-stage: build with Node, serve with Nginx
 FROM node:22-alpine AS build
 ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.28.2 --activate
 WORKDIR /app
 COPY package.json pnpm-lock.yaml .npmrc* ./
 RUN pnpm install  --ignore-scripts --registry https://registry.npmmirror.com
