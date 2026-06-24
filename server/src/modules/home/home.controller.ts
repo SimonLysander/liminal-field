@@ -93,8 +93,7 @@ export class HomeController {
               const text = snapshot.bodyMarkdown
                 .replace(/^---[\s\S]*?---\s*/m, '')
                 .replace(/[#*_[\]()>`~\\|>-]/g, '');
-              const cjk = (text.match(/[一-鿿㐀-䶿]/g) ?? [])
-                .length;
+              const cjk = (text.match(/[一-鿿㐀-䶿]/g) ?? []).length;
               const latin = text
                 .replace(/[一-鿿㐀-䶿]/g, '')
                 .split(/\s+/)

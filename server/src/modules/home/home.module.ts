@@ -7,7 +7,12 @@ import { HomeController } from './home.controller';
 
 @Module({
   // DigestSharedModule 提供 DigestReportRepository（首页简报摘要聚合用）
-  imports: [ContentModule, NavigationModule, WorkspaceModule, DigestSharedModule],
+  imports: [
+    ContentModule,
+    NavigationModule,
+    WorkspaceModule,
+    DigestSharedModule,
+  ],
   controllers: [HomeController],
 })
 export class HomeModule {}
