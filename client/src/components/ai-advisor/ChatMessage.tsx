@@ -76,6 +76,10 @@ export function ChatMessage({
             color: 'var(--ink)',
             // 对话是同一个阅读面:用户发言与 Aurora 回答统一用阅读体(霞鹜文楷)
             fontFamily: 'var(--font-reading)',
+            // 纯文本直渲会把 \n 折叠成空格 → 用户打的换行/列表全挤成一行。
+            // pre-wrap 保住换行与缩进(所见即所得);overflowWrap 让超长串仍能换行不撑破气泡。
+            whiteSpace: 'pre-wrap',
+            overflowWrap: 'anywhere',
           }}
         >
           <UserContentWithReferenceChips content={content} references={references} />
