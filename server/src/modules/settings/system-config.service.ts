@@ -47,6 +47,8 @@ export interface SettingsConfigView {
       thinkModel: string;
       /** 视觉模型,可选;空串表示该 provider 不支持视觉 */
       visionModel: string;
+      /** 上下文窗口(token):compaction 分母,手动必填配置 */
+      contextWindow: number;
       hasApiKey: boolean;
     }[];
     /** 当前启用的提供商 id */
@@ -331,6 +333,7 @@ export class SystemConfigService implements OnModuleInit {
           standardModel: p.standardModel,
           thinkModel: p.thinkModel,
           visionModel: p.visionModel ?? '',
+          contextWindow: p.contextWindow ?? 0,
           hasApiKey: !!p.apiKey,
         })),
         activeProviderId: config?.activeAiProviderId || '',
@@ -486,6 +489,7 @@ export class SystemConfigService implements OnModuleInit {
       thinkModel?: string;
       visionModel?: string;
       apiKey?: string;
+      contextWindow?: number;
     },
   ): Promise<void> {
     const config = await this.repo.get();
@@ -507,6 +511,9 @@ export class SystemConfigService implements OnModuleInit {
           ? { visionModel: fields.visionModel }
           : {}),
         ...(fields.apiKey !== undefined ? { apiKey: fields.apiKey } : {}),
+        ...(fields.contextWindow !== undefined
+          ? { contextWindow: fields.contextWindow }
+          : {}),
       };
     });
     await this.repo.patch({ aiProviders: providers });

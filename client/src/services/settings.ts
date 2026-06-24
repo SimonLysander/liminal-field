@@ -97,6 +97,8 @@ export interface SettingsConfigView {
       thinkModel: string;
       /** 视觉模型,可选;空串表示该 provider 不支持视觉 */
       visionModel: string;
+      /** 上下文窗口(token):compaction 分母,手动必填 */
+      contextWindow: number;
       hasApiKey: boolean;
     }[];
     /** 当前启用的提供商 id */
@@ -204,6 +206,7 @@ export const settingsApi = {
     standardModel: string;
     thinkModel: string;
     visionModel?: string;
+    contextWindow: number;
   }) =>
     request<{ success: boolean; id: string }>('/settings/ai-providers', {
       method: 'POST',
@@ -229,6 +232,7 @@ export const settingsApi = {
       thinkModel?: string;
       visionModel?: string;
       apiKey?: string;
+      contextWindow?: number;
     },
   ) =>
     request<{ success: boolean }>(`/settings/ai-providers/${id}`, {

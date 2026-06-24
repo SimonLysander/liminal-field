@@ -13,6 +13,7 @@
  * - push-to-remote / sync-from-remote：数据同步操作
  */
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -57,27 +58,21 @@ import {
 
 /**
  * AI 提供商预设（baseUrl 由后端维护，前端只传 provider id）。
- * contextWindow:各家旗舰模型的上下文窗口(token)，作为 compaction 计算的分母预设值，用户可在 UI 覆盖。
+ * 注:contextWindow 不预设——各家 /models 不暴露上下文窗口,改由 UI 添加时手动必填(见 addAiProvider)。
  * 添加新提供商时只需在此处追加，无需改动其他逻辑。
  */
-const AI_PROVIDER_PRESETS: Record<
-  string,
-  { name: string; baseUrl: string; contextWindow: number }
-> = {
+const AI_PROVIDER_PRESETS: Record<string, { name: string; baseUrl: string }> = {
   deepseek: {
     name: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com',
-    contextWindow: 64000,
   },
   zhipu: {
     name: '智谱 GLM',
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-    contextWindow: 32000,
   },
   moonshot: {
     name: 'Moonshot',
     baseUrl: 'https://api.moonshot.cn/v1',
-    contextWindow: 32000,
   },
 };
 
@@ -157,11 +152,16 @@ export class SettingsController {
       standardModel: string;
       thinkModel: string;
       visionModel?: string;
+      contextWindow: number;
     },
   ): Promise<{ success: boolean; id: string }> {
     const preset = AI_PROVIDER_PRESETS[dto.provider];
     if (!preset) {
       throw new Error(`Unknown provider: ${dto.provider}`);
+    }
+    // contextWindow 手动必填:各家 /models 不暴露上下文窗口,UI 必须显式填(compaction 分母,不能缺)。
+    if (!dto.contextWindow || dto.contextWindow <= 0) {
+      throw new BadRequestException('contextWindow 必填且需大于 0');
     }
     const id = nanoid(8);
     await this.systemConfigService.addAiProvider({
@@ -174,7 +174,7 @@ export class SettingsController {
       standardModel: dto.standardModel,
       thinkModel: dto.thinkModel,
       visionModel: dto.visionModel,
-      contextWindow: preset.contextWindow,
+      contextWindow: dto.contextWindow,
     });
     return { success: true, id };
   }
@@ -211,8 +211,12 @@ export class SettingsController {
       thinkModel?: string;
       visionModel?: string;
       apiKey?: string;
+      contextWindow?: number;
     },
   ): Promise<{ success: boolean }> {
+    if (dto.contextWindow !== undefined && dto.contextWindow <= 0) {
+      throw new BadRequestException('contextWindow 需大于 0');
+    }
     await this.systemConfigService.updateAiProvider(id, dto);
     return { success: true };
   }

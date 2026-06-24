@@ -212,6 +212,8 @@ function EditProviderForm({
   });
   // 视觉模型:可选、独立 state(不进必填三档),自由输入——视觉模型常不在 /models 列表里
   const [visionModel, setVisionModel] = useState(provider.visionModel ?? '');
+  // 上下文窗口:回填当前值,可改;必填
+  const [contextWindow, setContextWindow] = useState(String(provider.contextWindow ?? ''));
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -241,11 +243,17 @@ function EditProviderForm({
   const handleSave = async () => {
     setSaving(true);
     try {
+      const ctxNum = Number(contextWindow);
+      if (!Number.isFinite(ctxNum) || ctxNum <= 0) {
+        banner.error('请填写上下文窗口(token,如 65536)');
+        return;
+      }
       const updates: Parameters<typeof settingsApi.updateAiProvider>[1] = {
         flashModel: tierValues.flashModel,
         standardModel: tierValues.standardModel,
         thinkModel: tierValues.thinkModel,
         visionModel: visionModel.trim(),
+        contextWindow: ctxNum,
       };
       if (apiKey.trim()) updates.apiKey = apiKey.trim();
       await settingsApi.updateAiProvider(provider.id, updates);
@@ -313,8 +321,24 @@ function EditProviderForm({
       {/* 视觉模型(可选):跟三档并排在同一区,但自由输入、不必填 */}
       <VisionModelField value={visionModel} onChange={setVisionModel} disabled={saving} />
 
+      {/* 上下文窗口(必填):各家 API 不暴露,手动填,作 compaction 分母 */}
+      <div>
+        <FieldLabel>
+          上下文窗口 (token)
+          <span className="ml-2 font-normal" style={{ color: 'var(--ink-ghost)' }}>
+            必填;各家 API 不提供,查模型文档,如 65536 / 131072
+          </span>
+        </FieldLabel>
+        <TextInput
+          value={contextWindow}
+          onChange={setContextWindow}
+          placeholder="如 65536"
+          disabled={saving}
+        />
+      </div>
+
       <div className="flex gap-2">
-        <PrimaryButton onClick={() => void handleSave()} disabled={saving}>
+        <PrimaryButton onClick={() => void handleSave()} disabled={saving || !(Number(contextWindow) > 0)}>
           {saving ? '保存中...' : '保存'}
         </PrimaryButton>
         <SecondaryButton onClick={onCancel} disabled={saving}>
@@ -340,6 +364,8 @@ function AddProviderForm({ onSuccess, onCancel }: {
   });
   // 视觉模型:可选、自由输入,不参与三档必填校验
   const [visionModel, setVisionModel] = useState('');
+  // 上下文窗口:手动必填(各家 /models 不暴露,compaction 分母不能缺)
+  const [contextWindow, setContextWindow] = useState('');
   const [saving, setSaving] = useState(false);
   const [validateResult, setValidateResult] = useState<{ valid: boolean; message: string } | null>(null);
 
@@ -399,6 +425,11 @@ function AddProviderForm({ onSuccess, onCancel }: {
       banner.error('请为三个 tier 各选择一个模型');
       return;
     }
+    const ctxNum = Number(contextWindow);
+    if (!Number.isFinite(ctxNum) || ctxNum <= 0) {
+      banner.error('请填写上下文窗口(token,如 65536)');
+      return;
+    }
     setSaving(true);
     setValidateResult(null);
     try {
@@ -420,6 +451,7 @@ function AddProviderForm({ onSuccess, onCancel }: {
         standardModel: tierValues.standardModel,
         thinkModel: tierValues.thinkModel,
         visionModel: visionModel.trim() || undefined,
+        contextWindow: ctxNum,
       });
       banner.success('AI 提供商已添加');
       await onSuccess();
@@ -485,6 +517,22 @@ function AddProviderForm({ onSuccess, onCancel }: {
       {/* 视觉模型(可选):跟三档并排在同一区,但自由输入、不必填 */}
       <VisionModelField value={visionModel} onChange={setVisionModel} disabled={saving} />
 
+      {/* 上下文窗口(必填):各家 API 不暴露,手动填(查模型文档),作 compaction 分母 */}
+      <div>
+        <FieldLabel>
+          上下文窗口 (token)
+          <span className="ml-2 font-normal" style={{ color: 'var(--ink-ghost)' }}>
+            必填;各家 API 不提供,查模型文档,如 65536 / 131072
+          </span>
+        </FieldLabel>
+        <TextInput
+          value={contextWindow}
+          onChange={setContextWindow}
+          placeholder="如 65536"
+          disabled={saving}
+        />
+      </div>
+
       {/* 验证结果 */}
       {validateResult && <ValidationBanner result={validateResult} />}
 
@@ -492,7 +540,7 @@ function AddProviderForm({ onSuccess, onCancel }: {
       <div className="flex gap-2">
         <PrimaryButton
           onClick={() => void handleValidateAndSave()}
-          disabled={saving || !allTiersFilled}
+          disabled={saving || !allTiersFilled || !(Number(contextWindow) > 0)}
         >
           {saving ? '验证中...' : '验证并保存'}
         </PrimaryButton>
