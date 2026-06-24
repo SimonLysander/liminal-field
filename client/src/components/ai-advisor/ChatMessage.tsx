@@ -20,9 +20,11 @@ import type {
   ChatReferencesMetadata,
   AnchorPayload,
 } from '@/pages/admin/lib/live-chat-selection';
+import type { InlineRef } from './AiReferenceComposer';
 import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
 import { ToolCallCard } from './ToolCallCard';
 import { AiEditProposalCard } from './AiEditProposalCard';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 
 interface ChatMessageProps {
   role: 'user' | 'assistant';
@@ -66,6 +68,7 @@ export function ChatMessage({
 }: ChatMessageProps) {
   if (role === 'user') {
     const references = getMessageReferences(metadata);
+    const inlineRefs = getInlineRefs(metadata);
     return (
       /* 用户消息：右对齐，轻量 shelf 背景，不喧宾夺主 */
       <div className="flex justify-end">
@@ -82,7 +85,7 @@ export function ChatMessage({
             overflowWrap: 'anywhere',
           }}
         >
-          <UserContentWithReferenceChips content={content} references={references} />
+          <UserContentWithReferenceChips content={content} references={references} inlineRefs={inlineRefs} />
           {references.length > 0 && (
             <div className="mt-2 flex flex-col gap-1 border-t pt-1.5" style={{ borderColor: 'var(--separator)' }}>
               {references.map((reference, index) => (
@@ -209,7 +212,7 @@ interface ParsedChip {
 function parseInlineChips(content: string): { mainText: string; chips: ParsedChip[] } {
   // 匹配尾部 1 行或多行的 `> 第 N 段：「...」` 或 `> 引用：「...」`
   // 冒号兼容中文全角(formatReferencesAsMd 实际拼的)和英文半角(防御性)
-  const chipLine = /^> (第\s*\d+(?:-\d+)?\s*段|引用)\s*[:：]\s*「([\s\S]+?)」\s*$/;
+  const chipLine = /^> (草稿·第\s*\d+(?:-\d+)?\s*段|会话·节选|第\s*\d+(?:-\d+)?\s*段|引用)\s*[:：]\s*「([\s\S]+?)」\s*$/;
   const lines = content.split('\n');
   const chips: ParsedChip[] = [];
   // 从尾向前剥引用行(跳过空行)
@@ -233,10 +236,18 @@ function parseInlineChips(content: string): { mainText: string; chips: ParsedChi
 function UserContentWithReferenceChips({
   content,
   references,
+  inlineRefs,
 }: {
   content: string;
   references: ChatReferenceSnapshot[];
+  inlineRefs: InlineRef[];
 }) {
+  // 路径 0(顺序式当前格式):metadata.inlineRefs 在,把 text 里就地展开的「content」渲染回紧凑 chip,
+  // 让气泡形态和输入框一致(用户看到 chip,不是一长串展开原文;模型那边拿的仍是展开 text)。
+  if (inlineRefs.length > 0) {
+    return <>{renderInlineRefChips(content, inlineRefs)}</>;
+  }
+
   // 路径 1(老格式 `[已选内容 N]` token + metadata.references):保留兼容
   if (references.length > 0) {
     const parts = content.split(/(\[(?:已选内容|片段)\s+\d+\])/g).filter(Boolean);
@@ -309,6 +320,64 @@ function getMessageReferences(metadata: unknown): ChatReferenceSnapshot[] {
       'type' in ref.anchor
     );
   });
+}
+
+/** 顺序式当前格式:从 metadata.inlineRefs 取 {content,label}[](气泡据此把「content」渲染回 chip)。 */
+function getInlineRefs(metadata: unknown): InlineRef[] {
+  const refs = (metadata as { inlineRefs?: unknown } | undefined)?.inlineRefs;
+  if (!Array.isArray(refs)) return [];
+  return refs.filter(
+    (r): r is InlineRef =>
+      typeof r === 'object' &&
+      r !== null &&
+      typeof (r as InlineRef).content === 'string' &&
+      typeof (r as InlineRef).label === 'string',
+  );
+}
+
+/**
+ * renderInlineRefChips —— 把 text 里就地展开的「content」按 refs 顺序渲染回紧凑 chip。
+ * 从 cursor 起按序找每条 ref 的「content」,命中换成 chip(label + title 全文),其余原样。
+ * 找不到(罕见:内容含特殊字符/被改)就跳过该条,降级为纯文本,不崩。chip 样式与输入框一致。
+ */
+function renderInlineRefChips(content: string, refs: InlineRef[]): ReactNode[] {
+  const out: ReactNode[] = [];
+  let cursor = 0;
+  let key = 0;
+  for (const ref of refs) {
+    const needle = `「${ref.content}」`;
+    const idx = content.indexOf(needle, cursor);
+    if (idx === -1) continue;
+    if (idx > cursor) out.push(<span key={key++}>{content.slice(cursor, idx)}</span>);
+    out.push(
+      <HoverCard key={key++} openDelay={150} closeDelay={100}>
+        <HoverCardTrigger asChild>
+          <span
+            className="mx-0.5 inline-flex max-w-[14rem] cursor-default items-center gap-1 truncate rounded-md px-1.5 py-0.5 align-baseline text-xs"
+            style={{
+              background: 'color-mix(in srgb, var(--accent) 13%, var(--shelf))',
+              color: 'var(--accent)',
+            }}
+          >
+            {ref.label}
+          </span>
+        </HoverCardTrigger>
+        <HoverCardContent
+          align="start"
+          sideOffset={6}
+          // 用组件默认的 popover 外观(opaque bg-popover + border-box-border + shadow-lg),
+          // 只定制尺寸/内边距/字号/换行——不再自己 override 背景边框(那样白卡叠白底像透明)。
+          className="w-auto max-w-[280px] p-2.5 text-xs leading-relaxed"
+          style={{ whiteSpace: 'pre-wrap', maxHeight: 220, overflowY: 'auto' }}
+        >
+          {ref.content}
+        </HoverCardContent>
+      </HoverCard>,
+    );
+    cursor = idx + needle.length;
+  }
+  if (cursor < content.length) out.push(<span key={key++}>{content.slice(cursor)}</span>);
+  return out;
 }
 
 function shortenReferencePreview(text: string): string {
@@ -416,7 +485,7 @@ const AssistantMarkdown = memo(function AssistantMarkdown({
 }) {
   return (
     <div
-      className={`prose prose-sm max-w-none leading-relaxed ${comfortable ? 'text-md' : 'text-xs'}`}
+      className={`prose prose-sm max-w-none leading-relaxed ${comfortable ? 'text-md' : 'text-sm'}`}
       style={{ color: 'var(--ink-faded)', fontFamily: 'var(--font-reading)' }}
     >
       <ReactMarkdown

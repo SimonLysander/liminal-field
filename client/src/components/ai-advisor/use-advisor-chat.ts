@@ -33,6 +33,7 @@ import { loadSession, type SessionTask } from '@/services/agent';
 import { computeDocDiff } from '@/pages/admin/lib/compute-doc-diff';
 import { readResolved, markResolved } from '@/pages/admin/lib/resolved-store';
 import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
+import type { InlineRef } from './AiReferenceComposer';
 // edit-session 现仅保留 ReferenceRegistry（渲染层读取历史 references 用于 chip 展示）
 // createEditSession / isEditConfirmation / isReferenceEditRequest 已随 v2 send 逻辑一并删除
 
@@ -470,22 +471,31 @@ export function useAdvisorChat({
   }, [v3ProposalsByCallId]);
 
   const send = useCallback(
-    (text: string) => {
+    (text: string, references?: InlineRef[]) => {
       const t = text.trim();
       if (!t) return;
       // 发新 prompt 时:把当前 active proposal 标 resolved(用户忽略上一个,不希望它继续干扰下一轮)
       activeProposalCallIdsRef.current.forEach((cid) => markResolved(cid));
-      // v3 协议：chips 已拼进 text，不传 metadata.references；transport body 不传 anchor/anchors
-      void sendMessage({ text: t }, {
-        body: buildAgentRequestBody({
-          tier: tierRef.current,
-          agentKey,
-          source,
-          sessionKey,
-          agentInstanceKey,
-          context: contextRef.current,
-        }),
-      });
+      // 顺序式:引用内容已就地展开进 text(模型按位置读)。references 作为 metadata 随消息持久化,
+      // 仅供气泡把「content」渲染回紧凑 chip(显示层和输入框形态一致),不影响模型看到的 text。
+      void sendMessage(
+        {
+          text: t,
+          ...(references && references.length
+            ? { metadata: { inlineRefs: references } }
+            : {}),
+        },
+        {
+          body: buildAgentRequestBody({
+            tier: tierRef.current,
+            agentKey,
+            source,
+            sessionKey,
+            agentInstanceKey,
+            context: contextRef.current,
+          }),
+        },
+      );
     },
     [agentInstanceKey, agentKey, sendMessage, sessionKey, source],
   );

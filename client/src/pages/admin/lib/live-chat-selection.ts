@@ -1,4 +1,8 @@
 import { NodeApi, type Descendant } from 'platejs';
+import {
+  highlightTextInContainer,
+  clearEditorTextHighlight,
+} from '@/hooks/use-selected-text';
 
 /**
  * AnchorRange / AnchorPayload / serializeAnchor ——
@@ -63,6 +67,8 @@ export function serializeAnchor(
 
 export interface ChatSelectionAttachment {
   id: string;
+  /** 引用来源:'draft'=编辑器草稿划词;'aurora'=聊天里引用 Aurora 的话。决定 chip 标签与发送格式。 */
+  kind?: 'draft' | 'aurora';
   /** 添加到聊天时的短预览，只用于 chip 展示，不作为发送内容。 */
   preview: string;
   /** 发送瞬间从 live range 读取当前正文。 */
@@ -107,7 +113,28 @@ export interface LiveSelectionEditor {
     end: (at: number[]) => AnchorRange['focus'] | undefined;
     string: (at?: AnchorRange | null) => string;
     toDOMRange: (range: AnchorRange) => Range | undefined;
+    /** 取选区的 fragment(块节点数组)。用于按块拼文本以保留块间换行。可选:缺省时 getText 回退 api.string。 */
+    fragment?: (at: AnchorRange) => Descendant[];
   };
+}
+
+/**
+ * fragmentToText —— 把选区 fragment 逐块拼成带换行的文本。
+ *
+ * 为什么不用 editor.api.string / Range.toString:两者都只拼文本节点、不在块边界插换行,
+ * 导致引用多段草稿/代码时换行全丢。这里逐块取文本、块间用 \n 连;代码块特判按行连。
+ */
+function fragmentToText(fragment: Descendant[]): string {
+  const nodeToText = (node: Descendant): string => {
+    if ('text' in node) return typeof node.text === 'string' ? node.text : '';
+    // 代码块:子节点是各代码行,逐行用 \n 连(NodeApi.string 会把行拼成一坨)
+    if (node.type === 'code_block' && Array.isArray(node.children)) {
+      return node.children.map((line) => NodeApi.string(line)).join('\n');
+    }
+    // 段落/标题等单块:取其文本(行内拼接,无块间换行——本就是一块)
+    return NodeApi.string(node);
+  };
+  return fragment.map(nodeToText).join('\n');
 }
 
 let activeHighlight: Highlight | undefined;
@@ -142,10 +169,15 @@ export function createLiveChatSelectionAttachment({
 
   return {
     id,
+    kind: 'draft',
     preview: initialPreview,
     getText: () => {
       const range = rangeRef.current;
-      return range ? editor.api.string(range).trim() : initialPreview;
+      if (!range) return initialPreview;
+      // 逐块拼文本以保留块间换行(api.string / Range.toString 都不插块间换行 → 草稿多段会丢换行)。
+      const frag = editor.api.fragment?.(range);
+      const text = Array.isArray(frag) ? fragmentToText(frag).trim() : '';
+      return text || editor.api.string(range).trim();
     },
     getAnchor: () => {
       const range = rangeRef.current;
@@ -172,6 +204,37 @@ export function createLiveChatSelectionAttachment({
       clearChatSelectionHighlight();
       rangeRef.unref();
     },
+  };
+}
+
+/**
+ * createChatMessageAttachment —— 从「Aurora 的话」(聊天消息划词)建引用附件。
+ *
+ * 跟草稿引用不同:聊天消息是静态展示 DOM(非 Plate 编辑器、内容不再变),所以这是个
+ * 静态快照——getText 直接返回划词文本,无 live range、无高亮/dispose。复用同一个
+ * ChatSelectionAttachment 接口,塞进同一个 chips 数组,发送/删除/清空逻辑全共用。
+ */
+export function createChatMessageAttachment({
+  text,
+}: {
+  text: string;
+}): ChatSelectionAttachment {
+  const clean = text.trim();
+  const id =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `chat-message-${Date.now()}`;
+  return {
+    id,
+    kind: 'aurora',
+    preview: clean.slice(0, 40),
+    getText: () => clean,
+    getAnchor: () => ({ type: 'none' }),
+    // 点 chip 时:在聊天消息容器里按文本找到原句,滚动 + 高亮(复用编辑器那套 CSS Highlight)。
+    highlight: (opts = {}) =>
+      highlightTextInContainer('[data-chat-messages]', clean, { scroll: opts.scroll }),
+    clearHighlight: clearEditorTextHighlight,
+    dispose: clearEditorTextHighlight,
   };
 }
 

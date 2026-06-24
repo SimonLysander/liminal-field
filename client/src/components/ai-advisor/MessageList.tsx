@@ -120,6 +120,8 @@ export function MessageList({
     <div
       ref={containerRef}
       onScroll={handleScroll}
+      // 标记整个消息容器:引用 chip 点击高亮(highlightTextInContainer)在此范围内按文本找原句
+      data-chat-messages=""
       className={`flex flex-1 flex-col overflow-y-auto py-6 ${comfortable ? 'gap-6 px-1' : 'gap-5 px-4'}`}
       style={{
         // 上下边缘渐隐:内容滚到顶/底时柔和淡出,不硬切
@@ -152,7 +154,12 @@ export function MessageList({
 
         return (
           // 外层承载「凝聚」入场动画 + 稳定 key(流式更新不重放,见 index.css .agent-msg-enter)
-          <div key={msg.id} className="agent-msg-enter">
+          <div
+            key={msg.id}
+            className="agent-msg-enter"
+            // 标记助手消息:聊天划词「引用」(ChatQuoteButton)只在 Aurora 的话里浮出按钮
+            data-aurora-msg={msg.role === 'assistant' ? '' : undefined}
+          >
             <ChatMessage
               role={msg.role as 'user' | 'assistant'}
               content={textContent}

@@ -381,6 +381,7 @@ export function PlateMarkdownEditor({
             start: editor.api.start as LiveSelectionEditor['api']['start'],
             string: editor.api.string as LiveSelectionEditor['api']['string'],
             toDOMRange: editor.api.toDOMRange as LiveSelectionEditor['api']['toDOMRange'],
+            fragment: editor.api.fragment as LiveSelectionEditor['api']['fragment'],
           },
         },
         preview: text,

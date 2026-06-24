@@ -18,7 +18,10 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import type { ChatSelectionAttachment } from '@/pages/admin/lib/live-chat-selection';
+import {
+  createChatMessageAttachment,
+  type ChatSelectionAttachment,
+} from '@/pages/admin/lib/live-chat-selection';
 import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
 import {
   deleteSession,
@@ -33,6 +36,7 @@ import {
   type AiReferenceComposerHandle,
 } from './AiReferenceComposer';
 import { MessageList } from './MessageList';
+import { ChatQuoteButton } from './ChatQuoteButton';
 import { SkillSlashPopover } from './SkillSlashPopover';
 import { TaskChecklist } from './TaskChecklist';
 import {
@@ -146,6 +150,31 @@ export function AdvisorSidebar({
   // 用 useMemo 稳定引用，避免 ?? [] 每次渲染产生新数组引用，触发 useCallback 重建
   const activeSelections = useMemo(() => selectionAttachments ?? [], [selectionAttachments]);
 
+  // 引用 Aurora 的话:本侧栏自持(不依赖编辑器),与外部传入的草稿引用合并喂输入框。
+  // 这样笔记/画廊/简报等所有用到 Aurora 的场景都自动支持,不用每个父组件各接一遍。
+  const [chatRefs, setChatRefs] = useState<ChatSelectionAttachment[]>([]);
+  const allSelections = useMemo(
+    () => [...activeSelections, ...chatRefs],
+    [activeSelections, chatRefs],
+  );
+  // 聊天里划词「引用」→ 建静态快照附件,进同一个 chips 数组。
+  const handleQuoteFromChat = useCallback((text: string) => {
+    const clean = text.trim();
+    if (!clean) return;
+    setChatRefs((prev) => [...prev, createChatMessageAttachment({ text: clean })]);
+  }, []);
+  // 删除引用:聊天来源的从本地 state 删,草稿来源的回调上层(它持有草稿 attachment)。
+  const handleRemoveSelection = useCallback(
+    (id: string) => {
+      if (chatRefs.some((r) => r.id === id)) {
+        setChatRefs((prev) => prev.filter((r) => r.id !== id));
+      } else {
+        onRemoveSelectionAttachment?.(id);
+      }
+    },
+    [chatRefs, onRemoveSelectionAttachment],
+  );
+
   const refreshSessions = useCallback(() => {
     void listBusinessSessions(agentInstanceKey)
       .then((items) => {
@@ -231,18 +260,21 @@ export function AdvisorSidebar({
   }, [pendingProposal?.callId]);
 
   useEffect(() => {
-    // 切换会话时清 pendingProposal
+    // 切换会话时清 pendingProposal + 聊天引用(引用挂在某会话的话上,换会话即失效)
     onProposalChangeRef.current?.(undefined);
+    // 推迟到微任务,避免在 effect 同步体内 setState(react-hooks/set-state-in-effect)
+    queueMicrotask(() => setChatRefs([]));
   }, [currentSessionKey]);
 
   // v3 发送：chips 已在 readAndClear 内拼成 markdown > 引用块，只传 text。
   const handleSend = useCallback(() => {
-    const payload = composerRef.current?.readAndClear() ?? { text: '' };
+    const payload = composerRef.current?.readAndClear() ?? { text: '', references: [] };
     const text = toAdvisorSendText(payload.text);
     if (!text) return;
     setComposerEmpty(true);
-    send(text);
+    send(text, payload.references);
     if (activeSelections.length > 0) onClearSelectedText?.();
+    setChatRefs([]); // 聊天引用一次性:发完即清
   }, [activeSelections, onClearSelectedText, send]);
 
   const handleNewSession = useCallback(() => {
@@ -373,6 +405,8 @@ export function AdvisorSidebar({
   return (
     // h-full:在笔记 grid 里等价于行 stretch(无变化);在文集条目 flex 容器里据此撑满高度
     <div className="flex h-full flex-col overflow-hidden">
+      {/* Aurora 消息划词 → 浮出「引用」按钮(B 方案,和编辑器划词同心智)。fixed 定位,放哪都行。 */}
+      <ChatQuoteButton onQuote={handleQuoteFromChat} />
       {/* 顶栏(48px,无边框,跟编辑器/大纲栏一条水平线)。
           - 会话名 DropdownMenu:列表切换 + 底部收纳"重命名/删除"(低频管理不平铺)
           - inline 重命名:renaming 时会话名变输入框(回车确认 / Esc / 失焦取消)
@@ -572,9 +606,9 @@ export function AdvisorSidebar({
           <AiReferenceComposer
             key={currentSessionKey}
             ref={composerRef}
-            selections={activeSelections}
+            selections={allSelections}
             disabled={isStreaming}
-            onRemoveSelection={onRemoveSelectionAttachment}
+            onRemoveSelection={handleRemoveSelection}
             onEmptyChange={setComposerEmpty}
             onTextChange={handleComposerTextChange}
             onSubmit={() => {

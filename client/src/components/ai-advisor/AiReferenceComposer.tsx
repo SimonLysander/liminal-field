@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   type KeyboardEvent,
+  type MouseEvent,
 } from 'react';
 import { NodeApi, type Descendant, type TElement } from 'platejs';
 import {
@@ -20,54 +21,49 @@ import type {
   AnchorPayload,
 } from '@/pages/admin/lib/live-chat-selection';
 import { Editor } from '@/components/ui/editor';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { replaceSlashTokenInText } from './slash-text-utils';
 
 const REFERENCE_TYPE = 'chat_reference';
 
 /**
- * formatReferencesAsMd —— 把 chips 引用拼成 markdown `>` 引用块。
+ * referenceChipLabel —— 输入框 chip 的显示标签:草稿给"第N段"(位置),会话给内容预览
+ * (位置对会话无意义,内容才是定位线索;点 chip 还能滚回原文高亮)。
  *
- * v3 协议：chips 是用户显式圈出的注意力锚点（"让模型看这几段"），
- * 拼成 user message text 的一部分，后端不再有独立 references 协议。
- * 位置：紧跟在正文末尾，以两个换行分隔；每条占一行 `> 第N段:「...」`。
+ * 注:这只是 chip 的"显示"标签;发给模型的不是它——顺序式下 chip 在正文里**原地展开成
+ * 「内容」**(见 readComposerText),位置即语义,所以不再需要"草稿·第N段"这种来源前缀进上下文。
  */
-function formatReferencesAsMd(references: ChatSelectionAttachment[]): string {
-  if (references.length === 0) return '';
-  return (
-    '\n\n' +
-    references
-      .map((ref) => {
-        // 读取发送瞬间的 live 文本；优先用 getText() 拿最新内容，回退到 preview
-        const liveText = ref.getText();
-        const displayText = liveText || ref.preview;
-        // 位置标签：通过 anchor 里的 blockIndex 计算段号
-        const anchor = ref.getAnchor();
-        const blockIndex =
-          anchor.type === 'range'
-            ? anchor.startPath?.[0] ?? anchor.blockIndex
-            : undefined;
-        const segmentLabel =
-          typeof blockIndex === 'number' ? `第 ${blockIndex + 1} 段` : '引用';
-        return `> ${segmentLabel}：「${displayText}」`;
-      })
-      .join('\n')
-  );
+function referenceChipLabel(ref: ChatSelectionAttachment): string {
+  if (ref.kind === 'aurora') {
+    const t = (ref.getText() || ref.preview).replace(/\s+/g, ' ').trim();
+    return `会话·${t.slice(0, 12)}${t.length > 12 ? '…' : ''}`;
+  }
+  return `草稿·${formatParagraphRange(ref.getAnchor())}`;
 }
 
 type ReferenceElement = TElement & {
   refId: string;
   label: string;
+  /** 引用的全文,只用于 chip 的 hover tooltip(title);发送内容仍走 attachment.getText()。 */
+  content?: string;
 };
 type ComposerEditor = NonNullable<ReturnType<typeof usePlateEditor>>;
 
+/** 发送瞬间冻结的内联引用:content 已就地展开进 text(给模型按位置读),label 给气泡渲染回 chip。 */
+export interface InlineRef {
+  content: string;
+  label: string;
+}
+
 /**
- * v3 协议：readAndClear 只返回 { text }。
- * chips 引用已被 formatReferencesAsMd 拼成 markdown `>` 引用块加到 text 末尾，
- * 后端不再有独立 references 协议；chips 是用户显式圈出的注意力锚点，
- * 拼进 user message text，不限制模型改动范围。
+ * readAndClear 返回:
+ * - text:chip 已在原位展开成「content」的发送文本(模型看到内容+位置)。
+ * - references:按出现顺序的引用,作为 metadata 随消息走,仅供气泡把「content」渲染回紧凑 chip
+ *   (显示层和输入框形态保持一致),不影响模型看到的 text。
  */
 export interface ComposerPayload {
   text: string;
+  references: InlineRef[];
 }
 
 export interface AiReferenceComposerHandle {
@@ -120,7 +116,6 @@ export const AiReferenceComposer = forwardRef<
 ) {
   const insertedIdsRef = useRef<Set<string>>(new Set());
   const attachmentByIdRef = useRef<Map<string, ChatSelectionAttachment>>(new Map());
-  const selectionsRef = useRef(selections);
 
   const editor = usePlateEditor(
     {
@@ -131,26 +126,28 @@ export const AiReferenceComposer = forwardRef<
     [],
   )!;
 
-  useEffect(() => {
-    selectionsRef.current = selections;
-  }, [selections]);
-
   useImperativeHandle(
     ref,
     () => ({
       readAndClear: (): ComposerPayload => {
-        // v3 协议：chips 引用拼成 markdown > 引用块，作为 text 的一部分发送。
-        // 读取发送瞬间所有 live 引用（selectionsRef），再从编辑器 AST 提取纯文本。
-        const trimmedText = readComposerText(editor.children);
-        const refsMd = formatReferencesAsMd(selectionsRef.current);
-        const combined = trimmedText + refsMd;
+        // 顺序式:遍历 AST,chip 在其所在位置原地展开成「发送瞬间的内容」——位置即语义,
+        // 引用就嵌在用户指代它的地方,不再统一甩到末尾(锚点式丢了"这段/那段"的指代绑定)。
+        const references: InlineRef[] = [];
+        const text = readComposerText(editor.children, (refId) => {
+          const att = attachmentByIdRef.current.get(refId);
+          if (!att) return '';
+          const content = att.getText() || att.preview;
+          // 按 AST 遍历顺序收集 → references 与 text 里「content」出现顺序天然一致。
+          references.push({ content, label: formatSelectionLabel(att) });
+          return content;
+        });
         // 清 editor（含引用 token）+ 关联映射
         editor.tf.reset();
         insertedIdsRef.current.clear();
         attachmentByIdRef.current.clear();
         queueMicrotask(() => focusComposerEnd(editor));
         onEmptyChange?.(true);
-        return { text: combined };
+        return { text, references };
       },
       isEmpty: () => isComposerEmpty(editor.children),
       focusEnd: () => focusComposerEnd(editor),
@@ -186,10 +183,11 @@ export const AiReferenceComposer = forwardRef<
     selections.forEach((selection) => {
       attachmentByIdRef.current.set(selection.id, selection);
       if (existingIds.has(selection.id)) {
-        updateReferenceLabel(
+        updateReferenceNode(
           editor,
           selection.id,
           formatSelectionLabel(selection),
+          selection.getText() || selection.preview,
         );
         return;
       }
@@ -229,6 +227,15 @@ export const AiReferenceComposer = forwardRef<
           onSubmit?.();
         }
       },
+      // 点 chip → 滚到引用原文并高亮(草稿滚编辑器 / 会话滚聊天消息,各自 attachment.highlight 实现)。
+      // chip 是 void 节点,用 mousedown + preventDefault 防止点击移动光标 / 选中节点。
+      onMouseDown: (event: MouseEvent<HTMLDivElement>) => {
+        const chip = (event.target as HTMLElement).closest('[data-ref-id]');
+        if (!chip) return;
+        event.preventDefault();
+        const id = chip.getAttribute('data-ref-id');
+        if (id) attachmentByIdRef.current.get(id)?.highlight({ scroll: true });
+      },
     }),
     [onSubmit],
   );
@@ -239,6 +246,7 @@ export const AiReferenceComposer = forwardRef<
         variant="none"
         placeholder="聊点什么..."
         onKeyDown={editableProps.onKeyDown}
+        onMouseDown={editableProps.onMouseDown}
         className="composer-input min-h-7 max-h-28 flex-1 overflow-y-auto bg-transparent py-1 text-sm leading-normal outline-none"
         style={{ color: 'var(--ink)', opacity: disabled ? 0.5 : 1 }}
       />
@@ -263,7 +271,21 @@ function ReferenceTokenElement(props: PlateElementProps<ReferenceElement>) {
         color: 'var(--accent)',
       }}
     >
-      <span title={element.label}>{element.label}</span>
+      {/* hover 用 HoverCard 显示引用全文(纸感卡,比原生 title 即时、好看) */}
+      <HoverCard openDelay={150} closeDelay={100}>
+        <HoverCardTrigger asChild>
+          <span>{element.label}</span>
+        </HoverCardTrigger>
+        <HoverCardContent
+          align="start"
+          sideOffset={6}
+          // 用组件默认的 popover 外观(opaque + 边框 + 阴影),只定制尺寸/内边距/字号/换行。
+          className="w-auto max-w-[280px] p-2.5 text-xs leading-relaxed"
+          style={{ whiteSpace: 'pre-wrap', maxHeight: 220, overflowY: 'auto' }}
+        >
+          {element.content || element.label}
+        </HoverCardContent>
+      </HoverCard>
       {props.children}
     </PlateElement>
   );
@@ -278,6 +300,7 @@ function insertReferenceNode(
     type: REFERENCE_TYPE,
     refId: selection.id,
     label: formatSelectionLabel(selection),
+    content: selection.getText() || selection.preview,
     children: [{ text: '' }],
   } as TElement, { select: false });
   editor.tf.insertText(' ');
@@ -297,13 +320,14 @@ function removeReferenceNode(editor: ComposerEditor, id: string) {
   });
 }
 
-function updateReferenceLabel(
+function updateReferenceNode(
   editor: ComposerEditor,
   id: string,
   label: string,
+  content: string,
 ) {
   editor.tf.setNodes(
-    { label },
+    { label, content },
     {
       at: [],
       match: (node: unknown) =>
@@ -318,13 +342,17 @@ function updateReferenceLabel(
 }
 
 /**
- * readComposerText —— 从编辑器 AST 提取纯文本（跳过 chips 引用 token）。
+ * readComposerText —— 从编辑器 AST 提取发送文本,chip 原地展开成「内容」(顺序式)。
  *
- * v3 协议：chips 的引用内容由 formatReferencesAsMd 单独拼接，
- * 此函数只负责从 contenteditable AST 里读用户输入的文字部分。
- * 引用 token（REFERENCE_TYPE void node）不展开成文本，直接跳过。
+ * 顺序式:遇到引用 token(REFERENCE_TYPE void node),在它所在位置就地吐出「内容」,
+ * 内容由 resolveRef(refId) 在发送瞬间解析(读 live 文本)。这样引用就嵌在用户指代它的
+ * 地方,模型读到"这段「…」和那段「…」"时,指代绑定是确定的,不用回末尾猜映射。
+ * 不传 resolveRef 时(理论上不会),token 静默跳过。
  */
-function readComposerText(nodes: Descendant[]): string {
+function readComposerText(
+  nodes: Descendant[],
+  resolveRef?: (refId: string) => string,
+): string {
   const chunks: string[] = [];
 
   const visit = (node: Descendant) => {
@@ -333,7 +361,9 @@ function readComposerText(nodes: Descendant[]): string {
       return;
     }
     if (node.type === REFERENCE_TYPE) {
-      // v3：chips 已由 formatReferencesAsMd 处理，此处直接跳过 token
+      const refId = typeof node.refId === 'string' ? node.refId : '';
+      const content = resolveRef?.(refId)?.trim();
+      if (content) chunks.push(`「${content}」`);
       return;
     }
     node.children.forEach(visit);
@@ -357,9 +387,17 @@ export function readComposerPayload(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _attachmentsById: ReadonlyMap<string, ChatSelectionAttachment> = new Map(),
 ): ComposerPayload {
-  // v3 协议：chips 拼 markdown 引用块，references 字段已从 ComposerPayload 移除
-  const text = readComposerText(nodes) + formatReferencesAsMd(selections);
-  return { text };
+  // 顺序式:chip 在 AST 里原地展开成「内容」;按 selections 的 id 解析,同时按序收集 references。
+  const byId = new Map(selections.map((s) => [s.id, s]));
+  const references: InlineRef[] = [];
+  const text = readComposerText(nodes, (refId) => {
+    const att = byId.get(refId);
+    if (!att) return '';
+    const content = att.getText() || att.preview;
+    references.push({ content, label: formatSelectionLabel(att) });
+    return content;
+  });
+  return { text, references };
 }
 
 function getReferenceIds(nodes: Descendant[]): Set<string> {
@@ -381,7 +419,7 @@ function isComposerEmpty(nodes: Descendant[]): boolean {
 }
 
 function formatSelectionLabel(selection: ChatSelectionAttachment): string {
-  return formatParagraphRange(selection.getAnchor());
+  return referenceChipLabel(selection);
 }
 
 function cloneEmptyValue(): Descendant[] {

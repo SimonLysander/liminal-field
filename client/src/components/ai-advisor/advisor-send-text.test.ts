@@ -17,14 +17,12 @@ describe('toAdvisorSendText', () => {
 });
 
 /**
- * v3 协议：readComposerPayload 把 chips 引用拼成 markdown > 引用块，
- * 只返回 { text }，不再返回 references 数组。
- *
- * chips 是用户显式圈出的注意力锚点，通过 getText() 读发送瞬间的 live 文本，
- * 拼成 `> 第N段：「...」` 追加到正文末尾。
+ * 顺序式：readComposerPayload 遍历 AST,把 chip 在其所在位置原地展开成「内容」,
+ * 返回 { text, references }：text 里引用就嵌在用户指代它的地方(给模型按位置读);
+ * references 按序冻结发送瞬间的内容/标签,随消息持久化,供气泡把「content」渲染回 chip。
  */
 describe('readComposerPayload', () => {
-  it('freezes reference text at send time and appends as markdown blockquote', () => {
+  it('freezes reference text at send time and expands it inline at the chip position', () => {
     let liveText = '添加 chip 之后改过的正文';
     const selection: ChatSelectionAttachment = {
       id: 'ref-1',
@@ -54,14 +52,14 @@ describe('readComposerPayload', () => {
 
     const payload = readComposerPayload(nodes, [selection]);
 
-    // v3：chips 不再展开为 [片段 N]，而是拼成 > 引用块追加到 text 末尾
-    expect(payload.text).toContain('润色这段');
-    expect(payload.text).toContain('> 第 16 段：「发送这一刻的最新正文」');
-    // v3：不再有 references 字段
-    expect(payload).not.toHaveProperty('references');
+    // 顺序式:chip 在 AST 里原地展开成「发送瞬间的内容」,紧跟用户文字(位置即语义)
+    expect(payload.text).toContain('润色这段「发送这一刻的最新正文」');
+    // references 随消息走(供气泡渲染回 chip),内容按发送瞬间冻结
+    expect(payload.references).toHaveLength(1);
+    expect(payload.references[0].content).toBe('发送这一刻的最新正文');
   });
 
-  it('appends multiple chips as separate blockquote lines', () => {
+  it('expands multiple chips inline, preserving their positions in the text', () => {
     const sel1: ChatSelectionAttachment = {
       id: 'ref-a',
       preview: '第一段预览',
@@ -80,11 +78,23 @@ describe('readComposerPayload', () => {
       clearHighlight: () => undefined,
       dispose: () => undefined,
     };
-    const nodes = [{ type: 'p', children: [{ text: '帮我看看这两段' }] }] as Descendant[];
+    // 顺序式:chip 嵌在文字之间,展开后按位置保序(模型读到引用就在指代词旁)
+    const nodes = [
+      {
+        type: 'p',
+        children: [
+          { text: '帮我看看 ' },
+          { type: 'chat_reference', refId: 'ref-a', children: [{ text: '' }] },
+          { text: ' 和 ' },
+          { type: 'chat_reference', refId: 'ref-b', children: [{ text: '' }] },
+        ],
+      },
+    ] as Descendant[];
 
     const payload = readComposerPayload(nodes, [sel1, sel2]);
 
-    expect(payload.text).toContain('> 第 1 段：「第一段发送时文本」');
-    expect(payload.text).toContain('> 第 3 段：「第二段发送时文本」');
+    expect(payload.text).toContain(
+      '帮我看看 「第一段发送时文本」 和 「第二段发送时文本」',
+    );
   });
 });
