@@ -16,6 +16,8 @@ export function FormalSidePanel({
   activeVersionId,
   onEditDraft,
   onSelectVersion,
+  learningExists,
+  onEnterLearning,
 }: {
   toc: Array<{ level: number; text: string; index: number }>;
   activeIndex: number;
@@ -27,6 +29,10 @@ export function FormalSidePanel({
   activeVersionId: string | null;
   onEditDraft: () => void;
   onSelectVersion: (versionId: string) => Promise<void>;
+  /** 该节点是否已有学习项目 —— 区分「开始学习」/「继续学习」 */
+  learningExists?: boolean;
+  /** 进入学习视图(另一扇门:对照读写台)。不传 = 不显示「学习」段(如文集 scope 无此门)。 */
+  onEnterLearning?: () => void;
 }) {
   const tocPanelRef = useRef<HTMLDivElement>(null);
 
@@ -102,6 +108,24 @@ export function FormalSidePanel({
         )}
       </div>
 
+      {/* 学习 — shrink-0;另一扇门(对照读写台),用 accent 紫标识与「编辑」区分。
+          仅在宿主传入 onEnterLearning 时显示(笔记 scope 有,文集 scope 无)。 */}
+      {onEnterLearning && (
+        <div className="mb-5 shrink-0">
+          <SectionCaption>学习</SectionCaption>
+          {learningExists ? (
+            <SideLink label="继续学习 →" accent onClick={onEnterLearning} />
+          ) : (
+            <>
+              <p className="mb-3.5 text-xs leading-relaxed" style={{ color: 'var(--ink-ghost)' }}>
+                让 Aurora 规划并陪你逐篇学这个领域
+              </p>
+              <SideLink label="开始学习 →" accent onClick={onEnterLearning} />
+            </>
+          )}
+        </div>
+      )}
+
       {/* 版本 — flex-1，内部滚动 */}
       <div className="flex min-h-0 flex-1 flex-col">
         <SectionCaption>版本</SectionCaption>
@@ -150,18 +174,22 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 function SideLink({
   label,
   primary,
+  accent,
   onClick,
 }: {
   label: string;
   primary?: boolean;
+  /** accent 紫 —— 标识「学习」这扇门,优先级高于 primary */
+  accent?: boolean;
   onClick: () => void;
 }) {
+  const color = accent ? 'var(--accent)' : primary ? 'var(--ink)' : 'var(--ink-faded)';
   return (
     <button
       className="text-xs transition-colors duration-150"
       style={{
-        color: primary ? 'var(--ink)' : 'var(--ink-faded)',
-        fontWeight: primary ? 600 : 400,
+        color,
+        fontWeight: accent || primary ? 600 : 400,
         background: 'none',
         border: 'none',
         cursor: 'pointer',

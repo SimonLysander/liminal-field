@@ -140,8 +140,15 @@ class DigestReportContextDto {
 }
 
 class EntryContextDto {
-  // notes-editor = 编辑器侧栏写作顾问;agent-page = 全页总助手 Lux;gallery-editor = 画廊图说写手;report-reader = 公开端精选阅读页追问
-  @IsIn(['notes-editor', 'agent-page', 'gallery-editor', 'report-reader'])
+  // notes-editor = 编辑器侧栏写作顾问;agent-page = 全页总助手 Lux;gallery-editor = 画廊图说写手;
+  // report-reader = 公开端精选阅读页追问;learning-editor = 学习产品规划/读写对话
+  @IsIn([
+    'notes-editor',
+    'agent-page',
+    'gallery-editor',
+    'report-reader',
+    'learning-editor',
+  ])
   source!: string;
 
   @ValidateNested()
@@ -174,6 +181,22 @@ class EntryContextDto {
   @IsString()
   @IsOptional()
   agentInstanceKey?: string;
+
+  /**
+   * 学习产品场景：主题 contentItemId。
+   * learning-editor source 时传入，write_learn_plan 工具据此定位主题落 aidraft。
+   */
+  @IsString()
+  @IsOptional()
+  learningTopicId?: string;
+
+  /**
+   * 学习产品场景：当前在学的那一篇笔记节点 contentItemId。
+   * 传入时挂 write_draft（learning-writer 写 aidraft）和 read_content（三层内容读取）。
+   */
+  @IsString()
+  @IsOptional()
+  learningNoteId?: string;
 }
 
 export class AgentChatDto {

@@ -119,6 +119,13 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
     ? `/admin/${scope}/${activeNode.contentItemId}/edit`
     : null;
 
+  /* 学习入口：LearningProject 已删，学习视图按需访问即可，不再查询项目是否存在。
+   * learnUrl 有值即显示「开始学习」入口；learningExists 固定 false（无"继续"区分）。
+   * 仅 notes scope 有此入口（文集不学习）。 */
+  const learningRootId = scope === 'notes' ? activeNode?.contentItemId : undefined;
+  const learningExists = false;
+  const learnUrl = learningRootId ? `/admin/notes/${learningRootId}/learn` : null;
+
   /* 侧栏顶部标题随 scope 切换:笔记 admin="笔记",文集 admin="文集"。 */
   const sectionTitle = scope === 'notes' ? '笔记' : '文集';
 
@@ -222,6 +229,11 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
                   if (editUrl) window.location.href = editUrl;
                 }}
                 onSelectVersion={workspace.previewVersion}
+                learningExists={learningExists}
+                onEnterLearning={() => {
+                  // 整页导航(同编辑页):学习视图自带 Plate 编辑器,SPA 软导航会让 inputRules 失效
+                  if (learnUrl) window.location.href = learnUrl;
+                }}
               />
             ) : (
               <div className="flex flex-1 items-center justify-center">

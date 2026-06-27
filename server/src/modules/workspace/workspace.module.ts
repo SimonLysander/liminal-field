@@ -45,6 +45,8 @@ import { WorkspaceController } from './workspace.controller';
     NoteViewService,
     GalleryViewService,
     AnthologyViewService,
+    // 导出供 AgentModule.ToolAssembler 注入（write_learn_plan 工具落 aidraft）
+    EditorDraftRepository,
   ],
 })
 export class WorkspaceModule {}

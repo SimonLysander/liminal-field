@@ -458,6 +458,80 @@ export const TOOL_CATALOG: Record<string, ToolMeta> = {
     returns: '页面的 markdown 化全文(可能截断)',
   },
 
+  // ── 学习产品 ──
+  write_draft: {
+    displayName: '写 AI 初稿',
+    summary: '把研究成果写入当前节点的 AI 初稿区',
+    detail:
+      '学习产品专用：learning-writer agent 研究完成后调用，把完整 markdown 正文写入当前笔记节点的 aidraft。目标节点由系统上下文固定，模型无法指定其它节点（防越权）。对用户只读，永不参与 commit/publish 流水线。每次调用整体覆盖，只保留最新一份。',
+    params: [
+      {
+        name: 'markdown',
+        type: 'string',
+        required: true,
+        description: '完整 markdown 正文（含 # 标题和所有章节，不要截断）',
+      },
+    ],
+    returns: '写入成功 → {status:ok, charCount:N}；失败 → {status:error}',
+  },
+
+  read_content: {
+    displayName: '读节点内容',
+    summary: '读节点三层：已提交正文 + 用户草稿 + AI 初稿',
+    detail:
+      '学习产品专用（planner 和 writer 均可调）：按存在与否拼出三段独立返回——① 已发布/已提交正文 ② 用户未提交草稿 ③ Aurora AI 初稿（只读参照）。哪段有返哪段，都没有则返回"该节点暂无内容"。只读不写，不影响任何现有流程。',
+    params: [
+      {
+        name: 'contentItemId',
+        type: 'string',
+        required: true,
+        description: '目标节点的 contentItemId',
+      },
+    ],
+    returns:
+      '三段用 --- 分隔的内容（各段有明确标签）；都空 → {status:ok, sections:0}',
+  },
+
+  write_learn_plan: {
+    displayName: '写规划',
+    summary: '把学习规划「理解+脉络」落 aidraft',
+    detail:
+      '学习产品专用：learning-planner agent 完成领域研究后调用，把 understanding（理解段）和 items（有序篇目脉络）序列化为 markdown 写入主题 aidraft。只落库，绝不建节点——建篇是用户的事。仅在学习规划场景挂载。',
+    params: [
+      {
+        name: 'understanding',
+        type: 'string',
+        required: true,
+        description: '对主题的理解：自然段叙述，先立锚再顺因果推出整条脉络',
+      },
+      {
+        name: 'items',
+        type: 'array',
+        required: true,
+        description: '有序篇目提案列表（顺序即学习顺序）',
+      },
+      {
+        name: 'items[].title',
+        type: 'string',
+        required: true,
+        description: '篇名',
+      },
+      {
+        name: 'items[].thread',
+        type: 'string',
+        required: true,
+        description: '脉络词（这一篇在因果链上的节点标识，如「目的」「构造」）',
+      },
+      {
+        name: 'items[].why',
+        type: 'string',
+        required: true,
+        description: '为何写这一章：一句话讲清学习意图',
+      },
+    ],
+    returns: '写入成功 → {status:ok, itemsCount:N}',
+  },
+
   // ── 技能(Phase 1 新增)──
   // slug 用 snake_case 跟项目其他工具一致(原本 PascalCase Skill 是设计债,已修)
   load_skill: {

@@ -31,6 +31,7 @@
 | [architecture.md](agent/architecture.md) | Aurora 底座:接入层、分层 handler、记忆系统、生命周期/hooks |
 | [tool-design.md](agent/tool-design.md) | 给 LLM 设计工具的方法论 + ToolResult 契约 + 踩坑(本身是个 skill) |
 | [digest-workflow.md](agent/digest-workflow.md) | 简报:一种 agent 工作流的关键设计决策 |
+| [learning-notes-workflow.md](agent/learning-notes-workflow.md) | 学习笔记生成:思维模型→行文逻辑/文风→产品形态(规划+研究式产出→重写)的核心设计 |
 
 ## 其它
 - `figures/` — `.excalidraw` 结构图(简报工作流、版面解剖)

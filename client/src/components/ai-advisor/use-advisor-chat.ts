@@ -62,6 +62,11 @@ export type AdvisorContext = {
     title?: string;
     bodyMarkdown?: string;
   };
+  /**
+   * 学习场景：Aurora write_learn_plan 工具需要 learningTopicId 才能将规划落 aidraft。
+   * 与后端 EntryContextDto 同名字段对应（主题 contentItemId）。
+   */
+  learningTopicId?: string;
   /** 画廊场景:照片清单 + 随笔 */
   gallery?: {
     contentItemId: string;
@@ -562,6 +567,9 @@ function buildAgentRequestBody({
       gallery: context?.gallery,
       // 精选阅读页:报告元数据 + findings 索引 + 可选用户划词。后端拼进 <digest_report> system 段。
       digestReport: context?.digestReport,
+      // 学习产品:write_learn_plan 工具需要 learningTopicId 才能定位主题落 aidraft。
+      // 未传时后端不挂 write_learn_plan 工具(ToolAssembler 条件判断),与其他场景无影响。
+      learningTopicId: context?.learningTopicId,
     },
   };
 }

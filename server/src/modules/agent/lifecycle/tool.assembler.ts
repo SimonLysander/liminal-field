@@ -66,6 +66,11 @@ import { SmartTopicConfigRepository } from '../../digest/smart-topic-config.repo
 import { FetcherRegistry } from '../../digest/fetchers/fetcher-registry.service';
 import { ProcessedFeedItemRepository } from '../../digest/processed-feed-item.repository';
 import { DigestTaskRepository } from '../../digest/digest-task.repository';
+// 学习产品：write_learn_plan / write_draft / read_content 工具
+import { createWriteLearnPlanTool } from '../tools/write-learn-plan.tool';
+import { createWriteDraftTool } from '../tools/write-draft.tool';
+import { createReadContentTool } from '../tools/read-node-content.tool';
+import { EditorDraftRepository } from '../../workspace/editor-draft.repository';
 
 export interface EntryContext {
   document?: DocumentContext;
@@ -80,6 +85,18 @@ export interface EntryContext {
    * - reader:   只有 topicId(+ refCounter/fetchedItemsMap),taskId 空 → 只挂 browse(只浏览不收藏)
    */
   digestTaskContext?: DigestTaskContext;
+  /**
+   * 学习产品场景：主题 contentItemId。
+   * 存在时挂 write_learn_plan 工具（learning-planner agent 规划落 aidraft:{topicId}）。
+   * 绝不替用户建节点——规划是 AI 提案，建篇由用户手动操作。
+   */
+  learningTopicId?: string;
+  /**
+   * 学习产品场景：当前在学的那一篇笔记节点 contentItemId。
+   * 存在时挂 write_draft（只写此节点 aidraft，防越权）和 read_content（三层读取）。
+   * learningTopicId || learningNoteId 任一存在都会挂 read_content（planner/writer 均可读）。
+   */
+  learningNoteId?: string;
 }
 
 @Injectable()
@@ -109,6 +126,8 @@ export class ToolAssembler {
     private readonly fetcherRegistry: FetcherRegistry,
     private readonly pfiRepo: ProcessedFeedItemRepository,
     private readonly digestTaskRepo: DigestTaskRepository,
+    // 学习产品：write_learn_plan 把规划落 aidraft:{topicId}，通过 WorkspaceModule 注入
+    private readonly editorDraftRepo: EditorDraftRepository,
   ) {}
 
   /**
@@ -242,6 +261,37 @@ export class ToolAssembler {
                   }),
                 }
               : {}),
+          }
+        : {}),
+      // 学习规划工具：learningTopicId 存在时挂（learning-planner agent 用）
+      // 规划落 aidraft:{topicId}，前端通过 EditorDraftRepository.buildAiDraftId 读回；
+      // 绝不建节点——只产提案，建篇由用户操作。
+      ...(entryContext.learningTopicId
+        ? {
+            write_learn_plan: createWriteLearnPlanTool(
+              this.editorDraftRepo,
+              entryContext.learningTopicId,
+            ),
+          }
+        : {}),
+      // 学习写作工具：learningNoteId 存在时挂 write_draft（learning-writer agent 专用）。
+      // 目标节点在工厂内绑定，模型无法指定其它节点——防止跨节点越权写入。
+      ...(entryContext.learningNoteId
+        ? {
+            write_draft: createWriteDraftTool(
+              this.editorDraftRepo,
+              entryContext.learningNoteId,
+            ),
+          }
+        : {}),
+      // read_content：learningTopicId 或 learningNoteId 任一存在就挂（planner/writer 都能读）。
+      // 只读三层（已提交正文 + 用户草稿 + AI 初稿），不写不改任何内容。
+      ...(entryContext.learningTopicId || entryContext.learningNoteId
+        ? {
+            read_content: createReadContentTool(
+              this.noteViewService,
+              this.editorDraftRepo,
+            ),
           }
         : {}),
     };

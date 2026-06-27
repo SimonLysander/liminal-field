@@ -256,7 +256,7 @@ function toStoredAssetPaths(markdown: string, contentItemId: string): string {
 
 export function PlateMarkdownEditor({
   initialMarkdown,
-  onChange,
+  onChange = () => {},
   onAnchorChange,
   onAddSelectionToChat,
   v3Proposal,
@@ -264,6 +264,7 @@ export function PlateMarkdownEditor({
   onHasV3PendingChange,
   onProposalUiChange,
   editorRefSync,
+  readOnly: readOnlyProp,
 }: {
   initialMarkdown: string;
   /**
@@ -271,8 +272,14 @@ export function PlateMarkdownEditor({
    * @param isUserEdit 是否为用户真实编辑。加载内容时 Slate 规范化 / markdown 往返也会
    *   触发 onValueChange,但那时编辑器【没有焦点】——据此区分,避免把"打开页面"误判为
    *   编辑、触发无谓自动保存(把保存时间戳跳到打开时刻)。
+   * 只读模式(readOnly=true)时可省略:此时编辑器不允许修改,onChange 不会被调用。
    */
-  onChange: (markdown: string, isUserEdit: boolean) => void;
+  onChange?: (markdown: string, isUserEdit: boolean) => void;
+  /**
+   * 只读模式 —— 渲染文本但禁止编辑(如学习视图的 AI 初稿 / 规划预览栏)。
+   * 设为 true 时同时隐藏浮动工具栏。
+   */
+  readOnly?: boolean;
   /** @deprecated 固定工具栏已移除，保留参数兼容文集编辑器 */
   toolbarContainer?: HTMLElement | null;
   /**
@@ -414,12 +421,12 @@ export function PlateMarkdownEditor({
 
   return (
     <TooltipProvider>
-      {/* readOnly：v3 有未裁决 hunk 时锁定，防止审查期间正文变化导致位置漂移 */}
+      {/* readOnly：v3 有未裁决 hunk 时锁定,或调用方显式 readOnly(如学习视图 AI 初稿) */}
       <Plate
         key={editorId}
         editor={editor}
         onValueChange={handleChange}
-        readOnly={hasV3Pending}
+        readOnly={hasV3Pending || !!readOnlyProp}
       >
         {/* AnchorBridge 订阅 selection 并上报 AnchorPayload */}
         {onAnchorChange && (
@@ -447,7 +454,8 @@ export function PlateMarkdownEditor({
             <Editor variant="default" placeholder="开始写作..." />
           </EditorContainer>
         </ProposalBridge>
-        {!toolbarSuppressed && (
+        {/* 只读模式不显示浮动工具栏(无编辑操作可执行);正常模式受 toolbarSuppressed 控制 */}
+        {!readOnlyProp && !toolbarSuppressed && (
           <FloatingToolbar>
             <FloatingToolbarButtons
               onAddSelectionToChat={handleAddSelectionToChat}

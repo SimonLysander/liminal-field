@@ -42,6 +42,7 @@ const GalleryAdmin = lazy(() => import('./pages/admin/gallery'));
 const GalleryEditPage = lazy(() => import('./pages/admin/gallery/edit'));
 const AnthologyAdmin = lazy(() => import('./pages/admin/anthology'));
 const DraftEditPage = lazy(() => import('./pages/admin/edit'));
+const LearnViewPage = lazy(() => import('./pages/admin/learn'));
 const ImportPreviewPage = lazy(() => import('./pages/admin/import-preview'));
 const BatchImportPage = lazy(() => import('./pages/admin/batch-import'));
 const SettingsPage = lazy(() => import('./pages/admin/settings'));
@@ -238,6 +239,16 @@ function App() {
             <AuthGuard>
               <Suspense fallback={<LoadingState variant="full" />}>
                 <DraftEditPage />
+              </Suspense>
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/admin/notes/:id/learn"
+          element={
+            <AuthGuard>
+              <Suspense fallback={<LoadingState variant="full" />}>
+                <LearnViewPage />
               </Suspense>
             </AuthGuard>
           }
