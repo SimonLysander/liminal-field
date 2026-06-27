@@ -104,11 +104,12 @@ export interface LearningData {
   chapters: Chapter[];
   plan: LearnPlan | null;
   reload: () => Promise<void>;
-  createChapter: () => Promise<string | null>; // 返回新篇的 contentItemId
+  createChapter: () => Promise<string | null>; // 返回新篇的 navId(供新建后立即进改名态)
   renameChapter: (navId: string, title: string) => Promise<void>;
   removeChapter: (navId: string) => Promise<void>;
   reorderChapters: (navIds: string[]) => Promise<void>;
   refreshStudied: (contentItemId: string) => Promise<void>;
+  refreshPlan: () => Promise<void>; // 只重读主题 aidraft 重解析规划(Aurora 规划完实时刷左栏)
 }
 
 export function useLearningData(topicNavId: string): LearningData {
@@ -126,7 +127,11 @@ export function useLearningData(topicNavId: string): LearningData {
     }
     try {
       setError(null);
-      const res = await structureApi.getChildren(topicNavId, { scope: 'notes' });
+      // visibility:'all' —— 管理端学习视图要看到未发布的新建篇目(默认 public 会把它们滤掉)
+      const res = await structureApi.getChildren(topicNavId, {
+        scope: 'notes',
+        visibility: 'all',
+      });
       // path 是面包屑,末项(或 id 匹配项)= 主题节点本身,从中取它的 contentItemId
       let self =
         res.path.find((p) => p.id === topicNavId) ?? res.path[res.path.length - 1];
@@ -191,7 +196,7 @@ export function useLearningData(topicNavId: string): LearningData {
       scope: 'notes',
     });
     await load();
-    return node.contentItemId ?? null;
+    return node.id; // navId,供调用方新建后立即让该行进改名态
   }, [topicNavId, load]);
 
   const renameChapter = useCallback(async (navId: string, title: string) => {
@@ -228,6 +233,13 @@ export function useLearningData(topicNavId: string): LearningData {
     );
   }, []);
 
+  // 只重读主题 aidraft + 重解析规划(轻量,供 Aurora 规划期间轮询实时刷左栏,不动篇目)
+  const refreshPlan = useCallback(async () => {
+    if (!topicContentItemId) return;
+    const d = await notesApi.getAiDraft(topicContentItemId).catch(() => null);
+    setPlan(parseLearnPlan(d?.bodyMarkdown));
+  }, [topicContentItemId]);
+
   return {
     loading,
     error,
@@ -241,5 +253,6 @@ export function useLearningData(topicNavId: string): LearningData {
     removeChapter,
     reorderChapters,
     refreshStudied,
+    refreshPlan,
   };
 }

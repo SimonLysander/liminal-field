@@ -140,11 +140,12 @@ function PlanProduct({ plan, onPlanWithAurora }: { plan: LearnPlan | null; onPla
 // ─── 右栏顶部:嵌入式「我的篇目」目录(可折叠 + dnd 拖排序)= 真树 ───────────────────
 
 function SortableChapterRow({
-  ch, index, current, onNavigate, onRename, onRemove,
+  ch, index, current, autoEdit, onNavigate, onRename, onRemove,
 }: {
   ch: Chapter;
   index: number;
   current: boolean;
+  autoEdit?: boolean;
   onNavigate: (contentItemId: string) => void;
   onRename: (navId: string, title: string) => void;
   onRemove: (navId: string) => void;
@@ -152,8 +153,17 @@ function SortableChapterRow({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: ch.navId });
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(ch.title);
+  const autoEditedRef = useRef(false);
 
   const startEdit = () => { setDraft(ch.title); setEditing(true); };
+
+  // 新建后该行自动进改名态(光标落标题),只触发一次,不留"未命名"
+  useEffect(() => {
+    if (autoEdit && !autoEditedRef.current) {
+      autoEditedRef.current = true;
+      queueMicrotask(() => { setDraft(ch.title); setEditing(true); });
+    }
+  }, [autoEdit, ch.title]);
   const commit = () => { const t = draft.trim(); if (t && t !== ch.title) onRename(ch.navId, t); setEditing(false); };
 
   // 纯结构编辑:拖排序 + 序号 + 标题(点进入 / 改名) + 删。研究过实墨、没研究淡墨,不掺状态词。
@@ -195,11 +205,12 @@ function SortableChapterRow({
 }
 
 function ChapterOutline({
-  chapters, currentContentId, isTopic, onNavigate, onAdd, onRename, onRemove, onReorder,
+  chapters, currentContentId, isTopic, autoEditNavId, onNavigate, onAdd, onRename, onRemove, onReorder,
 }: {
   chapters: Chapter[];
   currentContentId: string | null;
   isTopic: boolean;
+  autoEditNavId: string | null;
   onNavigate: (contentItemId: string) => void;
   onAdd: () => void;
   onRename: (navId: string, title: string) => void;
@@ -242,7 +253,7 @@ function ChapterOutline({
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={chapters.map((c) => c.navId)} strategy={verticalListSortingStrategy}>
                 {chapters.map((c, i) => (
-                  <SortableChapterRow key={c.navId} ch={c} index={i} current={c.contentItemId === currentContentId} onNavigate={onNavigate} onRename={onRename} onRemove={onRemove} />
+                  <SortableChapterRow key={c.navId} ch={c} index={i} current={c.contentItemId === currentContentId} autoEdit={c.navId === autoEditNavId} onNavigate={onNavigate} onRename={onRename} onRemove={onRemove} />
                 ))}
               </SortableContext>
             </DndContext>
@@ -287,7 +298,7 @@ function NodeScreen({
   onNavigate: (contentItemId: string | null) => void;
 }) {
   const navigate = useNavigate();
-  const { chapters, plan } = data;
+  const { chapters, plan, refreshPlan, refreshStudied } = data;
   const currentCid = isTopic ? data.topicContentItemId : nodeId;
   const idx = isTopic ? -1 : chapters.findIndex((c) => c.contentItemId === nodeId);
   const chapter = idx >= 0 ? chapters[idx] : null;
@@ -313,7 +324,7 @@ function NodeScreen({
 
   // 当前篇的内容(左 aiDraft / 右 myDraft),按 contentItemId 拉;总章态左是规划提案不拉 aiDraft。
   const [content, setContent] = useState<{ aiDraft: string; myDraft: string } | null>(null);
-  const [leftVer, setLeftVer] = useState(0); // aiDraft 刷新时强制左栏只读编辑器重挂
+  const [autoEditNavId, setAutoEditNavId] = useState<string | null>(null); // 新建篇后让该行自动进改名态
   const mdRef = useRef('');
   const [saving, setSaving] = useState(false);
   const saveTimer = useRef<number | undefined>(undefined);
@@ -401,20 +412,31 @@ function NodeScreen({
     return () => timers.forEach((t) => window.clearTimeout(t));
   }, [auroraOpen]);
 
-  // 收起 Aurora 后刷新左栏:总章重读规划、叶子重读 AI 初稿(模型可能刚 write_learn_plan / write_draft)。
-  const closeAurora = () => {
-    setAuroraOpen(false);
+  // 刷左栏产出:总章重读规划、叶子重读 AI 初稿(只在变化时更新内容,避免闪)。
+  const refreshLeft = useCallback(() => {
     if (isTopic) {
-      void data.reload();
+      void refreshPlan();
     } else if (currentCid) {
       notesApi.getAiDraft(currentCid)
         .then((d) => {
-          setContent((c) => (c ? { ...c, aiDraft: d?.bodyMarkdown ?? c.aiDraft } : c));
-          setLeftVer((v) => v + 1);
+          const body = d?.bodyMarkdown ?? '';
+          setContent((c) => (c && c.aiDraft !== body ? { ...c, aiDraft: body } : c));
         })
         .catch(() => {});
-      void data.refreshStudied(currentCid);
+      void refreshStudied(currentCid);
     }
+  }, [isTopic, currentCid, refreshPlan, refreshStudied]);
+
+  // Aurora 开着时轮询:agent 一写完(write_learn_plan / write_draft)左栏即刷,不必关面板/刷页面。
+  useEffect(() => {
+    if (!auroraOpen) return;
+    const t = window.setInterval(refreshLeft, 2500);
+    return () => window.clearInterval(t);
+  }, [auroraOpen, refreshLeft]);
+
+  const closeAurora = () => {
+    setAuroraOpen(false);
+    refreshLeft();
   };
 
   const handleDraftMouseUp = () => {
@@ -543,7 +565,7 @@ function NodeScreen({
             ) : studied ? (
               <div className="mx-auto w-full max-w-[var(--layout-editor-max)] pb-24 pt-2">
                 <DraftAssetProvider contentItemId={currentCid ?? ''}>
-                  <PlateMarkdownEditor key={`d-${nodeId}-${leftVer}`} initialMarkdown={content.aiDraft} readOnly />
+                  <PlateMarkdownEditor key={`d-${nodeId}-${content.aiDraft.length}`} initialMarkdown={content.aiDraft} readOnly />
                 </DraftAssetProvider>
               </div>
             ) : (
@@ -577,8 +599,9 @@ function NodeScreen({
                   chapters={chapters}
                   currentContentId={nodeId || null}
                   isTopic={isTopic}
+                  autoEditNavId={autoEditNavId}
                   onNavigate={(cid) => onNavigate(cid)}
-                  onAdd={() => void data.createChapter()}
+                  onAdd={() => void data.createChapter().then((navId) => navId && setAutoEditNavId(navId))}
                   onRename={(navId, t) => void data.renameChapter(navId, t)}
                   onRemove={(navId) => void data.removeChapter(navId)}
                   onReorder={(navIds) => void data.reorderChapters(navIds)}
