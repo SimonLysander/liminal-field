@@ -128,8 +128,15 @@ export function useLearningData(topicNavId: string): LearningData {
       setError(null);
       const res = await structureApi.getChildren(topicNavId, { scope: 'notes' });
       // path 是面包屑,末项(或 id 匹配项)= 主题节点本身,从中取它的 contentItemId
-      const self =
+      let self =
         res.path.find((p) => p.id === topicNavId) ?? res.path[res.path.length - 1];
+      if (!self?.contentItemId) {
+        // 兜底:getChildren 的 path 不含自身/无 contentItemId 时,显式取该节点路径
+        const path = await structureApi
+          .getPathByNodeId(topicNavId)
+          .catch(() => [] as typeof res.path);
+        self = path.find((p) => p.id === topicNavId) ?? path[path.length - 1] ?? self;
+      }
       const topicCid = self?.contentItemId ?? null;
       setTopicContentItemId(topicCid);
       setTopicTitle(self?.name ?? '学习');

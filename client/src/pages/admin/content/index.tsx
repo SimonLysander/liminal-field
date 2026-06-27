@@ -121,8 +121,9 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
 
   /* 学习入口：LearningProject 已删，学习视图按需访问即可，不再查询项目是否存在。
    * learnUrl 有值即显示「开始学习」入口；learningExists 固定 false（无"继续"区分）。
-   * 仅 notes scope 有此入口（文集不学习）。 */
-  const learningRootId = scope === 'notes' ? activeNode?.contentItemId : undefined;
+   * 仅 notes scope 有此入口（文集不学习）。
+   * :id = 主题 NavigationNode id（学习页按它拉子节点=篇目;非 contentItemId）。 */
+  const learningRootId = scope === 'notes' ? activeNode?.id : undefined;
   const learningExists = false;
   const learnUrl = learningRootId ? `/admin/notes/${learningRootId}/learn` : null;
 
