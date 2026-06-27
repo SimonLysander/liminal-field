@@ -18,6 +18,18 @@ import type { EditorDraftRepository } from '../../workspace/editor-draft.reposit
 import { toolResult } from './tool-result';
 
 /**
+ * 任意读操作失败时静默返回 null，不中断其余段的读取。
+ * 三段各自独立：① 无快照 getById 抛异常是正常态；② 草稿/aidraft 缺失同理。
+ */
+async function safeFetch<T>(fn: () => Promise<T>): Promise<T | null> {
+  try {
+    return await fn();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * @param noteViewService   读最新已提交正文（visibility='all'）
  * @param editorDraftRepo   读用户草稿（draft:）和 AI 初稿（aidraft:）
  */
@@ -41,39 +53,30 @@ export function createReadContentTool(
     execute: async ({ contentItemId }: { contentItemId: string }) => {
       const sections: string[] = [];
 
-      // ── ① 已发布/已提交正文（visibility='all'）──────────────────────────────
-      // 节点尚未提交（无快照）时 getById 抛异常，静默 catch 继续后续两段。
-      try {
-        const doc = await noteViewService.getById(contentItemId, 'all');
-        if (doc.bodyMarkdown) {
-          sections.push(`【正文 · 最新已发布/已提交】\n${doc.bodyMarkdown}`);
-        }
-      } catch {
-        // 节点无快照或 id 无效 → 跳过，不影响草稿/aidraft 段
+      // ── ① 已发布/已提交正文（visibility='all'）
+      const doc = await safeFetch(() =>
+        noteViewService.getById(contentItemId, 'all'),
+      );
+      if (doc?.bodyMarkdown) {
+        sections.push(`【正文 · 最新已发布/已提交】\n${doc.bodyMarkdown}`);
       }
 
-      // ── ② 用户草稿（draft:{id}，用户未提交的在编版本）───────────────────────
-      try {
-        const draft = await editorDraftRepo.findByContentItemId(contentItemId);
-        if (draft?.bodyMarkdown) {
-          sections.push(`【我的草稿 · 未提交】\n${draft.bodyMarkdown}`);
-        }
-      } catch {
-        // 查询失败时静默跳过，不让草稿缺失影响整体
+      // ── ② 用户草稿（draft:{id}，用户未提交的在编版本）
+      const draft = await safeFetch(() =>
+        editorDraftRepo.findByContentItemId(contentItemId),
+      );
+      if (draft?.bodyMarkdown) {
+        sections.push(`【我的草稿 · 未提交】\n${draft.bodyMarkdown}`);
       }
 
-      // ── ③ AI 初稿（aidraft:{id}，Aurora 写入，对用户只读）──────────────────
-      // 普通节点无 aidraft 是正常态，不报错。
-      try {
-        const aiDraft =
-          await editorDraftRepo.findAiDraftByContentItemId(contentItemId);
-        if (aiDraft?.bodyMarkdown) {
-          sections.push(
-            `【AI 初稿 · Aurora 研究稿 · 只读参照】\n${aiDraft.bodyMarkdown}`,
-          );
-        }
-      } catch {
-        // aidraft 缺失是正常状态，不报错
+      // ── ③ AI 初稿（aidraft:{id}，Aurora 写入，对用户只读）
+      const aiDraft = await safeFetch(() =>
+        editorDraftRepo.findAiDraftByContentItemId(contentItemId),
+      );
+      if (aiDraft?.bodyMarkdown) {
+        sections.push(
+          `【AI 初稿 · Aurora 研究稿 · 只读参照】\n${aiDraft.bodyMarkdown}`,
+        );
       }
 
       if (sections.length === 0) {

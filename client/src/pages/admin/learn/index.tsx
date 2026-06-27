@@ -565,7 +565,7 @@ function NodeScreen({
             ) : studied ? (
               <div className="mx-auto w-full max-w-[var(--layout-editor-max)] pb-24 pt-2">
                 <DraftAssetProvider contentItemId={currentCid ?? ''}>
-                  <PlateMarkdownEditor key={`d-${nodeId}-${content.aiDraft.length}`} initialMarkdown={content.aiDraft} readOnly />
+                  <PlateMarkdownEditor key={`d-${nodeId}-${content.aiDraft.length}:${content.aiDraft.slice(0, 16)}:${content.aiDraft.slice(-16)}`} initialMarkdown={content.aiDraft} readOnly />
                 </DraftAssetProvider>
               </div>
             ) : (

@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { structureApi } from '@/services/structure';
 import { notesApi } from '@/services/workspace';
+import { banner } from '@/components/ui/banner-api';
 
 export interface PlanItem {
   title: string;
@@ -188,38 +189,65 @@ export function useLearningData(topicNavId: string): LearningData {
     });
   }, [load]);
 
+  // 写操作统一:失败弹 banner + reload 把乐观更新纠回服务端真值(不静默吞错,守 CLAUDE.md "catch 必 log/提示")。
   const createChapter = useCallback(async () => {
-    const node = await structureApi.createNode({
-      name: '未命名',
-      type: 'DOC', // 篇 = 叶子文档节点
-      parentId: topicNavId,
-      scope: 'notes',
-    });
-    await load();
-    return node.id; // navId,供调用方新建后立即让该行进改名态
+    try {
+      const node = await structureApi.createNode({
+        name: '未命名',
+        type: 'DOC', // 篇 = 叶子文档节点
+        parentId: topicNavId,
+        scope: 'notes',
+      });
+      await load();
+      return node.id; // navId,供调用方新建后立即让该行进改名态
+    } catch (e) {
+      banner.error(e instanceof Error ? e.message : '新建篇目失败');
+      return null;
+    }
   }, [topicNavId, load]);
 
-  const renameChapter = useCallback(async (navId: string, title: string) => {
-    setChapters((cs) => cs.map((c) => (c.navId === navId ? { ...c, title } : c)));
-    await structureApi.updateNode(navId, { name: title });
-  }, []);
+  const renameChapter = useCallback(
+    async (navId: string, title: string) => {
+      setChapters((cs) => cs.map((c) => (c.navId === navId ? { ...c, title } : c)));
+      try {
+        await structureApi.updateNode(navId, { name: title });
+      } catch (e) {
+        banner.error(e instanceof Error ? e.message : '改名失败');
+        await load();
+      }
+    },
+    [load],
+  );
 
-  const removeChapter = useCallback(async (navId: string) => {
-    setChapters((cs) => cs.filter((c) => c.navId !== navId));
-    await structureApi.deleteNode(navId);
-  }, []);
+  const removeChapter = useCallback(
+    async (navId: string) => {
+      setChapters((cs) => cs.filter((c) => c.navId !== navId));
+      try {
+        await structureApi.deleteNode(navId);
+      } catch (e) {
+        banner.error(e instanceof Error ? e.message : '删除失败');
+        await load();
+      }
+    },
+    [load],
+  );
 
   const reorderChapters = useCallback(
     async (navIds: string[]) => {
-      // 乐观重排,再持久化(失败时下次 reload 自然纠回)
+      // 乐观重排,再持久化;失败弹 banner + reload 纠回。
       setChapters((cs) =>
         navIds
           .map((id) => cs.find((c) => c.navId === id))
           .filter((c): c is Chapter => !!c),
       );
-      await structureApi.reorderSiblings(topicNavId, navIds);
+      try {
+        await structureApi.reorderSiblings(topicNavId, navIds);
+      } catch (e) {
+        banner.error(e instanceof Error ? e.message : '排序失败');
+        await load();
+      }
     },
-    [topicNavId],
+    [topicNavId, load],
   );
 
   const refreshStudied = useCallback(async (contentItemId: string) => {
