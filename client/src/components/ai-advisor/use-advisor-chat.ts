@@ -73,6 +73,11 @@ export type AdvisorContext = {
    * 与后端 EntryContextDto.learningNoteId 同名字段对应。
    */
   learningNoteId?: string;
+  /**
+   * 学习场景：前端实时拼好的"当前业务场景"状态串(在学哪个领域/目标、当前第几篇、
+   * 篇目结构 + 各篇状态;无正文)。原样进后端 current_context。
+   */
+  learningContext?: string;
   /** 画廊场景:照片清单 + 随笔 */
   gallery?: {
     contentItemId: string;
@@ -579,6 +584,8 @@ function buildAgentRequestBody({
       // 当前在学的笔记节点 contentItemId：后端挂 write_draft + read_content 时的上下文锚点。
       // 与 learningTopicId 独立——planner 只传 topicId，writer 只传 noteId，两者可共存。
       learningNoteId: context?.learningNoteId,
+      // 学习"当前业务场景"状态串(篇目结构,无正文),原样进后端 current_context。
+      learningContext: context?.learningContext,
     },
   };
 }

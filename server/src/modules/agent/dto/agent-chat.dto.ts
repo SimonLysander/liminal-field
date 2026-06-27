@@ -197,6 +197,14 @@ class EntryContextDto {
   @IsString()
   @IsOptional()
   learningNoteId?: string;
+
+  /**
+   * 学习产品场景：前端实时拼好的"当前业务场景"状态串（在学哪个领域/目标、当前第几篇、
+   * 篇目结构 + 各篇状态；无正文）。注入 current_context，与 collectionContext 同范式。
+   */
+  @IsString()
+  @IsOptional()
+  learningContext?: string;
 }
 
 export class AgentChatDto {

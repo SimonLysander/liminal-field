@@ -299,6 +299,18 @@ function NodeScreen({
   const anyResearched = chapters.some((c) => c.studied);
   const resume = [...chapters].reverse().find((c) => c.studied) ?? chapters[0] ?? null;
 
+  // 当前业务场景状态串(实时拼、无正文)→ 后端拼进 <current_context>。状态二态:已研究(有 AI 稿)/ 空。
+  const planGoal = data.plan?.goal ? `(目标:${data.plan.goal})` : '';
+  const learningContextStr =
+    (isTopic
+      ? `在规划《${data.topicTitle}》${planGoal}。`
+      : `在学《${data.topicTitle}》${planGoal},当前第 ${idx + 1}/共 ${chapters.length} 篇《${title}》。`) +
+    '\n' +
+    (chapters.length
+      ? '篇目:\n' +
+        chapters.map((c, i) => `  ${i + 1}. ${c.title}    ${c.studied ? '已研究' : '空'}`).join('\n')
+      : '篇目:(还没建,照规划新建一篇)');
+
   // 当前篇的内容(左 aiDraft / 右 myDraft),按 contentItemId 拉;总章态左是规划提案不拉 aiDraft。
   const [content, setContent] = useState<{ aiDraft: string; myDraft: string } | null>(null);
   const [leftVer, setLeftVer] = useState(0); // aiDraft 刷新时强制左栏只读编辑器重挂
@@ -596,8 +608,8 @@ function NodeScreen({
               source="learning-editor"
               context={
                 isTopic
-                  ? { learningTopicId: currentCid ?? undefined }
-                  : { learningNoteId: currentCid ?? undefined, document: { contentItemId: currentCid ?? undefined, title } }
+                  ? { learningTopicId: currentCid ?? undefined, learningContext: learningContextStr }
+                  : { learningNoteId: currentCid ?? undefined, learningContext: learningContextStr }
               }
               greeting={isTopic ? '想学什么领域?我来立锚、推演脉络。' : studied ? '想改这篇初稿的哪里?' : '这一篇要研究什么?我来起草。'}
               selectionAttachments={selections}

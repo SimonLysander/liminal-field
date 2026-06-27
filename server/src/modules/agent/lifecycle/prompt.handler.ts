@@ -130,6 +130,11 @@ export interface BuildSystemPromptParams {
   customSystemPrompt?: string;
   /** AgentEntryConfig 里为该 agent 入口配置的系统提示词（可选），优先级高于全局配置 */
   entrySystemPrompt?: string;
+  /**
+   * 学习场景的"当前业务场景"状态串(前端实时拼好,无正文):在学哪个领域/目标、当前第几篇、
+   * 篇目结构 + 各篇状态。有值时 current_context 用它(并把业务 role 并进来),与 collectionContext 同范式。
+   */
+  learningContext?: string;
   /** 当前会话的写作计划(注入让模型看得到自己的清单,可用 write_tasks 整体改写) */
   tasks?: Array<Record<string, unknown>>;
   /**
@@ -258,8 +263,16 @@ export class PromptHandler {
       }),
     );
 
-    // 7. ——— 当前业务场景：点名在编辑哪篇 + 大纲（v3.1 起正文不再注入）———
-    if (params.document) {
+    // 7. ——— 当前业务场景 ———
+    //   学习场景:业务 role(entrySystemPrompt)+ 实时状态(篇目结构,前端拼好,无正文)合成一块。
+    //     业务 role 本就属于"当前业务场景",故并进 current_context,不再于尾部单独 push。
+    //   其它场景:点名在编辑哪篇 + 大纲(v3.1 起正文不再注入)。
+    if (params.learningContext?.trim()) {
+      const role = params.entrySystemPrompt?.trim();
+      sections.push(
+        `<current_context>\n${role ? role + '\n\n' : ''}${params.learningContext.trim()}\n</current_context>`,
+      );
+    } else if (params.document) {
       const { title, bodyMarkdown } = params.document;
       const wordCount = bodyMarkdown.length;
       sections.push(`<current_context>
@@ -403,7 +416,8 @@ ${lines}
     }
 
     // ——— 入口级自定义 system prompt（AgentEntryConfig 配置的，优先注入） ———
-    if (params.entrySystemPrompt?.trim()) {
+    // 学习场景的业务 role 已并入 current_context,这里不再重复 push。
+    if (!params.learningContext?.trim() && params.entrySystemPrompt?.trim()) {
       sections.push(params.entrySystemPrompt.trim());
     }
 

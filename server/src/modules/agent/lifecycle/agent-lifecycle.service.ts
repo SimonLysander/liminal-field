@@ -225,6 +225,8 @@ export class AgentLifecycle {
       digestReport: dto.entryContext.digestReport,
       customSystemPrompt: aiConfig.aiSystemPrompt,
       entrySystemPrompt: aiConfig.entrySystemPrompt,
+      // 学习场景:前端实时拼好的"当前业务场景"状态串(篇目结构,无正文)
+      learningContext: dto.entryContext.learningContext,
       tasks,
       // agent skills:轻量元数据进 prompt;body 永不进(在 Skill 工具 tool_result 才载入)
       enabledSkills,
