@@ -3,7 +3,8 @@
  *
  * 覆盖：
  *   1. 正常写入 → status=ok，itemsCount 正确，saveAiDraft 携带正确参数
- *   2. saveAiDraft 抛出异常 → status=error，summary 含错误信息
+ *   2. bodyMarkdown 格式：YAML frontmatter（含 goal + items）+ understanding 散文正文
+ *   3. saveAiDraft 抛出异常 → status=error，summary 含错误信息
  */
 
 import { createWriteLearnPlanTool } from '../write-learn-plan.tool';
@@ -27,6 +28,8 @@ function makeRepo(
 }
 
 const TOPIC_ID = 'ci_topic_photography';
+
+const GOAL = '理解摄影的光控逻辑，能独立分析构图与曝光的底层原因';
 
 const UNDERSTANDING =
   '摄影的底层原理是光的控制。所有的曝光讲究、构图法则、后期处理，追到底都在回答同一个问题：如何把光塑造成你想要的样子。顺着这条线，落成下面这几篇：';
@@ -55,28 +58,43 @@ describe('write-learn-plan.tool', () => {
     const tool = createWriteLearnPlanTool(repo as never, TOPIC_ID);
 
     const result = parse(
-      await run(tool, { understanding: UNDERSTANDING, items: ITEMS }),
+      await run(tool, {
+        goal: GOAL,
+        understanding: UNDERSTANDING,
+        items: ITEMS,
+      }),
     );
 
     expect(result.meta.status).toBe('ok');
     expect(result.meta.itemsCount).toBe(ITEMS.length);
 
-    // saveAiDraft 必须被调用，contentItemId 为主题 id，changeNote 为 'learn-plan'
+    // saveAiDraft 必须被调用：contentItemId 为主题 id，title 为 goal，changeNote 为 'learn-plan'
     expect(repo.saveAiDraft).toHaveBeenCalledWith(
       expect.objectContaining({
         contentItemId: TOPIC_ID,
-        title: '学习规划',
+        title: GOAL,
         changeNote: 'learn-plan',
       }),
     );
 
-    // bodyMarkdown 应包含 understanding 段和各篇 title
+    // bodyMarkdown 必须是 YAML frontmatter + understanding 散文的契约格式
     const { bodyMarkdown } = (repo.saveAiDraft as jest.Mock).mock
       .calls[0][0] as { bodyMarkdown: string };
-    expect(bodyMarkdown).toContain(UNDERSTANDING);
+
+    // 1. 以 "---\n" 开头（frontmatter 存在）
+    expect(bodyMarkdown).toMatch(/^---\n/);
+
+    // 2. frontmatter 含 goal 字段
+    expect(bodyMarkdown).toContain(`goal: ${GOAL}`);
+
+    // 3. frontmatter 含 items（title / thread 在 YAML 中出现）
     expect(bodyMarkdown).toContain('光从哪里来');
     expect(bodyMarkdown).toContain('曝光三要素');
     expect(bodyMarkdown).toContain('目的');
+
+    // 4. frontmatter 闭合后正文包含 understanding 散文
+    const afterFrontmatter = bodyMarkdown.split(/^---$/m).slice(2).join('---');
+    expect(afterFrontmatter).toContain(UNDERSTANDING);
   });
 
   it('saveAiDraft 抛出异常 → status=error，summary 含错误信息', async () => {
@@ -86,7 +104,11 @@ describe('write-learn-plan.tool', () => {
     const tool = createWriteLearnPlanTool(repo as never, TOPIC_ID);
 
     const result = parse(
-      await run(tool, { understanding: UNDERSTANDING, items: ITEMS }),
+      await run(tool, {
+        goal: GOAL,
+        understanding: UNDERSTANDING,
+        items: ITEMS,
+      }),
     );
 
     expect(result.meta.status).toBe('error');

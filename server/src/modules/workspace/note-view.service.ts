@@ -247,6 +247,23 @@ export class NoteViewService {
     return this.toDraftDto(draft);
   }
 
+  /**
+   * 读取 AI 初稿（只读端点）。
+   *
+   * 隔离说明：aidraft:{topicId} 前缀与普通草稿 draft:{id} 完全隔离，
+   * 此方法只读不写，绝不触发 commit/publish 流水线。
+   * 供学习模块左栏 Aurora 产出区展示 write_learn_plan 写入的规划提案。
+   */
+  async getAiDraft(id: string): Promise<EditorDraftDto | null> {
+    await this.contentService.assertContentItemExists(id);
+    const draft =
+      await this.editorDraftRepository.findAiDraftByContentItemId(id);
+    if (!draft) {
+      return null;
+    }
+    return this.toDraftDto(draft);
+  }
+
   /** 保存草稿（autosave）：只写 MongoDB，不触发 Git commit。 */
   async saveDraft(id: string, dto: SaveDraftDto): Promise<EditorDraftDto> {
     await this.contentService.assertContentEditable(id);

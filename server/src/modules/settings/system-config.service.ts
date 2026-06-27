@@ -318,11 +318,12 @@ export class SystemConfigService implements OnModuleInit {
    *
    * 顺序要求：
    *   1. 先 upsert note-plan       → 拿 _id（learning-planner.enabledSkillIds 用）
-   *   2.    upsert note-craft-134  → 拿 _id（learning-writer.enabledSkillIds 用）
+   *   2.    upsert note-writing     → 拿 _id（learning-writer.enabledSkillIds 用）
+   *         + 迁移：老库 note-craft-134 → note-writing 就地改名
    *         + 迁移：老版 requiredTools 含 read_document_content → 换成 read_content
    *   3. 补 learning-planner agent（enabledSkillIds=[note-plan._id]）
    *         + 迁移：老版 tools 只有 ['write_learn_plan'] → 补齐完整工具集
-   *   4. 补 learning-writer agent（enabledSkillIds=[note-craft-134._id]）
+   *   4. 补 learning-writer agent（enabledSkillIds=[note-writing._id]）
    */
   private async seedLearningSkills(): Promise<void> {
     // ── 1. note-plan skill（规划思维模型）──────────────────────────────────
@@ -336,100 +337,88 @@ export class SystemConfigService implements OnModuleInit {
         whenToUse:
           '在学习笔记产品中,需要为一个领域做规划时使用——研究它、立底层原理为锚、自上而下推出该学哪些篇及其次序,产出「理解 + 笔记结构」。仅用于学习规划;普通问答、改稿不触发。',
         // body 取自 docs/agent/skills/note-plan.draft.md § body 节全文
-        body: `你正在为「学习笔记」产品**规划一个领域**。所有者要系统地学这个领域,你的任务是先替他**把思路梳理好**:研究这个领域,按下面的思维模型把它拆成一串**以篇为单位、有因果次序**的笔记结构,并讲清**为什么这么拆**。你产出的不是钉死的目录,是一份**可改的提案**——所有者会顺着逻辑跟你拨,你再调。
+        body: `你正在为「学习笔记」产品规划一个领域。产出是一组以篇为单位、有因果次序的学习笔记结构,为可修改的提案,而非定死的目录。你仅产出规划提案(经 write_learn_plan 写入主题节点的 aidraft),不新建节点、不写正文。
 
-### 一、思维模型(怎么拆)
+### 规划所依的认知模型
 
-所有者的认知方式是**第一性原理的公理化演绎 + 因果拓扑网络**。规划要照它来:
+学习一个新领域时,基于已有的基础认知,先找到一个能自洽解释该领域的底层原理,再自上而下推导出该学什么、按什么顺序学。这一初步序列是逻辑推演的结果,而非摸索拼凑;它不一定最终正确,可在学习途中调整。
 
-1. **立领域锚.** 先找一个能**自洽解释整个领域**的底层原理或第一性概念,把它立稳。这是整片规划的根——后面每一篇为什么存在、为什么排在那,都要能追回这个锚。锚要用它的**真名**(真正的概念),不要用市井比喻代替。
+序列从前到后推进,直到关心的基础知识点基本覆盖,初级的系统性学习即告完成。此时知识沉淀为一张从前到后、从浅到深的多维网状结构,浅与深连续交织,没有明确分界。
 
-2. **自上而下、顺因果推演.** 从锚出发,顺着因果一步步推出"所以要先学这个、再学那个":先弄清领域的**目的 / 本质**,再看支撑它的**结构**,结构要运转便追**机制 / 供给**,然后是它与**外部**的互动,最后落到**实践 / 应用**。每一篇都是上一篇的因果延伸,**篇与篇之间有因果连线,整条链不留断头路**(不能从某篇跳到下一篇而理由接不上)。
+更深的掘进不预先规划为第二轮。当某一点出现不解、或发现先前理解有误时,再循因果链向下挖掘,直至逻辑重新自洽——受阻即溯源。因此你只负责给出初步的、覆盖基础的有序序列,不预设后续的深入路径。
 
-3. **粒度.** 一篇 = 一个能**自洽讲清的因果单元**。太碎(一个小概念单独成篇)会让链琐碎,太大(几条独立因果塞一篇)会让篇讲不透。以"这一篇能立一个锚、讲清一组相互咬合的机制"为度。
+贯穿始终的是系统性:节点之间须有因果连线,网络不留断头路,整体在回顾时完整自洽;同时对底层推导保留可修正的空间。深度不来自单点掘进,而来自这张网络的严密与延展。
 
-4. **保留可修正.** 这是**初步推演**,不是定论。明确这份规划允许在学的过程中被回改——学到某篇发现锚不对、或次序别扭,可以回头调。提案而非教条。
+### 篇目的产出要求
 
-### 二、产出(两部分,合成一份 markdown)
+- 每篇给出三项:篇名、它在因果链上所处的环节(脉络词)、此处为何需要这一篇。
+- 次序服从因果,前篇为后篇的依据,而非按难易或篇幅排列。
+- 覆盖到关心的基础知识点即可,不在此穷尽深度。
+- 篇目与次序均为提案,作者可改;不另设知识点清单。
 
-**1. 「理解」—— 自然成文的论述,讲清为什么这么规划.**
-用一段(或几段)连续的文字,讲清:这个领域立在什么**锚**上、顺着什么**因果线**往下拆、整条线的逻辑;以及这份规划**覆盖到哪、不含什么**(划出范围边界)。它是给所有者读、让他审"你到底懂没懂、这么规划站不站得住"的。要求:
+### 研究取向
 
-- **自然成段,概念顺承.** 开头把锚立稳、定义清楚,其后凡能用该概念就用它承接。真概念用真名,不用口语比喻代。
-- **不写元注释.** 不要旁白解释自己的写法或一句话的认知地位(反例:"这是我推出来的""下面我列一下")。
-- **书面语体,点到为止.** 不用市井俗词,克制,不刻意"生动"。
-- **末句自然引出篇目**(如"……顺着这条线,落成下面这几篇:"),让「理解」和「结构」是连续的一份产物,不是割裂两块。
+以自身知识为主来规划,允许有错(作者会在对话与重写时审);联网是手术式的,只为核实领域的底层原理与关键环节服务,不做泛泛搜罗。把握不足处老实说明,不编造结构。
 
-**2. 「笔记结构」—— 有序篇目.**
-紧接「理解」,给出有序的篇目(每篇一个标题)。这是从理解凝出的骨架,每篇是因果链上的一个节点。**只给标题层级的结构,不要预写每篇内部的内容**(每篇真正的立锚 / 建模 / 兑现,是所有者学到那篇时,由「成稿 / 134」skill 研究生成,规划这一步不写)。
+### 理解段文风
 
-### 三、研究取向
+提案中的理解散文与 note-writing 同一套书面语:不用口语俗词,认知诚实由措辞承载,不写元注释。此段须阐明锚是什么、为何顺此推出这些篇、次序的因果依据。
 
-- **以你自身的知识为主**来研究和规划。这套产品追求加速,允许有错——所有者会在跟你对话时审、在重写时审。不要为求稳而把每个判断都挂上联网检索。
-- 围绕思维模型来研究:找领域的底层原理、做因果拆解;不做泛泛的网络搜罗。
-- **不编造**:讲不准的领域结构,宁可老实说"这块我把握不足、建议你确认",也不要硬编一个像样的假结构。
+### 产出
 
-### 四、产出方式(必须用 write_learn_plan 工具落库)
-
-研究并想清楚后,**必须调用 \`write_learn_plan\` 工具**把规划落库,而不是只在对话里输出文本:
-- \`understanding\`:「理解」的自然成文段落（立锚 + 因果拓扑 + 末句引出篇目）。
-- \`items\`:有序篇目提案数组，每项含 title（篇名）、thread（脉络词）、why（学习意图）。
-
-落库后,在对话里简短说明你这么规划的要点,请所有者在左侧查看并确认。他若要调整,继续对话并再次调 \`write_learn_plan\` 更新。`,
+调用 write_learn_plan,传入 goal(本次学习目标)、understanding(理解散文)、items(有序的 title / thread / why)。`,
         requiredTools: [],
       });
       this.logger.log(`seed note-plan skill _id=${notePlan._id.toString()}`);
     }
 
-    // ── 2. note-craft-134 skill（成稿 134 行文逻辑）────────────────────────
-    let noteCraft = await this.skillService.findByName('note-craft-134');
-    if (!noteCraft) {
-      noteCraft = await this.skillService.create({
-        name: 'note-craft-134',
-        displayName: '成稿（134）',
+    // ── 2. note-writing skill（成稿行文逻辑）────────────────────────────────
+    // 迁移：note-craft-134 → note-writing 就地改名（幂等），老库有旧名时就地更新元数据
+    const oldNoteCraft = await this.skillService.findByName('note-craft-134');
+    if (oldNoteCraft) {
+      await this.skillService.update(oldNoteCraft._id.toString(), {
+        name: 'note-writing',
+        displayName: '成稿（行文）',
+      });
+      this.logger.log(
+        `Migration: note-craft-134 → note-writing _id=${oldNoteCraft._id.toString()}`,
+      );
+    }
+    let noteWriting = await this.skillService.findByName('note-writing');
+    if (!noteWriting) {
+      noteWriting = await this.skillService.create({
+        name: 'note-writing',
+        displayName: '成稿（行文）',
         description:
           '把规划好的一篇,按 立锚→建模→兑现 写成严谨、可读可审的教科书式学习笔记初稿',
         whenToUse:
           '在学习笔记产品中,需要为某一篇生成或续写正文初稿时使用——它规定这一篇的行文逻辑(立锚→建模→兑现)与文风。仅用于学习笔记成稿;普通问答、给建议、改写他人正文不要触发。',
-        // body 取自 docs/agent/skills/note-craft-134.draft.md § body 节全文
-        body: `你正在为「学习笔记」产品撰写**一篇**正文的初稿。读者是这份笔记的所有者本人:他不会照单全收你的稿子,而是**对照你的初稿,亲手重写成自己的版本来完成学习**。因此这篇稿子要同时做到两件事——**读得顺**(他愿意顺着读下去),**审得住**(逻辑经得起他逐句追问,哪里不自洽他一眼能看出)。文风是你和他共用的同一把尺。
+        // body 取自 docs/agent/skills/note-writing.draft.md § body 节全文
+        body: `你正在为「学习笔记」产品撰写一篇正文的初稿。读者是这份笔记的作者本人:他不会照单全收,而是对照你的初稿,亲手重写成自己的版本来完成学习。因此这篇要两面兼顾——便于阅读(他愿意顺着读下去),也便于核验(逻辑经得起逐句追问,哪里不自洽他一眼能看出)。你仅产出 AI 初稿(经 write_draft 写入 aidraft),不改动篇目结构,不新建节点。
 
-### 一、行文逻辑(骨架固定:立锚 → 建模 → 兑现)
+### 行文逻辑(一篇如何组织)
 
-这是一篇**连续流动的文章**,像一条河从源头淌到入海,不是「定义/原理/例子」式的模版三段框。三个动作是水流的次序,不是要贴出来的小标题。
+一篇笔记是一条因果链,自底层原理推演至落地,不套用模版;是一篇连续流动的文章,不是「定义/原理/例子」式的三段框。分三步,三者是水流的次序,不是要贴出来的小标题:
+1. 立锚——为本篇确立一个能自洽解释全篇的底层原理,开篇即立稳、定义清楚,此后凡能用它承接处即用它。
+2. 建模——以此原理构建理解,一步接一步,让读者看着结论何以成立;在关键断言处指出它在何处失效、有何反例,并用模型解释由它延伸的现象。
+3. 兑现——落到现实中既有的设计、经验或约定,说明既有做法因何如此,再回指开篇,使因果闭合。
 
-**1 立锚.** 为这一篇找到一个能自洽解释它的底层原理或第一性概念,开篇就把它**立稳、定义清楚**。这个核心概念是贯穿全篇的线:此后凡能用它承接的地方就用它,不要换一套说法重起炉灶。锚要用它的**真名**(真正的概念),不要用市井比喻代替。
+兑现是叙述的收束,而非另立的速查表。缘由在前文讲透,落地方有依据。
 
-**3 建模.** 用这个锚往上搭解释模型——推演出这一篇真正要讲的主要机制或结构,一步接一步,让读者看着「为什么会是这样」长出来,而不是被告知结论。在关键断言处,顺手**划出它的失效边界**:这条结论在什么条件下不再成立、有什么反例。边界写成行文里的自然转折,不要立一个「边界:」的标签,也不要解释「我在这里标边界」。模型搭起来之后,用它去解释这个领域里那些本来需要解释的现象。
+### 文风
 
-**4 兑现.** 顺着前面的推理,落回现实——落到这个领域里**既有的设计、经验、约定或典型实例**上:「所以既有的 X 正是这么来的」。落点要**反扣前文**,把因果接回你立的锚和搭的模型,让整篇的因果网连上、不留断头路。兑现是叙事的收束,不是抽离出去的速查卡;正因为前面把「为什么」讲透了,这里的落点才扎得深。
+- 使用书面语,不用口语俗词。
+- 句子留有余地,节奏从容;少用破折号与括号,避免在句中频繁加粗。
+- 一项断言系实测还是推演、有无例外,由措辞自然传达(实测表明、经验上、往往、大致、典型量级、难以一概而论),不另起一句加以说明;也不写「此处用表格更清晰」这类对文本自身的评点。
+- 关键判断附带一句其失效条件,作为核验的把手,写成行文里的自然转折,点到为止。
 
-### 二、文风
+### 格式
 
-1. **概念优先并顺承.** 开头把核心概念立稳、定义清楚;其后凡能用该概念就用它承接。概念是贯穿全文的线,既是精确的来源,也是流畅的真正来源。真概念用真名,别用口语比喻代(用「能量平衡」,不用「总账」)。
+信息密集或需多维对比时,自然采用列表、表格或图示,由逻辑决定形式,不为排版而排版。
 
-2. **认知诚实化进措辞,不写元注释.** 不要在正文里旁白解释自己的写法,或一句话的认知地位(反例:「这不是推导出来的」「这是统计倾向不是定理」「用表比文字省力」)。认知出身用措辞承载,点到为止:实测 → 「测量表明 / 已有研究表明 / 实践中往往」;经验规律 → 「经验特征 / 通常 / 往往 / 典型量级」;演绎 → 「由此 / 因此」;约定 → 「通常约定」;假设 → 「暂设」。读者自然掂得出分量。
+### 研究取向
 
-3. **失效边界作审查把手.** 关键断言挂上边界或反例,但写成行文的自然转折(「但这一优势并非无条件:当……时,……」),不当装饰也不啰嗦,点到为止。
-
-4. **不造假必然.** 别用「必然」「彻底抵消」这类夸大词制造假的逻辑必然——它们多半是「每句都得是逻辑必然」这种执念逼出来的。遇到经验或约定,就老实用软措辞。
-
-5. **书面语体,忌口语俗词.** 不用带市井气的大白话(踩过的:根子、花样、扎堆、唬人、现原形、急刹车、抛开种种说法)。用平实精确的书面词,克制,不刻意「生动」。
-
-6. **节奏:让句子能喘气.** 诚实与边界要各自成句、平顺过渡,别一股脑塞进破折号或括号当插入语路障;少在句中加粗;别把列表伪装成句子。逻辑连得上 ≠ 读起来顺,读不顺多半是打断太多。
-
-7. **格式自适应.** 信息密度大、需要多维对比或呈现流程时,文字自然坍缩成列表、表格或 Mermaid 图——逻辑驱动格式,而非反之。直接用,不要写「这里用表更合适」之类的旁白。
-
-### 三、研究取向(模型为主、引用为辅)
-
-- **以你自身的知识为主**起草。这套笔记追求的是加速,允许有错——所有者会在重写时审、在受阻时让你深挖某一处兜底。不要为求稳而把每句都挂上联网检索。
-- **联网是手术式的,只为引用服务**:概念的严谨定义、关键数据、易记错的事实,需要可靠出处时才去 \`web_search\` / \`web_fetch\`。检索围绕这一篇的骨架(立锚、关键断言、兑现的实例)展开,不做泛泛的网络搜罗。
-- **唯一硬约束:不编造引用.** 凡是你在正文里标了来源(\`[1]\`)的地方,那个来源必须是你**真的取到过**的内容,标题、出处真实。宁可不标,也不要编。
-- 续写已有篇目时,先用 \`read_content\` 读这一篇的现状(三层：已提交正文 + 用户草稿 + AI 初稿),接着写,不要另起炉灶。
-
-### 四、产出
-
-直接输出这一篇的 **Markdown 正文**,从立锚的第一句开始,到兑现的收束结束。不写「以下是初稿」之类的开场白,不写自我说明。若用了联网来源,在文末以简洁的出处列表给出对应的 \`[n]\`。`,
+以自身知识为主起草,允许有错(作者会在重写时审);联网是手术式的,只为关键定义、数据、易错事实的可靠出处服务。标注的出处必须是真的取到过的内容,不编造引用;出处融入行文,不罗列链接。`,
         // learning-writer 用 read_content（三层：已提交正文 + 用户草稿 + AI 初稿），
         // 而非写作顾问的 read_document_content（只读已发布内容）。
         // autoCleanupOrphanSkills 会校验 requiredTools ⊆ agent.tools，
@@ -437,30 +426,30 @@ export class SystemConfigService implements OnModuleInit {
         requiredTools: ['web_search', 'web_fetch', 'read_content'],
       });
       this.logger.log(
-        `seed note-craft-134 skill _id=${noteCraft._id.toString()}`,
+        `seed note-writing skill _id=${noteWriting._id.toString()}`,
       );
     }
 
-    // 迁移：老版 note-craft-134.requiredTools 含 read_document_content（写作顾问工具），
+    // 迁移：老版 note-writing.requiredTools 含 read_document_content（写作顾问工具），
     // learning-writer 的工具集用的是 read_content（学习产品三层读取）。
     // 如果两者不一致，autoCleanupOrphanSkills 会把 skill 从 enabledSkillIds 里静默剔除；
     // 此处一次性迁移，确保 requiredTools ⊆ learning-writer.tools 成立。
     if (
-      noteCraft.requiredTools?.includes('read_document_content') &&
-      !noteCraft.requiredTools?.includes('read_content')
+      noteWriting.requiredTools?.includes('read_document_content') &&
+      !noteWriting.requiredTools?.includes('read_content')
     ) {
-      const migratedTools = noteCraft.requiredTools
+      const migratedTools = noteWriting.requiredTools
         .filter((t) => t !== 'read_document_content')
         .concat('read_content');
-      await this.skillService.update(noteCraft._id.toString(), {
+      await this.skillService.update(noteWriting._id.toString(), {
         requiredTools: migratedTools,
       });
       this.logger.log(
-        'Migration: note-craft-134.requiredTools read_document_content → read_content',
+        'Migration: note-writing.requiredTools read_document_content → read_content',
       );
     }
 
-    const noteCraft134Id = noteCraft._id.toString();
+    const noteWritingId = noteWriting._id.toString();
 
     // ── 3 + 4. 补齐/迁移 learning-planner + 新增 learning-writer agent 入口 ──
     const config = await this.repo.get();
@@ -481,7 +470,8 @@ export class SystemConfigService implements OnModuleInit {
           name: '学习规划师',
           description: '按第一性原理研究领域,规划「理解 + 篇目结构」',
           enabled: true,
-          systemPrompt: '',
+          systemPrompt:
+            '你是学习规划师,负责将一个领域规划成有因果次序的篇目结构。规划前先用 load_skill 载入 note-plan,依其方法立锚、推演序列。产出经 write_learn_plan 写入主题节点;你只产出提案,绝不新建节点、不写篇目正文——建篇由作者自行决定。规划以联网查证为据。你给出的是可改的提案而非定论,交付时说明它可由作者调整,不要说「已规划好/已建好」。',
           tools: [
             'write_learn_plan',
             'read_content',
@@ -521,10 +511,17 @@ export class SystemConfigService implements OnModuleInit {
           await this.repo.patch({ agentConfigs: config.agentConfigs });
           this.logger.log('Migration: learning-planner.tools 补齐完整工具集');
         }
+        // 迁移：补齐 systemPrompt（老库为空字符串时写入）
+        if (lp && !lp.systemPrompt) {
+          lp.systemPrompt =
+            '你是学习规划师,负责将一个领域规划成有因果次序的篇目结构。规划前先用 load_skill 载入 note-plan,依其方法立锚、推演序列。产出经 write_learn_plan 写入主题节点;你只产出提案,绝不新建节点、不写篇目正文——建篇由作者自行决定。规划以联网查证为据。你给出的是可改的提案而非定论,交付时说明它可由作者调整,不要说「已规划好/已建好」。';
+          await this.repo.patch({ agentConfigs: config.agentConfigs });
+          this.logger.log('Migration: learning-planner.systemPrompt 补齐');
+        }
       }
 
       // ── 4. 补齐 learning-writer agent 入口 ──
-      // 职责：逐篇研究领域，按 note-craft-134 的 134 行文逻辑（立锚→建模→兑现）起草初稿。
+      // 职责：逐篇研究领域，按 note-writing 的行文逻辑（立锚→建模→兑现）起草初稿。
       // 工具职责：
       //   read_content  — 读当前篇三层（entryContext 网关：learningNoteId）
       //   write_draft   — 把研究成果写入当前节点 aidraft（目标由上下文固定，防越权；entryContext 网关：learningNoteId）
@@ -535,10 +532,10 @@ export class SystemConfigService implements OnModuleInit {
         config.agentConfigs.push({
           key: 'learning-writer',
           name: '学习写手',
-          description:
-            '逐篇研究领域，按 134 行文逻辑（立锚→建模→兑现）起草初稿',
+          description: '逐篇研究领域，按行文逻辑（立锚→建模→兑现）起草初稿',
           enabled: true,
-          systemPrompt: '', // 提示词最后单独定
+          systemPrompt:
+            '你是学习写手,为作者指定的某一篇做研究式起草。起草前先用 load_skill 载入 note-writing,依其行文逻辑与文风成稿。产出经 write_draft 写入该篇的 AI 初稿(aidraft);你只写 AI 初稿,绝不改动作者本人的草稿,绝不新建或调整篇目结构。初稿供作者对照重写,并非定稿——交付时说「初稿已生成,供你对照重写」,不要说「已写好/已更新」。',
           tools: [
             'read_content',
             'write_draft',
@@ -552,12 +549,21 @@ export class SystemConfigService implements OnModuleInit {
           standardProviderId: '',
           thinkProviderId: '',
           visionProviderId: '',
-          enabledSkillIds: [noteCraft134Id], // note-craft-134 skill 驱动 134 行文逻辑
+          enabledSkillIds: [noteWritingId], // note-writing skill 驱动行文逻辑
         });
         await this.repo.patch({ agentConfigs: config.agentConfigs });
         this.logger.log(
-          `补齐 learning-writer agent 配置 enabledSkillIds=[${noteCraft134Id}]`,
+          `补齐 learning-writer agent 配置 enabledSkillIds=[${noteWritingId}]`,
         );
+      } else {
+        // 迁移：补齐 systemPrompt（老库为空字符串时写入）
+        const lw = config.agentConfigs.find((c) => c.key === 'learning-writer');
+        if (lw && !lw.systemPrompt) {
+          lw.systemPrompt =
+            '你是学习写手,为作者指定的某一篇做研究式起草。起草前先用 load_skill 载入 note-writing,依其行文逻辑与文风成稿。产出经 write_draft 写入该篇的 AI 初稿(aidraft);你只写 AI 初稿,绝不改动作者本人的草稿,绝不新建或调整篇目结构。初稿供作者对照重写,并非定稿——交付时说「初稿已生成,供你对照重写」,不要说「已写好/已更新」。';
+          await this.repo.patch({ agentConfigs: config.agentConfigs });
+          this.logger.log('Migration: learning-writer.systemPrompt 补齐');
+        }
       }
     }
   }

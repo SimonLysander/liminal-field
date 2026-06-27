@@ -399,6 +399,14 @@ export const notesApi = {
   getDraft: (id: string) =>
     request<EditorDraft | null>(`/spaces/notes/items/${id}/draft`),
 
+  /**
+   * 读取笔记 AI 初稿（只读）。
+   * Aurora write_learn_plan 工具写入的规划提案，前端学习页左栏展示用。
+   * 无 AI 初稿时返回 null（200）；绝不触发 commit/publish。
+   */
+  getAiDraft: (id: string) =>
+    request<EditorDraft | null>(`/spaces/notes/items/${id}/aidraft`),
+
   saveDraft: (id: string, dto: SaveDraftDto) =>
     request<EditorDraft>(`/spaces/notes/items/${id}/draft`, {
       method: 'PUT',

@@ -16,26 +16,27 @@
  *    模型调此工具后只落库，由用户决定是否采纳脉络、手动建篇。
  *
  * 入参 schema：
+ *   goal           — 本次学习的核心目标（一句话，前端展示为规划标题）
  *   understanding  — 对主题的理解，自然段叙述（立锚 + 因果拓扑）
  *   items[]        — 篇目提案列表（有序）
  *     .title       — 篇名
  *     .thread      — 脉络词（关键概念/因果线索）
  *     .why         — 为何写这一章（学习意图）
  *
- * Markdown 序列化格式：
+ * BodyMarkdown 契约格式（前端按此解析，务必稳定）：
  *
- * ## 理解
- *
- * {understanding}
- *
- * ## 学习脉络
- *
- * 1. **{thread}** — {title}
- *    {why}
- *
- * 2. ...
+ * ---
+ * goal: <goal>
+ * items:
+ *   - title: <title>
+ *     thread: <thread>
+ *     why: <why>
+ *   - ...
+ * ---
+ * <understanding 散文 markdown>
  */
 import { tool, jsonSchema } from 'ai';
+import { dump } from 'js-yaml';
 import type { EditorDraftRepository } from '../../workspace/editor-draft.repository';
 import { toolResult } from './tool-result';
 
@@ -46,21 +47,32 @@ interface PlanItem {
 }
 
 /**
- * 将 understanding + items 序列化为 markdown 规划草稿。
- * 格式固定：「## 理解」段 + 「## 学习脉络」有序列表，连续一份。
+ * 将 goal + items + understanding 序列化为 YAML frontmatter + 散文正文。
+ *
+ * 契约格式（前端解析此格式，切勿改动结构）：
+ *   ---
+ *   goal: <goal>
+ *   items:
+ *     - title: <title>
+ *       thread: <thread>
+ *       why: <why>
+ *   ---
+ *   <understanding 散文>
+ *
+ * 用 js-yaml dump 序列化，避免手拼 YAML 的转义风险。
  */
 function serializeToDraftMarkdown(
+  goal: string,
   understanding: string,
   items: PlanItem[],
 ): string {
-  const threads = items
-    .map(
-      (item, i) =>
-        `${i + 1}. **${item.thread}** — ${item.title}\n   ${item.why}`,
-    )
-    .join('\n\n');
-
-  return `## 理解\n\n${understanding}\n\n## 学习脉络\n\n${threads}`;
+  const frontmatterData = {
+    goal,
+    items: items.map(({ title, thread, why }) => ({ title, thread, why })),
+  };
+  // lineWidth: -1 禁止自动折行，保持字符串完整（防止长标题/长 why 被截断）
+  const yaml = dump(frontmatterData, { lineWidth: -1 }).trimEnd();
+  return `---\n${yaml}\n---\n\n${understanding}`;
 }
 
 export function createWriteLearnPlanTool(
@@ -69,13 +81,19 @@ export function createWriteLearnPlanTool(
 ) {
   return tool({
     description:
-      '把学习规划的「理解 + 篇目脉络」写入当前主题的 AI 草稿区，供所有者在左栏只读查看。调用前：理解段已成文（立锚 + 因果拓扑），脉络提案已有序排好。工具只落库，不建任何节点——建篇是所有者的事。',
+      '把学习规划的「目标 + 理解 + 篇目脉络」写入当前主题的 AI 草稿区，供所有者在左栏只读查看。调用前：目标明确、理解段已成文（立锚 + 因果拓扑），脉络提案已有序排好。工具只落库，不建任何节点——建篇是所有者的事。',
     inputSchema: jsonSchema<{
+      goal: string;
       understanding: string;
       items: PlanItem[];
     }>({
       type: 'object',
       properties: {
+        goal: {
+          type: 'string',
+          description:
+            '本次学习的核心目标（一句话，前端展示为规划标题，如「理解 React 渲染机制，能独立排查性能问题」）',
+        },
         understanding: {
           type: 'string',
           description:
@@ -106,17 +124,23 @@ export function createWriteLearnPlanTool(
           },
         },
       },
-      required: ['understanding', 'items'],
+      required: ['goal', 'understanding', 'items'],
     }),
     execute: async ({
+      goal,
       understanding,
       items,
     }: {
+      goal: string;
       understanding: string;
       items: PlanItem[];
     }) => {
       try {
-        const bodyMarkdown = serializeToDraftMarkdown(understanding, items);
+        const bodyMarkdown = serializeToDraftMarkdown(
+          goal,
+          understanding,
+          items,
+        );
 
         // understanding 首句作为草稿摘要（截断到 100 字）
         const summary =
@@ -126,7 +150,7 @@ export function createWriteLearnPlanTool(
         await editorDraftRepo.saveAiDraft({
           contentItemId: topicContentItemId,
           bodyMarkdown,
-          title: '学习规划',
+          title: goal,
           summary,
           changeNote: 'learn-plan',
           savedAt: new Date(),

@@ -494,10 +494,16 @@ export const TOOL_CATALOG: Record<string, ToolMeta> = {
 
   write_learn_plan: {
     displayName: '写规划',
-    summary: '把学习规划「理解+脉络」落 aidraft',
+    summary: '把学习规划「目标+理解+脉络」落 aidraft（YAML frontmatter 格式）',
     detail:
-      '学习产品专用：learning-planner agent 完成领域研究后调用，把 understanding（理解段）和 items（有序篇目脉络）序列化为 markdown 写入主题 aidraft。只落库，绝不建节点——建篇是用户的事。仅在学习规划场景挂载。',
+      '学习产品专用：learning-planner agent 完成领域研究后调用，把 goal（学习目标）、understanding（理解段）和 items（有序篇目脉络）序列化为 YAML frontmatter + 散文正文写入主题 aidraft。只落库，绝不建节点——建篇是用户的事。仅在学习规划场景挂载。',
     params: [
+      {
+        name: 'goal',
+        type: 'string',
+        required: true,
+        description: '本次学习的核心目标（一句话，前端展示为规划标题）',
+      },
       {
         name: 'understanding',
         type: 'string',

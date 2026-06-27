@@ -67,6 +67,12 @@ export type AdvisorContext = {
    * 与后端 EntryContextDto 同名字段对应（主题 contentItemId）。
    */
   learningTopicId?: string;
+  /**
+   * 学习场景：当前在学的那一篇笔记节点 contentItemId。
+   * 传入时后端挂 write_draft（learning-writer 写 aidraft）和 read_content（三层内容读取）。
+   * 与后端 EntryContextDto.learningNoteId 同名字段对应。
+   */
+  learningNoteId?: string;
   /** 画廊场景:照片清单 + 随笔 */
   gallery?: {
     contentItemId: string;
@@ -570,6 +576,9 @@ function buildAgentRequestBody({
       // 学习产品:write_learn_plan 工具需要 learningTopicId 才能定位主题落 aidraft。
       // 未传时后端不挂 write_learn_plan 工具(ToolAssembler 条件判断),与其他场景无影响。
       learningTopicId: context?.learningTopicId,
+      // 当前在学的笔记节点 contentItemId：后端挂 write_draft + read_content 时的上下文锚点。
+      // 与 learningTopicId 独立——planner 只传 topicId，writer 只传 noteId，两者可共存。
+      learningNoteId: context?.learningNoteId,
     },
   };
 }

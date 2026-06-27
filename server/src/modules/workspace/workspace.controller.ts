@@ -89,6 +89,19 @@ export class WorkspaceController {
     return this.noteViewService.patchMeta(id, dto);
   }
 
+  /**
+   * 读取笔记 AI 初稿（只读，绝不触发 commit/publish）。
+   * 静态路由 notes/items/:id/aidraft 必须注册在通用 :scope/items/:id 动态路由之前，
+   * 否则 'aidraft' 会被匹配为 scope 参数。
+   * 数据来自 aidraft:{id} 前缀，与普通草稿 draft:{id} 完全隔离。
+   */
+  @Get('notes/items/:id/aidraft')
+  async getNoteAiDraft(
+    @Param('id') id: string,
+  ): Promise<EditorDraftDto | null> {
+    return this.noteViewService.getAiDraft(id);
+  }
+
   @Get('notes/items/:id/draft')
   async getDraft(@Param('id') id: string): Promise<EditorDraftDto | null> {
     return this.noteViewService.getDraft(id);
