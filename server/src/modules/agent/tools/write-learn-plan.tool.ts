@@ -86,6 +86,7 @@ export function createWriteLearnPlanTool(
       goal: string;
       understanding: string;
       items: PlanItem[];
+      changeSummary?: string;
     }>({
       type: 'object',
       properties: {
@@ -123,9 +124,15 @@ export function createWriteLearnPlanTool(
             required: ['title', 'thread', 'why'],
           },
         },
+        changeSummary: {
+          type: 'string',
+          description:
+            '一句话说明这次规划相比现有改了什么（重排/增删/调整哪几篇等，供用户审批时一眼看懂）。直接陈述,不加「本次/说明」之类前缀。',
+        },
       },
       required: ['goal', 'understanding', 'items'],
     }),
+    // changeSummary 是审批用元信息,不参与落库(gate 暂存进 preview),execute 只用 goal/understanding/items。
     execute: async ({
       goal,
       understanding,
@@ -134,6 +141,7 @@ export function createWriteLearnPlanTool(
       goal: string;
       understanding: string;
       items: PlanItem[];
+      changeSummary?: string;
     }) => {
       try {
         const bodyMarkdown = serializeToDraftMarkdown(

@@ -341,8 +341,8 @@ export class ToolAssembler {
                       const items =
                         (args['items'] as Array<{ title?: string }>) ?? [];
                       return {
-                        title: args['goal'],
                         itemsCount: items.length,
+                        changeSummary: args['changeSummary'], // 模型自述:这次规划改了什么
                         items: items.map((it) => it?.title ?? '').slice(0, 20), // 篇目标题,审批前看结构
                       };
                     },
@@ -375,6 +375,7 @@ export class ToolAssembler {
                       return {
                         title: extractTitle(md),
                         charCount: md.length,
+                        changeSummary: args['changeSummary'], // 模型自述:这次写了什么/改了什么
                         summary: extractSummary(md), // 首段梗概(≤150 字)
                         outline: extractHeadings(md).slice(0, 12), // 小标题骨架,审批前扫结构
                       };

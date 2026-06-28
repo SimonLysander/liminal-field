@@ -36,7 +36,8 @@ function buildDescription(
     case 'write_draft':
       return `准备写初稿《${String(preview.title ?? '')}》(${String(preview.charCount ?? '')} 字)`;
     case 'write_learn_plan':
-      return `准备写规划《${String(preview.title ?? '')}》(${String(preview.itemsCount ?? '')} 篇提案)`;
+      // goal 是「学习目标」整句,不套书名号;目标走摘要行展示
+      return `准备写规划(${String(preview.itemsCount ?? '')} 篇提案)`;
     case 'write_tasks':
       return `准备更新任务清单(${String(preview.count ?? '')} 项)`;
     case 'remember':
@@ -61,6 +62,9 @@ export function WriteApprovalCard({
 
   const description = buildDescription(toolName, preview);
 
+  // 模型自述的「这次改了什么」(无前缀,直接陈述);其下是内容梗概。
+  const changeSummary =
+    typeof preview.changeSummary === 'string' ? preview.changeSummary : '';
   // 内容梗概:审批前看清「要写什么」。summary=首段;list=篇目/任务/觉察/小标题(取先出现的)。
   const summary = typeof preview.summary === 'string' ? preview.summary : '';
   const listField = (['items', 'titles', 'observations', 'outline'] as const).find(
@@ -122,6 +126,13 @@ export function WriteApprovalCard({
       <p className="text-sm" style={{ color: 'var(--ink)' }}>
         {description}
       </p>
+
+      {/* 模型自述:这次改了什么(无前缀,直接陈述) */}
+      {changeSummary && (
+        <p className="mt-1 text-sm leading-relaxed" style={{ color: 'var(--ink-faded)' }}>
+          {changeSummary}
+        </p>
+      )}
 
       {/* 内容梗概:首段摘要 + 结构列表(篇目/任务/觉察/小标题),审批前看清要写什么 */}
       {summary && (
