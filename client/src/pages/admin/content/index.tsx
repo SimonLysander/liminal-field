@@ -19,6 +19,7 @@ import { AdminStructurePanel } from '../components/AdminStructurePanel';
 import { MoveToDialog } from '../components/MoveToDialog';
 import { useAdminWorkspace } from '../hooks/useAdminWorkspace';
 import { structureApi } from '@/services/structure';
+import { notesApi } from '@/services/workspace';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { banner } from '@/components/ui/banner-api';
 
@@ -119,13 +120,25 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
     ? `/admin/${scope}/${activeNode.contentItemId}/edit`
     : null;
 
-  /* 学习入口：LearningProject 已删，学习视图按需访问即可，不再查询项目是否存在。
-   * learnUrl 有值即显示「开始学习」入口；learningExists 固定 false（无"继续"区分）。
-   * 仅 notes scope 有此入口（文集不学习）。
-   * :id = 主题 NavigationNode id（学习页按它拉子节点=篇目;非 contentItemId）。 */
+  /* 学习入口:LearningProject 实体已删。文案「开始/继续学习」靠探当前节点有没有规划/AI 稿
+   * (aidraft:{contentItemId}),与学习页 CTA 同一信号——有 = 已动过这个领域 = 继续,无 = 开始。
+   * 仅 notes scope 有此入口(文集不学习)。
+   * learningRootId(=主题 NavigationNode id)给 learnUrl 拉子节点=篇目;探 aidraft 用 contentItemId。 */
   const learningRootId = scope === 'notes' ? activeNode?.id : undefined;
-  const learningExists = false;
   const learnUrl = learningRootId ? `/admin/notes/${learningRootId}/learn` : null;
+  const learnProbeCid = scope === 'notes' ? activeNode?.contentItemId : undefined;
+  const [learningExists, setLearningExists] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    queueMicrotask(() => { if (alive) setLearningExists(false); }); // 切节点先复位,别残留上一个节点的状态
+    if (learnProbeCid) {
+      notesApi
+        .getAiDraft(learnProbeCid)
+        .then((d) => { if (alive) setLearningExists((d?.bodyMarkdown.trim().length ?? 0) > 0); })
+        .catch(() => {});
+    }
+    return () => { alive = false; };
+  }, [learnProbeCid]);
 
   /* 侧栏顶部标题随 scope 切换:笔记 admin="笔记",文集 admin="文集"。 */
   const sectionTitle = scope === 'notes' ? '笔记' : '文集';

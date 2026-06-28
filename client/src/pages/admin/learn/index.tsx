@@ -351,6 +351,7 @@ function NodeScreen({
   onNavigate: (contentItemId: string | null) => void;
 }) {
   const navigate = useNavigate();
+  const { id: topicNavId } = useParams<{ id: string }>(); // 学习路由 /admin/notes/:id/learn,:id = 主题 navId
   const { chapters, plan, refreshPlan, refreshStudied } = data;
   const currentCid = isTopic ? data.topicContentItemId : nodeId;
   const idx = isTopic ? -1 : chapters.findIndex((c) => c.contentItemId === nodeId);
@@ -491,7 +492,8 @@ function NodeScreen({
       <header className="flex h-[48px] shrink-0 items-center gap-2 px-4">
         {isTopic ? (
           <>
-            {navBtn(<ChevronLeft size={18} strokeWidth={1.5} />, () => navigate('/admin/notes'), undefined, '退出学习')}
+            {/* 退出学习:回到来源主题节点(?at=navId),而非根列表 */}
+            {navBtn(<ChevronLeft size={18} strokeWidth={1.5} />, () => navigate(topicNavId ? `/admin/notes?at=${topicNavId}` : '/admin/notes'), undefined, '退出学习')}
             <span className="text-sm font-medium" style={{ color: 'var(--ink-faded)' }}>{title}</span>
             <span className="rounded-full px-2 py-0.5 text-xs" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>规划中</span>
           </>
