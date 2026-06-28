@@ -110,3 +110,30 @@ export interface ObservationsResponse {
 export function listObservations(): Promise<ObservationsResponse> {
   return request<ObservationsResponse>('/agent/observations');
 }
+
+// ── HITL 写工具门禁(2026-06 learning-hitl) ──────────────────────────────────
+
+/**
+ * 批准一次被门禁的写工具调用,后端真正落库。
+ * 门禁工具:write_draft / write_learn_plan / write_tasks / remember。
+ */
+export function approveWrite(
+  toolCallId: string,
+  sessionKey: string,
+): Promise<{ status: string }> {
+  return request<{ status: string }>(
+    `/agent/writes/${encodeURIComponent(toolCallId)}/approve`,
+    { method: 'POST', body: JSON.stringify({ sessionKey }) },
+  );
+}
+
+/** 拒绝一次被门禁的写工具调用,后端丢弃。 */
+export function rejectWrite(
+  toolCallId: string,
+  sessionKey: string,
+): Promise<{ status: string }> {
+  return request<{ status: string }>(
+    `/agent/writes/${encodeURIComponent(toolCallId)}/reject`,
+    { method: 'POST', body: JSON.stringify({ sessionKey }) },
+  );
+}

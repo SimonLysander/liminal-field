@@ -27,6 +27,7 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
 import { AdvisorSidebar } from '@/components/ai-advisor/AdvisorSidebar';
+import { WriteApprovalCard } from '@/components/ai-advisor/WriteApprovalCard';
 import { IrisAuroraButton } from '@/components/ai-advisor/IrisAuroraButton';
 import { DraftAssetProvider } from '@/contexts/DraftAssetContext';
 import { LoadingState } from '@/components/LoadingState';
@@ -653,6 +654,30 @@ function NodeScreen({
               onClearSelectedText={clearSelections}
               onClose={closeAurora}
               onAuroraWrote={refreshLeft}
+              renderToolCard={(part) => {
+                // HITL 门禁:写工具 pending_approval 时渲染审批卡,用户允许/拒绝才真正落库
+                const p = part as { type?: string; state?: string; toolCallId?: string; output?: unknown };
+                const GATED = ['tool-write_draft', 'tool-write_learn_plan', 'tool-write_tasks', 'tool-remember'];
+                if (!p.type || !GATED.includes(p.type) || p.state !== 'output-available') return null;
+                let meta: Record<string, unknown> | undefined;
+                if (typeof p.output === 'string') {
+                  try { meta = (JSON.parse(p.output) as { meta?: Record<string, unknown> }).meta; } catch { /* 非 JSON 跳过 */ }
+                } else if (p.output && typeof p.output === 'object') {
+                  meta = (p.output as { meta?: Record<string, unknown> }).meta;
+                }
+                if (meta?.status !== 'pending_approval') return null;
+                const callId = (p.toolCallId ?? meta.toolCallId) as string | undefined;
+                if (!callId) return null;
+                return (
+                  <WriteApprovalCard
+                    toolCallId={callId}
+                    sessionKey={`learn-${currentCid ?? 'topic'}`}
+                    toolName={p.type.replace('tool-', '')}
+                    preview={meta}
+                    onApproved={refreshLeft}
+                  />
+                );
+              }}
             />
           </div>
         </div>
