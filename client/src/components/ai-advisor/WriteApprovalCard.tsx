@@ -1,11 +1,12 @@
 /**
- * WriteApprovalCard — HITL 写工具审批卡。
+ * WriteApprovalCard — HITL 写工具审批卡(纯通用)。
  *
- * 被门禁的写工具(write_draft / write_learn_plan / write_tasks / remember)在
- * 会话流里输出 pending_approval 时,此卡片浮现,让用户"允许 / 拒绝"后才真正落库。
+ * 只认统一契约 ApprovalPreview 三层,零 toolName 判断、零字段猜测:
+ *   summary 改动摘要(顶) / items 改动预览(中:目录项+片段) / stats 改动统计(底)。
+ * 各写工具把自己的内容映射成这同一 shape(在后端 buildPreview 一处),卡片不感知具体工具。
  *
- * 审批结果通过 resolved-store(localStorage)持久化:刷新后不重现按钮。
- * 仅记录 callId,不区分 approve/reject,所以 localStorage 命中只显示"已处理"。
+ * 被门禁的写工具输出 pending_approval 时浮现,允许/拒绝后才真正落库。
+ * 裁决结果用 resolved-store(localStorage)持久化:刷新后不重现按钮(只记 callId,不分方向)。
  */
 
 import { useState } from 'react';
@@ -13,67 +14,38 @@ import { approveWrite, rejectWrite } from '@/services/agent';
 import { readResolved, markResolved } from '@/pages/admin/lib/resolved-store';
 import { banner } from '@/components/ui/banner-api';
 
+interface PreviewItem {
+  label?: string;
+  snippet?: string;
+}
+
 export interface WriteApprovalCardProps {
   toolCallId: string;
   sessionKey: string;
-  /** 工具名,已去掉 'tool-' 前缀:write_draft / write_learn_plan / write_tasks / remember */
-  toolName: string;
-  /** 整个 meta 对象,含 status / toolCallId / preview 字段 */
+  /** 工具结果 meta,含统一契约字段 summary / items / ordered / stats */
   preview: Record<string, unknown>;
   /** 允许后回调(如刷新左栏产出) */
   onApproved?: () => void;
 }
 
-/** 裁决状态:null=未裁决 | 'approved'/'rejected'=本次 | 'already'=localStorage 已记录 */
 type ResolvedState = 'approved' | 'rejected' | 'already' | null;
-
-/** 按工具名 + preview 字段拼用户可读描述 */
-function buildDescription(
-  toolName: string,
-  preview: Record<string, unknown>,
-): string {
-  switch (toolName) {
-    case 'write_draft':
-      return `准备写初稿《${String(preview.title ?? '')}》(${String(preview.charCount ?? '')} 字)`;
-    case 'write_learn_plan':
-      // goal 是「学习目标」整句,不套书名号;目标走摘要行展示
-      return `准备写规划(${String(preview.itemsCount ?? '')} 篇提案)`;
-    case 'write_tasks':
-      return `准备更新任务清单(${String(preview.count ?? '')} 项)`;
-    case 'remember':
-      return `准备记下 ${String(preview.count ?? '')} 条记忆`;
-    default:
-      return `准备执行 ${toolName}`;
-  }
-}
 
 export function WriteApprovalCard({
   toolCallId,
   sessionKey,
-  toolName,
   preview,
   onApproved,
 }: WriteApprovalCardProps) {
-  // 初值:localStorage 已有此 callId → 显示"已处理"(不知方向),否则等待用户裁决
   const [resolved, setResolved] = useState<ResolvedState>(() =>
     readResolved().has(toolCallId) ? 'already' : null,
   );
   const [loading, setLoading] = useState(false);
 
-  const description = buildDescription(toolName, preview);
-
-  // 模型自述的「这次改了什么」(无前缀,直接陈述);其下是内容梗概。
-  const changeSummary =
-    typeof preview.changeSummary === 'string' ? preview.changeSummary : '';
-  // 内容梗概:审批前看清「要写什么」。summary=首段;list=篇目/任务/觉察/小标题(取先出现的)。
+  // 统一契约三层(纯读取,不按工具分支)
   const summary = typeof preview.summary === 'string' ? preview.summary : '';
-  const listField = (['items', 'titles', 'observations', 'outline'] as const).find(
-    (k) => Array.isArray(preview[k]),
-  );
-  const list = (listField ? (preview[listField] as unknown[]) : [])
-    .map((x) => String(x))
-    .filter((s) => s.trim().length > 0);
-  const ordered = listField === 'items' || listField === 'titles';
+  const items = (Array.isArray(preview.items) ? preview.items : []) as PreviewItem[];
+  const ordered = preview.ordered === true;
+  const stats = typeof preview.stats === 'string' ? preview.stats : '';
 
   const handleApprove = async () => {
     if (loading || resolved) return;
@@ -104,7 +76,6 @@ export function WriteApprovalCard({
     }
   };
 
-  // 裁决后内容不消失,只把底部按钮换成状态标(draft/plan 还能去左栏看,tasks/remember 全靠这张卡留痕)
   const statusLabel =
     resolved === 'approved'
       ? '已写入 ✓'
@@ -122,38 +93,54 @@ export function WriteApprovalCard({
         background: resolved ? 'transparent' : 'var(--shelf)',
       }}
     >
-      {/* 操作描述 */}
-      <p className="text-sm" style={{ color: 'var(--ink)' }}>
-        {description}
-      </p>
-
-      {/* 模型自述:这次改了什么(无前缀,直接陈述) */}
-      {changeSummary && (
-        <p className="mt-1 text-sm leading-relaxed" style={{ color: 'var(--ink-faded)' }}>
-          {changeSummary}
-        </p>
-      )}
-
-      {/* 内容梗概:首段摘要 + 结构列表(篇目/任务/觉察/小标题),审批前看清要写什么 */}
+      {/* 顶:改动摘要 */}
       {summary && (
-        <p className="mt-1.5 text-xs leading-relaxed" style={{ color: 'var(--ink-faded)' }}>
+        <p className="text-sm leading-relaxed" style={{ color: 'var(--ink)' }}>
           {summary}
         </p>
       )}
-      {list.length > 0 && (
-        <ul className="mt-2 max-h-44 space-y-0.5 overflow-y-auto text-xs" style={{ color: 'var(--ink-faded)' }}>
-          {list.map((line, i) => (
+
+      {/* 中:改动预览——目录项 + 各自片段 */}
+      {items.length > 0 && (
+        <ul
+          className={`max-h-56 space-y-1.5 overflow-y-auto ${summary ? 'mt-2.5' : ''}`}
+        >
+          {items.map((it, i) => (
             <li key={i} className="flex gap-1.5">
-              <span className="shrink-0 tabular-nums" style={{ color: 'var(--ink-ghost)' }}>
-                {ordered ? `${i + 1}.` : '·'}
-              </span>
-              <span className="min-w-0 flex-1 truncate">{line}</span>
+              {ordered && (
+                <span
+                  className="shrink-0 tabular-nums text-sm"
+                  style={{ color: 'var(--ink-ghost)' }}
+                >
+                  {i + 1}.
+                </span>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm" style={{ color: 'var(--ink)' }}>
+                  {it.label}
+                </div>
+                {it.snippet && (
+                  <div
+                    className="mt-0.5 truncate text-xs"
+                    style={{ color: 'var(--ink-faded)' }}
+                  >
+                    {it.snippet}
+                  </div>
+                )}
+              </div>
             </li>
           ))}
         </ul>
       )}
 
-      {/* 底部:未裁决 → 允许/拒绝按钮;已裁决 → 状态标(内容仍在上方) */}
+      {/* 底:改动统计 */}
+      {stats && (
+        <p className="mt-2.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+          {stats}
+        </p>
+      )}
+
+      {/* 未裁决 → 允许/拒绝;已裁决 → 状态标(内容仍在上方) */}
       {resolved ? (
         <p className="mt-2.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
           {statusLabel}

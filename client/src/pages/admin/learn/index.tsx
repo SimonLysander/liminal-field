@@ -672,7 +672,6 @@ function NodeScreen({
                   <WriteApprovalCard
                     toolCallId={callId}
                     sessionKey={`learn-${currentCid ?? 'topic'}`}
-                    toolName={p.type.replace('tool-', '')}
                     preview={meta}
                     onApproved={refreshLeft}
                   />

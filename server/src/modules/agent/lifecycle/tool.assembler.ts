@@ -68,12 +68,8 @@ import { ProcessedFeedItemRepository } from '../../digest/processed-feed-item.re
 import { DigestTaskRepository } from '../../digest/digest-task.repository';
 // 学习产品：write_learn_plan / write_draft / read_content 工具
 import { createWriteLearnPlanTool } from '../tools/write-learn-plan.tool';
-import {
-  createWriteDraftTool,
-  extractTitle,
-  extractSummary,
-} from '../tools/write-draft.tool';
-import { extractHeadings } from '../tools/markdown.utils';
+import { createWriteDraftTool } from '../tools/write-draft.tool';
+import { extractSections } from '../tools/markdown.utils';
 import { createReadContentTool } from '../tools/read-node-content.tool';
 import { EditorDraftRepository } from '../../workspace/editor-draft.repository';
 // HITL 门禁：写工具 execute 暂存 pending_writes，带外审批后 commit 落库
@@ -89,7 +85,7 @@ import type { ObservationTopic } from '../memory/agent-memory-observation.entity
 function requireChangeSummary(args: Record<string, unknown>): string | null {
   const cs =
     typeof args['changeSummary'] === 'string'
-      ? (args['changeSummary'] as string).trim()
+      ? args['changeSummary'].trim()
       : '';
   return cs
     ? null
@@ -234,13 +230,16 @@ export class ToolAssembler {
               },
               buildPreview: (args) => {
                 const obs =
-                  (args['observations'] as Array<{ observation?: string }>) ??
-                  [];
+                  (args['observations'] as Array<{
+                    observation?: string;
+                    topic?: string;
+                  }>) ?? [];
                 return {
-                  count: obs.length,
-                  observations: obs
-                    .map((o) => o?.observation ?? '')
-                    .slice(0, 10),
+                  items: obs.slice(0, 10).map((o) => ({
+                    label: o?.observation ?? '',
+                    snippet: o?.topic || undefined,
+                  })),
+                  stats: `记忆 · ${obs.length} 条 · 新增`,
                 };
               },
             },
@@ -267,10 +266,16 @@ export class ToolAssembler {
                   pendingWriteRepo: this.pendingWriteRepo,
                   buildPreview: (args) => {
                     const tasks =
-                      (args['tasks'] as Array<{ title?: string }>) ?? [];
+                      (args['tasks'] as Array<{
+                        title?: string;
+                        status?: string;
+                      }>) ?? [];
                     return {
-                      count: tasks.length,
-                      titles: tasks.map((t) => t?.title ?? '').slice(0, 15),
+                      items: tasks.slice(0, 15).map((t) => ({
+                        label: t?.title ?? '',
+                        snippet: t?.status || undefined,
+                      })),
+                      stats: `任务 · ${tasks.length} 项`,
                     };
                   },
                 })
@@ -355,11 +360,18 @@ export class ToolAssembler {
 
                     buildPreview: (args) => {
                       const items =
-                        (args['items'] as Array<{ title?: string }>) ?? [];
+                        (args['items'] as Array<{
+                          title?: string;
+                          why?: string;
+                        }>) ?? [];
                       return {
-                        itemsCount: items.length,
-                        changeSummary: args['changeSummary'], // 模型自述:这次规划改了什么
-                        items: items.map((it) => it?.title ?? '').slice(0, 20), // 篇目标题,审批前看结构
+                        summary: (args['changeSummary'] as string) || undefined,
+                        items: items.slice(0, 20).map((it) => ({
+                          label: it?.title ?? '',
+                          snippet: it?.why || undefined, // 篇名 + 该篇的「为何写」
+                        })),
+                        ordered: true, // 篇目有序,显序号
+                        stats: `规划 · ${items.length} 篇 · 覆盖现有`,
                       };
                     },
                   },
@@ -391,11 +403,9 @@ export class ToolAssembler {
                     buildPreview: (args) => {
                       const md = (args['markdown'] as string) ?? '';
                       return {
-                        title: extractTitle(md),
-                        charCount: md.length,
-                        changeSummary: args['changeSummary'], // 模型自述:这次写了什么/改了什么
-                        summary: extractSummary(md), // 首段梗概(≤150 字)
-                        outline: extractHeadings(md).slice(0, 12), // 小标题骨架,审批前扫结构
+                        summary: (args['changeSummary'] as string) || undefined,
+                        items: extractSections(md, 40), // 小标题 + 各节开头约 40 字
+                        stats: `初稿 · ${md.length} 字 · 覆盖现有`,
                       };
                     },
                   },

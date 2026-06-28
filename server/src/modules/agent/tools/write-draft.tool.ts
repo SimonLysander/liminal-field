@@ -41,7 +41,7 @@ export function createWriteDraftTool(
 ) {
   return tool({
     description:
-      '把研究成果写成当前笔记节点的 AI 初稿（aidraft），供用户只读参考。调用前：全文已成稿，能独立成篇（有标题、有正文）。每次调用整体覆盖，保持最新一份。只写当前这一篇，目标节点已由系统固定，无法改变。调用时**必须同时给出 changeSummary**：一句话说明本次相比现有初稿改了什么（用户审批要看），缺它会被退回。',
+      '把研究成果写成当前笔记节点的 AI 初稿（aidraft），供用户只读参考。调用前：全文已成稿，能独立成篇（有标题、有正文）。每次调用整体覆盖，保持最新一份。只写当前这一篇，目标节点已由系统固定，无法改变。调用时**必须同时给出 changeSummary**：扼要成段（2–4 句）说明本次相比现有初稿改了什么——重写/补充/修正了哪几处、各自要点、与现有版本的关键差异，让用户审批时看清取舍，别只写一句敷衍。缺它会被退回。',
     inputSchema: jsonSchema<{ markdown: string; changeSummary: string }>({
       type: 'object',
       properties: {

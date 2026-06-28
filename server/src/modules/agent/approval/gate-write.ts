@@ -16,6 +16,21 @@
 import { PendingWriteRepository } from './pending-write.repository';
 import { toolResult } from '../tools/tool-result';
 
+/**
+ * 审批卡的统一展示契约(三层)。所有门禁写工具的 buildPreview 一律产出这个 shape,
+ * 前端卡片只认它、零 toolName 判断;tool 端各自把入参映射成它(内聚在 buildPreview 一处)。
+ */
+export interface ApprovalPreview {
+  /** 顶:改动摘要(模型自述这次改了什么) */
+  summary?: string;
+  /** 中:改动预览——目录项 + 各自约 40 字内容片段 */
+  items?: Array<{ label: string; snippet?: string }>;
+  /** items 是否有序(true 显序号,如篇目;false 不显,如初稿小标题) */
+  ordered?: boolean;
+  /** 底:改动统计(一行量化,如「初稿 · 4410 字 · 覆盖现有」) */
+  stats?: string;
+}
+
 export interface GateWriteOptions {
   toolName: string;
   sessionKey: string;
@@ -28,8 +43,8 @@ export interface GateWriteOptions {
    * 返回错误文案则不暂存、直接回 invalid。
    */
   validate?: (args: Record<string, unknown>) => string | null;
-  /** 给审批卡的轻量预览（前端展示摘要用，不含正文） */
-  buildPreview: (args: Record<string, unknown>) => Record<string, unknown>;
+  /** 把工具入参映射成审批卡的统一展示契约(三层) */
+  buildPreview: (args: Record<string, unknown>) => ApprovalPreview;
 }
 
 /**
@@ -75,15 +90,16 @@ export function gateWrite(
       targetContentItemId: opts.targetContentItemId,
       agentKey: opts.agentKey,
       payload: args,
-      preview,
+      // ApprovalPreview 严格类型不带 index signature,落 Mongo Mixed 字段处窄化为 Record
+      preview: preview as Record<string, unknown>,
       now: new Date(),
     });
 
-    // ③ 返回 pending_approval：toolCallId 供前端定位审批卡，preview 供卡片摘要展示
+    // ③ 返回 pending_approval：toolCallId 供前端定位审批卡，preview 供卡片三层展示
     return toolResult('已生成，待你在会话里确认', undefined, {
       status: 'pending_approval',
       toolCallId,
-      ...preview,
+      ...(preview as Record<string, unknown>),
     });
   };
 

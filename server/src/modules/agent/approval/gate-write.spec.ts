@@ -44,7 +44,7 @@ describe('gateWrite', () => {
       sessionKey: 's1',
       targetContentItemId: 'ci_x',
       pendingWriteRepo: repo,
-      buildPreview: (a) => ({ charCount: (a.markdown as string).length }),
+      buildPreview: (a) => ({ stats: `${(a.markdown as string).length} 字` }),
     }) as {
       execute: (
         a: Record<string, unknown>,
