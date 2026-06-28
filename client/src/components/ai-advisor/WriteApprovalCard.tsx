@@ -61,6 +61,16 @@ export function WriteApprovalCard({
 
   const description = buildDescription(toolName, preview);
 
+  // 内容梗概:审批前看清「要写什么」。summary=首段;list=篇目/任务/觉察/小标题(取先出现的)。
+  const summary = typeof preview.summary === 'string' ? preview.summary : '';
+  const listField = (['items', 'titles', 'observations', 'outline'] as const).find(
+    (k) => Array.isArray(preview[k]),
+  );
+  const list = (listField ? (preview[listField] as unknown[]) : [])
+    .map((x) => String(x))
+    .filter((s) => s.trim().length > 0);
+  const ordered = listField === 'items' || listField === 'titles';
+
   const handleApprove = async () => {
     if (loading || resolved) return;
     setLoading(true);
@@ -120,6 +130,25 @@ export function WriteApprovalCard({
       <p className="text-sm" style={{ color: 'var(--ink)' }}>
         {description}
       </p>
+
+      {/* 内容梗概:首段摘要 + 结构列表(篇目/任务/觉察/小标题),审批前看清要写什么 */}
+      {summary && (
+        <p className="mt-1.5 text-xs leading-relaxed" style={{ color: 'var(--ink-faded)' }}>
+          {summary}
+        </p>
+      )}
+      {list.length > 0 && (
+        <ul className="mt-2 max-h-44 space-y-0.5 overflow-y-auto text-xs" style={{ color: 'var(--ink-faded)' }}>
+          {list.map((line, i) => (
+            <li key={i} className="flex gap-1.5">
+              <span className="shrink-0 tabular-nums" style={{ color: 'var(--ink-ghost)' }}>
+                {ordered ? `${i + 1}.` : '·'}
+              </span>
+              <span className="min-w-0 flex-1 truncate">{line}</span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {/* 操作按钮:允许(accent 主按钮) + 拒绝(ghost) */}
       <div className="mt-2.5 flex items-center gap-2">

@@ -68,7 +68,12 @@ import { ProcessedFeedItemRepository } from '../../digest/processed-feed-item.re
 import { DigestTaskRepository } from '../../digest/digest-task.repository';
 // 学习产品：write_learn_plan / write_draft / read_content 工具
 import { createWriteLearnPlanTool } from '../tools/write-learn-plan.tool';
-import { createWriteDraftTool, extractTitle } from '../tools/write-draft.tool';
+import {
+  createWriteDraftTool,
+  extractTitle,
+  extractSummary,
+} from '../tools/write-draft.tool';
+import { extractHeadings } from '../tools/markdown.utils';
 import { createReadContentTool } from '../tools/read-node-content.tool';
 import { EditorDraftRepository } from '../../workspace/editor-draft.repository';
 // HITL 门禁：写工具 execute 暂存 pending_writes，带外审批后 commit 落库
@@ -213,9 +218,17 @@ export class ToolAssembler {
                   ).observations ?? [];
                 return validateObservations(observations);
               },
-              buildPreview: (args) => ({
-                count: (args['observations'] as unknown[])?.length ?? 0,
-              }),
+              buildPreview: (args) => {
+                const obs =
+                  (args['observations'] as Array<{ observation?: string }>) ??
+                  [];
+                return {
+                  count: obs.length,
+                  observations: obs
+                    .map((o) => o?.observation ?? '')
+                    .slice(0, 10),
+                };
+              },
             },
           )
         : createRememberTool(this.observationRepo, entryContext.sessionKey),
@@ -238,9 +251,14 @@ export class ToolAssembler {
                   sessionKey: entryContext.sessionKey,
                   agentKey: memoryKey,
                   pendingWriteRepo: this.pendingWriteRepo,
-                  buildPreview: (args) => ({
-                    count: (args['tasks'] as unknown[])?.length ?? 0,
-                  }),
+                  buildPreview: (args) => {
+                    const tasks =
+                      (args['tasks'] as Array<{ title?: string }>) ?? [];
+                    return {
+                      count: tasks.length,
+                      titles: tasks.map((t) => t?.title ?? '').slice(0, 15),
+                    };
+                  },
                 })
               : createWriteTasksTool(this.memoryRepo, memoryKey),
           }
@@ -319,10 +337,15 @@ export class ToolAssembler {
                     sessionKey: entryContext.sessionKey,
                     targetContentItemId: entryContext.learningTopicId,
                     pendingWriteRepo: this.pendingWriteRepo,
-                    buildPreview: (args) => ({
-                      title: args['goal'],
-                      itemsCount: (args['items'] as unknown[])?.length ?? 0,
-                    }),
+                    buildPreview: (args) => {
+                      const items =
+                        (args['items'] as Array<{ title?: string }>) ?? [];
+                      return {
+                        title: args['goal'],
+                        itemsCount: items.length,
+                        items: items.map((it) => it?.title ?? '').slice(0, 20), // 篇目标题,审批前看结构
+                      };
+                    },
                   },
                 )
               : createWriteLearnPlanTool(
@@ -347,10 +370,15 @@ export class ToolAssembler {
                     sessionKey: entryContext.sessionKey,
                     targetContentItemId: entryContext.learningNoteId,
                     pendingWriteRepo: this.pendingWriteRepo,
-                    buildPreview: (args) => ({
-                      title: extractTitle(args['markdown'] as string),
-                      charCount: (args['markdown'] as string)?.length ?? 0,
-                    }),
+                    buildPreview: (args) => {
+                      const md = (args['markdown'] as string) ?? '';
+                      return {
+                        title: extractTitle(md),
+                        charCount: md.length,
+                        summary: extractSummary(md), // 首段梗概(≤150 字)
+                        outline: extractHeadings(md).slice(0, 12), // 小标题骨架,审批前扫结构
+                      };
+                    },
                   },
                 )
               : createWriteDraftTool(
