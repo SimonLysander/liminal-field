@@ -365,17 +365,22 @@ function NodeScreen({
   const hasPlan = !!plan;
   const resume = [...chapters].reverse().find((c) => c.studied) ?? chapters[0] ?? null;
 
-  // 当前业务场景状态串(实时拼、无正文)→ 后端拼进 <current_context>。状态二态:已研究(有 AI 稿)/ 空。
+  // 工作上下文(实时拼、无正文)→ 后端原样投影进 <current_context>。
+  // 约定:凡出现的节点一律写成「标题(ID:contentItemId)」,ID 随标题走——agent 读/引用该节点
+  // (read_content)直接用这个 ID,不会再把「第几篇」的序号当 ID(此前 read_content("1") 读空即此)。
   const planGoal = data.plan?.goal ? `(目标:${data.plan.goal})` : '';
+  const ref = (t: string, id: string | null) => `《${t}》(ID:${id ?? '—'})`;
+  const chapterLines = chapters
+    .map((c, i) => `  ${i + 1}. ${ref(c.title, c.contentItemId)} ${c.studied ? '已研究' : '空'}${c.contentItemId === currentCid ? ' ←当前' : ''}`)
+    .join('\n');
   const learningContextStr =
     (isTopic
-      ? `在规划《${data.topicTitle}》${planGoal}。`
-      : `在学《${data.topicTitle}》${planGoal},当前第 ${idx + 1}/共 ${chapters.length} 篇《${title}》。`) +
+      ? `在规划 ${ref(data.topicTitle, currentCid)}${planGoal}。`
+      : `在写 ${ref(title, currentCid)},所属 ${ref(data.topicTitle, data.topicContentItemId)}${planGoal}。`) +
     '\n' +
     (chapters.length
-      ? '篇目:\n' +
-        chapters.map((c, i) => `  ${i + 1}. ${c.title}    ${c.studied ? '已研究' : '空'}`).join('\n')
-      : '篇目:(还没建,照规划新建一篇)');
+      ? `《${data.topicTitle}》的篇目(共 ${chapters.length}):\n${chapterLines}`
+      : `《${data.topicTitle}》的篇目:(还没建,照规划新建一篇)`);
 
   // 左栏 = Aurora 的 AI 初稿(只读;总章态左是规划提案,不拉 aiDraft)。null=加载中。
   const [aiDraft, setAiDraft] = useState<string | null>(null);
