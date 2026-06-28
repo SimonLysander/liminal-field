@@ -28,6 +28,8 @@ import { AgentController } from './agent.controller';
 import { AgentService } from './agent.service';
 import { AgentMemory } from './memory/agent-memory.entity';
 import { AgentMemoryRepository } from './memory/agent-memory.repository';
+import { PendingWrite } from './approval/pending-write.entity';
+import { PendingWriteRepository } from './approval/pending-write.repository';
 import {
   AgentMemoryObservation,
   AgentMemoryCurrentView,
@@ -66,6 +68,7 @@ import { DigestSharedModule } from '../digest/digest-shared.module';
       AgentSession,
       AgentMemoryObservation,
       AgentMemoryCurrentView,
+      PendingWrite,
     ]),
     ContentModule,
     WorkspaceModule,
@@ -90,6 +93,7 @@ import { DigestSharedModule } from '../digest/digest-shared.module';
     AgentMemoryRepository,
     AgentMemoryObservationRepository,
     AgentSessionRepository,
+    PendingWriteRepository,
     CompactionService,
     MemoryAgentService,
     MemoryViewService,
