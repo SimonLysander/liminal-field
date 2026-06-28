@@ -477,9 +477,9 @@ export const TOOL_CATALOG: Record<string, ToolMeta> = {
 
   read_content: {
     displayName: '读节点内容',
-    summary: '读节点三层：已提交正文 + 用户草稿 + AI 初稿',
+    summary: '读节点真实内容：已提交正文 + 用户草稿',
     detail:
-      '学习产品专用（planner 和 writer 均可调）：按存在与否拼出三段独立返回——① 已发布/已提交正文 ② 用户未提交草稿 ③ Aurora AI 初稿（只读参照）。哪段有返哪段，都没有则返回"该节点暂无内容"。只读不写，不影响任何现有流程。',
+      '学习产品专用（planner 和 writer 均可调）：按存在与否拼出两段独立返回——① 已发布/已提交正文 ② 用户未提交草稿。哪段有返哪段，都没有则返回"该节点暂无内容"。不返回 Aurora 自己的 AI 初稿（那是产出不是源材料）。只读不写。',
     params: [
       {
         name: 'contentItemId',
@@ -489,7 +489,7 @@ export const TOOL_CATALOG: Record<string, ToolMeta> = {
       },
     ],
     returns:
-      '三段用 --- 分隔的内容（各段有明确标签）；都空 → {status:ok, sections:0}',
+      '两段用 --- 分隔的内容（各段有明确标签）；都空 → {status:ok, sections:0}',
   },
 
   write_learn_plan: {

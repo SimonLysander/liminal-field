@@ -39,7 +39,7 @@ export function createReadContentTool(
 ) {
   return tool({
     description:
-      '读取一个笔记节点的全部内容层：① 已发布/已提交的正文 ② 用户未提交草稿 ③ Aurora AI 初稿（只读参照）。三段各自独立，哪段有返哪段；都没有就返回"该节点暂无内容"。只读不写。planner 和 writer 均可调用。',
+      '读取一个笔记节点的真实内容：① 已发布/已提交的正文 ② 用户未提交草稿。两段各自独立，哪段有返哪段；都没有就返回"该节点暂无内容"。不返回 Aurora 自己写的 AI 初稿（那是产出、不是源材料，读回给自己无意义）。只读不写。planner 和 writer 均可调用。',
     inputSchema: jsonSchema<{ contentItemId: string }>({
       type: 'object',
       properties: {
@@ -69,19 +69,10 @@ export function createReadContentTool(
         sections.push(`【我的草稿 · 未提交】\n${draft.bodyMarkdown}`);
       }
 
-      // ── ③ AI 初稿（aidraft:{id}，Aurora 写入，对用户只读）
-      const aiDraft = await safeFetch(() =>
-        editorDraftRepo.findAiDraftByContentItemId(contentItemId),
-      );
-      if (aiDraft?.bodyMarkdown) {
-        sections.push(
-          `【AI 初稿 · Aurora 研究稿 · 只读参照】\n${aiDraft.bodyMarkdown}`,
-        );
-      }
+      // ③ Aurora 自己的 AI 初稿(aidraft)不返回——那是产出不是源材料,读回给自己无意义。
 
       // 工具卡行内显示「读的是哪一篇」——取任一层的标题,兜底 contentItemId
-      const title =
-        doc?.title || draft?.title || aiDraft?.title || contentItemId;
+      const title = doc?.title || draft?.title || contentItemId;
 
       if (sections.length === 0) {
         return toolResult(`《${title}》暂无内容`, '该节点暂无内容', {
