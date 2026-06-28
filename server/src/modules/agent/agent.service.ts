@@ -22,6 +22,7 @@ import { makeRepairToolCall } from './agent.utils';
 import { SystemConfigService } from '../settings/system-config.service';
 import { AgentLifecycle } from './lifecycle/agent-lifecycle.service';
 import { AgentSessionRepository } from './session/agent-session.repository';
+import { PendingWriteRepository } from './approval/pending-write.repository';
 import { GalleryViewService } from '../workspace/gallery-view.service';
 import { splitForCompaction } from './context/compaction-split';
 import { sanitizeAbortedToolCalls } from './context/sanitize-aborted-tool-calls';
@@ -42,6 +43,7 @@ export class AgentService {
     private readonly lifecycle: AgentLifecycle,
     private readonly sessionRepo: AgentSessionRepository,
     private readonly galleryView: GalleryViewService,
+    private readonly pendingWriteRepo: PendingWriteRepository,
   ) {}
 
   // 返回 Web Response(toUIMessageStreamResponse 产物),controller 直接 reply.send。
@@ -115,6 +117,29 @@ export class AgentService {
     // ratio 用 TRIGGER_RATIO:读取量 ≥ 喂模型量,保证 splitForCompaction 有料可切;
     // 更早的对话精华已在 session 记忆里(随 system prompt 注入),不重复读。
     const sessionKey = dto.entryContext.sessionKey ?? '';
+
+    // HITL 审批结果回灌:上次门禁写工具被批准/拒绝(带外 REST,模型当时不知道),
+    // 这一轮把结果作为带外事实追加进 system,只回灌一次(标 notifiedToModel)。
+    // 放 system 而非塞进消息流:瞬态、不持久化,且 system 正是「带外事实」的归属。
+    let approvalFeedback = '';
+    if (sessionKey) {
+      const resolved =
+        await this.pendingWriteRepo.findResolvedUnnotified(sessionKey);
+      if (resolved.length > 0) {
+        const lines = resolved.map((r) => {
+          const verb =
+            r.status === 'approved'
+              ? '已获用户批准并写入'
+              : '被用户拒绝,未写入';
+          return `- ${r.toolName}:${verb}`;
+        });
+        approvalFeedback = `\n\n<approval_results>\n你之前提议的写操作,用户已裁决:\n${lines.join('\n')}\n据此继续:被批准的视为已落库,无需重复提议;被拒绝的不要假装写了,可问清原因或换思路。\n</approval_results>`;
+        await this.pendingWriteRepo.markNotified(
+          resolved.map((r) => String(r._id)),
+        );
+      }
+    }
+
     const previous = sessionKey
       ? await this.sessionRepo.getRecentByBudget(
           sessionKey,
@@ -157,7 +182,7 @@ export class AgentService {
     // 6. 调用 streamText：AI SDK 内置 ReAct 循环，stopWhen 限制最多 10 步防止无限循环
     const result = streamText({
       model,
-      system: systemPrompt,
+      system: systemPrompt + approvalFeedback,
       messages: modelMessages,
       tools,
       stopWhen: stepCountIs(10),

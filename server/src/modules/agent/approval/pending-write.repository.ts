@@ -61,4 +61,22 @@ export class PendingWriteRepository {
     );
     return res.modifiedCount === 1;
   }
+
+  /** 本会话已裁决但还没回灌给模型的记录(供下一轮 chat 注入审批结果)。 */
+  async findResolvedUnnotified(sessionKey: string): Promise<PendingWrite[]> {
+    return this.model.find({
+      sessionKey,
+      status: { $in: ['approved', 'rejected'] },
+      notifiedToModel: false,
+    });
+  }
+
+  /** 标记已回灌,避免下轮重复注入。 */
+  async markNotified(toolCallIds: string[]): Promise<void> {
+    if (toolCallIds.length === 0) return;
+    await this.model.updateMany(
+      { _id: { $in: toolCallIds } },
+      { $set: { notifiedToModel: true } },
+    );
+  }
 }

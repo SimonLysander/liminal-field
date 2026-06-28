@@ -62,4 +62,8 @@ export class PendingWrite {
 
   @prop({ type: () => Date, default: null })
   resolvedAt!: Date | null;
+
+  /** 裁决结果(approve/reject)是否已在后续 chat 回灌给模型——只回灌一次,避免每轮重复注入 */
+  @prop({ required: true, type: () => Boolean, default: false })
+  notifiedToModel!: boolean;
 }
