@@ -82,6 +82,20 @@ import { PendingWriteRepository } from '../approval/pending-write.repository';
 import { validateObservations } from '../tools/remember.tool';
 import type { ObservationTopic } from '../memory/agent-memory-observation.entity';
 
+/**
+ * 门禁写工具的 changeSummary 写前校验:DeepSeek 等 provider 不遵守 schema 的 required,
+ * 会直接略过可选/必填字段。这里硬校验——缺了就 invalid 让模型带着它重调,不依赖 prompt。
+ */
+function requireChangeSummary(args: Record<string, unknown>): string | null {
+  const cs =
+    typeof args['changeSummary'] === 'string'
+      ? (args['changeSummary'] as string).trim()
+      : '';
+  return cs
+    ? null
+    : '缺少 changeSummary:必须用一句话说明这次写入做了什么 / 相比现有改了什么(直接陈述,不要「本次/说明」之类前缀)。请带上 changeSummary 重新调用本工具。';
+}
+
 export interface EntryContext {
   document?: DocumentContext;
   /** 画廊场景:照片清单+随笔。存在即走图说写手链路(get_current_draft 换画廊版 + view_photos/propose_caption)。 */
@@ -337,6 +351,8 @@ export class ToolAssembler {
                     sessionKey: entryContext.sessionKey,
                     targetContentItemId: entryContext.learningTopicId,
                     pendingWriteRepo: this.pendingWriteRepo,
+                    validate: requireChangeSummary, // 没传改动摘要就退回让模型补
+
                     buildPreview: (args) => {
                       const items =
                         (args['items'] as Array<{ title?: string }>) ?? [];
@@ -370,6 +386,8 @@ export class ToolAssembler {
                     sessionKey: entryContext.sessionKey,
                     targetContentItemId: entryContext.learningNoteId,
                     pendingWriteRepo: this.pendingWriteRepo,
+                    validate: requireChangeSummary, // 没传改动摘要就退回让模型补
+
                     buildPreview: (args) => {
                       const md = (args['markdown'] as string) ?? '';
                       return {
