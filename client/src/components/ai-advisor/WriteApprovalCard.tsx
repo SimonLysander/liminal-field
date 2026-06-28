@@ -100,30 +100,22 @@ export function WriteApprovalCard({
     }
   };
 
-  // 已裁决:静止态,不再有按钮
-  if (resolved) {
-    const label =
-      resolved === 'approved' ? '已写入 ✓'
-      : resolved === 'rejected' ? '已拒绝'
-      : '已处理';
-    return (
-      <div
-        className="my-1 rounded-md border px-3 py-2"
-        style={{ borderColor: 'var(--separator)' }}
-      >
-        <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
-          {label}
-        </p>
-      </div>
-    );
-  }
+  // 裁决后内容不消失,只把底部按钮换成状态标(draft/plan 还能去左栏看,tasks/remember 全靠这张卡留痕)
+  const statusLabel =
+    resolved === 'approved'
+      ? '已写入 ✓'
+      : resolved === 'rejected'
+        ? '已拒绝'
+        : resolved === 'already'
+          ? '已处理'
+          : '';
 
   return (
     <div
       className="my-1 rounded-md border px-3 py-2.5"
       style={{
         borderColor: 'var(--separator)',
-        background: 'var(--shelf)',
+        background: resolved ? 'transparent' : 'var(--shelf)',
       }}
     >
       {/* 操作描述 */}
@@ -150,27 +142,33 @@ export function WriteApprovalCard({
         </ul>
       )}
 
-      {/* 操作按钮:允许(accent 主按钮) + 拒绝(ghost) */}
-      <div className="mt-2.5 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => void handleApprove()}
-          disabled={loading}
-          className="rounded-md px-3 py-1 text-sm font-medium outline-none transition-opacity disabled:opacity-50"
-          style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}
-        >
-          {loading ? '处理中…' : '允许'}
-        </button>
-        <button
-          type="button"
-          onClick={() => void handleReject()}
-          disabled={loading}
-          className="rounded-md border px-3 py-1 text-sm outline-none transition-colors hover:bg-[var(--paper)] disabled:opacity-50"
-          style={{ color: 'var(--ink-faded)', borderColor: 'var(--separator)' }}
-        >
-          拒绝
-        </button>
-      </div>
+      {/* 底部:未裁决 → 允许/拒绝按钮;已裁决 → 状态标(内容仍在上方) */}
+      {resolved ? (
+        <p className="mt-2.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+          {statusLabel}
+        </p>
+      ) : (
+        <div className="mt-2.5 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void handleApprove()}
+            disabled={loading}
+            className="rounded-md px-3 py-1 text-sm font-medium outline-none transition-opacity disabled:opacity-50"
+            style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}
+          >
+            {loading ? '处理中…' : '允许'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleReject()}
+            disabled={loading}
+            className="rounded-md border px-3 py-1 text-sm outline-none transition-colors hover:bg-[var(--paper)] disabled:opacity-50"
+            style={{ color: 'var(--ink-faded)', borderColor: 'var(--separator)' }}
+          >
+            拒绝
+          </button>
+        </div>
+      )}
     </div>
   );
 }
