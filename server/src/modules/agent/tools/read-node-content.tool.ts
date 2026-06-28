@@ -79,15 +79,19 @@ export function createReadContentTool(
         );
       }
 
+      // 工具卡行内显示「读的是哪一篇」——取任一层的标题,兜底 contentItemId
+      const title =
+        doc?.title || draft?.title || aiDraft?.title || contentItemId;
+
       if (sections.length === 0) {
-        return toolResult(`节点 ${contentItemId} 暂无内容`, '该节点暂无内容', {
+        return toolResult(`《${title}》暂无内容`, '该节点暂无内容', {
           status: 'ok',
           sections: 0,
         });
       }
 
       const detail = sections.join('\n\n---\n\n');
-      return toolResult(`读取完成（${sections.length} 段）`, detail, {
+      return toolResult(`读取《${title}》· ${sections.length} 段`, detail, {
         status: 'ok',
         sections: sections.length,
       });
