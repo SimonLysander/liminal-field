@@ -417,6 +417,13 @@ export const notesApi = {
       body: JSON.stringify({ contentItemIds }),
     }),
 
+  /** 放弃学习:批量删一组节点的 AI 初稿(主题规划 + 各篇 AI 稿),不动用户草稿/正文/篇目。 */
+  discardAidrafts: (contentItemIds: string[]) =>
+    request<{ deleted: number }>(`/spaces/notes/aidrafts/discard`, {
+      method: 'POST',
+      body: JSON.stringify({ contentItemIds }),
+    }),
+
   saveDraft: (id: string, dto: SaveDraftDto) =>
     request<EditorDraft>(`/spaces/notes/items/${id}/draft`, {
       method: 'PUT',

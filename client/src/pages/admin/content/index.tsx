@@ -140,6 +140,37 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
     return () => { alive = false; };
   }, [learnProbeCid]);
 
+  /* 放弃学习:清掉主题 + 各篇的 AI 产物(主题规划 aidraft + 各篇 AI 初稿 aidraft),
+   * 保留篇目结构与我自己的草稿/正文。前端收齐 id(主题 + 子篇)交后端批量删 aidraft。 */
+  const handleDiscardLearning = useCallback(async () => {
+    if (!activeNode?.id || !activeNode.contentItemId) return;
+    const ok = await confirm({
+      title: '放弃学习',
+      message:
+        '将清掉 Aurora 在这个领域的全部产物(规划 + 各篇 AI 初稿)。你建的篇目、自己写的草稿/正文都保留。确认放弃?',
+      danger: true,
+      confirmLabel: '放弃',
+    });
+    if (!ok) return;
+    try {
+      const res = await structureApi.getChildren(activeNode.id, {
+        scope: 'notes',
+        visibility: 'all',
+      });
+      const ids = [
+        activeNode.contentItemId,
+        ...res.children
+          .map((c) => c.contentItemId)
+          .filter((id): id is string => !!id),
+      ];
+      await notesApi.discardAidrafts(ids);
+      setLearningExists(false);
+      banner.success('已放弃,AI 产物已清空');
+    } catch (e) {
+      banner.error(e instanceof Error ? e.message : '放弃失败');
+    }
+  }, [activeNode, confirm]);
+
   /* 侧栏顶部标题随 scope 切换:笔记 admin="笔记",文集 admin="文集"。 */
   const sectionTitle = scope === 'notes' ? '笔记' : '文集';
 
@@ -248,6 +279,7 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
                   // 整页导航(同编辑页):学习视图自带 Plate 编辑器,SPA 软导航会让 inputRules 失效
                   if (learnUrl) window.location.href = learnUrl;
                 }}
+                onDiscardLearning={() => void handleDiscardLearning()}
               />
             ) : (
               <div className="flex flex-1 items-center justify-center">

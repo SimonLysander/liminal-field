@@ -18,6 +18,7 @@ export function FormalSidePanel({
   onSelectVersion,
   learningExists,
   onEnterLearning,
+  onDiscardLearning,
 }: {
   toc: Array<{ level: number; text: string; index: number }>;
   activeIndex: number;
@@ -33,6 +34,8 @@ export function FormalSidePanel({
   learningExists?: boolean;
   /** 进入学习视图(另一扇门:对照读写台)。不传 = 不显示「学习」段(如文集 scope 无此门)。 */
   onEnterLearning?: () => void;
+  /** 放弃学习:清掉主题 + 各篇 AI 产物(规划/初稿),保留篇目与我的草稿。仅 learningExists 时显示。 */
+  onDiscardLearning?: () => void;
 }) {
   const tocPanelRef = useRef<HTMLDivElement>(null);
 
@@ -114,7 +117,12 @@ export function FormalSidePanel({
         <div className="mb-5 shrink-0">
           <SectionCaption>学习</SectionCaption>
           {learningExists ? (
-            <SideLink label="继续学习 →" accent onClick={onEnterLearning} />
+            <div className="flex items-center gap-4">
+              <SideLink label="继续学习 →" accent onClick={onEnterLearning} />
+              {onDiscardLearning && (
+                <SideLink label="放弃学习" onClick={onDiscardLearning} />
+              )}
+            </div>
           ) : (
             <>
               <p className="mb-3.5 text-xs leading-relaxed" style={{ color: 'var(--ink-ghost)' }}>

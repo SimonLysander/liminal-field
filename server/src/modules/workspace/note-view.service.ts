@@ -273,6 +273,16 @@ export class NoteViewService {
     return this.editorDraftRepository.findContentItemIdsWithAiDraft(ids);
   }
 
+  /**
+   * 「放弃学习」：批量清掉一组节点的 AI 初稿（主题规划 + 各篇 AI 稿)。
+   * 只删 aidraft:,不动用户草稿/正文/篇目结构。返回删除条数。
+   */
+  async deleteAiDrafts(ids: string[]): Promise<{ deleted: number }> {
+    const deleted =
+      await this.editorDraftRepository.deleteAiDraftsByContentItemIds(ids);
+    return { deleted };
+  }
+
   /** 保存草稿（autosave）：只写 MongoDB，不触发 Git commit。 */
   async saveDraft(id: string, dto: SaveDraftDto): Promise<EditorDraftDto> {
     await this.contentService.assertContentEditable(id);

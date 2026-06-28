@@ -205,7 +205,10 @@ export class EditorDraftRepository {
     if (contentItemIds.length === 0) return [];
     const ids = contentItemIds.map((id) => this.buildAiDraftId(id));
     const docs = await this.editorDraftModel
-      .find({ _id: { $in: ids }, bodyMarkdown: { $nin: [null, ''] } }, { _id: 1 })
+      .find(
+        { _id: { $in: ids }, bodyMarkdown: { $nin: [null, ''] } },
+        { _id: 1 },
+      )
       .lean();
     const prefixLen = 'aidraft:'.length;
     return docs.map((d) => String(d._id).slice(prefixLen));
@@ -251,5 +254,18 @@ export class EditorDraftRepository {
     await this.editorDraftModel.findByIdAndDelete(
       this.buildAiDraftId(contentItemId),
     );
+  }
+
+  /**
+   * 批量删 AI 初稿（「放弃学习」清空一个主题的全部 Aurora 产物:主题规划 + 各篇 AI 稿）。
+   * 只删 aidraft: 前缀,绝不碰 draft:(用户草稿)/ 正文。返回删除条数。
+   */
+  async deleteAiDraftsByContentItemIds(
+    contentItemIds: string[],
+  ): Promise<number> {
+    if (contentItemIds.length === 0) return 0;
+    const ids = contentItemIds.map((id) => this.buildAiDraftId(id));
+    const res = await this.editorDraftModel.deleteMany({ _id: { $in: ids } });
+    return res.deletedCount ?? 0;
   }
 }

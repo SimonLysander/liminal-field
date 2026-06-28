@@ -167,6 +167,17 @@ export class WorkspaceController {
     return { ids };
   }
 
+  /**
+   * 「放弃学习」:批量删一组节点的 AI 初稿(主题规划 + 各篇 AI 稿)。
+   * 只删 aidraft:,不动用户草稿/正文/篇目结构。静态路由,注册在通用 :scope/items/:id 之前。
+   */
+  @Post('notes/aidrafts/discard')
+  async discardAidrafts(
+    @Body() body: AidraftExistsDto,
+  ): Promise<{ deleted: number }> {
+    return this.noteViewService.deleteAiDrafts(body.contentItemIds);
+  }
+
   // ─── Gallery 特有路由(必须在通用 :scope 路由之前注册)───
 
   /**
