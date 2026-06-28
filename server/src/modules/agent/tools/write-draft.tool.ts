@@ -42,7 +42,7 @@ export function createWriteDraftTool(
   return tool({
     description:
       '把研究成果写成当前笔记节点的 AI 初稿（aidraft），供用户只读参考。调用前：全文已成稿，能独立成篇（有标题、有正文）。每次调用整体覆盖，保持最新一份。只写当前这一篇，目标节点已由系统固定，无法改变。',
-    inputSchema: jsonSchema<{ markdown: string; changeSummary?: string }>({
+    inputSchema: jsonSchema<{ markdown: string; changeSummary: string }>({
       type: 'object',
       properties: {
         markdown: {
@@ -56,7 +56,7 @@ export function createWriteDraftTool(
             '一句话说明这次写入做了什么、相比现有初稿改了什么（供用户审批时一眼看懂意图）。直接陈述，不加「本次/说明」之类前缀。',
         },
       },
-      required: ['markdown'],
+      required: ['markdown', 'changeSummary'],
     }),
     // changeSummary 是审批用元信息,不参与落库(gate 暂存进 preview),execute 只用 markdown。
     execute: async ({
