@@ -24,6 +24,7 @@ import { LoadingState } from '@/components/LoadingState';
 import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
 import { DraftAssetProvider } from '@/contexts/DraftAssetContext';
 import { AdvisorSidebar } from '@/components/ai-advisor/AdvisorSidebar';
+import { IrisAuroraButton } from '@/components/ai-advisor/IrisAuroraButton';
 import { PlateMarkdownEditor, type EditorBridgeHandle, type ProposalUiState } from './PlateEditor';
 import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
 import type { ChatSelectionAttachment } from '@/pages/admin/lib/live-chat-selection';
@@ -71,7 +72,7 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
   const chatSelectionsRef = useRef<ChatSelectionAttachment[]>([]);
   // Aurora 侧栏开合(笔记/文集 admin 编辑页):默认开,X 关、顶栏 Sparkles 重开。
   // grid 第三列宽度随它切——关时塌缩为 0,主内容占满。
-  const [advisorOpen, setAdvisorOpen] = useState(true);
+  const [advisorOpen, setAdvisorOpen] = useState(false); // 默认收起,顶栏鸢尾入口唤出
 
   // ── v3 改稿透传链 ────────────────────────────────────────────────────────────
   // editor 桥 ref：由 PlateMarkdownEditor 内部的 EditorChildrenBridge 填充；
@@ -342,24 +343,11 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
               </PopoverContent>
             </Popover>
 
-            {/* 重开 Aurora —— 仅在 advisor 已启用且当前折叠态显示。
-                用鸢尾"种子"那一帧(/garden/iris-seed.webp)作标——跟"凝思中"动画
-                (seed→bud→half→bloom)的起点同帧:关闭=Aurora 入定回到种子,点击=唤醒、
-                生长循环重启。语义闭环,比通用 Sparkles 有灵魂。 */}
+            {/* 重开 Aurora —— 仅在 advisor 已启用且当前折叠态显示。鸢尾种子静止、hover 播放
+                「凝思中」同款生长循环(种子→…→盛放):入定=种子,唤醒=绽放。语义闭环。
+                与学习页共用 IrisAuroraButton。 */}
             {advisor?.enabled && !advisorOpen && (
-              <button
-                className="flex h-7 w-7 items-center justify-center rounded-md outline-none transition-colors hover:bg-[var(--shelf)] focus-visible:outline-none"
-                onClick={() => setAdvisorOpen(true)}
-                aria-label="打开 Aurora"
-                title="打开 Aurora"
-              >
-                <img
-                  src="/garden/iris-seed.webp"
-                  alt=""
-                  draggable={false}
-                  className="h-[18px] w-[18px] opacity-75 transition-opacity hover:opacity-100"
-                />
-              </button>
+              <IrisAuroraButton onClick={() => setAdvisorOpen(true)} />
             )}
 
             {/* 主题切换 — 编辑页是独立路由(不在 AdminShell 内,没 IconRail),

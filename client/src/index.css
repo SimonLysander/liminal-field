@@ -1239,6 +1239,43 @@ body.gallery-immersive aside {
   .grow-loop .gs-seed, .grow-loop .gs-bud, .grow-loop .gs-half, .grow-loop .gs-bloom { animation: none; }
 }
 
+/* ── Aurora 唤出入口:鸢尾种子静止,hover 播放「凝思中」同款生长循环 ──────────────────
+ * 四帧叠放、底部锚定。静止只亮「种子」(半透,与编辑草稿页入口一致);hover 时直接复用思考态
+ * 那套 4.5s 生长循环 keyframes(grow-seed/bud/half/bloom:种子→花苞→半开→盛放→淡出→再生),
+ * 节奏与「凝思中」完全一致、hover 期间持续生长;移开撤动画,靠 opacity transition 淡回种子。 */
+.iris-aurora-frames {
+  position: relative;
+  display: block;
+  width: 20px;
+  height: 22px;
+}
+.iris-aurora-frames .iris-f {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  opacity: 0;
+  transform-origin: 50% 68%; /* 底部锚定,生长由下往上撑开 */
+  transition: opacity 0.45s ease; /* hover 结束后从盛放柔和淡回种子 */
+}
+/* 各帧固定大小单调递增(花苞天生高窄,纯 object-fit 会显最大,手动压),撑出"由小长大" */
+.iris-aurora-frames .f-seed  { opacity: 0.75; transform: scale(0.8); }
+.iris-aurora-frames .f-bud   { transform: scale(0.88); }
+.iris-aurora-frames .f-half  { transform: scale(0.94); }
+.iris-aurora-frames .f-bloom { transform: scale(1); }
+.iris-aurora-btn:hover .f-seed  { animation: grow-seed  4.5s ease-in-out infinite; }
+.iris-aurora-btn:hover .f-bud   { animation: grow-bud   4.5s ease-in-out infinite; }
+.iris-aurora-btn:hover .f-half  { animation: grow-half  4.5s ease-in-out infinite; }
+.iris-aurora-btn:hover .f-bloom { animation: grow-bloom 4.5s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .iris-aurora-btn:hover .f-seed,
+  .iris-aurora-btn:hover .f-bud,
+  .iris-aurora-btn:hover .f-half,
+  .iris-aurora-btn:hover .f-bloom { animation: none; }
+}
+
 
 /* ────────────────────────────────────────────────────────
  * Gallery PhotoFrameBar — 容器查询响应式布局

@@ -10,7 +10,7 @@
  * 模型只产【规划提案】+【草稿】(经 learning-planner / learning-writer agent),绝不碰结构;建/改名/排序/删全是用户按的。
  */
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams, useNavigate, useParams } from 'react-router-dom';
 import {
   ChevronLeft, ChevronRight, ChevronDown, Circle, Check, Plus,
@@ -27,6 +27,7 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
 import { AdvisorSidebar } from '@/components/ai-advisor/AdvisorSidebar';
+import { IrisAuroraButton } from '@/components/ai-advisor/IrisAuroraButton';
 import { DraftAssetProvider } from '@/contexts/DraftAssetContext';
 import { LoadingState } from '@/components/LoadingState';
 import { useTheme } from '@/hooks/use-theme';
@@ -36,11 +37,15 @@ import {
   type ChatSelectionAttachment,
 } from '@/pages/admin/lib/live-chat-selection';
 import { PlateMarkdownEditor } from '../components/PlateEditor';
+import { useDraftEditor, type DraftEditorController } from '../lib/use-draft-editor';
+import { createNotesDraftAdapter, type NotesDraftState } from '../lib/notes-draft-adapter';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { CommitForm } from '../components/CommitForm';
+import { useOnlineStatus } from '@/hooks/use-online-status';
 import { useLearningData, type LearnPlan, type Chapter, type LearningData } from './useLearningData';
 
 const FADE_MS = 300;
 const SLIDE_MS = 650;
-const AUTOSAVE_MS = 1200;
 
 // ─── 小件 ─────────────────────────────────────────────────────────────────────
 
@@ -263,14 +268,62 @@ function ChapterOutline({
   );
 }
 
-function EditControls({ onSave, onCommit, saving }: { onSave: () => void; onCommit: () => void; saving: boolean }) {
+// 编辑控制条:右栏「我的重写」与「编辑草稿页」体验完全一致 —— 同款自动保存状态指示、
+// 保存(⇧⌘S)、提交走 CommitForm 浮层(变更说明必填),不再手搓一键直提。
+function EditControls({
+  editor,
+  online,
+  auroraOpen,
+  onOpenAurora,
+}: {
+  editor: DraftEditorController<NotesDraftState>;
+  online: boolean;
+  auroraOpen: boolean;
+  onOpenAurora: () => void;
+}) {
   const { theme, setTheme } = useTheme();
   return (
     <>
-      <button onClick={onSave} disabled={saving} className="flex items-center gap-1 rounded-md px-2.5 py-1 text-sm outline-none transition-colors hover:bg-[var(--shelf)] disabled:opacity-40" style={{ color: 'var(--ink-faded)' }} title="保存草稿">
-        {saving ? <Loader2 size={13} className="animate-spin" /> : null}保存
-      </button>
-      <button onClick={onCommit} disabled={saving} className="rounded-md px-3 py-1 text-sm outline-none transition-colors disabled:opacity-40" style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }} title="提交一个版本">提交</button>
+      {/* 自动保存状态:离线 / 保存中 / 已自动保存 HH:MM —— 与 ProseDraftEditor 同语义 */}
+      <span
+        className="mr-1 inline-flex items-center gap-1.5 text-xs"
+        style={{ color: 'var(--ink-ghost)' }}
+        title={!online ? '当前离线,草稿已在本地保留,联网后会自动同步' : undefined}
+      >
+        {!online ? (
+          <>
+            <span className="size-1.5 shrink-0 rounded-full" style={{ background: 'var(--mark-yellow, #d4a017)' }} aria-hidden />
+            等待联网
+          </>
+        ) : editor.isAutosaving ? (
+          <>
+            <span className="size-1.5 shrink-0 animate-pulse rounded-full [animation-duration:1.2s]" style={{ background: 'var(--accent)' }} aria-hidden />
+            保存中…
+          </>
+        ) : editor.lastSavedAt ? (
+          `已自动保存 ${new Date(editor.lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
+        ) : (
+          ''
+        )}
+      </span>
+      {editor.autosaveError && <span className="text-xs" style={{ color: 'var(--mark-red)' }}>{editor.autosaveError}</span>}
+
+      <button onClick={() => void editor.saveDraft()} className="rounded-md px-2.5 py-1 text-sm outline-none transition-colors hover:bg-[var(--shelf)]" style={{ color: 'var(--ink-faded)' }} title="保存草稿 ⇧⌘S">保存</button>
+      <Popover open={editor.showCommitDialog} onOpenChange={editor.setShowCommitDialog}>
+        <PopoverTrigger asChild>
+          <button className="rounded-md px-3 py-1 text-sm outline-none transition-colors" style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }} title="提交一个版本">提交</button>
+        </PopoverTrigger>
+        <PopoverContent align="end" sideOffset={6} className="w-64 p-3">
+          <CommitForm
+            changeNote={editor.state.changeNote}
+            onChangeNote={(v) => editor.setField('changeNote', v)}
+            onConfirm={() => void editor.commitDraft()}
+            onCancel={() => editor.setShowCommitDialog(false)}
+          />
+        </PopoverContent>
+      </Popover>
+      {/* Aurora 入口:鸢尾种子图标,hover 播放生长帧(= 唤醒)。只在折叠态出现,展开后由侧栏自己收起。 */}
+      {!auroraOpen && <IrisAuroraButton onClick={onOpenAurora} />}
       <button
         className="rounded-md p-1.5 outline-none transition-colors hover:bg-[var(--shelf)]"
         style={{ color: 'var(--ink-ghost)' }}
@@ -306,8 +359,9 @@ function NodeScreen({
   const next = idx >= 0 && idx < chapters.length - 1 ? chapters[idx + 1].contentItemId : null;
   const title = isTopic ? data.topicTitle : chapter?.title ?? '';
 
-  // 继续学习:跳到顺序上最新的已研究篇;都没研究则落第一篇。
-  const anyResearched = chapters.some((c) => c.studied);
+  // CTA「开始/继续学习」只看主题有没有规划(plan = 主题 aidraft):有规划 = 已经动过这个主题 = 继续学习。
+  // 落点仍优先跳顺序上最新的已研究篇,都没研究则落第一篇。
+  const hasPlan = !!plan;
   const resume = [...chapters].reverse().find((c) => c.studied) ?? chapters[0] ?? null;
 
   // 当前业务场景状态串(实时拼、无正文)→ 后端拼进 <current_context>。状态二态:已研究(有 AI 稿)/ 空。
@@ -322,71 +376,32 @@ function NodeScreen({
         chapters.map((c, i) => `  ${i + 1}. ${c.title}    ${c.studied ? '已研究' : '空'}`).join('\n')
       : '篇目:(还没建,照规划新建一篇)');
 
-  // 当前篇的内容(左 aiDraft / 右 myDraft),按 contentItemId 拉;总章态左是规划提案不拉 aiDraft。
-  const [content, setContent] = useState<{ aiDraft: string; myDraft: string } | null>(null);
+  // 左栏 = Aurora 的 AI 初稿(只读;总章态左是规划提案,不拉 aiDraft)。null=加载中。
+  const [aiDraft, setAiDraft] = useState<string | null>(null);
   const [autoEditNavId, setAutoEditNavId] = useState<string | null>(null); // 新建篇后让该行自动进改名态
-  const mdRef = useRef('');
-  const [saving, setSaving] = useState(false);
-  const saveTimer = useRef<number | undefined>(undefined);
+  const online = useOnlineStatus();
 
+  // 右栏「我的重写」复用编辑草稿页同一套控制器:无草稿先回退已发布正文、首次真编辑才懒建草稿、
+  // 1.5s debounce 自动保存、提交走版本。彻底替掉此前手搓的简陋保存,两处编辑体验完全一致。
+  // NodeScreen 以 currentCid 为 key 整体重挂,故 adapter 随篇切换自然重建。
+  const draftAdapter = useMemo(() => createNotesDraftAdapter(currentCid ?? ''), [currentCid]);
+  const editor = useDraftEditor(draftAdapter);
+
+  // 左栏 AI 初稿单独拉(右栏 draft 已由 editor 接管):总章不拉,叶子按 contentItemId 拉 aidraft。
   useEffect(() => {
     let alive = true;
-    if (!currentCid) {
-      queueMicrotask(() => {
-        if (!alive) return;
-        mdRef.current = '';
-        setContent({ aiDraft: '', myDraft: '' });
-      });
-      return () => {
-        alive = false;
-      };
+    if (isTopic || !currentCid) {
+      queueMicrotask(() => { if (alive) setAiDraft(''); });
+      return () => { alive = false; };
     }
-    queueMicrotask(() => {
-      if (alive) setContent(null); // 切节点先置 loading
-    });
-    void Promise.all([
-      isTopic ? Promise.resolve(null) : notesApi.getAiDraft(currentCid).catch(() => null),
-      notesApi.getDraft(currentCid).catch(() => null),
-    ]).then(([ai, mine]) => {
-      if (!alive) return;
-      const my = mine?.bodyMarkdown ?? '';
-      mdRef.current = my;
-      setContent({ aiDraft: ai?.bodyMarkdown ?? '', myDraft: my });
-    });
-    return () => {
-      alive = false;
-      if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    };
+    queueMicrotask(() => { if (alive) setAiDraft(null); }); // 切篇先置 loading
+    notesApi.getAiDraft(currentCid)
+      .then((d) => { if (alive) setAiDraft(d?.bodyMarkdown ?? ''); })
+      .catch(() => { if (alive) setAiDraft(''); });
+    return () => { alive = false; };
   }, [isTopic, currentCid]);
 
-  const doSaveDraft = useCallback(async (md: string) => {
-    if (!currentCid) return;
-    setSaving(true);
-    try {
-      await notesApi.saveDraft(currentCid, { title: title || '未命名', summary: '', bodyMarkdown: md, changeNote: '' });
-    } finally {
-      setSaving(false);
-    }
-  }, [currentCid, title]);
-
-  const onEditorChange = (md: string, isUserEdit: boolean) => {
-    mdRef.current = md;
-    if (!isUserEdit) return;
-    if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => void doSaveDraft(md), AUTOSAVE_MS);
-  };
-  const onSaveNow = () => void doSaveDraft(mdRef.current);
-  const onCommit = useCallback(async () => {
-    if (!currentCid) return;
-    setSaving(true);
-    try {
-      await notesApi.save(currentCid, { title: title || '未命名', summary: '', status: 'committed', bodyMarkdown: mdRef.current, changeNote: '学习重写' });
-    } finally {
-      setSaving(false);
-    }
-  }, [currentCid, title]);
-
-  const studied = (content?.aiDraft.trim().length ?? 0) > 0;
+  const studied = (aiDraft?.trim().length ?? 0) > 0;
 
   const [auroraOpen, setAuroraOpen] = useState(false);
   const [slid, setSlid] = useState(false);
@@ -394,9 +409,6 @@ function NodeScreen({
   const [auroraVisible, setAuroraVisible] = useState(false);
   const [selections, setSelections] = useState<ChatSelectionAttachment[]>([]);
   const [pending, setPending] = useState<{ text: string; x: number; y: number } | null>(null);
-
-  const draftScrollRef = useRef<HTMLDivElement>(null);
-  const rewriteScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const timers: number[] = [];
@@ -420,7 +432,7 @@ function NodeScreen({
       notesApi.getAiDraft(currentCid)
         .then((d) => {
           const body = d?.bodyMarkdown ?? '';
-          setContent((c) => (c && c.aiDraft !== body ? { ...c, aiDraft: body } : c));
+          setAiDraft((cur) => (cur !== body ? body : cur));
         })
         .catch(() => {});
       void refreshStudied(currentCid);
@@ -514,9 +526,9 @@ function NodeScreen({
                 onClick={() => onNavigate(resume.contentItemId)}
                 className="flex items-center gap-1 rounded-md px-3.5 py-1.5 text-sm font-medium outline-none transition-opacity hover:opacity-80"
                 style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
-                title={`${anyResearched ? '继续学习' : '开始学习'} · ${resume.title}`}
+                title={`${hasPlan ? '继续学习' : '开始学习'} · ${resume.title}`}
               >
-                <span className="min-w-0 max-w-[15rem] truncate">{anyResearched ? '继续学习' : '开始学习'} · {resume.title}</span>
+                <span className="min-w-0 max-w-[15rem] truncate">{hasPlan ? '继续学习' : '开始学习'} · {resume.title}</span>
                 <ChevronRight size={15} strokeWidth={2} className="shrink-0" />
               </button>
               <span className="mx-1 h-4 w-px" style={{ background: 'var(--separator)' }} />
@@ -534,18 +546,8 @@ function NodeScreen({
               <span className="mx-1 h-4 w-px" style={{ background: 'var(--separator)' }} />
             </>
           )}
-          <button
-            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm outline-none transition-colors hover:bg-[var(--shelf)]"
-            style={{ color: auroraOpen ? 'var(--accent)' : 'var(--ink-faded)' }}
-            onClick={() => (auroraOpen ? closeAurora() : setAuroraOpen(true))}
-            title="唤出 / 收起 Aurora"
-            aria-pressed={auroraOpen}
-          >
-            <Sparkles size={15} strokeWidth={1.5} />
-            Aurora
-          </button>
-          <span className="mx-1 h-4 w-px" style={{ background: 'var(--separator)' }} />
-          <EditControls onSave={onSaveNow} onCommit={() => void onCommit()} saving={saving} />
+          {/* Aurora 入口在 EditControls 内、提交右边(与编辑草稿页同序:保存→提交→Aurora→主题→⋯)。 */}
+          <EditControls editor={editor} online={online} auroraOpen={auroraOpen} onOpenAurora={() => setAuroraOpen(true)} />
         </div>
       </header>
 
@@ -557,15 +559,15 @@ function NodeScreen({
           style={{ minWidth: 0, background: 'color-mix(in srgb, var(--paper) 82%, var(--shelf))', borderRight: '1px solid var(--separator)' }}
           onMouseUp={!isTopic && studied ? handleDraftMouseUp : undefined}
         >
-          <div ref={draftScrollRef} className="h-full overflow-y-auto">
+          <div className="h-full overflow-y-auto">
             {isTopic ? (
               <PlanProduct plan={plan} onPlanWithAurora={() => setAuroraOpen(true)} />
-            ) : content === null ? (
+            ) : aiDraft === null ? (
               <div className="flex h-full items-center justify-center"><Loader2 size={18} className="animate-spin" style={{ color: 'var(--ink-ghost)' }} /></div>
             ) : studied ? (
               <div className="mx-auto w-full max-w-[var(--layout-editor-max)] pb-24 pt-2">
                 <DraftAssetProvider contentItemId={currentCid ?? ''}>
-                  <PlateMarkdownEditor key={`d-${nodeId}-${content.aiDraft.length}:${content.aiDraft.slice(0, 16)}:${content.aiDraft.slice(-16)}`} initialMarkdown={content.aiDraft} readOnly />
+                  <PlateMarkdownEditor key={`d-${nodeId}-${aiDraft.length}:${aiDraft.slice(0, 16)}:${aiDraft.slice(-16)}`} initialMarkdown={aiDraft} readOnly />
                 </DraftAssetProvider>
               </div>
             ) : (
@@ -592,7 +594,7 @@ function NodeScreen({
           className="relative min-h-0 shrink-0 overflow-hidden"
           style={{ background: 'var(--paper)', width: slid ? 0 : '50%', transition: `width ${SLIDE_MS}ms cubic-bezier(0.32, 0.72, 0, 1)` }}
         >
-          <div ref={rewriteScrollRef} className="h-full overflow-y-auto" style={{ opacity: rewriteVisible ? 1 : 0, transition: `opacity ${FADE_MS}ms ease` }}>
+          <div className="h-full overflow-y-auto" style={{ opacity: rewriteVisible ? 1 : 0, transition: `opacity ${FADE_MS}ms ease` }}>
             <div className={`mx-auto w-full max-w-[var(--layout-editor-max)] pb-40 ${isTopic ? 'px-2 pt-4' : 'pt-2'}`}>
               {isTopic && (
                 <ChapterOutline
@@ -607,11 +609,18 @@ function NodeScreen({
                   onReorder={(navIds) => void data.reorderChapters(navIds)}
                 />
               )}
-              {content === null ? (
+              {/* 右栏正文编辑器:
+                  - 无 content item(总章罕见缺正文)→ 不挂编辑器,只留上方篇目,避免 adapter 不 ready 时永久 loading;
+                  - 加载失败 → 给出错误而非空挂,否则空 body + 空 title 一提交会覆盖已有正文;
+                  - 加载完成才挂 Plate:此刻 editor.state.bodyMarkdown 已是草稿或回退的已发布正文,
+                    非受控 initialMarkdown 一次到位,不会先空挂再被异步内容覆盖。 */}
+              {!currentCid ? null : editor.error && !editor.loaded ? (
+                <p className="px-2 py-20 text-center text-sm" style={{ color: 'var(--mark-red)' }}>{editor.error}</p>
+              ) : editor.loading ? (
                 <div className="flex items-center justify-center py-20"><Loader2 size={18} className="animate-spin" style={{ color: 'var(--ink-ghost)' }} /></div>
               ) : (
-                <DraftAssetProvider contentItemId={currentCid ?? ''}>
-                  <PlateMarkdownEditor key={`r-${nodeId}`} initialMarkdown={content.myDraft} onChange={onEditorChange} />
+                <DraftAssetProvider contentItemId={currentCid}>
+                  <PlateMarkdownEditor key={`r-${nodeId}`} initialMarkdown={editor.state.bodyMarkdown} onChange={(md, isUserEdit) => editor.setBody(md, isUserEdit)} />
                 </DraftAssetProvider>
               )}
             </div>

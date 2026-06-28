@@ -21,88 +21,24 @@
 
 import { useMemo } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
-import {
-  notesApi as contentItemsApi,
-  workspaceApi,
-} from '@/services/workspace';
-import type { ContentChangeType, ContentDetail } from '@/services/workspace';
+import { workspaceApi } from '@/services/workspace';
+import type { ContentDetail } from '@/services/workspace';
 import {
   useDraftEditor,
   type BaseDraftState,
   type DraftEditorAdapter,
 } from './lib/use-draft-editor';
+import { createNotesDraftAdapter } from './lib/notes-draft-adapter';
 import { useWritingAdvisorEnabled } from './lib/use-writing-advisor-enabled';
 import { ProseDraftEditor } from './components/ProseDraftEditor';
-
-/** 笔记草稿:在基础字段上多 summary(摘要)+ changeType(变更类型),二者透传不在 UI 编辑 */
-interface NotesDraftState extends BaseDraftState {
-  summary: string;
-  changeType: ContentChangeType;
-}
 
 /* ── notes scope:走 contentItemsApi(notesApi)静态路由,保持现有行为 ────────────── */
 
 const NotesEditPanel = ({ id }: { id: string }) => {
   const agentEnabled = useWritingAdvisorEnabled();
 
-  const adapter = useMemo<DraftEditorAdapter<NotesDraftState>>(
-    () => ({
-      ready: !!id,
-      storageKey: id,
-      initialState: { title: '', summary: '', bodyMarkdown: '', changeNote: '', changeType: 'patch' },
-      async loadDraft() {
-        const draft = await contentItemsApi.getDraft(id);
-        if (!draft) return null;
-        return {
-          state: {
-            title: draft.title,
-            summary: draft.summary,
-            bodyMarkdown: draft.bodyMarkdown,
-            changeNote: draft.changeNote,
-            changeType: 'patch',
-          },
-          savedAt: draft.savedAt,
-        };
-      },
-      async loadPublished() {
-        const detail = await contentItemsApi.getById(id, { visibility: 'all' });
-        return {
-          title: detail.latestVersion.title,
-          summary: detail.latestVersion.summary,
-          bodyMarkdown: detail.bodyMarkdown,
-          changeNote: '',
-          changeType: 'patch',
-        };
-      },
-      async saveDraft(state) {
-        const draft = await contentItemsApi.saveDraft(id, {
-          title: state.title,
-          summary: state.summary,
-          bodyMarkdown: state.bodyMarkdown,
-          changeNote: state.changeNote,
-        });
-        return { savedAt: draft.savedAt };
-      },
-      async commit(state) {
-        await contentItemsApi.save(id, {
-          title: state.title,
-          summary: state.summary,
-          status: 'committed',
-          bodyMarkdown: state.bodyMarkdown,
-          changeNote: state.changeNote,
-          changeType: state.changeType,
-          action: 'commit',
-        });
-        await contentItemsApi.deleteDraft(id); // 提交后清服务端草稿
-      },
-      async discard() {
-        await contentItemsApi.deleteDraft(id);
-      },
-      fallbackPath: `/admin/notes?node=${id}`,
-      labels: { loadError: '加载内容失败' },
-    }),
-    [id],
-  );
+  // 复用共享工厂(学习重写右栏同款),保证两处编辑体验一致。
+  const adapter = useMemo(() => createNotesDraftAdapter(id), [id]);
 
   const editor = useDraftEditor(adapter);
 
