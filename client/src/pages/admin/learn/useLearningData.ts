@@ -109,7 +109,7 @@ export interface LearningData {
   renameChapter: (navId: string, title: string) => Promise<void>;
   removeChapter: (navId: string) => Promise<void>;
   reorderChapters: (navIds: string[]) => Promise<void>;
-  refreshStudied: (contentItemId: string) => Promise<void>;
+  setStudied: (contentItemId: string, studied: boolean) => void;
   refreshPlan: () => Promise<void>; // 只重读主题 aidraft 重解析规划(Aurora 规划完实时刷左栏)
 }
 
@@ -148,23 +148,25 @@ export function useLearningData(topicNavId: string): LearningData {
       setTopicTitle(self?.name ?? '学习');
 
       const kids = res.children;
-      // 并发判定每篇是否研究过(有非空 aidraft);单篇失败按"没研究"处理,不阻塞整体
-      const studiedFlags = await Promise.all(
-        kids.map((c) =>
-          c.contentItemId
-            ? notesApi
-                .getAiDraft(c.contentItemId)
-                .then((d) => !!d?.bodyMarkdown.trim())
-                .catch(() => false)
-            : Promise.resolve(false),
-        ),
+      // 一次批量探针判每篇是否研究过(有非空 aidraft);整批失败按"都没研究"降级,不阻塞整体。
+      // 替掉原先「逐篇 getAiDraft 拉整篇正文只为一个布尔」的 N 个重复请求 + 流量浪费。
+      const cids = kids
+        .map((c) => c.contentItemId)
+        .filter((id): id is string => !!id);
+      const studiedSet = new Set(
+        cids.length
+          ? await notesApi
+              .aidraftsExist(cids)
+              .then((r) => r.ids)
+              .catch(() => [] as string[])
+          : [],
       );
       setChapters(
-        kids.map((c, i) => ({
+        kids.map((c) => ({
           navId: c.id,
           contentItemId: c.contentItemId ?? '',
           title: c.name,
-          studied: studiedFlags[i],
+          studied: !!c.contentItemId && studiedSet.has(c.contentItemId),
         })),
       );
 
@@ -250,14 +252,11 @@ export function useLearningData(topicNavId: string): LearningData {
     [topicNavId, load],
   );
 
-  const refreshStudied = useCallback(async (contentItemId: string) => {
-    const d = await notesApi.getAiDraft(contentItemId).catch(() => null);
+  // 纯 setter:由调用方(refreshLeft 拉到 body 后)直接告知 studied,不再自己重拉 aidraft。
+  // 消掉「refreshLeft 拉一遍 body + refreshStudied 内部又拉一遍同一 aidraft」的重复请求。
+  const setStudied = useCallback((contentItemId: string, studied: boolean) => {
     setChapters((cs) =>
-      cs.map((c) =>
-        c.contentItemId === contentItemId
-          ? { ...c, studied: !!d?.bodyMarkdown.trim() }
-          : c,
-      ),
+      cs.map((c) => (c.contentItemId === contentItemId ? { ...c, studied } : c)),
     );
   }, []);
 
@@ -280,7 +279,7 @@ export function useLearningData(topicNavId: string): LearningData {
     renameChapter,
     removeChapter,
     reorderChapters,
-    refreshStudied,
+    setStudied,
     refreshPlan,
   };
 }

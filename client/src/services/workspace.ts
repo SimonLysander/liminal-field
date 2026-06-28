@@ -407,6 +407,16 @@ export const notesApi = {
   getAiDraft: (id: string) =>
     request<EditorDraft | null>(`/spaces/notes/items/${id}/aidraft`),
 
+  /**
+   * 批量探针:传一组 contentItemId,返回其中「有非空 AI 初稿」的子集。
+   * 学习页判 studied 用——一次请求替掉逐篇 getAiDraft(只投影 _id,不拉整篇正文)。
+   */
+  aidraftsExist: (contentItemIds: string[]) =>
+    request<{ ids: string[] }>(`/spaces/notes/aidrafts/exists`, {
+      method: 'POST',
+      body: JSON.stringify({ contentItemIds }),
+    }),
+
   saveDraft: (id: string, dto: SaveDraftDto) =>
     request<EditorDraft>(`/spaces/notes/items/${id}/draft`, {
       method: 'PUT',

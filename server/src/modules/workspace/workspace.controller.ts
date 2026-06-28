@@ -44,6 +44,7 @@ import { UpdateWorkspaceItemDto } from './dto/update-workspace-item.dto';
 import { EditorDraftDto } from './dto/editor-draft.dto';
 import { PatchMetaDto } from './dto/patch-meta.dto';
 import { SaveDraftDto } from './dto/save-draft.dto';
+import { AidraftExistsDto } from './dto/aidraft-exists.dto';
 import {
   GalleryAdminDetailDto,
   GalleryEditorDto,
@@ -149,6 +150,21 @@ export class WorkspaceController {
     @Body() body: BatchOperationDto,
   ): Promise<{ successCount: number; skippedCount: number }> {
     return this.workspaceService.batchUnpublish(body.folderId);
+  }
+
+  /**
+   * 批量探针:传一组 contentItemId,返回其中「有非空 AI 初稿」的子集(ids)。
+   * 学习页判 studied 用——一次请求 + 只投影 _id,替掉逐篇 getAiDraft 拉整篇的重复请求。
+   * 静态路由,注册在通用 :scope/items/:id 之前。
+   */
+  @Post('notes/aidrafts/exists')
+  async aidraftsExist(
+    @Body() body: AidraftExistsDto,
+  ): Promise<{ ids: string[] }> {
+    const ids = await this.noteViewService.getContentItemIdsWithAiDraft(
+      body.contentItemIds,
+    );
+    return { ids };
   }
 
   // ─── Gallery 特有路由(必须在通用 :scope 路由之前注册)───

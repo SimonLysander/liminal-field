@@ -352,7 +352,7 @@ function NodeScreen({
 }) {
   const navigate = useNavigate();
   const { id: topicNavId } = useParams<{ id: string }>(); // 学习路由 /admin/notes/:id/learn,:id = 主题 navId
-  const { chapters, plan, refreshPlan, refreshStudied } = data;
+  const { chapters, plan, refreshPlan, setStudied } = data;
   const currentCid = isTopic ? data.topicContentItemId : nodeId;
   const idx = isTopic ? -1 : chapters.findIndex((c) => c.contentItemId === nodeId);
   const chapter = idx >= 0 ? chapters[idx] : null;
@@ -435,15 +435,16 @@ function NodeScreen({
     if (isTopic) {
       void refreshPlan();
     } else if (currentCid) {
+      // 拉一次 aidraft body:既更新左栏,又据其非空性直接更新 studied —— 不再二次拉同一 aidraft。
       notesApi.getAiDraft(currentCid)
         .then((d) => {
           const body = d?.bodyMarkdown ?? '';
           setAiDraft((cur) => (cur !== body ? body : cur));
+          setStudied(currentCid, !!body.trim());
         })
         .catch(() => {});
-      void refreshStudied(currentCid);
     }
-  }, [isTopic, currentCid, refreshPlan, refreshStudied]);
+  }, [isTopic, currentCid, refreshPlan, setStudied]);
 
   // 左栏刷新改为事件驱动:Aurora 的 write_draft / write_learn_plan 一产出,AdvisorSidebar 即
   // 经 onAuroraWrote 回调 refreshLeft(见下方),取代原先每 2.5s 盲轮询。closeAurora 再兜底刷一次。

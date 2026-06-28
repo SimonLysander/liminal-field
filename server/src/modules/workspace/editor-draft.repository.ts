@@ -195,6 +195,23 @@ export class EditorDraftRepository {
   }
 
   /**
+   * 批量查「哪些节点有非空 AI 初稿」（学习页判 studied 用）。
+   * 只按 _id $in 命中 + 投影 _id，绝不取 body —— 替掉「逐篇 getAiDraft 拉整篇正文只为一个布尔」
+   * 的流量浪费（篇多/稿长时尤甚）。返回有非空 aidraft 的 contentItemId 子集。
+   */
+  async findContentItemIdsWithAiDraft(
+    contentItemIds: string[],
+  ): Promise<string[]> {
+    if (contentItemIds.length === 0) return [];
+    const ids = contentItemIds.map((id) => this.buildAiDraftId(id));
+    const docs = await this.editorDraftModel
+      .find({ _id: { $in: ids }, bodyMarkdown: { $nin: [null, ''] } }, { _id: 1 })
+      .lean();
+    const prefixLen = 'aidraft:'.length;
+    return docs.map((d) => String(d._id).slice(prefixLen));
+  }
+
+  /**
    * 保存 AI 初稿（upsert）。每次 Aurora 生成新内容时覆盖，只保留最新一份。
    * fileName 固定 null，与 notes/gallery 草稿结构对齐，不引入条目层级。
    */

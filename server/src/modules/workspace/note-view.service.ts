@@ -264,6 +264,15 @@ export class NoteViewService {
     return this.toDraftDto(draft);
   }
 
+  /**
+   * 批量判定哪些节点「有非空 AI 初稿」（学习页 studied 标记用）。
+   * 一次请求 + 只投影 _id，替掉前端逐篇 getAiDraft 拉整篇的重复请求与流量浪费。
+   * 不校验每个节点是否存在（缺失/无 aidraft 一律不在返回集里），轻量探针语义。
+   */
+  async getContentItemIdsWithAiDraft(ids: string[]): Promise<string[]> {
+    return this.editorDraftRepository.findContentItemIdsWithAiDraft(ids);
+  }
+
   /** 保存草稿（autosave）：只写 MongoDB，不触发 Git commit。 */
   async saveDraft(id: string, dto: SaveDraftDto): Promise<EditorDraftDto> {
     await this.contentService.assertContentEditable(id);
