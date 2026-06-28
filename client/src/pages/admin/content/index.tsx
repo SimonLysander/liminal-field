@@ -20,6 +20,7 @@ import { MoveToDialog } from '../components/MoveToDialog';
 import { useAdminWorkspace } from '../hooks/useAdminWorkspace';
 import { structureApi } from '@/services/structure';
 import { notesApi } from '@/services/workspace';
+import { deleteSession } from '@/services/agent';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { banner } from '@/components/ui/banner-api';
 
@@ -164,8 +165,13 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
           .filter((id): id is string => !!id),
       ];
       await notesApi.discardAidrafts(ids);
+      // 一并清掉 Aurora 对话会话(主题规划 + 各篇写作),否则再「开始学习」会挂着旧上下文。
+      // 会话 key 与学习页一致:learn-{contentItemId}。best-effort,单条失败不阻塞。
+      await Promise.all(
+        ids.map((id) => deleteSession(`learn-${id}`).catch(() => undefined)),
+      );
       setLearningExists(false);
-      banner.success('已放弃,AI 产物已清空');
+      banner.success('已放弃,AI 产物与对话已清空');
     } catch (e) {
       banner.error(e instanceof Error ? e.message : '放弃失败');
     }
