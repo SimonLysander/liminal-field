@@ -105,6 +105,12 @@ export interface AdvisorSidebarProps {
    * 适配场景: digest 公开报告页(右栏可 toggle), 编辑页面想加关闭也能用同样钩子。
    */
   onClose?: () => void;
+  /**
+   * 学习场景:写手/规划写完(write_draft / write_learn_plan 工具产出)即回调,
+   * 供上层刷新左栏 AI 初稿/规划提案 —— 事件驱动,取代每 2.5s 盲轮询。
+   * 按 toolCallId 去重,一次写只触发一次。
+   */
+  onAuroraWrote?: () => void;
 }
 
 export function AdvisorSidebar({
@@ -120,6 +126,7 @@ export function AdvisorSidebar({
   onRemoveSelectionAttachment,
   onClearSelectedText,
   onClose,
+  onAuroraWrote,
 }: AdvisorSidebarProps) {
   // 编辑器专属适配(改稿桥/审批态)解构,通用名维持以减小内部改动
   const {
@@ -265,6 +272,25 @@ export function AdvisorSidebar({
     // 推迟到微任务,避免在 effect 同步体内 setState(react-hooks/set-state-in-effect)
     queueMicrotask(() => setChatRefs([]));
   }, [currentSessionKey]);
+
+  // 学习场景:监听 write_draft / write_learn_plan 工具产出 → 写完即回调上层刷左栏。
+  // 事件驱动取代盲轮询;按 toolCallId 去重,一次写只触发一次(沿用本文件 propose_* 同款扫描范式)。
+  const auroraWroteSeenRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!onAuroraWrote) return;
+    for (const m of messages) {
+      if (m.role !== 'assistant' || !Array.isArray(m.parts)) continue;
+      for (const part of m.parts) {
+        const p = part as { type?: string; state?: string; toolCallId?: string };
+        if (p.type !== 'tool-write_draft' && p.type !== 'tool-write_learn_plan') continue;
+        if (p.state !== 'output-available') continue;
+        const id = p.toolCallId ?? '';
+        if (!id || auroraWroteSeenRef.current.has(id)) continue;
+        auroraWroteSeenRef.current.add(id);
+        onAuroraWrote();
+      }
+    }
+  }, [messages, onAuroraWrote]);
 
   // v3 发送：chips 已在 readAndClear 内拼成 markdown > 引用块，只传 text。
   const handleSend = useCallback(() => {

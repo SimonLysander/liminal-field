@@ -445,12 +445,8 @@ function NodeScreen({
     }
   }, [isTopic, currentCid, refreshPlan, refreshStudied]);
 
-  // Aurora 开着时轮询:agent 一写完(write_learn_plan / write_draft)左栏即刷,不必关面板/刷页面。
-  useEffect(() => {
-    if (!auroraOpen) return;
-    const t = window.setInterval(refreshLeft, 2500);
-    return () => window.clearInterval(t);
-  }, [auroraOpen, refreshLeft]);
+  // 左栏刷新改为事件驱动:Aurora 的 write_draft / write_learn_plan 一产出,AdvisorSidebar 即
+  // 经 onAuroraWrote 回调 refreshLeft(见下方),取代原先每 2.5s 盲轮询。closeAurora 再兜底刷一次。
 
   const closeAurora = () => {
     setAuroraOpen(false);
@@ -655,6 +651,7 @@ function NodeScreen({
               onRemoveSelectionAttachment={removeSelection}
               onClearSelectedText={clearSelections}
               onClose={closeAurora}
+              onAuroraWrote={refreshLeft}
             />
           </div>
         </div>
