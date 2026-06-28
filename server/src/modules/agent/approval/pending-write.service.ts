@@ -85,10 +85,10 @@ export class PendingWriteCommitService {
           // 写逻辑与 write-draft.tool.ts execute 完全等价（复用同一 helper）
           const markdown = payload['markdown'] as string;
           if (!pending.targetContentItemId) {
-            this.logger.error(
-              `approve: write_draft 缺少 targetContentItemId toolCallId=${toolCallId}`,
+            // 已标 approved 却没目标可写 → 抛错走 catch(500),绝不静默返回 ok 误导回灌
+            throw new Error(
+              `write_draft commit 缺少 targetContentItemId toolCallId=${toolCallId}`,
             );
-            break;
           }
           await this.editorDraftRepo.saveAiDraft({
             contentItemId: pending.targetContentItemId,
@@ -107,10 +107,9 @@ export class PendingWriteCommitService {
           const understanding = payload['understanding'] as string;
           const items = payload['items'] as PlanItem[];
           if (!pending.targetContentItemId) {
-            this.logger.error(
-              `approve: write_learn_plan 缺少 targetContentItemId toolCallId=${toolCallId}`,
+            throw new Error(
+              `write_learn_plan commit 缺少 targetContentItemId toolCallId=${toolCallId}`,
             );
-            break;
           }
           const bodyMarkdown = serializeToDraftMarkdown(
             goal,
@@ -137,10 +136,9 @@ export class PendingWriteCommitService {
             status?: string;
           }>;
           if (!pending.agentKey) {
-            this.logger.error(
-              `approve: write_tasks 缺少 agentKey toolCallId=${toolCallId}`,
+            throw new Error(
+              `write_tasks commit 缺少 agentKey toolCallId=${toolCallId}`,
             );
-            break;
           }
           await this.memoryRepo.setTasks(
             pending.agentKey,

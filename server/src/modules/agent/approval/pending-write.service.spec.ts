@@ -110,6 +110,18 @@ describe('PendingWriteCommitService.approve', () => {
     await svc.approve('tc', 's');
     expect(obsRepo.appendMany).toHaveBeenCalledTimes(1);
   });
+
+  it('write_draft 缺 targetContentItemId → 抛错(不静默返回 ok)', async () => {
+    const { svc, pendingRepo, editorRepo } = mocks();
+    pendingRepo.findById.mockResolvedValue({
+      sessionKey: 's',
+      toolName: 'write_draft',
+      payload: { markdown: 'x' }, // 没 targetContentItemId
+    });
+    pendingRepo.resolve.mockResolvedValue(true);
+    await expect(svc.approve('tc', 's')).rejects.toThrow();
+    expect(editorRepo.saveAiDraft).not.toHaveBeenCalled();
+  });
 });
 
 describe('PendingWriteCommitService.reject', () => {

@@ -13,8 +13,12 @@
  * - execute 被替换为门禁逻辑；args 由 AI SDK 经 inputSchema 校验后传入，结构有保证
  * - 没有 sessionKey 时上游应退回直接用 realTool，避免「无法审批却又不写」的死局
  */
+import { Logger } from '@nestjs/common';
 import { PendingWriteRepository } from './pending-write.repository';
 import { toolResult } from '../tools/tool-result';
+
+// 模块级 logger:gateWrite 是工厂函数无 class 容器,沿用 skill.tool 同款 module-scope Logger。
+const logger = new Logger('GateWrite');
 
 /**
  * 审批卡的统一展示契约(三层)。所有门禁写工具的 buildPreview 一律产出这个 shape,
@@ -80,27 +84,37 @@ export function gateWrite(
       }
     }
 
-    const preview = opts.buildPreview(args);
+    // ② 暂存到 pending_writes（TTL 24h 自动清理，不审批则自动过期）。
+    //    buildPreview/stash 失败(如 Mongo 故障)不透传异常——带上下文 log 后回 error tool result,
+    //    否则流层吞掉、服务端无痕(CLAUDE.md「catch 必 log / 关键写入失败带上下文」)。
+    try {
+      const preview = opts.buildPreview(args);
+      // ApprovalPreview 严格类型不带 index signature,落 Mongo Mixed / 拼进 toolResult 处统一窄化为 Record
+      const previewRecord = preview as Record<string, unknown>;
+      await opts.pendingWriteRepo.stash({
+        toolCallId,
+        sessionKey: opts.sessionKey,
+        toolName: opts.toolName,
+        targetContentItemId: opts.targetContentItemId,
+        agentKey: opts.agentKey,
+        payload: args,
+        preview: previewRecord,
+        now: new Date(),
+      });
 
-    // ② 暂存到 pending_writes（TTL 24h 自动清理，不审批则自动过期）
-    await opts.pendingWriteRepo.stash({
-      toolCallId,
-      sessionKey: opts.sessionKey,
-      toolName: opts.toolName,
-      targetContentItemId: opts.targetContentItemId,
-      agentKey: opts.agentKey,
-      payload: args,
-      // ApprovalPreview 严格类型不带 index signature,落 Mongo Mixed 字段处窄化为 Record
-      preview: preview as Record<string, unknown>,
-      now: new Date(),
-    });
-
-    // ③ 返回 pending_approval：toolCallId 供前端定位审批卡，preview 供卡片三层展示
-    return toolResult('已生成，待你在会话里确认', undefined, {
-      status: 'pending_approval',
-      toolCallId,
-      ...(preview as Record<string, unknown>),
-    });
+      // ③ 返回 pending_approval：toolCallId 供前端定位审批卡，preview 供卡片三层展示
+      return toolResult('已生成，待你在会话里确认', undefined, {
+        status: 'pending_approval',
+        toolCallId,
+        ...previewRecord,
+      });
+    } catch (err) {
+      const stack = err instanceof Error ? err.stack : String(err);
+      logger.error(
+        `gateWrite 暂存失败 toolName=${opts.toolName} sessionKey=${opts.sessionKey} toolCallId=${toolCallId} err=${stack}`,
+      );
+      return toolResult('暂存失败，请重试', undefined, { status: 'error' });
+    }
   };
 
   // 展开 realTool 保留 description/inputSchema/parameters 等所有字段，仅覆盖 execute

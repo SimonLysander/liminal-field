@@ -73,7 +73,7 @@ import { extractSections } from '../tools/markdown.utils';
 import { createReadContentTool } from '../tools/read-node-content.tool';
 import { EditorDraftRepository } from '../../workspace/editor-draft.repository';
 // HITL 门禁：写工具 execute 暂存 pending_writes，带外审批后 commit 落库
-import { gateWrite } from '../approval/gate-write';
+import { gateWrite, type GateWriteOptions } from '../approval/gate-write';
 import { PendingWriteRepository } from '../approval/pending-write.repository';
 import { validateObservations } from '../tools/remember.tool';
 import type { ObservationTopic } from '../memory/agent-memory-observation.entity';
@@ -183,6 +183,21 @@ export class ToolAssembler {
     // 联网读 URL:Jina Reader 免 key 起步,总会返 provider;装配层无脑挂工具。
     const webFetchProvider = createWebFetchProviderFromEnv();
 
+    // HITL 门禁：有 sessionKey 才把写工具包成门禁层（暂存 pending_writes → 用户确认 → commit）；
+    // 无 sessionKey 时退回直接用真 tool，避免「无法审批却又不写」的死局。
+    // realTool 一律先构造一次两分支共用，sessionKey / pendingWriteRepo 在此统一注入。
+    const gateIfSession = (
+      realTool: unknown,
+      opts: Omit<GateWriteOptions, 'sessionKey' | 'pendingWriteRepo'>,
+    ) =>
+      entryContext.sessionKey
+        ? gateWrite(realTool, {
+            ...opts,
+            sessionKey: entryContext.sessionKey,
+            pendingWriteRepo: this.pendingWriteRepo,
+          })
+        : realTool;
+
     const rawTools = {
       // 知识库搜索（grep：按内容找）：全局可用
       search_knowledge_base: createSearchKnowledgeBaseTool(this.contentService),
@@ -205,46 +220,40 @@ export class ToolAssembler {
           }),
       // 2026-05-30 event log:主 agent 主动 remember 批量觉察(替代旧 upsert 版),
       // recall_memory / search_memories 仍是只读;forget 不存在(岁月史书)。
-      // HITL 门禁：有 sessionKey 时包门禁层（暂存 → 用户确认 → commit）；
-      // 无 sessionKey 时退回直接用真 tool，避免「无法审批却又不写」的死局。
-      remember: entryContext.sessionKey
-        ? gateWrite(
-            createRememberTool(this.observationRepo, entryContext.sessionKey),
-            {
-              toolName: 'remember',
-              sessionKey: entryContext.sessionKey,
-              pendingWriteRepo: this.pendingWriteRepo,
-              // remember 有严格写前校验（字数/topic），门禁层同步校验，不合格不暂存
-              validate: (args) => {
-                const observations =
-                  (
-                    args as {
-                      observations?: Array<{
-                        topic: ObservationTopic;
-                        observation: string;
-                        context?: string;
-                      }>;
-                    }
-                  ).observations ?? [];
-                return validateObservations(observations);
-              },
-              buildPreview: (args) => {
-                const obs =
-                  (args['observations'] as Array<{
-                    observation?: string;
-                    topic?: string;
-                  }>) ?? [];
-                return {
-                  items: obs.slice(0, 10).map((o) => ({
-                    label: o?.observation ?? '',
-                    snippet: o?.topic || undefined,
-                  })),
-                  stats: `记忆 · ${obs.length} 条 · 新增`,
-                };
-              },
-            },
-          )
-        : createRememberTool(this.observationRepo, entryContext.sessionKey),
+      remember: gateIfSession(
+        createRememberTool(this.observationRepo, entryContext.sessionKey),
+        {
+          toolName: 'remember',
+          // remember 有严格写前校验（字数/topic），门禁层同步校验，不合格不暂存
+          validate: (args) => {
+            const observations =
+              (
+                args as {
+                  observations?: Array<{
+                    topic: ObservationTopic;
+                    observation: string;
+                    context?: string;
+                  }>;
+                }
+              ).observations ?? [];
+            return validateObservations(observations);
+          },
+          buildPreview: (args) => {
+            const obs =
+              (args['observations'] as Array<{
+                observation?: string;
+                topic?: string;
+              }>) ?? [];
+            return {
+              items: obs.slice(0, 10).map((o) => ({
+                label: o?.observation ?? '',
+                snippet: o?.topic || undefined,
+              })),
+              stats: `记忆 · ${obs.length} 条 · 新增`,
+            };
+          },
+        },
+      ),
       recall_memory: createRecallMemoryTool(this.observationRepo),
       search_memories: createSearchMemoriesTool(this.observationRepo),
       // 子 agent：主 agent 委派明确任务，独立 context + 只读工具
@@ -258,28 +267,27 @@ export class ToolAssembler {
       // HITL 门禁：有 sessionKey 时包门禁层；memoryKey 必须存在 write_tasks 才挂。
       ...(memoryKey
         ? {
-            write_tasks: entryContext.sessionKey
-              ? gateWrite(createWriteTasksTool(this.memoryRepo, memoryKey), {
-                  toolName: 'write_tasks',
-                  sessionKey: entryContext.sessionKey,
-                  agentKey: memoryKey,
-                  pendingWriteRepo: this.pendingWriteRepo,
-                  buildPreview: (args) => {
-                    const tasks =
-                      (args['tasks'] as Array<{
-                        title?: string;
-                        status?: string;
-                      }>) ?? [];
-                    return {
-                      items: tasks.slice(0, 15).map((t) => ({
-                        label: t?.title ?? '',
-                        snippet: t?.status || undefined,
-                      })),
-                      stats: `任务 · ${tasks.length} 项`,
-                    };
-                  },
-                })
-              : createWriteTasksTool(this.memoryRepo, memoryKey),
+            write_tasks: gateIfSession(
+              createWriteTasksTool(this.memoryRepo, memoryKey),
+              {
+                toolName: 'write_tasks',
+                agentKey: memoryKey,
+                buildPreview: (args) => {
+                  const tasks =
+                    (args['tasks'] as Array<{
+                      title?: string;
+                      status?: string;
+                    }>) ?? [];
+                  return {
+                    items: tasks.slice(0, 15).map((t) => ({
+                      label: t?.title ?? '',
+                      snippet: t?.status || undefined,
+                    })),
+                    stats: `任务 · ${tasks.length} 项`,
+                  };
+                },
+              },
+            ),
           }
         : {}),
       // 对话原文回溯：session 记忆有损精炼，精确查"用户原话"时用此工具
@@ -345,41 +353,33 @@ export class ToolAssembler {
       // HITL 门禁：有 sessionKey 时包门禁层。
       ...(entryContext.learningTopicId
         ? {
-            write_learn_plan: entryContext.sessionKey
-              ? gateWrite(
-                  createWriteLearnPlanTool(
-                    this.editorDraftRepo,
-                    entryContext.learningTopicId,
-                  ),
-                  {
-                    toolName: 'write_learn_plan',
-                    sessionKey: entryContext.sessionKey,
-                    targetContentItemId: entryContext.learningTopicId,
-                    pendingWriteRepo: this.pendingWriteRepo,
-                    validate: requireChangeSummary, // 没传改动摘要就退回让模型补
-
-                    buildPreview: (args) => {
-                      const items =
-                        (args['items'] as Array<{
-                          title?: string;
-                          why?: string;
-                        }>) ?? [];
-                      return {
-                        summary: (args['changeSummary'] as string) || undefined,
-                        items: items.slice(0, 20).map((it) => ({
-                          label: it?.title ?? '',
-                          snippet: it?.why || undefined, // 篇名 + 该篇的「为何写」
-                        })),
-                        ordered: true, // 篇目有序,显序号
-                        stats: `规划 · ${items.length} 篇 · 覆盖现有`,
-                      };
-                    },
-                  },
-                )
-              : createWriteLearnPlanTool(
-                  this.editorDraftRepo,
-                  entryContext.learningTopicId,
-                ),
+            write_learn_plan: gateIfSession(
+              createWriteLearnPlanTool(
+                this.editorDraftRepo,
+                entryContext.learningTopicId,
+              ),
+              {
+                toolName: 'write_learn_plan',
+                targetContentItemId: entryContext.learningTopicId,
+                validate: requireChangeSummary, // 没传改动摘要就退回让模型补
+                buildPreview: (args) => {
+                  const items =
+                    (args['items'] as Array<{
+                      title?: string;
+                      why?: string;
+                    }>) ?? [];
+                  return {
+                    summary: (args['changeSummary'] as string) || undefined,
+                    items: items.slice(0, 20).map((it) => ({
+                      label: it?.title ?? '',
+                      snippet: it?.why || undefined, // 篇名 + 该篇的「为何写」
+                    })),
+                    ordered: true, // 篇目有序,显序号
+                    stats: `规划 · ${items.length} 篇 · 覆盖现有`,
+                  };
+                },
+              },
+            ),
           }
         : {}),
       // 学习写作工具：learningNoteId 存在时挂 write_draft（learning-writer agent 专用）。
@@ -387,33 +387,25 @@ export class ToolAssembler {
       // HITL 门禁：有 sessionKey 时包门禁层。
       ...(entryContext.learningNoteId
         ? {
-            write_draft: entryContext.sessionKey
-              ? gateWrite(
-                  createWriteDraftTool(
-                    this.editorDraftRepo,
-                    entryContext.learningNoteId,
-                  ),
-                  {
-                    toolName: 'write_draft',
-                    sessionKey: entryContext.sessionKey,
-                    targetContentItemId: entryContext.learningNoteId,
-                    pendingWriteRepo: this.pendingWriteRepo,
-                    validate: requireChangeSummary, // 没传改动摘要就退回让模型补
-
-                    buildPreview: (args) => {
-                      const md = (args['markdown'] as string) ?? '';
-                      return {
-                        summary: (args['changeSummary'] as string) || undefined,
-                        items: extractSections(md, 40), // 小标题 + 各节开头约 40 字
-                        stats: `初稿 · ${md.length} 字 · 覆盖现有`,
-                      };
-                    },
-                  },
-                )
-              : createWriteDraftTool(
-                  this.editorDraftRepo,
-                  entryContext.learningNoteId,
-                ),
+            write_draft: gateIfSession(
+              createWriteDraftTool(
+                this.editorDraftRepo,
+                entryContext.learningNoteId,
+              ),
+              {
+                toolName: 'write_draft',
+                targetContentItemId: entryContext.learningNoteId,
+                validate: requireChangeSummary, // 没传改动摘要就退回让模型补
+                buildPreview: (args) => {
+                  const md = (args['markdown'] as string) ?? '';
+                  return {
+                    summary: (args['changeSummary'] as string) || undefined,
+                    items: extractSections(md, 40), // 小标题 + 各节开头约 40 字
+                    stats: `初稿 · ${md.length} 字 · 覆盖现有`,
+                  };
+                },
+              },
+            ),
           }
         : {}),
       // read_content：learningTopicId 或 learningNoteId 任一存在就挂（planner/writer 都能读）。
