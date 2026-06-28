@@ -40,7 +40,7 @@ import { dump } from 'js-yaml';
 import type { EditorDraftRepository } from '../../workspace/editor-draft.repository';
 import { toolResult } from './tool-result';
 
-interface PlanItem {
+export interface PlanItem {
   title: string;
   thread: string;
   why: string;
@@ -61,7 +61,7 @@ interface PlanItem {
  *
  * 用 js-yaml dump 序列化，避免手拼 YAML 的转义风险。
  */
-function serializeToDraftMarkdown(
+export function serializeToDraftMarkdown(
   goal: string,
   understanding: string,
   items: PlanItem[],

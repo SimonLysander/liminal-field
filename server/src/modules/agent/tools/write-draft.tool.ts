@@ -16,14 +16,14 @@ import type { EditorDraftRepository } from '../../workspace/editor-draft.reposit
 import { toolResult } from './tool-result';
 
 /** 从 markdown 提取标题：优先取第一个 # 标题，退而取首行（去除空白），截断至 80 字。 */
-function extractTitle(markdown: string): string {
+export function extractTitle(markdown: string): string {
   const headingMatch = markdown.match(/^#{1,6}\s+(.+)/m);
   if (headingMatch) return headingMatch[1].trim().slice(0, 80);
   return markdown.split('\n')[0]?.trim().slice(0, 80) ?? '（无标题）';
 }
 
 /** 从 markdown 提取摘要：跳过标题行，取第一个非空非标题段，截断至 150 字。 */
-function extractSummary(markdown: string): string {
+export function extractSummary(markdown: string): string {
   for (const line of markdown.split('\n')) {
     const trimmed = line.trim();
     if (trimmed && !trimmed.startsWith('#')) return trimmed.slice(0, 150);

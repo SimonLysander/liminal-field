@@ -68,9 +68,14 @@ import { ProcessedFeedItemRepository } from '../../digest/processed-feed-item.re
 import { DigestTaskRepository } from '../../digest/digest-task.repository';
 // 学习产品：write_learn_plan / write_draft / read_content 工具
 import { createWriteLearnPlanTool } from '../tools/write-learn-plan.tool';
-import { createWriteDraftTool } from '../tools/write-draft.tool';
+import { createWriteDraftTool, extractTitle } from '../tools/write-draft.tool';
 import { createReadContentTool } from '../tools/read-node-content.tool';
 import { EditorDraftRepository } from '../../workspace/editor-draft.repository';
+// HITL 门禁：写工具 execute 暂存 pending_writes，带外审批后 commit 落库
+import { gateWrite } from '../approval/gate-write';
+import { PendingWriteRepository } from '../approval/pending-write.repository';
+import { validateObservations } from '../tools/remember.tool';
+import type { ObservationTopic } from '../memory/agent-memory-observation.entity';
 
 export interface EntryContext {
   document?: DocumentContext;
@@ -128,6 +133,8 @@ export class ToolAssembler {
     private readonly digestTaskRepo: DigestTaskRepository,
     // 学习产品：write_learn_plan 把规划落 aidraft:{topicId}，通过 WorkspaceModule 注入
     private readonly editorDraftRepo: EditorDraftRepository,
+    // HITL 门禁：4 个写工具的 execute 改为暂存 pending_writes，带外审批后 commit 落库
+    private readonly pendingWriteRepo: PendingWriteRepository,
   ) {}
 
   /**
@@ -183,10 +190,35 @@ export class ToolAssembler {
           }),
       // 2026-05-30 event log:主 agent 主动 remember 批量觉察(替代旧 upsert 版),
       // recall_memory / search_memories 仍是只读;forget 不存在(岁月史书)。
-      remember: createRememberTool(
-        this.observationRepo,
-        entryContext.sessionKey,
-      ),
+      // HITL 门禁：有 sessionKey 时包门禁层（暂存 → 用户确认 → commit）；
+      // 无 sessionKey 时退回直接用真 tool，避免「无法审批却又不写」的死局。
+      remember: entryContext.sessionKey
+        ? gateWrite(
+            createRememberTool(this.observationRepo, entryContext.sessionKey),
+            {
+              toolName: 'remember',
+              sessionKey: entryContext.sessionKey,
+              pendingWriteRepo: this.pendingWriteRepo,
+              // remember 有严格写前校验（字数/topic），门禁层同步校验，不合格不暂存
+              validate: (args) => {
+                const observations =
+                  (
+                    args as {
+                      observations?: Array<{
+                        topic: ObservationTopic;
+                        observation: string;
+                        context?: string;
+                      }>;
+                    }
+                  ).observations ?? [];
+                return validateObservations(observations);
+              },
+              buildPreview: (args) => ({
+                count: (args['observations'] as unknown[])?.length ?? 0,
+              }),
+            },
+          )
+        : createRememberTool(this.observationRepo, entryContext.sessionKey),
       recall_memory: createRecallMemoryTool(this.observationRepo),
       search_memories: createSearchMemoriesTool(this.observationRepo),
       // 子 agent：主 agent 委派明确任务，独立 context + 只读工具
@@ -197,13 +229,20 @@ export class ToolAssembler {
         entryContext.sessionKey,
       ),
       // 任务管理：write_tasks 整体改写写作计划(TodoWrite 式,模型有最大自由度)
+      // HITL 门禁：有 sessionKey 时包门禁层；memoryKey 必须存在 write_tasks 才挂。
       ...(memoryKey
         ? {
-            write_tasks: createWriteTasksTool(
-              this.memoryRepo,
-              // tasks 落在草稿级 agent 实例上；业务会话切换不清空任务。
-              memoryKey,
-            ),
+            write_tasks: entryContext.sessionKey
+              ? gateWrite(createWriteTasksTool(this.memoryRepo, memoryKey), {
+                  toolName: 'write_tasks',
+                  sessionKey: entryContext.sessionKey,
+                  agentKey: memoryKey,
+                  pendingWriteRepo: this.pendingWriteRepo,
+                  buildPreview: (args) => ({
+                    count: (args['tasks'] as unknown[])?.length ?? 0,
+                  }),
+                })
+              : createWriteTasksTool(this.memoryRepo, memoryKey),
           }
         : {}),
       // 对话原文回溯：session 记忆有损精炼，精确查"用户原话"时用此工具
@@ -266,22 +305,58 @@ export class ToolAssembler {
       // 学习规划工具：learningTopicId 存在时挂（learning-planner agent 用）
       // 规划落 aidraft:{topicId}，前端通过 EditorDraftRepository.buildAiDraftId 读回；
       // 绝不建节点——只产提案，建篇由用户操作。
+      // HITL 门禁：有 sessionKey 时包门禁层。
       ...(entryContext.learningTopicId
         ? {
-            write_learn_plan: createWriteLearnPlanTool(
-              this.editorDraftRepo,
-              entryContext.learningTopicId,
-            ),
+            write_learn_plan: entryContext.sessionKey
+              ? gateWrite(
+                  createWriteLearnPlanTool(
+                    this.editorDraftRepo,
+                    entryContext.learningTopicId,
+                  ),
+                  {
+                    toolName: 'write_learn_plan',
+                    sessionKey: entryContext.sessionKey,
+                    targetContentItemId: entryContext.learningTopicId,
+                    pendingWriteRepo: this.pendingWriteRepo,
+                    buildPreview: (args) => ({
+                      title: args['goal'],
+                      itemsCount: (args['items'] as unknown[])?.length ?? 0,
+                    }),
+                  },
+                )
+              : createWriteLearnPlanTool(
+                  this.editorDraftRepo,
+                  entryContext.learningTopicId,
+                ),
           }
         : {}),
       // 学习写作工具：learningNoteId 存在时挂 write_draft（learning-writer agent 专用）。
       // 目标节点在工厂内绑定，模型无法指定其它节点——防止跨节点越权写入。
+      // HITL 门禁：有 sessionKey 时包门禁层。
       ...(entryContext.learningNoteId
         ? {
-            write_draft: createWriteDraftTool(
-              this.editorDraftRepo,
-              entryContext.learningNoteId,
-            ),
+            write_draft: entryContext.sessionKey
+              ? gateWrite(
+                  createWriteDraftTool(
+                    this.editorDraftRepo,
+                    entryContext.learningNoteId,
+                  ),
+                  {
+                    toolName: 'write_draft',
+                    sessionKey: entryContext.sessionKey,
+                    targetContentItemId: entryContext.learningNoteId,
+                    pendingWriteRepo: this.pendingWriteRepo,
+                    buildPreview: (args) => ({
+                      title: extractTitle(args['markdown'] as string),
+                      charCount: (args['markdown'] as string)?.length ?? 0,
+                    }),
+                  },
+                )
+              : createWriteDraftTool(
+                  this.editorDraftRepo,
+                  entryContext.learningNoteId,
+                ),
           }
         : {}),
       // read_content：learningTopicId 或 learningNoteId 任一存在就挂（planner/writer 都能读）。

@@ -13,7 +13,42 @@ import { toolResult } from './tool-result';
  * 存储:tasks 属于草稿级 agent 工作状态,落在 session 记忆记录(by agentKey),
  * 与对话原文(messages)解耦——onBeforeChat 也从同一处读回注入,保证读写同源。
  */
-const VALID_STATUS = ['pending', 'in_progress', 'done'];
+export const VALID_STATUS = ['pending', 'in_progress', 'done'];
+
+export interface NormalizedTask {
+  id: string;
+  title: string;
+  status: string;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+/**
+ * 规范化任务列表（commit 路径与 execute 路径共用，避免落库逻辑分叉）。
+ * - 未知 status 降级为 'pending'
+ * - 过滤空 title
+ * - 每条生成稳定 id（nanoid 8 位）
+ *
+ * 返回 Record<string, unknown>[] 对齐 AgentMemoryRepository.setTasks 入参类型。
+ */
+export function normalizeTasks(
+  tasks: Array<{ title: string; status?: string }>,
+): Array<Record<string, unknown>> {
+  return (tasks ?? [])
+    .map((t) => {
+      const status = VALID_STATUS.includes(t.status ?? '')
+        ? (t.status as string)
+        : 'pending';
+      return {
+        id: nanoid(8),
+        title: String(t.title ?? '').trim(),
+        status,
+        createdAt: new Date().toISOString(),
+        completedAt: status === 'done' ? new Date().toISOString() : null,
+      };
+    })
+    .filter((t) => t.title.length > 0);
+}
 
 export function createWriteTasksTool(
   memoryRepo: AgentMemoryRepository,
@@ -68,20 +103,8 @@ export function createWriteTasksTool(
     }: {
       tasks: Array<{ title: string; status?: string }>;
     }) => {
-      const norm = (tasks ?? [])
-        .map((t) => {
-          const status = VALID_STATUS.includes(t.status ?? '')
-            ? (t.status as string)
-            : 'pending';
-          return {
-            id: nanoid(8),
-            title: String(t.title ?? '').trim(),
-            status,
-            createdAt: new Date().toISOString(),
-            completedAt: status === 'done' ? new Date().toISOString() : null,
-          };
-        })
-        .filter((t) => t.title.length > 0);
+      // 规范化逻辑提取到 normalizeTasks()，commit 路径复用同一函数，行为保持等价
+      const norm = normalizeTasks(tasks);
 
       await memoryRepo.setTasks(agentKey, norm);
 

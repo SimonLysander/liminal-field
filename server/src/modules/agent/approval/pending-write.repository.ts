@@ -1,10 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { ReturnModelType } from '@typegoose/typegoose';
 import { getModelToken } from 'nestjs-typegoose';
-import {
-  PendingWrite,
-  type PendingWriteStatus,
-} from './pending-write.entity';
+import { PendingWrite } from './pending-write.entity';
 
 export interface StashPendingWriteInput {
   toolCallId: string;
@@ -39,7 +36,7 @@ export class PendingWriteRepository {
           agentKey: input.agentKey ?? null,
           payload: input.payload,
           preview: input.preview ?? {},
-          status: 'pending' as PendingWriteStatus,
+          status: 'pending',
           createdAt: input.now,
           resolvedAt: null,
         },

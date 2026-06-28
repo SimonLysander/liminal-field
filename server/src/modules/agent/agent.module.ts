@@ -30,6 +30,7 @@ import { AgentMemory } from './memory/agent-memory.entity';
 import { AgentMemoryRepository } from './memory/agent-memory.repository';
 import { PendingWrite } from './approval/pending-write.entity';
 import { PendingWriteRepository } from './approval/pending-write.repository';
+import { PendingWriteCommitService } from './approval/pending-write.service';
 import {
   AgentMemoryObservation,
   AgentMemoryCurrentView,
@@ -94,6 +95,7 @@ import { DigestSharedModule } from '../digest/digest-shared.module';
     AgentMemoryObservationRepository,
     AgentSessionRepository,
     PendingWriteRepository,
+    PendingWriteCommitService,
     CompactionService,
     MemoryAgentService,
     MemoryViewService,

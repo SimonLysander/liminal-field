@@ -17,7 +17,8 @@ export type ToolStatus =
   | 'error'
   | 'timeout'
   | 'invalid' // 输入结构校验失败(如空 edits)
-  | 'stale'; // bodyHash 与服务器当前 hash 不符,需要重新基于最新版生成
+  | 'stale' // bodyHash 与服务器当前 hash 不符,需要重新基于最新版生成
+  | 'pending_approval'; // HITL 门禁：写操作已暂存，等待用户在会话里确认
 
 export interface ToolResultMeta {
   status?: ToolStatus;

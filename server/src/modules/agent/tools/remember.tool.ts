@@ -22,6 +22,63 @@ const OBSERVATION_MAX_CHARS = 120;
 const CONTEXT_MAX_CHARS = 300;
 const MAX_BATCH = 10;
 
+/** observations 入参的类型，供 validateObservations / toObservationItems 共用 */
+export type ObservationInput = Array<{
+  topic: ObservationTopic;
+  observation: string;
+  context?: string;
+}>;
+
+/**
+ * 强校验 observations 数组（写前防御）。
+ * 返回错误文案（整批 reject）或 null（全过）。
+ * 提取为独立函数供 HITL commit 路径复用，行为与 execute 内完全等价。
+ */
+export function validateObservations(
+  observations: ObservationInput,
+): string | null {
+  if (!Array.isArray(observations) || observations.length === 0) {
+    return 'observations 必须是非空数组';
+  }
+  if (observations.length > MAX_BATCH) {
+    return `一次最多 ${MAX_BATCH} 条,实际 ${observations.length} 条;拆开调或精简`;
+  }
+  for (const [i, obs] of observations.entries()) {
+    if (!OBSERVATION_TOPICS.includes(obs.topic)) {
+      return `第 ${i + 1} 条 topic 不合法,5 选 1: identity / personality / aesthetic / method / other`;
+    }
+    if (
+      typeof obs.observation !== 'string' ||
+      obs.observation.trim().length === 0
+    ) {
+      return `第 ${i + 1} 条 observation 必填且不能空`;
+    }
+    if (obs.observation.length > OBSERVATION_MAX_CHARS) {
+      return `第 ${i + 1} 条 observation 超过 ${OBSERVATION_MAX_CHARS} 字(实际 ${obs.observation.length}),凝练成简短判断;长细节挪回 context`;
+    }
+    if (obs.context && obs.context.length > CONTEXT_MAX_CHARS) {
+      return `第 ${i + 1} 条 context 超过 ${CONTEXT_MAX_CHARS} 字(实际 ${obs.context.length}),史书条目精简到一段话之内`;
+    }
+  }
+  return null;
+}
+
+/**
+ * 将 observations 数组 map 成 appendMany 的入参格式（trim + 带 sessionKey）。
+ * 提取为独立函数供 HITL commit 路径复用。
+ */
+export function toObservationItems(
+  observations: ObservationInput,
+  sessionKey?: string,
+) {
+  return observations.map((obs) => ({
+    topic: obs.topic,
+    observation: obs.observation.trim(),
+    context: obs.context?.trim(),
+    sessionKey,
+  }));
+}
+
 export function createRememberTool(
   observationRepo: AgentMemoryObservationRepository,
   sessionKey?: string,
@@ -88,69 +145,15 @@ export function createRememberTool(
       },
       required: ['observations'],
     }),
-    execute: async ({
-      observations,
-    }: {
-      observations: Array<{
-        topic: ObservationTopic;
-        observation: string;
-        context?: string;
-      }>;
-    }) => {
-      // ─── 强校验 ─────────────────────────────────────────
-      if (!Array.isArray(observations) || observations.length === 0) {
-        return toolResult('observations 必须是非空数组', undefined, {
-          status: 'invalid',
-        });
-      }
-      if (observations.length > MAX_BATCH) {
-        return toolResult(
-          `一次最多 ${MAX_BATCH} 条,实际 ${observations.length} 条;拆开调或精简`,
-          undefined,
-          { status: 'invalid' },
-        );
-      }
-      for (const [i, obs] of observations.entries()) {
-        if (!OBSERVATION_TOPICS.includes(obs.topic)) {
-          return toolResult(
-            `第 ${i + 1} 条 topic 不合法,5 选 1: identity / personality / aesthetic / method / other`,
-            undefined,
-            { status: 'invalid' },
-          );
-        }
-        if (
-          typeof obs.observation !== 'string' ||
-          obs.observation.trim().length === 0
-        ) {
-          return toolResult(
-            `第 ${i + 1} 条 observation 必填且不能空`,
-            undefined,
-            { status: 'invalid' },
-          );
-        }
-        if (obs.observation.length > OBSERVATION_MAX_CHARS) {
-          return toolResult(
-            `第 ${i + 1} 条 observation 超过 ${OBSERVATION_MAX_CHARS} 字(实际 ${obs.observation.length}),凝练成简短判断;长细节挪回 context`,
-            undefined,
-            { status: 'invalid' },
-          );
-        }
-        if (obs.context && obs.context.length > CONTEXT_MAX_CHARS) {
-          return toolResult(
-            `第 ${i + 1} 条 context 超过 ${CONTEXT_MAX_CHARS} 字(实际 ${obs.context.length}),史书条目精简到一段话之内`,
-            undefined,
-            { status: 'invalid' },
-          );
-        }
+    execute: async ({ observations }: { observations: ObservationInput }) => {
+      // ─── 强校验（提取到 validateObservations，commit 路径复用） ──────────────
+      const validationErr = validateObservations(observations);
+      if (validationErr != null) {
+        return toolResult(validationErr, undefined, { status: 'invalid' });
       }
 
       // ─── 全过 → 批量 append ──────────────────────────────
-      const items = observations.map((obs) => ({
-        topic: obs.topic,
-        observation: obs.observation.trim(),
-        context: obs.context?.trim(),
-        sessionKey,
-      }));
+      const items = toObservationItems(observations, sessionKey);
       const created = await observationRepo.appendMany(items);
 
       // ack:模型私下知道 + 前端 ToolCallCard 低调显示 "Note Memory · N 条"

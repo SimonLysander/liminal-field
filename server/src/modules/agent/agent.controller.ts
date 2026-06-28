@@ -14,6 +14,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   MessageEvent,
   Param,
   Patch,
@@ -30,7 +32,9 @@ import { AgentService } from './agent.service';
 import { AgentLifecycle } from './lifecycle/agent-lifecycle.service';
 import { AgentMemoryRepository } from './memory/agent-memory.repository';
 import { AgentMemoryObservationRepository } from './memory/agent-memory-observation.repository';
+import { PendingWriteCommitService } from './approval/pending-write.service';
 import { AgentChatDto } from './dto/agent-chat.dto';
+import { WriteApprovalDto } from './dto/write-approval.dto';
 
 @Controller()
 export class AgentController {
@@ -40,6 +44,7 @@ export class AgentController {
     private readonly memoryRepo: AgentMemoryRepository,
     private readonly observationRepo: AgentMemoryObservationRepository,
     private readonly eventEmitter: EventEmitter2,
+    private readonly commitService: PendingWriteCommitService,
   ) {}
 
   @RawResponse()
@@ -174,5 +179,35 @@ export class AgentController {
   @Get('agent/memories')
   async listMemories() {
     return this.memoryRepo.findAll();
+  }
+
+  // ── HITL 写操作审批 ────────────────────────────────────────────────────────
+  // AI 写工具 execute 时不直接落库，而是暂存进 pending_writes（TTL 24h）。
+  // 用户在前端点「允许」→ approve 端点真正落库；「拒绝」→ reject 端点丢弃。
+  // sessionKey 作为鉴权：只有发起那次对话的用户才能审批自己的写操作。
+
+  /**
+   * 批准某次写工具调用 → 按 toolName 分派真正落库。
+   * body: { sessionKey } 鉴权（与对话发起时的 sessionKey 一致）。
+   */
+  @HttpCode(HttpStatus.OK)
+  @Post('agent/writes/:toolCallId/approve')
+  async approveWrite(
+    @Param('toolCallId') toolCallId: string,
+    @Body() dto: WriteApprovalDto,
+  ) {
+    return this.commitService.approve(toolCallId, dto.sessionKey);
+  }
+
+  /**
+   * 拒绝某次写工具调用 → 标 rejected，不执行任何写操作。
+   */
+  @HttpCode(HttpStatus.OK)
+  @Post('agent/writes/:toolCallId/reject')
+  async rejectWrite(
+    @Param('toolCallId') toolCallId: string,
+    @Body() dto: WriteApprovalDto,
+  ) {
+    return this.commitService.reject(toolCallId, dto.sessionKey);
   }
 }
