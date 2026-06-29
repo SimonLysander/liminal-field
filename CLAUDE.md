@@ -27,11 +27,20 @@
 - **管理页面 → Mongo**：管理员运行时通过 UI 自助配置/变更、非部署绑定、要在界面看状态。
   - 同步：`remoteUrl`、`gitToken`、`gitAuthorName/Email`、`gitSyncEnabled`、**业务定时** `gitSyncCron`（多久推一次远端，管理员关心的节奏）
   - 集成：`mineruToken`；AI：providers（key/baseUrl/models/`contextWindow`）、`aiSystemPrompt`
-  - 身份与 agent：`ownerProfile`、`agentConfigs`
+  - 身份与 agent：`ownerProfile`；`agentConfigs` 仅存**用户新建的 agent** 与**内置 agent 的 provider 绑定/enabled**（内置 agent/skill 定义本身在文件，见「提示词管理」）
 
 **定时任务的区分**：管理员可调的业务节奏（`gitSyncCron`）→ UI；系统内部容错机制（`GIT_ARCHIVE_RETRY_CRON`）→ .env。看的是"管理员会不会去调它"，不是"它是不是 cron"。
 
 **消费侧统一**：UI/Mongo 类配置启动时由 `SystemConfigService.applyAllToEnv` 投影进 `process.env`、UI 改时同步——消费方一律读 `process.env`，不到处注入 `SystemConfigService`。机密在 config view 里**必须脱敏**（只回 `hasXxx` / 长度，不回原文）。
+
+\# 提示词管理（文件为真源 vs Mongo 用户新建）
+
+**所有「我们写给模型的话」集中在 `server/src/prompts/`，文件为唯一真源、随发版、线上不可改。** 详见 `server/src/prompts/README.md`。
+
+- **载体**：长文（systemPrompt / skill body / digest / memory）→ `.md`，经 `PromptManagerService.render(name, vars)` 加载（`@Global()`，`{{var}}` 渲染）；短片段、多条（工具描述、反馈文案、内置注册表）→ 一个 `.ts` 表直接 import（如 `tool-descriptions.ts`、`feedback.ts`、`builtin-skills.ts`、`builtin-agents.ts`）。**不为零碎短句各开一个 md。**
+- **内置 vs 用户新建**：内置 skill/agent 定义在文件（`builtin-*.ts` + 对应 md）；`SkillService` / `SystemConfigService.getAgentConfig` 解析时「内置（文件）∪ 用户新建（Mongo）」、**内置优先**；内置不 seed 进 Mongo、启动无 seed/迁移。Mongo 仅存：用户在 UI 新建的 skill/agent、内置 agent 的 provider 绑定/enabled、用户填的全局 `aiSystemPrompt`。内置 skill 的 `_id` 即其 key，agent 的 `enabledSkillIds` 按 key 引用内置 skill。
+- **改内置提示词 = 改文件 + 部署**（换取 git 历史/diff/回滚）；管理 UI 对内置项的定义类字段只读（数据带 `builtin` 标记，前端按它 disabled）。
+- **拼装胶水留代码**：`prompt.handler.ts` 里按运行时数据拼 `<section>` 的段落 wrapper / 与 owner/上下文交织的短句是组装逻辑，不是可独立 review 的散文 prompt，不外置。
 
 \# 设计系统
 
