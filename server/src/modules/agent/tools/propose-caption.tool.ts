@@ -19,12 +19,8 @@ export function createProposeCaptionTool(
   getGallery: () => GalleryContext | undefined,
 ) {
   return tool({
-    description:
-      '为某张照片**提议**图说(caption)。传 fileName + caption(+可选 reason)。' +
-      '**这只是提议,不会自动生效**——用户要在卡片上点「应用」才真正写入照片。' +
-      '所以调用后请说类似「我提议了图说『…』,满意就点应用」,**绝不要**说「已更新/已改好/已保存」(改动还没生效,那是假的)。' +
-      '**图说硬上限 30 字,一句白描点睛即可**——超出会被工具拒。' +
-      '别堆形容词、别说正确的废话,平实贴画面最好。',
+    // description 单一真源在 prompts/tool-descriptions.ts，组装层(tool.assembler)统一套用。
+    description: '描述见 prompts/tool-descriptions.ts',
     inputSchema: jsonSchema<{
       fileName: string;
       caption: string;

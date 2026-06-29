@@ -17,8 +17,8 @@ const SCOPE_LABEL: Record<string, string> = {
  */
 export function createListKnowledgeBaseTool(contentService: ContentService) {
   return tool({
-    description:
-      '列出所有者知识库内容的目录(标题、范围、文件夹路径、id;最新已提交,不论是否发布),不含正文。用于了解"库里到底有哪些内容"。要读全文用 contentItemId 调 read_document_content;要按关键词找用 search_knowledge_base。',
+    // description 单一真源在 prompts/tool-descriptions.ts，组装层(tool.assembler)统一套用。
+    description: '描述见 prompts/tool-descriptions.ts',
     inputSchema: jsonSchema<{
       scope?: string;
       limit?: number;

@@ -17,8 +17,8 @@ const SCOPE_LABEL: Record<string, string> = {
  */
 export function createSearchKnowledgeBaseTool(contentService: ContentService) {
   return tool({
-    description:
-      '按关键词搜索所有者知识库内容(笔记、相册、文集;最新已提交版本,不论是否发布),返回命中标题、范围、时间和片段。要读全文用返回的 contentItemId 调 read_document_content;要看"库里有哪些"用 list_knowledge_base。',
+    // description 单一真源在 prompts/tool-descriptions.ts，组装层(tool.assembler)统一套用。
+    description: '描述见 prompts/tool-descriptions.ts',
     inputSchema: jsonSchema<{ query: string; scope?: string; limit?: number }>({
       type: 'object',
       properties: {

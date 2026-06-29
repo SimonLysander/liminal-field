@@ -35,9 +35,8 @@ export function createSkillTool(opts: CreateSkillToolOpts) {
   const enabledIdSet = new Set(opts.enabledSkillIds.map((id) => String(id)));
 
   return tool({
-    description:
-      'load_skill:加载一个已注册的技能(方法论)。传 name(slug)即可,系统会把对应的方法论正文注入对话作为下一步行动指引。' +
-      '只在 <available_skills> 列出的 name 才可用,未列出的不要尝试。',
+    // description 单一真源在 prompts/tool-descriptions.ts，组装层(tool.assembler)统一套用。
+    description: '描述见 prompts/tool-descriptions.ts',
     inputSchema: jsonSchema<{ name: string }>({
       type: 'object',
       properties: {

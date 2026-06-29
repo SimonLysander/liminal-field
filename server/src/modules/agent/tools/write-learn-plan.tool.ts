@@ -80,8 +80,8 @@ export function createWriteLearnPlanTool(
   topicContentItemId: string,
 ) {
   return tool({
-    description:
-      '把学习规划的「目标 + 理解 + 篇目脉络」写入当前主题的 AI 草稿区，供所有者在左栏只读查看。调用前：目标明确、理解段已成文（立锚 + 因果拓扑），脉络提案已有序排好。工具只落库，不建任何节点——建篇是所有者的事。调用时**必须同时给出 changeSummary**：扼要成段（2–4 句）说明本次规划相比现有改了什么——重排/增删/调整了哪几篇、为什么、与现有版本的关键差异，让用户审批时看清取舍，别只写一句敷衍。缺它会被退回。',
+    // description 单一真源在 prompts/tool-descriptions.ts，组装层(tool.assembler)统一套用。
+    description: '描述见 prompts/tool-descriptions.ts',
     inputSchema: jsonSchema<{
       goal: string;
       understanding: string;

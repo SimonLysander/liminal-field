@@ -30,8 +30,8 @@ export function createReadCollectionEntryTool(
   reader: AnthologyEntryReader,
 ) {
   return tool({
-    description:
-      '读取当前文集里另一个子节点的当前内容(最新已提交,不论是否发布)。编辑本节点时用它参考同集其它节点——做衔接、避免重复、保持风格一致。节点 id 取自 <collection> 列表。当前正在编辑的这篇用 get_current_draft,不要用本工具。',
+    // description 单一真源在 prompts/tool-descriptions.ts，组装层(tool.assembler)统一套用。
+    description: '描述见 prompts/tool-descriptions.ts',
     inputSchema: jsonSchema<{ nodeId: string }>({
       type: 'object',
       properties: {

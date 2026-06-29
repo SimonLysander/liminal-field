@@ -38,8 +38,8 @@ export function createReadContentTool(
   editorDraftRepo: EditorDraftRepository,
 ) {
   return tool({
-    description:
-      '读取一个笔记节点的真实内容：① 已发布/已提交的正文 ② 用户未提交草稿。两段各自独立，哪段有返哪段；都没有就返回"该节点暂无内容"。不返回 Aurora 自己写的 AI 初稿（那是产出、不是源材料，读回给自己无意义）。只读不写。planner 和 writer 均可调用。',
+    // description 单一真源在 prompts/tool-descriptions.ts，组装层(tool.assembler)统一套用。
+    description: '描述见 prompts/tool-descriptions.ts',
     inputSchema: jsonSchema<{ contentItemId: string }>({
       type: 'object',
       properties: {

@@ -15,8 +15,8 @@ export function createReadDocumentContentTool(
   noteViewService: NoteViewService,
 ) {
   return tool({
-    description:
-      '读取知识库里一篇内容的正文(最新已提交版本,不论是否发布)。返回大纲(全)+ 从 offset 起的一段正文(默认约 6000 字)。文档很长时返回会带"还有更多",用 offset 续读。当前正在编辑的这篇用 get_current_draft。',
+    // description 单一真源在 prompts/tool-descriptions.ts，组装层(tool.assembler)统一套用。
+    description: '描述见 prompts/tool-descriptions.ts',
     inputSchema: jsonSchema<{
       contentItemId: string;
       offset?: number;

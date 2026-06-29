@@ -139,8 +139,9 @@ export function createWriteDraftTool(
   noteContentItemId: string,
 ) {
   return tool({
-    description:
-      '把研究成果写成当前笔记节点的 AI 初稿（aidraft），供用户只读参考。调用前：全文已成稿，能独立成篇（有标题、有正文）。每次调用整体覆盖，保持最新一份。只写当前这一篇，目标节点已由系统固定，无法改变。调用时**必须同时给出 changeSummary**：扼要成段（2–4 句）说明本次相比现有初稿改了什么——重写/补充/修正了哪几处、各自要点、与现有版本的关键差异，让用户审批时看清取舍，别只写一句敷衍。缺它会被退回。\n\n出处：凡正文落到可证伪的事实——具体数字、日期、版本、谁提出的、标准规定、某术语的精确定义——必先经 web_search/web_fetch 查证，在该句末就近标 [@#CIT N]（N 是 sources 里的序号，按出现顺序编号；一处引多条可写 [@#CIT 1,3-5]），并把每条来源按顺序填进 sources（title+url，须真取到过）。讲道理、类比、通识不标；纯思辨、无外部事实的篇可不给 sources。正文不要自己罗列链接，「来源」一节由系统据 sources 自动附于篇末。正文标了 [@#CIT N] 却没给够 sources 会被退回。',
+    // description 单一真源在 prompts/tool-descriptions.ts，组装层(tool.assembler)统一套用。
+    // 此处留指针占位即可——assemble() 收尾会用文件内容覆盖它。
+    description: '描述见 prompts/tool-descriptions.ts',
     inputSchema: jsonSchema<{
       markdown: string;
       changeSummary: string;

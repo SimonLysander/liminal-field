@@ -13,8 +13,8 @@ export function createViewPhotosTool(
   getGallery: () => GalleryContext | undefined,
 ) {
   return tool({
-    description:
-      '查看若干照片的画面本身(传 fileName 数组)。调用后这些照片会出现在你接下来能看到的内容里,据此写图说。只传你确实要看的,别一次全要。',
+    // description 单一真源在 prompts/tool-descriptions.ts，组装层(tool.assembler)统一套用。
+    description: '描述见 prompts/tool-descriptions.ts',
     inputSchema: jsonSchema<{ fileNames: string[] }>({
       type: 'object',
       properties: {

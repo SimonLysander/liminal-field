@@ -57,15 +57,8 @@ export function createBrowseTool(deps: BrowseDeps) {
   } = deps;
 
   return tool({
-    description:
-      '扫订阅信箱,并行拉全部(或指定)订阅源在 since/until 窗口内的条目。' +
-      '不传 sourceIds 默认扫当前事项订阅的所有源;' +
-      'since/until 是本期收集窗口(ISO 8601 字符串),由 system prompt 给出,务必传;' +
-      'keywords 可选:传【正则】数组按主题精筛(OR——命中任一即留),对所有源的标题+摘要本地匹配、不区分大小写;' +
-      '英文加词边界 \\bword\\b 防误中(\\bagent\\b 不会误中 agentic),中文用交替 大模型|智能体。' +
-      '已历史去重(剔除本期 findings 已收录的)。' +
-      '返回 items 含 ref(i1, i2...)、title、url、publishedAt、snippet。' +
-      '搜索具体关键词找全网历史时,改用 web_search。',
+    // description 单一真源在 prompts/tool-descriptions.ts，组装层(tool.assembler)统一套用。
+    description: '描述见 prompts/tool-descriptions.ts',
     inputSchema: jsonSchema<{
       sourceIds?: string[];
       keywords?: string[];

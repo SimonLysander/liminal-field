@@ -28,10 +28,8 @@ export function createRecallMemoryTool(
   observationRepo: AgentMemoryObservationRepository,
 ) {
   return tool({
-    description:
-      '按 topic 深读所有者的最近观察(按时间倒序)。' +
-      '想看某个维度的具体观察轨迹时调这条;想找跨主题的关键词相关观察用 search_memories。' +
-      'topic 必填,5 选 1:identity(身份) / personality(性格) / aesthetic(审美) / method(方法) / other(兜底)。',
+    // description 单一真源在 prompts/tool-descriptions.ts，组装层(tool.assembler)统一套用。
+    description: '描述见 prompts/tool-descriptions.ts',
     inputSchema: jsonSchema<{ topic: ObservationTopic; limit?: number }>({
       type: 'object',
       properties: {

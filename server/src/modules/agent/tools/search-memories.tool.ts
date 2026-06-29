@@ -24,10 +24,8 @@ export function createSearchMemoriesTool(
   observationRepo: AgentMemoryObservationRepository,
 ) {
   return tool({
-    description:
-      '关键词模糊搜跨主题的所有者观察(matches observation 字段 + context 字段)。' +
-      '想找跟具体话题/事物相关的观察轨迹时用这条;想看某个 topic 的所有最近观察用 recall_memory。' +
-      '可选 topic 过滤;截断时 meta 给 hasMore + nextOffset,可用 offset 续取。',
+    // description 单一真源在 prompts/tool-descriptions.ts，组装层(tool.assembler)统一套用。
+    description: '描述见 prompts/tool-descriptions.ts',
     inputSchema: jsonSchema<{
       query: string;
       topic?: ObservationTopic;

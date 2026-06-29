@@ -15,8 +15,8 @@ export function createSubAgentTool(
   sessionKey?: string,
 ) {
   return tool({
-    description:
-      '把一个明确的任务委派给独立的子 agent。子 agent 有独立上下文和工具，完成后只返回结论，当前对话不会被中间过程干扰。适合需要搜索+读多篇+综合分析的任务。',
+    // description 单一真源在 prompts/tool-descriptions.ts，组装层(tool.assembler)统一套用。
+    description: '描述见 prompts/tool-descriptions.ts',
     inputSchema: jsonSchema<{
       task: string;
       title: string;

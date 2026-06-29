@@ -17,8 +17,8 @@ export function createReadConversationHistoryTool(
   agentKey: string,
 ) {
   return tool({
-    description:
-      '读取当前对话的完整历史原文(可按关键词过滤),用于精确回溯之前聊过/问过什么。session 记忆是有损精炼时，用此工具还原原话。',
+    // description 单一真源在 prompts/tool-descriptions.ts，组装层(tool.assembler)统一套用。
+    description: '描述见 prompts/tool-descriptions.ts',
     inputSchema: jsonSchema<{ keyword?: string; limit?: number }>({
       type: 'object',
       properties: {

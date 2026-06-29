@@ -21,8 +21,8 @@ const MAX_URL_LENGTH = 2000;
 
 export function createWebFetchTool(provider: WebFetchProvider) {
   return tool({
-    description:
-      '读取一个 URL 的全文(markdown 形式)。用于深读外部文章——用户贴 url、或 web_search 后想读全文。返回页面正文(自动去广告/导航)。**不要为闲聊瞎调**,只在写作或回答真需要深读外部页面时用。长文会被截断(默认 30000 字符)。',
+    // description 单一真源在 prompts/tool-descriptions.ts，组装层(tool.assembler)统一套用。
+    description: '描述见 prompts/tool-descriptions.ts',
     inputSchema: jsonSchema<{ url: string; maxLength?: number }>({
       type: 'object',
       properties: {

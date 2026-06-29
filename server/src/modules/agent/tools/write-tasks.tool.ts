@@ -55,8 +55,8 @@ export function createWriteTasksTool(
   agentKey: string,
 ) {
   return tool({
-    description:
-      '改写当前会话的写作计划清单(整体替换:给出**完整**列表覆盖原清单)。用于规划、增删、调整顺序、标记进度。当前清单已在 system prompt 的 <tasks> 中。\n纪律(逼你想清楚,别偷懒):① 每个任务都必须给 status;② **同一时刻只能有一个 in_progress**(你当前正在做的那个),其余是 pending 或 done;③ 用列表顺序表达先后,不需要依赖字段;④ 每推进一步就调用本工具更新,让计划始终反映真实进度;⑤ **全部做完、或计划作废时,传空列表 `[]` 清空**(否则这份计划会一直留在你的上下文里);⑥ 给这份计划起个简短的 title(如「研究排序笔记」「重构开篇」),显示在计划区头部。',
+    // description 单一真源在 prompts/tool-descriptions.ts，组装层(tool.assembler)统一套用。
+    description: '描述见 prompts/tool-descriptions.ts',
     inputSchema: jsonSchema<{
       title?: string;
       tasks: Array<{ title: string; status?: string }>;

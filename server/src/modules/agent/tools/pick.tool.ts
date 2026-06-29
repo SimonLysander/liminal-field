@@ -25,9 +25,8 @@ export function createPickTool(deps: PickDeps) {
   const { taskRepo, ctx } = deps;
 
   return tool({
-    description:
-      '标记这些 item 为本任务的相关 findings。一次调用挑一批，每条带为啥挑的理由。' +
-      '所有挑出来的 findings 会作为 agent 工作的最终产物。',
+    // description 单一真源在 prompts/tool-descriptions.ts，组装层(tool.assembler)统一套用。
+    description: '描述见 prompts/tool-descriptions.ts',
     inputSchema: jsonSchema<{ items: Array<{ ref: string; reason: string }> }>({
       type: 'object',
       properties: {

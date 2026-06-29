@@ -17,8 +17,8 @@ const MAX_QUERY_LENGTH = 400;
 
 export function createWebSearchTool(provider: WebSearchProvider) {
   return tool({
-    description:
-      '联网搜索。需要验证事实/查引用/找外部信息时调用(用户问外部知识、写作要找资料、验年代/人名/书名等)。返回多条 url + 摘要片段,可直接在回答中引用 url。不要为闲聊瞎调——只在写作或回答真需要外部依据时用。',
+    // description 单一真源在 prompts/tool-descriptions.ts，组装层(tool.assembler)统一套用。
+    description: '描述见 prompts/tool-descriptions.ts',
     inputSchema: jsonSchema<{
       query: string;
       maxResults?: number;

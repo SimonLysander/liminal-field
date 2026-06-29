@@ -54,6 +54,7 @@ import { AgentSessionRepository } from '../session/agent-session.repository';
 import { AgentMemoryRepository } from '../memory/agent-memory.repository';
 // Skill 工具:agent.enabledSkillIds 非空时自动挂载,通过 SkillService 按 name 调起。
 import { SkillService } from '../../skill/skill.service';
+import { TOOL_DESCRIPTIONS } from '../../../prompts/tool-descriptions';
 import { createSkillTool } from '../tools/skill.tool';
 import type { DocumentContext } from '../tools/get-current-document.tool';
 // P3 重构后 browse/pick 也归 agent/tools/(全项目共有工具池),
@@ -481,6 +482,14 @@ export class ToolAssembler {
       this.logger.debug(
         'assemble: 无 enabledSkillIds,Skill 工具不挂(模型看不到自然不调)',
       );
+    }
+
+    // 提示词集中管理：工具 description 的唯一真源是 tools/tool-descriptions.ts（一张表）。
+    // 组装收尾时按工具名统一套用——命中即覆盖工厂占位描述，未命中保留工厂内联（上下文相关工具如
+    // get_current_draft 两套描述不入表）。这样 description 改动只动一个文件、走 git，不散在 20+ 工具里。
+    for (const [name, t] of Object.entries(filteredTools)) {
+      const desc = TOOL_DESCRIPTIONS[name];
+      if (desc) (t as { description?: string }).description = desc;
     }
 
     return filteredTools;
