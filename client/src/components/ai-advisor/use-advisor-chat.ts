@@ -521,6 +521,9 @@ export function useAdvisorChat({
   const isStreaming = status === 'streaming' || status === 'submitted';
 
   return {
+    // 当前业务会话 key(含 :chat:UUID)——HITL 审批卡要用它(与暂存 pending 的 key 一致),
+    // 否则审批 sessionKey 不符会被后端判 forbidden、不落库。
+    sessionKey,
     messages,
     status,
     isStreaming,

@@ -47,14 +47,23 @@ export function WriteApprovalCard({
   const ordered = preview.ordered === true;
   const stats = typeof preview.stats === 'string' ? preview.stats : '';
 
+  // 必须看后端返回的 status:只有 'ok' 才是真落库。否则(sessionKey 不符 forbidden /
+  // not_found)绝不能 markResolved + 显示成功——那会让用户以为审批生效、实则没落库(踩过的坑)。
   const handleApprove = async () => {
     if (loading || resolved) return;
     setLoading(true);
     try {
-      await approveWrite(toolCallId, sessionKey);
-      markResolved(toolCallId);
-      setResolved('approved');
-      onApproved?.();
+      const { status } = await approveWrite(toolCallId, sessionKey);
+      if (status === 'ok') {
+        markResolved(toolCallId);
+        setResolved('approved');
+        onApproved?.();
+      } else if (status === 'already_resolved') {
+        markResolved(toolCallId);
+        setResolved('already');
+      } else {
+        banner.error(`审批未生效(${status}),未落库,请刷新后重试`);
+      }
     } catch (err) {
       banner.error(err instanceof Error ? err.message : '审批失败，请重试');
     } finally {
@@ -66,9 +75,16 @@ export function WriteApprovalCard({
     if (loading || resolved) return;
     setLoading(true);
     try {
-      await rejectWrite(toolCallId, sessionKey);
-      markResolved(toolCallId);
-      setResolved('rejected');
+      const { status } = await rejectWrite(toolCallId, sessionKey);
+      if (status === 'ok') {
+        markResolved(toolCallId);
+        setResolved('rejected');
+      } else if (status === 'already_resolved') {
+        markResolved(toolCallId);
+        setResolved('already');
+      } else {
+        banner.error(`拒绝未生效(${status}),请刷新后重试`);
+      }
     } catch (err) {
       banner.error(err instanceof Error ? err.message : '拒绝失败，请重试');
     } finally {

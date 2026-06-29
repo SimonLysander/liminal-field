@@ -654,7 +654,7 @@ function NodeScreen({
               onClearSelectedText={clearSelections}
               onClose={closeAurora}
               onAuroraWrote={refreshLeft}
-              renderToolCard={(part) => {
+              renderToolCard={(part, chat) => {
                 // HITL 门禁:写工具 pending_approval 时渲染审批卡,用户允许/拒绝才真正落库
                 const p = part as { type?: string; state?: string; toolCallId?: string; output?: unknown };
                 const GATED = ['tool-write_draft', 'tool-write_learn_plan', 'tool-write_tasks', 'tool-remember'];
@@ -671,7 +671,9 @@ function NodeScreen({
                 return (
                   <WriteApprovalCard
                     toolCallId={callId}
-                    sessionKey={`learn-${currentCid ?? 'topic'}`}
+                    // 用聊天当前会话 key(含 :chat:UUID)——必须与暂存 pending 的 key 一致,
+                    // 否则后端 approve 判 sessionKey 不符 → forbidden → 不落库(此前的 bug)。
+                    sessionKey={chat.sessionKey}
                     preview={meta}
                     onApproved={refreshLeft}
                   />
