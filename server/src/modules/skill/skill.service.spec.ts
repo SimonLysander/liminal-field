@@ -24,7 +24,12 @@ function createMocks() {
     emit: jest.fn(),
   } as unknown as jest.Mocked<EventEmitter2>;
 
-  const service = new SkillService(mockRepo, mockEventBus);
+  // 内置 skill body 从文件渲染;mock 回固定串即可(本 spec 测的是用户 skill 的 CRUD)
+  const mockPromptManager = {
+    render: jest.fn().mockReturnValue('# builtin body'),
+  } as unknown as import('../../infrastructure/prompt/prompt-manager.service').PromptManagerService;
+
+  const service = new SkillService(mockRepo, mockEventBus, mockPromptManager);
 
   return { service, mockRepo, mockEventBus };
 }
@@ -124,6 +129,47 @@ describe('SkillService', () => {
       expect(mockEventBus.emit).toHaveBeenCalledWith('skill.deleted', {
         skillId: 'sk1',
       });
+    });
+  });
+
+  // 内置 skill 文件优先解析、Mongo 回落（提示词集中管理 Phase 3）
+  describe('内置 skill 合并解析', () => {
+    it('findByName 命中内置 key → 返回文件 body,不查 Mongo', async () => {
+      const { service, mockRepo } = createMocks();
+      const s = await service.findByName('note-writing');
+      expect(s?.name).toBe('note-writing');
+      expect(s?.body).toBe('# builtin body'); // 来自 mock render
+      expect(s?.requiredTools).toContain('read_content');
+      expect(mockRepo.findByName).not.toHaveBeenCalled();
+    });
+
+    it('findByName 非内置 → 落 Mongo', async () => {
+      const { service, mockRepo } = createMocks();
+      mockRepo.findByName.mockResolvedValue(null);
+      await service.findByName('critic');
+      expect(mockRepo.findByName).toHaveBeenCalledWith('critic');
+    });
+
+    it('findByIds 混合 key 与 ObjectId → 内置走文件、其余走 Mongo', async () => {
+      const { service, mockRepo } = createMocks();
+      mockRepo.findByIds.mockResolvedValue([
+        { _id: 'oid1', name: 'critic' },
+      ] as never);
+      const got = await service.findByIds(['note-writing', 'oid1']);
+      expect(got.map((s) => s.name)).toEqual(['note-writing', 'critic']);
+      expect(mockRepo.findByIds).toHaveBeenCalledWith(['oid1']); // 内置 key 不进 Mongo 查询
+    });
+
+    it('list 含内置且排除 Mongo 同名残留', async () => {
+      const { service, mockRepo } = createMocks();
+      mockRepo.findAll.mockResolvedValue([
+        { _id: 'x', name: 'note-writing' }, // 老库 seed 残留,应被内置盖掉
+        { _id: 'y', name: 'critic' },
+      ] as never);
+      const names = (await service.list()).map((s) => s.name);
+      expect(names).toContain('note-plan');
+      expect(names.filter((n) => n === 'note-writing')).toHaveLength(1);
+      expect(names).toContain('critic');
     });
   });
 });

@@ -22,6 +22,11 @@ import { SkillRepository } from './skill.repository';
 import type { CreateSkillDto } from './dto/create-skill.dto';
 import type { UpdateSkillDto } from './dto/update-skill.dto';
 import type { Skill } from './skill.entity';
+import { PromptManagerService } from '../../infrastructure/prompt/prompt-manager.service';
+import {
+  BUILTIN_SKILLS,
+  type BuiltinSkillDef,
+} from '../../prompts/builtin-skills';
 
 /** 删除 skill 时发出的事件 payload */
 export const SKILL_DELETED_EVENT = 'skill.deleted';
@@ -36,26 +41,68 @@ export class SkillService {
   constructor(
     private readonly repo: SkillRepository,
     private readonly eventBus: EventEmitter2,
+    // 内置 skill 的 body 从 prompts/skills/*.md 渲染(@Global 注入,无需 module import)
+    private readonly promptManager: PromptManagerService,
   ) {}
 
+  // ── 内置 skill 解析（文件优先，Mongo 回落）──────────────────────────────
+  // 内置 skill「是什么」定义在 prompts/builtin-skills.ts + skills/*.md,线上不可改;
+  // 用户在 UI 新建的 skill 存 Mongo。下面的查询一律「内置 ∪ Mongo」,内置优先。
+  // builtin 的 _id 即其 key(字符串),agent 的 enabledSkillIds 按 key 引用即可命中。
+
+  /** 内置定义 → Skill 形状(body 实时从文件渲染,_id=key)。 */
+  private builtinToSkill(def: BuiltinSkillDef): Skill {
+    return {
+      _id: def.key,
+      name: def.key,
+      displayName: def.displayName,
+      description: def.description,
+      whenToUse: def.whenToUse,
+      body: this.promptManager.render(def.bodyFile),
+      requiredTools: def.requiredTools,
+    } as unknown as Skill;
+  }
+
+  /** keyOrId 命中内置(按 key)→ 返回内置 Skill;否则 null(交给 Mongo)。 */
+  private findBuiltin(keyOrId: string): Skill | null {
+    const def = BUILTIN_SKILLS.find((d) => d.key === keyOrId);
+    return def ? this.builtinToSkill(def) : null;
+  }
+
   async list(): Promise<Skill[]> {
-    return this.repo.findAll();
+    const builtins = BUILTIN_SKILLS.map((d) => this.builtinToSkill(d));
+    const builtinNames = new Set(BUILTIN_SKILLS.map((d) => d.key));
+    // 排除 Mongo 里与内置同名的残留(老库 seed 过的,被内置文件版本盖掉)
+    const userCreated = (await this.repo.findAll()).filter(
+      (s) => !builtinNames.has(s.name),
+    );
+    return [...builtins, ...userCreated];
   }
 
   async findById(id: string): Promise<Skill | null> {
-    return this.repo.findById(id);
+    return this.findBuiltin(id) ?? (await this.repo.findById(id));
   }
 
   async findByName(name: string): Promise<Skill | null> {
-    return this.repo.findByName(name);
+    return this.findBuiltin(name) ?? (await this.repo.findByName(name));
   }
 
   async findByIds(ids: string[]): Promise<Skill[]> {
-    return this.repo.findByIds(ids);
+    // 逐个分流:命中内置 key 走文件,其余按 Mongo ObjectId 批量查
+    const out: Skill[] = [];
+    const mongoIds: string[] = [];
+    for (const id of ids) {
+      const b = this.findBuiltin(id);
+      if (b) out.push(b);
+      else mongoIds.push(id);
+    }
+    if (mongoIds.length > 0) out.push(...(await this.repo.findByIds(mongoIds)));
+    return out;
   }
 
   async create(dto: CreateSkillDto): Promise<Skill> {
-    const exists = await this.repo.findByName(dto.name);
+    // 用 findByName(含内置)防止用户新建 skill 撞内置 key
+    const exists = await this.findByName(dto.name);
     if (exists) {
       throw new ConflictException(`Skill name 已存在: ${dto.name}`);
     }
