@@ -101,6 +101,8 @@ function SkillForm({
   );
 
   const isEditing = !!initial;
+  // 内置 skill 由后端文件定义,表单只读
+  const isBuiltin = initial?.builtin === true;
 
   // 前端硬校验 — 后端也校验,这里给即时反馈
   const errors = useMemo(() => {
@@ -143,7 +145,7 @@ function SkillForm({
           value={draft.name}
           onChange={(v) => setDraft((d) => ({ ...d, name: v }))}
           placeholder="critic"
-          disabled={saving}
+          disabled={saving || isBuiltin}
         />
       </div>
 
@@ -163,7 +165,7 @@ function SkillForm({
           value={draft.displayName}
           onChange={(v) => setDraft((d) => ({ ...d, displayName: v }))}
           placeholder="批评家"
-          disabled={saving}
+          disabled={saving || isBuiltin}
         />
       </div>
 
@@ -183,7 +185,7 @@ function SkillForm({
           value={draft.description}
           onChange={(v) => setDraft((d) => ({ ...d, description: v }))}
           placeholder="一句话说明这个 skill 的作用"
-          disabled={saving}
+          disabled={saving || isBuiltin}
         />
       </div>
 
@@ -206,7 +208,7 @@ function SkillForm({
           }
           placeholder="什么时候该用这个 skill,引导 agent 自动判断"
           rows={2}
-          disabled={saving}
+          disabled={saving || isBuiltin}
           className="mt-1 w-full rounded-lg px-3 py-2 text-sm outline-none disabled:opacity-50"
           style={{
             background: 'var(--paper-white)',
@@ -234,7 +236,7 @@ function SkillForm({
           onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))}
           placeholder="agent invoke 这个 skill 时注入的方法论 prompt"
           rows={10}
-          disabled={saving}
+          disabled={saving || isBuiltin}
           className="mt-1 w-full rounded-lg px-3 py-2 font-mono text-xs outline-none disabled:opacity-50"
           style={{
             background: 'var(--paper-white)',
@@ -250,24 +252,26 @@ function SkillForm({
         <p className="mt-1 mb-2 text-xs" style={{ color: 'var(--ink-ghost)' }}>
           agent 启用本 skill 时必须已开启这些工具,否则后端拒绝授权。
         </p>
-        <ChipSelector
-          selected={draft.requiredTools ?? []}
-          available={availableTools}
-          renderLabel={(t) => toolCatalog[t]?.displayName ?? t}
-          renderMeta={(t) => toolCatalog[t]?.summary}
-          onAdd={(t) =>
-            setDraft((d) => ({
-              ...d,
-              requiredTools: [...(d.requiredTools ?? []), t],
-            }))
-          }
-          onRemove={(t) =>
-            setDraft((d) => ({
-              ...d,
-              requiredTools: (d.requiredTools ?? []).filter((x) => x !== t),
-            }))
-          }
-        />
+        <div style={{ opacity: isBuiltin ? 0.5 : 1, pointerEvents: isBuiltin ? 'none' : undefined }}>
+          <ChipSelector
+            selected={draft.requiredTools ?? []}
+            available={availableTools}
+            renderLabel={(t) => toolCatalog[t]?.displayName ?? t}
+            renderMeta={(t) => toolCatalog[t]?.summary}
+            onAdd={(t) =>
+              setDraft((d) => ({
+                ...d,
+                requiredTools: [...(d.requiredTools ?? []), t],
+              }))
+            }
+            onRemove={(t) =>
+              setDraft((d) => ({
+                ...d,
+                requiredTools: (d.requiredTools ?? []).filter((x) => x !== t),
+              }))
+            }
+          />
+        </div>
       </div>
 
       <div className="flex gap-2 pt-2">
@@ -296,6 +300,8 @@ function SkillRow({
   onDelete: () => void;
 }) {
   const labelOf = (slug: string) => toolCatalog[slug]?.displayName ?? slug;
+  // 内置 skill 由后端文件定义,线上不可编辑/删除
+  const isBuiltin = skill.builtin === true;
   return (
     <div
       className="flex items-center gap-3 rounded-lg px-4 py-3"
@@ -333,26 +339,30 @@ function SkillRow({
         )}
       </div>
       <div className="flex shrink-0 items-center gap-1">
-        <button
-          type="button"
-          onClick={onEdit}
-          className="rounded p-1.5 transition-colors duration-100 hover:bg-[var(--shelf)]"
-          style={{ color: 'var(--ink-faded)' }}
-          title="编辑"
-          aria-label={`编辑 ${skill.displayName}`}
-        >
-          <Pencil size={14} strokeWidth={1.75} />
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="rounded p-1.5 transition-colors duration-100 hover:bg-[var(--shelf)]"
-          style={{ color: 'var(--ink-ghost)' }}
-          title="删除"
-          aria-label={`删除 ${skill.displayName}`}
-        >
-          <Trash2 size={14} strokeWidth={1.75} />
-        </button>
+        {!isBuiltin && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="rounded p-1.5 transition-colors duration-100 hover:bg-[var(--shelf)]"
+            style={{ color: 'var(--ink-faded)' }}
+            title="编辑"
+            aria-label={`编辑 ${skill.displayName}`}
+          >
+            <Pencil size={14} strokeWidth={1.75} />
+          </button>
+        )}
+        {!isBuiltin && (
+          <button
+            type="button"
+            onClick={onDelete}
+            className="rounded p-1.5 transition-colors duration-100 hover:bg-[var(--shelf)]"
+            style={{ color: 'var(--ink-ghost)' }}
+            title="删除"
+            aria-label={`删除 ${skill.displayName}`}
+          >
+            <Trash2 size={14} strokeWidth={1.75} />
+          </button>
+        )}
       </div>
     </div>
   );

@@ -42,6 +42,13 @@ export class Skill {
   @prop({ type: () => [String], default: [] })
   public requiredTools!: string[];
 
+  /**
+   * 是否内置 skill(定义在 prompts/builtin-skills.ts + skills/*.md,body 以文件为准、UI 只读)。
+   * 解析时合成标记,不为用户新建 skill 持久化;供前端区分"内置只读 / 用户可编"。
+   */
+  @prop({ default: false })
+  public builtin?: boolean;
+
   public createdAt!: Date;
   public updatedAt!: Date;
 }

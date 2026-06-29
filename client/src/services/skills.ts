@@ -22,6 +22,7 @@ export interface Skill {
   requiredTools: string[];
   createdAt: string;
   updatedAt: string;
+  builtin?: boolean;
 }
 
 /** 新建入参:除 _id / 时间戳之外的所有字段 */

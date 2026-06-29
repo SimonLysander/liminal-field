@@ -38,6 +38,7 @@ export interface AgentConfig {
    * 删 Skill / 移除 tool 时由后端 SystemConfigService 自动清理。
    */
   enabledSkillIds: string[];
+  builtin?: boolean;
 }
 
 /**

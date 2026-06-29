@@ -60,6 +60,7 @@ export class SkillService {
       whenToUse: def.whenToUse,
       body: this.promptManager.render(def.bodyFile),
       requiredTools: def.requiredTools,
+      builtin: true,
     } as unknown as Skill;
   }
 

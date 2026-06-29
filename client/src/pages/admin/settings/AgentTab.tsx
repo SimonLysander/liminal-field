@@ -222,6 +222,8 @@ function AgentCard({
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // 内置 agent 由后端文件定义,定义类字段线上只读
+  const isBuiltin = agent.builtin === true;
 
   // 编辑态本地草稿
   const [draft, setDraft] = useState<Partial<AgentConfig>>({});
@@ -498,7 +500,7 @@ function AgentCard({
               value={draft.tier ?? 'standard'}
               onChange={(v) => setDraft((d) => ({ ...d, tier: v }))}
               options={TIER_OPTIONS.map((t) => ({ value: t.value, label: t.label }))}
-              disabled={saving}
+              disabled={saving || isBuiltin}
             />
           </div>
 
@@ -511,7 +513,7 @@ function AgentCard({
                 availableTools={availableTools}
                 toolCatalog={toolCatalog}
                 onChange={(tools) => setDraft((d) => ({ ...d, tools }))}
-                disabled={saving}
+                disabled={saving || isBuiltin}
               />
             </div>
           </div>
@@ -538,7 +540,7 @@ function AgentCard({
                 onChange={(ids) =>
                   setDraft((d) => ({ ...d, enabledSkillIds: ids }))
                 }
-                disabled={saving}
+                disabled={saving || isBuiltin}
                 loadError={skillsLoadError}
               />
             </div>
@@ -557,7 +559,7 @@ function AgentCard({
               onChange={(e) => setDraft((d) => ({ ...d, systemPrompt: e.target.value }))}
               placeholder="例如：你是专业的技术写作顾问，专注于帮助工程师写清晰的文档..."
               rows={5}
-              disabled={saving}
+              disabled={saving || isBuiltin}
               className="mt-1 w-full rounded-lg px-3 py-2 text-sm outline-none disabled:opacity-50"
               style={{
                 background: 'var(--paper-white)',
