@@ -424,9 +424,11 @@ export class SystemConfigService implements OnModuleInit {
 - 公式:用 KaTeX——行内量用 $…$、独立公式用 $$…$$,变量用数学体;公式不裸写进正文,同一式子不重复贴。
 - 行内代码:精确技术记号(变量、参数值、符号、选项,如 f/2.8、ISO 800、1/250s)用行内代码标出,与正文区分。
 
-### 研究取向
+### 研究取向与出处
 
-以自身知识为主起草,允许有错(作者会在重写时审);联网是手术式的,只为关键定义、数据、易错事实的可靠出处服务。标注的出处必须是真的取到过的内容,不编造引用;出处融入行文,不罗列链接。`,
+以自身知识为主起草,允许有错(作者会在重写时审)。但凡正文落到可证伪的事实——具体数字、日期、版本、谁提出的、标准规定、某术语的精确定义——必先经 web_search / web_fetch 查证再据实写下。判据只一句:这句能被一个外部来源证实或推翻吗;能,就要有出处;是讲道理、类比、通识概念,则不必。
+
+标注方式:在该事实所在句末就近标 [@#CIT N],N 是这条来源在 write_draft 的 sources 参数里的序号(按出现顺序编号,一处引多条可写 [@#CIT 1,3-5]);sources 每条给真取到过的 title 与 url。出处必须是真访问过的内容,不编造、不凑无关链接;纯思辨、无外部事实的篇可以没有任何出处。正文不要自己罗列链接,「来源」一节由系统据 sources 自动附于篇末。`,
         // learning-writer 用 read_content（三层：已提交正文 + 用户草稿 + AI 初稿），
         // 而非写作顾问的 read_document_content（只读已发布内容）。
         // autoCleanupOrphanSkills 会校验 requiredTools ⊆ agent.tools，
@@ -455,6 +457,30 @@ export class SystemConfigService implements OnModuleInit {
       this.logger.log(
         'Migration: note-writing.requiredTools read_document_content → read_content',
       );
+    }
+
+    // 迁移：旧版 note-writing 的「研究取向」段写的是「出处融入行文,不罗列链接」，
+    // 与新引用方案（句末标 [@#CIT N] + 系统据 sources 自动生成篇末「来源」）正相反。
+    // skill body 存 Mongo、load_skill 运行时读，代码种子只对全新安装生效，故存量库须就地迁移。
+    // 幂等：仅当 body 仍含旧文案时替换该段（研究取向是 body 最后一节，按锚点替换其后全文）。
+    if (noteWriting.body?.includes('出处融入行文,不罗列链接')) {
+      const sourcingAnchor = '### 研究取向';
+      const anchorIdx = noteWriting.body.indexOf(sourcingAnchor);
+      if (anchorIdx >= 0) {
+        const newBody =
+          noteWriting.body.slice(0, anchorIdx) +
+          `### 研究取向与出处
+
+以自身知识为主起草,允许有错(作者会在重写时审)。但凡正文落到可证伪的事实——具体数字、日期、版本、谁提出的、标准规定、某术语的精确定义——必先经 web_search / web_fetch 查证再据实写下。判据只一句:这句能被一个外部来源证实或推翻吗;能,就要有出处;是讲道理、类比、通识概念,则不必。
+
+标注方式:在该事实所在句末就近标 [@#CIT N],N 是这条来源在 write_draft 的 sources 参数里的序号(按出现顺序编号,一处引多条可写 [@#CIT 1,3-5]);sources 每条给真取到过的 title 与 url。出处必须是真访问过的内容,不编造、不凑无关链接;纯思辨、无外部事实的篇可以没有任何出处。正文不要自己罗列链接,「来源」一节由系统据 sources 自动附于篇末。`;
+        await this.skillService.update(noteWriting._id.toString(), {
+          body: newBody,
+        });
+        this.logger.log(
+          'Migration: note-writing 研究取向 → 研究取向与出处（引用规则 [@#CIT N]）',
+        );
+      }
     }
 
     const noteWritingId = noteWriting._id.toString();

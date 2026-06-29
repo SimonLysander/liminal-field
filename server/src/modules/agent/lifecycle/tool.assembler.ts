@@ -68,7 +68,11 @@ import { ProcessedFeedItemRepository } from '../../digest/processed-feed-item.re
 import { DigestTaskRepository } from '../../digest/digest-task.repository';
 // 学习产品：write_learn_plan / write_draft / read_content 工具
 import { createWriteLearnPlanTool } from '../tools/write-learn-plan.tool';
-import { createWriteDraftTool } from '../tools/write-draft.tool';
+import {
+  createWriteDraftTool,
+  validateCitations,
+  type DraftSource,
+} from '../tools/write-draft.tool';
 import { extractSections } from '../tools/markdown.utils';
 import { createReadContentTool } from '../tools/read-node-content.tool';
 import { EditorDraftRepository } from '../../workspace/editor-draft.repository';
@@ -90,6 +94,20 @@ function requireChangeSummary(args: Record<string, unknown>): string | null {
   return cs
     ? null
     : '缺少 changeSummary:必须用一句话说明这次写入做了什么 / 相比现有改了什么(直接陈述,不要「本次/说明」之类前缀)。请带上 changeSummary 重新调用本工具。';
+}
+
+/**
+ * write_draft 门禁前置校验:先卡 changeSummary,再卡引用一致性(悬空 [@#CIT N]/来源缺 url)。
+ * 任一不过就 invalid,让模型带着具体错因重调——出处不靠 prompt 自觉,靠门禁兜底。
+ */
+function validateDraftWrite(args: Record<string, unknown>): string | null {
+  const csErr = requireChangeSummary(args);
+  if (csErr) return csErr;
+  const md = typeof args['markdown'] === 'string' ? args['markdown'] : '';
+  const sources = Array.isArray(args['sources'])
+    ? (args['sources'] as DraftSource[])
+    : [];
+  return validateCitations(md, sources);
 }
 
 export interface EntryContext {
@@ -395,13 +413,16 @@ export class ToolAssembler {
               {
                 toolName: 'write_draft',
                 targetContentItemId: entryContext.learningNoteId,
-                validate: requireChangeSummary, // 没传改动摘要就退回让模型补
+                validate: validateDraftWrite, // 缺改动摘要 / 引用悬空都退回让模型补
                 buildPreview: (args) => {
                   const md = (args['markdown'] as string) ?? '';
+                  const srcCount = Array.isArray(args['sources'])
+                    ? args['sources'].length
+                    : 0;
                   return {
                     summary: (args['changeSummary'] as string) || undefined,
                     items: extractSections(md, 40), // 小标题 + 各节开头约 40 字
-                    stats: `初稿 · ${md.length} 字 · 覆盖现有`,
+                    stats: `初稿 · ${md.length} 字 · ${srcCount} 源 · 覆盖现有`,
                   };
                 },
               },

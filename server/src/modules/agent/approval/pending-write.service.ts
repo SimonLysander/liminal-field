@@ -16,7 +16,12 @@ import { PendingWriteRepository } from './pending-write.repository';
 import { EditorDraftRepository } from '../../workspace/editor-draft.repository';
 import { AgentMemoryRepository } from '../memory/agent-memory.repository';
 import { AgentMemoryObservationRepository } from '../memory/agent-memory-observation.repository';
-import { extractTitle, extractSummary } from '../tools/write-draft.tool';
+import {
+  extractTitle,
+  extractSummary,
+  composeAiDraftBody,
+  type DraftSource,
+} from '../tools/write-draft.tool';
 import {
   serializeToDraftMarkdown,
   type PlanItem,
@@ -84,6 +89,8 @@ export class PendingWriteCommitService {
         case 'write_draft': {
           // 写逻辑与 write-draft.tool.ts execute 完全等价（复用同一 helper）
           const markdown = payload['markdown'] as string;
+          const sources =
+            (payload['sources'] as DraftSource[] | undefined) ?? [];
           if (!pending.targetContentItemId) {
             // 已标 approved 却没目标可写 → 抛错走 catch(500),绝不静默返回 ok 误导回灌
             throw new Error(
@@ -92,7 +99,8 @@ export class PendingWriteCommitService {
           }
           await this.editorDraftRepo.saveAiDraft({
             contentItemId: pending.targetContentItemId,
-            bodyMarkdown: markdown,
+            // composeAiDraftBody:[@#CIT N] 转链接 + 篇末「来源」小节,与工具 execute 同一处合成
+            bodyMarkdown: composeAiDraftBody(markdown, sources),
             title: extractTitle(markdown),
             summary: extractSummary(markdown),
             changeNote: 'learn-draft',

@@ -32,6 +32,105 @@ export function extractSummary(markdown: string): string {
 }
 
 /**
+ * 一条外部来源（出处）。轻档：只取简报 Finding 里最关键的 title + url，
+ * 不搬 sourceName/snippet/reason 那套重字段——学习侧没有固定源池，够用即可。
+ */
+export interface DraftSource {
+  title: string;
+  url: string;
+}
+
+/**
+ * 正文里的引用标记，与简报模块同一套约定，一个产品一套引用语法：
+ *   [@#CIT 1]        引第 1 条
+ *   [@#CIT 1,3]      引第 1、3 条
+ *   [@#CIT 1-3]      引第 1~3 条（范围）
+ *   [@#CIT 1,3-5,7]  逗号分隔的单条与范围混排
+ * 捕获组取整个 ref 串（如 "1,3-5,7"），交给 parseCitationNumbers 展开；
+ * 容忍模型偶尔漏掉 @# 写成 [CIT …]。
+ */
+const CITATION_MARKER = /\[(?:@#)?CIT\s+([\d,\s-]+)\]/g;
+
+/**
+ * 把一个引用 ref 串展开成它引到的 source 序号列表（1-based）。
+ * "1,3-5,7" → [1,3,4,5,7]。范围写反（5-3）也不丢，退化成取两端。
+ */
+function parseCitationNumbers(refBody: string): number[] {
+  const nums: number[] = [];
+  for (const tokenRaw of refBody.split(',')) {
+    const token = tokenRaw.trim();
+    if (!token) continue;
+    const range = token.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (range) {
+      const a = parseInt(range[1], 10);
+      const b = parseInt(range[2], 10);
+      if (a <= b) for (let n = a; n <= b; n++) nums.push(n);
+      else nums.push(a, b);
+    } else {
+      const n = parseInt(token, 10);
+      if (!Number.isNaN(n)) nums.push(n);
+    }
+  }
+  return nums;
+}
+
+/**
+ * 引用一致性校验（门禁 validate 与工具 execute 共用）。只拦两类硬错：
+ *   1. 悬空引用——正文标了 [^N] 但 sources 不足 N 条（照搬就指向不存在的源）
+ *   2. 来源残缺——某条 source 缺 title 或 url（无法溯源）
+ * 不强制「每条 source 都被正文引用」（可能整体性引用），也不强制必须有 source
+ * （纯思辨、无可证伪事实的篇允许零出处）。返回 null 表示通过。
+ */
+export function validateCitations(
+  markdown: string,
+  sources: DraftSource[] | undefined,
+): string | null {
+  const srcs = sources ?? [];
+  const cited: number[] = [];
+  for (const m of markdown.matchAll(CITATION_MARKER)) {
+    cited.push(...parseCitationNumbers(m[1]));
+  }
+  const maxMarker = cited.length ? Math.max(...cited) : 0;
+  if (maxMarker > srcs.length) {
+    return `正文出现 [@#CIT ${maxMarker}]，但 sources 只有 ${srcs.length} 条:每个 [@#CIT N] 都要在 sources 第 N 条有对应来源。补齐 sources 或修正编号后重新调用。`;
+  }
+  for (let i = 0; i < srcs.length; i++) {
+    const s = srcs[i];
+    if (!s || !s.title?.trim() || !s.url?.trim()) {
+      return `sources 第 ${i + 1} 条缺 title 或 url:每条来源都要有真实标题与可访问 URL。修正后重新调用。`;
+    }
+  }
+  return null;
+}
+
+/**
+ * 把模型产出的「正文 + sources」合成最终落库的 bodyMarkdown：
+ *   1. 正文里的 [@#CIT N] → 可点链接 [N](url)，直达第 N 条来源
+ *   2. 篇末据 sources 自动拼「来源」小节（正文不自己罗列链接，由系统统一生成保证格式一致）
+ * 无来源时原样返回，不加任何节——纯思辨篇保持干净。
+ * 设计：合成逻辑只此一处，门禁直写路径与 HITL 提交路径共用，杜绝两条路径行为分叉。
+ */
+export function composeAiDraftBody(
+  markdown: string,
+  sources: DraftSource[] | undefined,
+): string {
+  const srcs = sources ?? [];
+  if (srcs.length === 0) return markdown;
+  // [@#CIT 1,3-5] → 展开成各自可点的 [1](u1),[3](u3),[4](u4),[5](u5)
+  const linked = markdown.replace(CITATION_MARKER, (whole, refBody: string) => {
+    const parts = parseCitationNumbers(refBody).map((n) => {
+      const s = srcs[n - 1];
+      return s ? `[${n}](${s.url})` : String(n);
+    });
+    return parts.length ? parts.join(',') : whole;
+  });
+  const list = srcs
+    .map((s, i) => `${i + 1}. [${s.title}](${s.url})`)
+    .join('\n');
+  return `${linked}\n\n## 来源\n\n${list}`;
+}
+
+/**
  * @param editorDraftRepo  草稿仓库（aidraft 写入口）
  * @param noteContentItemId  当前学习节点的 contentItemId（上下文绑定，模型不传）
  */
@@ -41,48 +140,76 @@ export function createWriteDraftTool(
 ) {
   return tool({
     description:
-      '把研究成果写成当前笔记节点的 AI 初稿（aidraft），供用户只读参考。调用前：全文已成稿，能独立成篇（有标题、有正文）。每次调用整体覆盖，保持最新一份。只写当前这一篇，目标节点已由系统固定，无法改变。调用时**必须同时给出 changeSummary**：扼要成段（2–4 句）说明本次相比现有初稿改了什么——重写/补充/修正了哪几处、各自要点、与现有版本的关键差异，让用户审批时看清取舍，别只写一句敷衍。缺它会被退回。',
-    inputSchema: jsonSchema<{ markdown: string; changeSummary: string }>({
+      '把研究成果写成当前笔记节点的 AI 初稿（aidraft），供用户只读参考。调用前：全文已成稿，能独立成篇（有标题、有正文）。每次调用整体覆盖，保持最新一份。只写当前这一篇，目标节点已由系统固定，无法改变。调用时**必须同时给出 changeSummary**：扼要成段（2–4 句）说明本次相比现有初稿改了什么——重写/补充/修正了哪几处、各自要点、与现有版本的关键差异，让用户审批时看清取舍，别只写一句敷衍。缺它会被退回。\n\n出处：凡正文落到可证伪的事实——具体数字、日期、版本、谁提出的、标准规定、某术语的精确定义——必先经 web_search/web_fetch 查证，在该句末就近标 [@#CIT N]（N 是 sources 里的序号，按出现顺序编号；一处引多条可写 [@#CIT 1,3-5]），并把每条来源按顺序填进 sources（title+url，须真取到过）。讲道理、类比、通识不标；纯思辨、无外部事实的篇可不给 sources。正文不要自己罗列链接，「来源」一节由系统据 sources 自动附于篇末。正文标了 [@#CIT N] 却没给够 sources 会被退回。',
+    inputSchema: jsonSchema<{
+      markdown: string;
+      changeSummary: string;
+      sources?: DraftSource[];
+    }>({
       type: 'object',
       properties: {
         markdown: {
           type: 'string',
           description:
-            '完整 markdown 正文（# 标题开头，包含所有章节内容，不要截断）',
+            '完整 markdown 正文（# 标题开头，包含所有章节内容，不要截断）。可证伪的事实句末就近标 [@#CIT N]。',
         },
         changeSummary: {
           type: 'string',
           description:
             '一句话说明这次写入做了什么、相比现有初稿改了什么（供用户审批时一眼看懂意图）。直接陈述，不加「本次/说明」之类前缀。',
         },
+        sources: {
+          type: 'array',
+          description:
+            '本篇引用的外部来源，按正文里 [@#CIT 1][@#CIT 2]… 的出现顺序排列；每条须是真经 web_search/web_fetch 取到过的内容。无可证伪事实可不给。',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string', description: '来源标题' },
+              url: { type: 'string', description: '来源 URL（真实可访问）' },
+            },
+            required: ['title', 'url'],
+          },
+        },
       },
       required: ['markdown', 'changeSummary'],
     }),
-    // changeSummary 是审批用元信息,不参与落库(gate 暂存进 preview),execute 只用 markdown。
+    // changeSummary 是审批用元信息,不参与落库(gate 暂存进 preview);execute 用 markdown + sources。
     execute: async ({
       markdown,
+      sources,
     }: {
       markdown: string;
       changeSummary?: string;
+      sources?: DraftSource[];
     }) => {
       try {
+        // 直写路径也校验引用一致性,与门禁 validate 同一把关,行为不分叉。
+        const citationErr = validateCitations(markdown, sources);
+        if (citationErr) {
+          return toolResult(`write_draft 校验未过：${citationErr}`, undefined, {
+            status: 'error',
+          });
+        }
         const title = extractTitle(markdown);
         const summary = extractSummary(markdown);
+        const bodyMarkdown = composeAiDraftBody(markdown, sources);
 
         // aidraft 前缀保证 commit/publish 路径天然看不见此草稿；对用户只读。
         await editorDraftRepo.saveAiDraft({
           contentItemId: noteContentItemId,
-          bodyMarkdown: markdown,
+          bodyMarkdown,
           title,
           summary,
           changeNote: 'learn-draft',
           savedAt: new Date(),
         });
 
-        return toolResult(`AI 初稿已写入（${markdown.length} 字）`, undefined, {
-          status: 'ok',
-          charCount: markdown.length,
-        });
+        return toolResult(
+          `AI 初稿已写入（${bodyMarkdown.length} 字，${(sources ?? []).length} 源）`,
+          undefined,
+          { status: 'ok', charCount: bodyMarkdown.length },
+        );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         return toolResult(`write_draft 写入失败：${msg}`, undefined, {
