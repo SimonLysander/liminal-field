@@ -34,6 +34,7 @@
 | `agents/learning-planner.md` | 学习规划师 systemPrompt | `SystemConfigService`(builtin-agents 引用) | 无 |
 | `agents/learning-writer.md` | 学习写手 systemPrompt | 同上 | 无 |
 | `agents/gallery-caption-writer.md` | 图说写手 systemPrompt | 同上 | 无 |
+| `agents/writing-advisor.md` | 写作顾问 systemPrompt（含编辑场景的工具与约束，原 instructions/tools-guide 写作专属部分迁入此处） | 同上 | `owner_name` |
 | `settings/digest-report-analyst.md` | 报告分析师 systemPrompt(builtin-agents 引用此路径) | 同上 | 无 |
 | `digest/react-agent.md` | digest workflow react-agent 主 prompt | `ReactAgentNode` | `topic_name`, `topic_prompt`, `since_iso`, `until_iso` |
 | `digest/compose-plan.md` | digest compose 阶段1:分主题+定刊头 | `ComposeNode.plan` | `topic_name`, `findings_list` |
@@ -42,14 +43,12 @@
 | `memory/profile-renderer.md` | Aurora 画像渲染器 | `MemoryViewService.callViewLLM` | `observations` |
 | `memory/owner-memory.md` | 记忆管理器(remember 调 LLM) | `MemoryAgentService.callRememberLLM` | `existing_memories`, `new_content` |
 | `memory/session-compactor.md` | 会话压缩器 | `MemoryAgentService.callCompactLLM` | `existing_memories`, `input_text` |
-| `aurora/role.md` | Aurora 灵魂人设(`<role>` 段) | `PromptHandler` | `owner_name` |
-| `aurora/tools-guide.md` | Aurora 工具使用指引(`<tools>` 段) | `PromptHandler` | `owner_name` |
-| `aurora/instructions.md` | Aurora 行为约束(`<instructions>` 段) | `PromptHandler` | `owner_name` |
+| `aurora/role.md` | Aurora 人设(`<role>`,本体层,放最前) | `PromptHandler` | `owner_name` |
+| `aurora/conventions.md` | 通用约定(`<conventions>`,本体层;目前仅「用中文」) | `PromptHandler` | `owner_name` |
 | `aurora/partials/skills-prelude.md` | `<available_skills>` 固定导语 | `PromptHandler` | 无 |
 | `aurora/partials/memories-prelude.md` | `<memories_index>` 固定导语 | `PromptHandler` | 无 |
 | `aurora/partials/conversation-summary-prelude.md` | `<conversation_summary>` 固定导语 | `PromptHandler` | 无 |
-| `aurora/partials/collection-prelude.md` | `<collection>` 后置说明 | `PromptHandler` | 无 |
-| `aurora/partials/gallery.md` | `<gallery>` 画廊场景 section | `PromptHandler` | `owner_name`, `title`, `photo_count`, `has_prose` |
-| `aurora/partials/digest-report-prelude.md` | `<digest_report>` partial | `PromptHandler` | `owner_name` |
+
+> Aurora 系统提示词的**组装规范**见 `server/src/modules/agent/lifecycle/AURORA-CONTEXT-SPEC.md`(三层:本体 / 横切 / work_context)。场景块(编辑文档 / 画廊 / 简报 / 文集)已统一进 `<work_context>`,不再各占一个 partial;tools-guide / instructions 的写作专属部分迁入 `agents/writing-advisor.md`,通用部分留 `aurora/conventions.md`。
 
 > 注:`prompt.handler.ts` 中按运行时数据拼装各 `<section>` 的胶水(段落 wrapper、与 owner/上下文数据交织的短句)属组装逻辑,不是可独立 review 的散文 prompt,保留在代码。

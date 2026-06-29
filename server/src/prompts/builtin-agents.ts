@@ -42,7 +42,7 @@ export const BUILTIN_AGENTS: BuiltinAgentDef[] = [
     ],
     enabledSkillKeys: [],
     tier: 'standard',
-    // 无 promptFile:写作顾问 systemPrompt 留空,靠 Aurora 角色定义驱动
+    promptFile: 'agents/writing-advisor.md',
   },
   {
     key: 'gallery-caption-writer',

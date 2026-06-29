@@ -1,35 +1,35 @@
 /**
- * PromptHandler — 组装 AI 写作顾问的系统提示词。
+ * PromptHandler — 组装 Aurora 的系统提示词。
  *
- * 职责：
- * 根据当前会话上下文（记忆、文档、摘要等）组装完整的 system prompt。
- * 采用 XML 分节格式，各节相互独立，按需注入。
+ * 按 AURORA-CONTEXT-SPEC.md 的三层拼装(本规范是这个文件的契约):
  *
- * 分节结构（由近及远：先"我是谁/你是谁/你能做什么"，再记忆，最后才是当前业务场景）：
- * 1. <owner>     — 介绍所有者（在陪伴谁，有才注入）
- * 2. <role>      — Aurora 是谁（灵魂/人设：另一个自我、最懂你的朋友；固定）
- * 3. <tools>     — 工具能力 + Read-before-Edit 协议 + remember 记忆协议（固定）
- * 4. <memories_index>  — type=user 记忆标题索引（有才注入；全文按需走 recall_memory）
- * 5. <conversation_summary> — 本 session 的对话脉络（有才注入）
- * 6. <instructions>    — 行为约束（含 bodyHash 改稿纪律，固定）
- * 7. <current_context> — 当前业务场景：在写哪篇（只点名，正文不直接注入）
- * 8. <outline>         — 文档大纲（h1-h3 标题列表，有标题才注入）
- * 9. <tasks>           — 写作计划（有未完成才注入）
- * 10. 入口级 / 全局自定义 system prompt（有才注入）
+ * 一、Aurora 本体(谁,所有 agent 都有,不随场景变)
+ *   <role>        —— Aurora 人设(另一个自我 / 理想中的我;放最前,先立"我是谁")
+ *   <owner>       —— 陪谁(有才注入)
+ *   <conventions> —— 仅通用约定(与工具/场景无关,目前就一条:用中文)
  *
- * 设计原则（v3.1，Read-before-Edit 硬化）：
- * - 正文不默认注入 prompt（避免长文吃满上下文 + 老版本陈旧）
- * - 模型要看正文 → 调 get_current_draft 拿 bodyHash + 当前快照
- * - 改稿 → propose_document_rewrite 必带 bodyHash 校验"基于最新版改"
- * - 服务器返 stale → 模型基于返回的 currentMarkdown 重生成 newMarkdown + 最新 bodyHash 重试
- * - <outline> 给模型轻量结构感（定位用户口中"哪一段"），但不替代正文读取
+ * 二、横切动态数据(有则附,与场景正交)
+ *   <available_skills>      —— 启用的 skill 轻量元数据(body 永不在此)
+ *   <memories_index>        —— 派生画像 + 最近观察
+ *   <conversation_summary>  —— 本 session 对话脉络
+ *
+ * 三、工作上下文(此刻在干什么,per agent/场景,统一)
+ *   <work_context> = agent 定义(entrySystemPrompt)+ 本场景实时数据
+ *                    —— 吃掉了原来散落的 current_context / gallery / collection / digest_report
+ *   <tasks>        —— 当前写作计划(有未完成才注入)
+ *   末尾:用户全局自定义 system prompt
+ *
+ * 设计原则:
+ * - 每个块只下发到适用的 agent;主写作 Aurora 的约束在 writing-advisor 的 work_context,不全局灌。
+ * - 正文/大数据不默认进 prompt(走 get_current_draft 等工具按需读);work_context 只点名。
+ * - 新增场景 = 多一个 work_context 实例,不往本体/横切加全局块。
  */
 import { Injectable, Logger } from '@nestjs/common';
 import type { AgentMemory } from '../memory/agent-memory.entity';
 import type { AgentMemoryObservation } from '../memory/agent-memory-observation.entity';
 import type { Skill } from '../../skill/skill.entity';
 import { extractHeadings } from '../tools/markdown.utils';
-// aurora/*.md 和 aurora/partials/*.md 各 section 固定文本托管到 promptManager(原散落字符串 → 统一管理)
+// aurora/*.md 各 section 固定文本托管到 promptManager(原散落字符串 → 统一管理)
 import { PromptManagerService } from '../../../infrastructure/prompt/prompt-manager.service';
 
 /**
@@ -99,8 +99,6 @@ export interface BuildSystemPromptParams {
    *
    * 设计哲学:简报本身是小数据集(~5k 中文字),没必要假装是大数据要按需取。
    * 现代 LLM context window 200k+,塞 10k 完全 OK,多轮对话靠 prompt caching 摊销。
-   * 这是 Stage 2 最早设计的"全篇注入"——之前因为公开 API 漏返 reason/snippet,
-   * 实际只塞了标题索引,导致 Aurora 答"摘要里没说"。这一版补上。
    *
    * 与 document/gallery 互斥(读报和写作不是一个场景)。
    * 选区追问走 selectionAttachments(chip 机制),不走这里。
@@ -128,18 +126,17 @@ export interface BuildSystemPromptParams {
   };
   /** 用户在设置中配置的全局自定义系统提示词（可选） */
   customSystemPrompt?: string;
-  /** AgentEntryConfig 里为该 agent 入口配置的系统提示词（可选），优先级高于全局配置 */
+  /** AgentEntryConfig 里为该 agent 入口配置的系统提示词（可选），即该 agent 的 work_context 定义 */
   entrySystemPrompt?: string;
   /**
    * 学习场景的"当前业务场景"状态串(前端实时拼好,无正文):在学哪个领域/目标、当前第几篇、
-   * 篇目结构 + 各篇状态。有值时 current_context 用它(并把业务 role 并进来),与 collectionContext 同范式。
+   * 篇目结构 + 各篇状态。进 work_context 的实时数据段。
    */
   learningContext?: string;
   /** 当前会话的写作计划(注入让模型看得到自己的清单,可用 write_tasks 整体改写) */
   tasks?: Array<Record<string, unknown>>;
   /**
-   * 本 agent 启用的 Skill 列表(已查出实体);lifecycle 在 onBeforeChat 并行加载时
-   * 把 enabledSkillIds 解析成 Skill[] 传进来。注入 <available_skills> 块的轻量元数据
+   * 本 agent 启用的 Skill 列表(已查出实体);注入 <available_skills> 块的轻量元数据
    * (name + description + when_to_use),body 永不进 system prompt(spec §5.1 红线)。
    */
   enabledSkills?: Skill[];
@@ -151,7 +148,6 @@ export class PromptHandler {
 
   constructor(
     // PromptManagerService 是 @Global() 注入,无需 module import
-    // 用于加载 aurora/*.md 和 aurora/partials/*.md 各 section 固定文本
     private readonly promptManager: PromptManagerService,
   ) {}
 
@@ -160,7 +156,13 @@ export class PromptHandler {
     const owner = params.ownerProfile;
     const ownerName = owner?.name?.trim() || '所有者';
 
-    // 1. ——— 介绍所有者（在陪伴谁） ———
+    // ═══ 一、Aurora 本体（谁,所有 agent 都有）═══
+    // <role> 在最前:先立"我是谁";<owner> 紧随;<conventions> 仅通用约定。
+    // 工具指引、写作专属约束不在本体——它们随 agent 进各自的 <work_context>。
+    sections.push(
+      this.promptManager.render('aurora/role.md', { owner_name: ownerName }),
+    );
+
     if (owner?.name) {
       const lines = [`你在陪伴 ${owner.name}。`];
       if (owner.birthday) lines.push(`生日：${owner.birthday}`);
@@ -168,24 +170,16 @@ export class PromptHandler {
       sections.push(`<owner>\n${lines.join('\n')}\n</owner>`);
     }
 
-    // 2. ——— Aurora 是谁（灵魂/人设，不是业务职责）———
-    // 从 aurora/role.md 加载(原散落字符串 → promptManager)
     sections.push(
-      this.promptManager.render('aurora/role.md', { owner_name: ownerName }),
-    );
-
-    // 3. ——— 工具使用指引（只引导"何时用",不重复 schema——工具的 name/description/参数
-    //    AI SDK 已喂给模型；逐条抄反而易与 schema 不同步）———
-    // 从 aurora/tools-guide.md 加载(原散落字符串 → promptManager)
-    sections.push(
-      this.promptManager.render('aurora/tools-guide.md', {
+      this.promptManager.render('aurora/conventions.md', {
         owner_name: ownerName,
       }),
     );
 
-    // ——— 可用 Skills(技能/方法论池) ———
-    // 轻量元数据(name + description + when_to_use)。body 永不出现在这里——spec §5.1 红线,单测保护。
-    // body 只在 agent 调 load_skill 工具时作为 tool_result 注入对话,按需载入。
+    // ═══ 二、横切动态数据（有则附，与场景正交）═══
+
+    // <available_skills>:轻量元数据(name/description/when_to_use)。
+    // body 永不在此——只在 agent 调 load_skill 工具时作为 tool_result 注入(spec §5.1 红线)。
     if (params.enabledSkills && params.enabledSkills.length > 0) {
       const items = params.enabledSkills
         .map(
@@ -193,37 +187,29 @@ export class PromptHandler {
             `- name: ${s.name}\n  description: ${s.description}\n  when_to_use: ${s.whenToUse}`,
         )
         .join('\n\n');
-      // 从 aurora/partials/skills-prelude.md 加载导语(原散落字符串 → promptManager)
       const skillsPrelude = this.promptManager.render(
         'aurora/partials/skills-prelude.md',
       );
       sections.push(
         `<available_skills>\n${skillsPrelude.trim()}\n\n${items}\n</available_skills>`,
       );
-      // 关键链路打点(CLAUDE.md「日志准则」):注入了哪些 skill 名称,方便排查
-      // 「模型为啥没调 load_skill / 调错了 skill」类问题。
       this.logger.debug(
         `buildSystemPrompt: 注入 <available_skills>(${params.enabledSkills.length} 个: ${params.enabledSkills.map((s) => s.name).join(', ')})`,
       );
     }
 
-    // 4. ——— 记忆索引(2026-05-30 event log 架构,#150 续)———
-    // 双层:① 派生画像(综合全量 observations,LLM 写)+ ② 最近 N 条原始(史书格式)
-    // 远古细节调 recall_memory / search_memories
+    // <memories_index>:派生画像(全量综合)+ 最近 N 条原始(史书格式);远古细节调读工具。
     const indexSegments: string[] = [];
-
     if (params.memoriesView && params.memoriesView.trim().length > 0) {
       indexSegments.push(
         `### 当前画像(后台从全量观察派生,按四类整理)\n\n${params.memoriesView.trim()}`,
       );
     } else if (params.coreMemories.length > 0) {
-      // 降级路径:view 还没派生(迁移期 / 冷启动)→ 用旧 user 记忆标题
       const titles = params.coreMemories.map((m) => `- ${m.title}`).join('\n');
       indexSegments.push(
         `### 当前画像(降级:旧 user 记忆标题索引,view 派生后会替换)\n\n${titles}`,
       );
     }
-
     if (params.recentObservations && params.recentObservations.length > 0) {
       const formatted = params.recentObservations
         .map((o) => formatObservationAsHistory(o))
@@ -232,9 +218,7 @@ export class PromptHandler {
         `### 最近 ${params.recentObservations.length} 条观察(史书原文,新→旧)\n\n${formatted}`,
       );
     }
-
     if (indexSegments.length > 0) {
-      // 从 aurora/partials/memories-prelude.md 加载导语(原散落字符串 → promptManager)
       const memoriesPrelude = this.promptManager.render(
         'aurora/partials/memories-prelude.md',
       );
@@ -243,10 +227,8 @@ export class PromptHandler {
       );
     }
 
-    // 5. ——— 本 session 的对话脉络（compaction 提炼）———
-    // 注:relatedMemories 自动召回已废,#150 改为模型主动调 recall_memory/search_memories 按需读
+    // <conversation_summary>:本 session 的对话脉络(compaction 提炼)。
     if (params.sessionMemory) {
-      // 从 aurora/partials/conversation-summary-prelude.md 加载导语(原散落字符串 → promptManager)
       const summaryPrelude = this.promptManager.render(
         'aurora/partials/conversation-summary-prelude.md',
       );
@@ -255,36 +237,24 @@ export class PromptHandler {
       );
     }
 
-    // 6. ——— 行为约束 ———
-    // 从 aurora/instructions.md 加载(原散落字符串 → promptManager)
-    sections.push(
-      this.promptManager.render('aurora/instructions.md', {
-        owner_name: ownerName,
-      }),
-    );
+    // ═══ 三、工作上下文（此刻在干什么，per agent/场景，统一）═══
+    // = agent 定义(entrySystemPrompt)+ 本场景实时数据。各场景互斥(学习/编辑/画廊/简报阅读)。
+    // 数据按需点名,正文/大数据靠工具读(简报例外:小数据集全篇注入)。
+    const work: string[] = [];
 
-    // 7. ——— 当前业务场景 ———
-    //   学习场景:业务 role(entrySystemPrompt)+ 实时状态(篇目结构,前端拼好,无正文)合成一块。
-    //     业务 role 本就属于"当前业务场景",故并进 current_context,不再于尾部单独 push。
-    //   其它场景:点名在编辑哪篇 + 大纲(v3.1 起正文不再注入)。
+    if (params.entrySystemPrompt?.trim()) {
+      work.push(params.entrySystemPrompt.trim());
+    }
+
     if (params.learningContext?.trim()) {
-      const role = params.entrySystemPrompt?.trim();
-      sections.push(
-        `<current_context>\n${role ? role + '\n\n' : ''}${params.learningContext.trim()}\n</current_context>`,
-      );
+      // 学习场景:篇目结构(前端拼好,无正文)
+      work.push(params.learningContext.trim());
     } else if (params.document) {
+      // 编辑文档场景:点名标题/字数(正文走 get_current_draft)+ 文集脉络 + 大纲
       const { title, bodyMarkdown } = params.document;
-      const wordCount = bodyMarkdown.length;
-      sections.push(`<current_context>
-${ownerName} 当前正在编辑文档《${title || '未命名'}》(约 ${wordCount} 字)。
-正文不直接注入,需要看时调 get_current_draft;若有标题,大纲见随后一节。
-</current_context>`);
-
-      // <collection>:文集场景才有——本节点所属整集的脉络(集合标题/描述 + 同集子节点列表 +
-      // 当前位置),让 Aurora 编辑单节点时知道它在整集里的位置与邻节点,改稿能顾及整体连贯。
-      // 笔记场景无 collectionContext,不注入。
-      // 按需加载守卫(#143):脉络字符串 > 1500 字符时截断,详情让模型调 list_knowledge_base /
-      // read_collection_entry 按需取——避免长集合膨胀 prompt。
+      work.push(
+        `${ownerName} 当前正在编辑《${title || '未命名'}》(约 ${bodyMarkdown.length} 字)。正文不直接注入,需要看时调 get_current_draft。`,
+      );
       const collectionContextRaw = params.document.collectionContext?.trim();
       if (collectionContextRaw) {
         const LIMIT = 1500;
@@ -293,53 +263,24 @@ ${ownerName} 当前正在编辑文档《${title || '未命名'}》(约 ${wordCou
             ? collectionContextRaw.slice(0, LIMIT) +
               '\n…(完整子节点列表已截断,用 list_knowledge_base 看完整结构)'
             : collectionContextRaw;
-        // 从 aurora/partials/collection-prelude.md 加载后置说明(原散落字符串 → promptManager)
-        const collectionPrelude = this.promptManager.render(
-          'aurora/partials/collection-prelude.md',
-        );
-        sections.push(
-          `<collection>\n${collectionContext}\n\n${collectionPrelude.trim()}\n</collection>`,
+        work.push(
+          `<collection>\n${collectionContext}\n\n(需要看同集某个子节点的内容,用 read_collection_entry 传它的节点 id;当前这个用 get_current_draft)\n</collection>`,
         );
       }
-
-      // <outline>:轻量大纲让模型看到文档结构,定位"用户说改哪段"更快;
-      // 但正文要看仍需调 get_current_draft 拿完整 bodyHash 走 Read-before-Edit。
       const outline = extractHeadings(bodyMarkdown);
       if (outline.length > 0) {
-        sections.push(
+        work.push(
           `<outline>\n${outline.map((h) => `  ${h}`).join('\n')}\n</outline>`,
         );
       }
-    }
-
-    // ——— 画廊场景：只点场景（在写哪个画廊/几张照片/有无随笔）；
-    // 照片清单/图说/随笔等内容不在这里，模型靠 get_current_draft read、view_photos 看图。
-    // 与 document 互斥（画廊不是文稿）。———
-    if (params.gallery) {
+    } else if (params.gallery) {
+      // 画廊场景:点名在整理哪个画廊/几张照片/有无随笔。照片靠 view_photos、清单/随笔靠 get_current_draft。
       const g = params.gallery;
-      // 从 aurora/partials/gallery.md 加载(原散落字符串 → promptManager)
-      // has_prose: 有随笔时填 ',还配着一段随笔',无则空字符串
-      sections.push(
-        this.promptManager.render('aurora/partials/gallery.md', {
-          owner_name: ownerName,
-          title: g.title || '未命名',
-          photo_count: String(g.photos.length),
-          has_prose: g.prose ? ',还配着一段随笔' : '',
-        }),
+      work.push(
+        `${ownerName} 正在整理画廊《${g.title || '未命名'}》——${g.photos.length} 张照片${g.prose ? ',还配着一段随笔' : ''}。这些照片你看得见(想看哪张就看),清单、随笔、每张现有的图说也都能调出来读。`,
       );
-    }
-
-    // ——— 简报阅读页场景(report-reader 入口) ———
-    // **全篇注入**:报告完整 markdown(~4500 字)+ findings 完整字段(含 reason/snippet)
-    // 全塞进 prompt。总量约 8-10k tokens,现代 LLM 200k context 完全 OK,多轮对话靠
-    // prompt caching 摊销 90% 成本。
-    //
-    // 设计哲学:简报是小数据集(~5k 中文字),没必要假装是大数据要按需取。
-    // sub-agent 一眼看完整内容 → 答得深 + 答得快(零工具往返),用户问"为啥 96.5%"
-    // 时能直接引用 finding 的 reason 和 markdown 里的具体段落。
-    //
-    // 用户划词追问不走这里,走 chip 机制(跟编辑器"添加到聊天"统一,引用块拼进 user text)。
-    if (params.digestReport) {
+    } else if (params.digestReport) {
+      // 简报阅读场景:报告全文 + findings 全字段全篇注入(小数据集,一眼看完答得深、零工具往返)。
       const r = params.digestReport;
       const lines: string[] = [];
       lines.push(
@@ -351,7 +292,6 @@ ${ownerName} 当前正在编辑文档《${title || '未命名'}》(约 ${wordCou
         lines.push(`章节:`);
         for (const s of r.sections) lines.push(`  · ${s}`);
       }
-      // 报告正文 markdown 全文 —— sub-agent 直接读原文,不需要 get_section 工具
       if (r.markdown?.trim()) {
         lines.push(``);
         lines.push(`报告正文(markdown,正文里 [CIT N] 是 finding 编号):`);
@@ -372,9 +312,6 @@ ${ownerName} 当前正在编辑文档《${title || '未命名'}》(约 ${wordCou
           lines.push(`  URL:${f.url}`);
         }
       }
-      // 订阅源列表(给 browse 工具用)。读者问"我订阅的源今天还有啥"时,sub-agent 调
-      // browse(sourceId) 拿过去 7 天最新条目(已跟历史去重)。没 sources 字段(老接口)
-      // 时跳过——browse 工具可能也不会挂(取决于 agent-lifecycle 是否构造 digestTaskContext)。
       if (r.sources && r.sources.length > 0) {
         lines.push(``);
         lines.push(
@@ -384,13 +321,14 @@ ${ownerName} 当前正在编辑文档《${title || '未命名'}》(约 ${wordCou
           lines.push(`  - ${s.id} : ${s.name}`);
         }
       }
-      sections.push(`<digest_report>\n${lines.join('\n')}\n</digest_report>`);
+      work.push(lines.join('\n'));
     }
 
-    // ——— 当前写作计划：有「未完成」任务才注入。
-    // 全部完成的计划不再注入(否则每轮都把一份"全done"的清单灌回上下文,越积越脏;
-    // 模型也被要求做完后 write_tasks([]) 主动清空,这里是双保险)。 ———
-    // t 是 Record<string, unknown>:用类型守卫取 string 字段,避免 String(unknown) 的 [object Object]
+    if (work.length > 0) {
+      sections.push(`<work_context>\n${work.join('\n\n')}\n</work_context>`);
+    }
+
+    // <tasks>:当前写作计划,仅有未完成任务才注入(避免每轮灌回"全 done"清单)。
     const taskStatus = (t: Record<string, unknown>): string =>
       typeof t.status === 'string' ? t.status : 'pending';
     const taskTitle = (t: Record<string, unknown>): string =>
@@ -404,10 +342,10 @@ ${ownerName} 当前正在编辑文档《${title || '未命名'}》(约 ${wordCou
         done: '完成',
       };
       const lines = params.tasks
-        .map((t) => {
-          const status = taskStatus(t);
-          return `- [${STATUS[status] ?? status}] ${taskTitle(t)}`;
-        })
+        .map(
+          (t) =>
+            `- [${STATUS[taskStatus(t)] ?? taskStatus(t)}] ${taskTitle(t)}`,
+        )
         .join('\n');
       sections.push(`<tasks>
 当前写作计划(随时用 write_tasks 整体改写:增删、重排、标记进度;用列表顺序表达先后;全部完成后传空列表清空):
@@ -415,13 +353,7 @@ ${lines}
 </tasks>`);
     }
 
-    // ——— 入口级自定义 system prompt（AgentEntryConfig 配置的，优先注入） ———
-    // 学习场景的业务 role 已并入 current_context,这里不再重复 push。
-    if (!params.learningContext?.trim() && params.entrySystemPrompt?.trim()) {
-      sections.push(params.entrySystemPrompt.trim());
-    }
-
-    // ——— 用户全局自定义 system prompt（Settings 里配置的） ———
+    // 用户全局自定义 system prompt(Settings 里配的,最后追加)
     if (params.customSystemPrompt?.trim()) {
       sections.push(params.customSystemPrompt.trim());
     }
