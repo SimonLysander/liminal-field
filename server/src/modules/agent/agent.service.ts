@@ -23,6 +23,7 @@ import { SystemConfigService } from '../settings/system-config.service';
 import { AgentLifecycle } from './lifecycle/agent-lifecycle.service';
 import { AgentSessionRepository } from './session/agent-session.repository';
 import { PendingWriteRepository } from './approval/pending-write.repository';
+import { approvalResultsFeedback } from '../../prompts/feedback';
 import { GalleryViewService } from '../workspace/gallery-view.service';
 import { splitForCompaction } from './context/compaction-split';
 import { sanitizeAbortedToolCalls } from './context/sanitize-aborted-tool-calls';
@@ -126,14 +127,8 @@ export class AgentService {
       const resolved =
         await this.pendingWriteRepo.findResolvedUnnotified(sessionKey);
       if (resolved.length > 0) {
-        const lines = resolved.map((r) => {
-          const verb =
-            r.status === 'approved'
-              ? '已获用户批准并写入'
-              : '被用户拒绝,未写入';
-          return `- ${r.toolName}:${verb}`;
-        });
-        approvalFeedback = `\n\n<approval_results>\n你之前提议的写操作,用户已裁决:\n${lines.join('\n')}\n据此继续:被批准的视为已落库,无需重复提议;被拒绝的不要假装写了,可问清原因或换思路。\n</approval_results>`;
+        // 模型文案单一真源在 prompts/feedback.ts(短指令片段→ts)
+        approvalFeedback = approvalResultsFeedback(resolved);
         await this.pendingWriteRepo.markNotified(
           resolved.map((r) => String(r._id)),
         );
