@@ -20,6 +20,10 @@ import { SystemConfigRepository } from './system-config.repository';
 import type { AgentEntryConfig } from './system-config.entity';
 // 从 settings/digest-report-analyst.md 加载报告分析师默认 system prompt(原散落字符串 → promptManager 统一托管)
 import { PromptManagerService } from '../../infrastructure/prompt/prompt-manager.service';
+import {
+  BUILTIN_AGENTS,
+  type BuiltinAgentDef,
+} from '../../prompts/builtin-agents';
 
 /** 前端展示用的脱敏配置（只含用户通过 UI 管理的字段） */
 export interface SettingsConfigView {
@@ -549,10 +553,9 @@ export class SystemConfigService implements OnModuleInit {
         activeProviderId: config?.activeAiProviderId || '',
         aiSystemPrompt: config?.aiSystemPrompt || '',
       },
-      // Agent 入口配置:类型同源 AgentEntryConfig(F4-c),直接整条透出无脱敏。
-      // 不再手抄字段子集 —— 避免漏字段(以前漏了 4 providerId + enabledSkillIds)。
+      // Agent 入口配置:内置(文件为准,builtin=true)∪ 用户新建(Mongo),供 UI 区分只读/可编。
       agent: {
-        configs: config?.agentConfigs ?? [],
+        configs: await this.resolveAgentConfigs(),
       },
       // 所有者身份信息
       owner: {
@@ -823,10 +826,56 @@ export class SystemConfigService implements OnModuleInit {
 
   // ── Agent 入口配置管理 ────────────────────────────────────
 
-  /** 读取全部 agent 入口配置 */
-  async getAgentConfigs(): Promise<AgentEntryConfig[]> {
+  // ── 内置 agent 合成（定义以文件为准、provider/enabled 以 Mongo 为准）─────────
+  // 内置 agent「是什么」定义在 prompts/builtin-agents.ts + agents/*.md,线上不可改;
+  // provider 绑定与 enabled 是运行时配置,管理员在 UI 调、存 Mongo。下面把两者合成完整配置。
+  // 用户在 UI 新建的 agent 整条存 Mongo,与内置合并(内置优先)。
+
+  /** 内置定义 + Mongo 记录(取 provider/enabled)→ 完整 AgentEntryConfig。 */
+  private synthesizeBuiltinAgent(
+    def: BuiltinAgentDef,
+    mongo: AgentEntryConfig | undefined,
+  ): AgentEntryConfig {
+    return {
+      key: def.key,
+      name: def.name,
+      description: def.description,
+      enabled: mongo?.enabled ?? true,
+      systemPrompt: def.promptFile
+        ? this.promptManager.render(def.promptFile)
+        : '',
+      tools: [...def.tools],
+      tier: def.tier,
+      // provider 绑定与 enabled 以 Mongo 为准(UI 运行时可调);其余以文件为准
+      providerId: mongo?.providerId ?? '',
+      flashProviderId: mongo?.flashProviderId ?? '',
+      standardProviderId: mongo?.standardProviderId ?? '',
+      thinkProviderId: mongo?.thinkProviderId ?? '',
+      visionProviderId: mongo?.visionProviderId ?? '',
+      // 内置 agent 按 skill key 引用内置 skill(SkillService 文件优先解析)
+      enabledSkillIds: [...def.enabledSkillKeys],
+      builtin: true,
+    };
+  }
+
+  /** 内置(文件) ∪ 用户新建(Mongo),内置优先;供 UI 列表与 AgentService 解析共用。 */
+  private async resolveAgentConfigs(): Promise<AgentEntryConfig[]> {
     const config = await this.repo.get();
-    return config?.agentConfigs ?? [];
+    const mongoAll = config?.agentConfigs ?? [];
+    const builtinKeys = new Set(BUILTIN_AGENTS.map((a) => a.key));
+    const builtins = BUILTIN_AGENTS.map((def) =>
+      this.synthesizeBuiltinAgent(
+        def,
+        mongoAll.find((c) => c.key === def.key),
+      ),
+    );
+    const userCreated = mongoAll.filter((c) => !builtinKeys.has(c.key));
+    return [...builtins, ...userCreated];
+  }
+
+  /** 读取全部 agent 入口配置(内置合成 + 用户新建) */
+  async getAgentConfigs(): Promise<AgentEntryConfig[]> {
+    return this.resolveAgentConfigs();
   }
 
   /**
@@ -1060,10 +1109,13 @@ export class SystemConfigService implements OnModuleInit {
     }
   }
 
-  /** 按 key 查找 agent 入口配置（供 AgentService 调用） */
+  /** 按 key 查找 agent 入口配置（供 AgentService 调用）。内置合成(文件为准)、其余走 Mongo。 */
   async getAgentConfig(key: string): Promise<AgentEntryConfig | null> {
     const config = await this.repo.get();
-    return config?.agentConfigs?.find((c) => c.key === key) ?? null;
+    const mongo = config?.agentConfigs?.find((c) => c.key === key);
+    const def = BUILTIN_AGENTS.find((a) => a.key === key);
+    if (def) return this.synthesizeBuiltinAgent(def, mongo);
+    return mongo ?? null;
   }
 
   /**

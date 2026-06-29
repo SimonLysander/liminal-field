@@ -74,6 +74,13 @@ export class AgentEntryConfig {
    */
   @prop({ type: () => [String], default: [] })
   enabledSkillIds!: string[];
+
+  /**
+   * 是否内置 agent(定义在 prompts/builtin-agents.ts,systemPrompt/tools/skill 以文件为准、UI 只读)。
+   * 解析时合成标记,供前端区分"内置只读 / 用户可编";用户新建 agent 默认 false。
+   */
+  @prop({ default: false })
+  builtin?: boolean;
 }
 
 /**

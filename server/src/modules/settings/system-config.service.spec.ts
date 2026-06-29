@@ -463,3 +463,58 @@ describe('SystemConfigService.cleanupSkillReferences — 删 Skill 级联清理(
     expect(errorSpy).toHaveBeenCalled();
   });
 });
+
+// 内置 agent 文件优先合成(提示词集中管理 Phase 4)
+describe('SystemConfigService — 内置 agent 合成解析', () => {
+  it('getAgentConfig 内置 key + 空 Mongo → 文件为准、provider 空、builtin=true', async () => {
+    const { service, mockRepo } = createMocks();
+    mockRepo.get.mockResolvedValue({ agentConfigs: [] } as never);
+
+    const lw = await service.getAgentConfig('learning-writer');
+    expect(lw?.builtin).toBe(true);
+    expect(lw?.systemPrompt).toBe('报告分析师默认 system prompt'); // mock render
+    expect(lw?.tools).toContain('write_draft');
+    expect(lw?.enabledSkillIds).toEqual(['note-writing']); // 按 skill key 引用
+    expect(lw?.providerId).toBe('');
+  });
+
+  it('getAgentConfig 内置 key + Mongo 有 provider → provider 用 Mongo、定义仍用文件', async () => {
+    const { service, mockRepo } = createMocks();
+    mockRepo.get.mockResolvedValue({
+      agentConfigs: [
+        mkAgent({
+          key: 'learning-writer',
+          providerId: 'p1',
+          systemPrompt: '被忽略的旧 Mongo 文案',
+          tools: ['被忽略'],
+        }),
+      ],
+    } as never);
+
+    const lw = await service.getAgentConfig('learning-writer');
+    expect(lw?.providerId).toBe('p1'); // provider 取 Mongo
+    expect(lw?.systemPrompt).toBe('报告分析师默认 system prompt'); // 文件为准,忽略 Mongo
+    expect(lw?.tools).toContain('write_draft'); // 文件为准
+  });
+
+  it('getAgentConfigs → 含 5 个内置 + 用户新建', async () => {
+    const { service, mockRepo } = createMocks();
+    mockRepo.get.mockResolvedValue({
+      agentConfigs: [mkAgent({ key: 'my-custom', name: '我的' })],
+    } as never);
+
+    const all = await service.getAgentConfigs();
+    const keys = all.map((a) => a.key);
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        'writing-advisor',
+        'gallery-caption-writer',
+        'report-analyst',
+        'learning-planner',
+        'learning-writer',
+        'my-custom',
+      ]),
+    );
+    expect(all.find((a) => a.key === 'my-custom')?.builtin).toBeFalsy();
+  });
+});
