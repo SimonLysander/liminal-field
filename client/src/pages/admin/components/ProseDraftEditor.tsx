@@ -8,31 +8,31 @@
  * agent 上下文是场景相关的,由调用方通过 advisor 注入(笔记=本篇 / 文集=本条目+脉络)。
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, Sun, Moon, Trash2, MoreHorizontal, Keyboard } from 'lucide-react';
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { AdvisorSidebar } from '@/components/ai-advisor/AdvisorSidebar';
+import { IrisAuroraButton } from '@/components/ai-advisor/IrisAuroraButton';
+import { LoadingState } from '@/components/LoadingState';
+import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
-  DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useTheme } from '@/hooks/use-theme';
-import { useOnlineStatus } from '@/hooks/use-online-status';
-import { LoadingState } from '@/components/LoadingState';
-import { ThresholdOverlay } from '@/components/shared/ThresholdOverlay';
-import { DraftAssetProvider } from '@/contexts/DraftAssetContext';
-import { AdvisorSidebar } from '@/components/ai-advisor/AdvisorSidebar';
-import { IrisAuroraButton } from '@/components/ai-advisor/IrisAuroraButton';
-import { PlateMarkdownEditor, type EditorBridgeHandle, type ProposalUiState } from './PlateEditor';
-import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
-import type { ChatSelectionAttachment } from '@/pages/admin/lib/live-chat-selection';
-import { EditorOutline } from './EditorOutline';
-import { CommitForm } from './CommitForm';
 import { KeyboardShortcutsDialog } from '@/components/ui/keyboard-shortcuts-dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { DraftAssetProvider } from '@/contexts/DraftAssetContext';
 import { useKeyboardShortcutsDialog } from '@/hooks/use-keyboard-shortcuts-dialog';
+import { useOnlineStatus } from '@/hooks/use-online-status';
+import { useTheme } from '@/hooks/use-theme';
+import type { ChatSelectionAttachment } from '@/pages/admin/lib/live-chat-selection';
+import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
+import { ChevronLeft, Keyboard, Moon, MoreHorizontal, Sun, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { BaseDraftState, DraftEditorController } from '../lib/use-draft-editor';
+import { CommitForm } from './CommitForm';
+import { EditorOutline } from './EditorOutline';
+import { PlateMarkdownEditor, type EditorBridgeHandle, type ProposalUiState } from './PlateEditor';
 
 /** 顾问栏注入:启用开关 + 会话/文档标识(title/正文由布局从 editor.state 实时取) */
 export interface AdvisorMount {
@@ -66,7 +66,7 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
   const shortcutsDialog = useKeyboardShortcutsDialog();
   // 离线时给保存状态加"等待联网"指示（本地 localStorage 已镜像，不会丢字）
   const online = useOnlineStatus();
-  // Cursor 式 add-to-chat:拖选只产生选区;点击浮动工具栏「添加到聊天」后才写入这里。
+  // Cursor 式引用:拖选只产生选区;点击浮动工具栏「引用到 Aurora」后才写入这里。
   // 保存 live range attachment:chip 展示初始 preview;发送/高亮时读取当前 range。
   const [chatSelections, setChatSelections] = useState<ChatSelectionAttachment[]>([]);
   const chatSelectionsRef = useRef<ChatSelectionAttachment[]>([]);
@@ -85,7 +85,9 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
   // 审批 UI state:进入审批时由 PlateEditor 上抛,中间栏顶栏据此切换为审批控件
   // 仅记 count(用于显示统计);acceptAll/rejectAll 是 PlateEditor 提供的稳定代理
   // (内部走 controllerRef.current),保存到 ref 不引起 ProseDraftEditor 重渲染。
-  const [proposalUi, setProposalUi] = useState<{ pendingCount: number; totalCount: number } | null>(null);
+  const [proposalUi, setProposalUi] = useState<{ pendingCount: number; totalCount: number } | null>(
+    null,
+  );
   const proposalActionsRef = useRef<{ acceptAll: () => void; rejectAll: () => void }>({
     acceptAll: () => {},
     rejectAll: () => {},
@@ -101,14 +103,8 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
   }, []);
 
   // 给 AdvisorSidebar 的 getter:从桥 ref 读取，ref 空时降级返回空数组/undefined
-  const getEditorChildren = useCallback(
-    () => editorBridgeRef.current?.getChildren() ?? [],
-    [],
-  );
-  const getEditor = useCallback(
-    () => editorBridgeRef.current?.getEditor(),
-    [],
-  );
+  const getEditorChildren = useCallback(() => editorBridgeRef.current?.getChildren() ?? [], []);
+  const getEditor = useCallback(() => editorBridgeRef.current?.getEditor(), []);
 
   // AdvisorSidebar 上抛 pendingProposal 时落到 state
   const handleProposalChange = useCallback((p: Proposal | undefined) => {
@@ -154,8 +150,13 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
   // 加载彻底失败(没成功读到任何内容)→ 全屏错误;加载成功后的保存类错误走顶部错误条
   if (editor.error && !editor.loaded) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-3" style={{ background: 'var(--paper)' }}>
-        <p className="text-base" style={{ color: 'var(--mark-red)' }}>{editor.error}</p>
+      <div
+        className="flex h-screen flex-col items-center justify-center gap-3"
+        style={{ background: 'var(--paper)' }}
+      >
+        <p className="text-base" style={{ color: 'var(--mark-red)' }}>
+          {editor.error}
+        </p>
         <button className="text-base" style={{ color: 'var(--ink-faded)' }} onClick={editor.goBack}>
           返回管理后台
         </button>
@@ -181,10 +182,7 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
       }}
     >
       <ThresholdOverlay visible={editor.committing} label="正在提交版本..." />
-      <KeyboardShortcutsDialog
-        open={shortcutsDialog.open}
-        onOpenChange={shortcutsDialog.setOpen}
-      />
+      <KeyboardShortcutsDialog open={shortcutsDialog.open} onOpenChange={shortcutsDialog.setOpen} />
 
       {/* ── Row 1: 三栏各自独立顶栏(均 52px,无 borderBottom,跟 Notion 派对齐)──
           [1,1] 大纲栏顶栏:返回按钮 + "大纲" label —— 返回挂这里 = 真窗口左上角
@@ -244,20 +242,19 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
               <span style={{ color: 'var(--ink-faded)' }}>
                 {proposalUi.totalCount - proposalUi.pendingCount > 0 ? (
                   <>
-                    还剩 <strong style={{ color: 'var(--accent)' }}>{proposalUi.pendingCount}</strong> 处 · 已确认{' '}
-                    {proposalUi.totalCount - proposalUi.pendingCount}
+                    还剩{' '}
+                    <strong style={{ color: 'var(--accent)' }}>{proposalUi.pendingCount}</strong> 处
+                    · 已确认 {proposalUi.totalCount - proposalUi.pendingCount}
                   </>
                 ) : (
                   <>
-                    <strong style={{ color: 'var(--accent)' }}>{proposalUi.pendingCount}</strong> 处待确认
+                    <strong style={{ color: 'var(--accent)' }}>{proposalUi.pendingCount}</strong>{' '}
+                    处待确认
                   </>
                 )}
               </span>
               {/* Claude 风:一行 · 分隔的极淡提示(Type to search · Space to toggle …)*/}
-              <span
-                className="hidden text-xs lg:inline"
-                style={{ color: 'var(--ink-ghost)' }}
-              >
+              <span className="hidden text-xs lg:inline" style={{ color: 'var(--ink-ghost)' }}>
                 ↑↓ 浏览 · ⏎ 接受 · ⌫ 拒绝
               </span>
             </div>
@@ -322,16 +319,26 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
               )}
             </span>
             {editor.autosaveError && (
-              <span className="text-xs" style={{ color: 'var(--mark-red)' }}>{editor.autosaveError}</span>
+              <span className="text-xs" style={{ color: 'var(--mark-red)' }}>
+                {editor.autosaveError}
+              </span>
             )}
 
-            <Button variant="ghost" size="default" className="text-base" onClick={() => void editor.saveDraft()} title="保存 ⇧⌘S">
+            <Button
+              variant="ghost"
+              size="default"
+              className="text-base"
+              onClick={() => void editor.saveDraft()}
+              title="保存 ⇧⌘S"
+            >
               保存
             </Button>
 
             <Popover open={editor.showCommitDialog} onOpenChange={editor.setShowCommitDialog}>
               <PopoverTrigger asChild>
-                <Button variant="secondary" size="default" className="text-base">提交</Button>
+                <Button variant="secondary" size="default" className="text-base">
+                  提交
+                </Button>
               </PopoverTrigger>
               <PopoverContent align="end" sideOffset={6} className="w-64 p-3">
                 <CommitForm
@@ -374,16 +381,10 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  onClick={() => shortcutsDialog.setOpen(true)}
-                  className="gap-2"
-                >
+                <DropdownMenuItem onClick={() => shortcutsDialog.setOpen(true)} className="gap-2">
                   <Keyboard />
                   <span className="flex-1">快捷键</span>
-                  <span
-                    className="font-mono text-xs"
-                    style={{ color: 'var(--ink-faded)' }}
-                  >
+                  <span className="font-mono text-xs" style={{ color: 'var(--ink-faded)' }}>
                     {/[Mm]ac|iPhone|iPad/.test(
                       typeof navigator !== 'undefined' ? navigator.platform : '',
                     )
@@ -395,7 +396,8 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
                   onClick={() => void editor.discardDraft()}
                   className="text-[var(--danger)] focus:bg-[color-mix(in_srgb,var(--danger)_9%,transparent)] [&_svg]:text-[var(--danger)]"
                 >
-                  <Trash2 />丢弃草稿
+                  <Trash2 />
+                  丢弃草稿
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -414,7 +416,9 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
       <div className="min-w-0 overflow-y-auto overflow-x-hidden" data-scroll-container>
         {editor.error && editor.loaded && (
           <div className="px-6 py-2" style={{ background: 'var(--danger-soft)' }}>
-            <p className="text-sm" style={{ color: 'var(--mark-red)' }}>{editor.error}</p>
+            <p className="text-sm" style={{ color: 'var(--mark-red)' }}>
+              {editor.error}
+            </p>
           </div>
         )}
         <div className="mx-auto w-full max-w-[var(--layout-editor-max)] pb-40">

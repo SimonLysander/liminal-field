@@ -14,22 +14,54 @@
  */
 'use client';
 
-import { createPlatePlugin } from 'platejs/react';
 import { deserializeMd } from '@platejs/markdown';
-import { createLowlight, common } from 'lowlight';
+import { common, createLowlight } from 'lowlight';
+import { createPlatePlugin } from 'platejs/react';
 
 import { htmlToCleanMarkdown } from '@/lib/paste-cleanup';
+
+export const LIMINAL_FRAGMENT_MIME = 'application/x-liminal-field-fragment';
+const SLATE_FRAGMENT_MIME = 'application/x-slate-fragment';
 
 /* 语言自动识别：lowlight 已是项目依赖（被 Plate code-block 高亮链路用），
  * 走 common 包覆盖 ~30 种常见语言（TS / Py / Go / Rust / Java / SQL / Bash 等），
  * bundle 影响为零（实例复用）。 */
 const lowlight = createLowlight(common);
+type PlateFragmentNode = Record<string, unknown> &
+  ({ children: PlateFragmentNode[] } | { text: string });
+type PlateFragment = PlateFragmentNode[];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isPlateNode(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value)) return false;
+  return Array.isArray(value.children) || typeof value.text === 'string';
+}
+
+export function encodeInternalFragment(fragment: unknown): string {
+  return JSON.stringify(fragment);
+}
+
+export function decodeInternalFragment(raw: string): PlateFragment | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || !parsed.every(isPlateNode)) return null;
+    return parsed as PlateFragment;
+  } catch {
+    return null;
+  }
+}
+
+export function hasSlateInternalFragment(types: string[], html: string): boolean {
+  return types.includes(SLATE_FRAGMENT_MIME) || /data-slate-fragment="[^"]+"/i.test(html);
+}
 
 /** 从 IDE 的 <pre> / <code> 标签 class 里抽语言提示（"language-ts" / "lang-py" 等） */
 function extractCodeLang(html: string): string {
-  const m = html.match(
-    /<(?:pre|code)[^>]*class="[^"]*\b(?:language|lang)-([\w-]+)/i,
-  );
+  const m = html.match(/<(?:pre|code)[^>]*class="[^"]*\b(?:language|lang)-([\w-]+)/i);
   return m?.[1] ?? '';
 }
 
@@ -46,21 +78,23 @@ function detectCodeLang(code: string): string {
 }
 
 /** 检测 HTML 是否来自代码编辑器（VS Code / Cursor / JetBrains 等）。
- * - <pre> 标签：传统 HTML / 文档站（GitHub / docs.nestjs.com / MDN）
- * - font-family 含 monospace 名字：Monaco-based IDE（VS Code / Cursor）复制时
- *   的顶层 div style 一定有 monospace 字体；这是最可靠的 IDE 源标志
- * - white-space: pre：同样是 Monaco 复制 HTML 的强标志
+ *
+ * 这里必须偏保守：Plate/浏览器复制普通段落时也可能带 pre-wrap 或 monospace，
+ * 如果仅凭这些样式判断，会把用户自己的文字误包成 ``` fence。
  */
-function looksLikeCodeSource(html: string): boolean {
-  if (/<pre[\s>]/i.test(html)) return true;
+export function isCodePasteSource(html: string): boolean {
+  if (!html) return false;
   if (
-    /font-family\s*:\s*[^"';]*(?:monospace|consolas|menlo|cascadia|source[-\s]?code|fira[-\s]?code|jetbrains[-\s]?mono|sf[-\s]?mono)/i.test(
+    /\b(?:vscode|monaco|cm-line|cm-content|CodeMirror|hljs|prism|token|shiki|ace_line|ace_text-layer)\b/i.test(
       html,
     )
   ) {
     return true;
   }
-  if (/white-space\s*:\s*pre\b/i.test(html)) return true;
+  if (/<pre[\s\S]*<code[\s>]/i.test(html)) return true;
+  if (/<(?:pre|code)[^>]*class="[^"]*\b(?:language|lang)-[\w-]+/i.test(html)) {
+    return true;
+  }
   return false;
 }
 
@@ -68,6 +102,16 @@ export const PasteCleanupPlugin = createPlatePlugin({
   key: 'paste-cleanup',
 }).extend({
   handlers: {
+    onCopy: ({ editor, event }) => {
+      const data = event.clipboardData;
+      const selection = editor.selection;
+      if (!data || !selection) return;
+
+      const fragment = editor.api.fragment();
+      if (!fragment || fragment.length === 0) return;
+
+      data.setData(LIMINAL_FRAGMENT_MIME, encodeInternalFragment(fragment));
+    },
     onPaste: ({ editor, event }) => {
       const data = event.clipboardData;
       if (!data) return;
@@ -76,12 +120,27 @@ export const PasteCleanupPlugin = createPlatePlugin({
       if (data.files && data.files.length > 0) return;
 
       const types = Array.from(data.types || []);
-      // 2) 无 HTML —— 走 Plate 默认 paste（保留 inputRules / autolink）
+      const html = types.includes('text/html') ? data.getData('text/html') : '';
+
+      // 2) Slate/Plate 内部复制 —— 放行给编辑器原生 fragment 管线。
+      // Slate 已经会写 application/x-slate-fragment + data-slate-fragment，
+      // 让它自己恢复节点，保真度最高；这里不能抢先走 HTML → Markdown 清洗。
+      if (hasSlateInternalFragment(types, html)) return;
+
+      // 3) 我们的内部复制兜底 —— 直接插 Plate 节点片段，避免 HTML/Markdown 往返丢结构。
+      if (types.includes(LIMINAL_FRAGMENT_MIME)) {
+        const fragment = decodeInternalFragment(data.getData(LIMINAL_FRAGMENT_MIME));
+        if (fragment?.length) {
+          event.preventDefault();
+          editor.tf.insertFragment(fragment as Parameters<typeof editor.tf.insertFragment>[0]);
+          return;
+        }
+      }
+
+      // 4) 无 HTML —— 走 Plate 默认 paste（保留 inputRules / autolink）
       if (!types.includes('text/html')) return;
 
-      const html = data.getData('text/html');
-
-      // 3) 代码块场景。turndown 对带语法高亮 span 的 pre / div 会丢缩进，
+      // 5) 代码块场景。turndown 对带语法高亮 span 的 pre / div 会丢缩进，
       //    甚至连 code block 语义都丢；这里走 fence 直插。
       //
       //    数据源优先级：
@@ -92,7 +151,7 @@ export const PasteCleanupPlugin = createPlatePlugin({
       //                                       缩进 / 换行完整保留）
       //
       //    语言识别：HTML class 提示优先 → lowlight 内容嗅探兜底
-      if (looksLikeCodeSource(html)) {
+      if (isCodePasteSource(html)) {
         let preText = '';
         try {
           const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -121,7 +180,7 @@ export const PasteCleanupPlugin = createPlatePlugin({
 
       const markdown = htmlToCleanMarkdown(html);
 
-      // 4) 清洗失败或返回空 —— 让 Plate 默认 paste 接管（不阻断用户操作）
+      // 6) 清洗失败或返回空 —— 让 Plate 默认 paste 接管（不阻断用户操作）
       if (!markdown) return;
 
       try {

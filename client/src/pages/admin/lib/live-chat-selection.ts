@@ -1,8 +1,5 @@
+import { clearEditorTextHighlight, highlightTextInContainer } from '@/hooks/use-selected-text';
 import { NodeApi, type Descendant } from 'platejs';
-import {
-  highlightTextInContainer,
-  clearEditorTextHighlight,
-} from '@/hooks/use-selected-text';
 
 /**
  * AnchorRange / AnchorPayload / serializeAnchor ——
@@ -42,8 +39,7 @@ export function serializeAnchor(
   const startBlockIdx = anchor.path[0] ?? 0;
 
   const collapsed =
-    JSON.stringify(anchor.path) === JSON.stringify(focus.path) &&
-    anchor.offset === focus.offset;
+    JSON.stringify(anchor.path) === JSON.stringify(focus.path) && anchor.offset === focus.offset;
 
   if (collapsed) {
     return { type: 'cursor', blockIndex: startBlockIdx, startPath: anchor.path };
@@ -69,7 +65,7 @@ export interface ChatSelectionAttachment {
   id: string;
   /** 引用来源:'draft'=编辑器草稿划词;'aurora'=聊天里引用 Aurora 的话。决定 chip 标签与发送格式。 */
   kind?: 'draft' | 'aurora';
-  /** 添加到聊天时的短预览，只用于 chip 展示，不作为发送内容。 */
+  /** 引用到 Aurora 时的短预览，只用于 chip 展示，不作为发送内容。 */
   preview: string;
   /** 发送瞬间从 live range 读取当前正文。 */
   getText: () => string;
@@ -125,11 +121,46 @@ export interface LiveSelectionEditor {
  * 导致引用多段草稿/代码时换行全丢。这里逐块取文本、块间用 \n 连;代码块特判按行连。
  */
 function fragmentToText(fragment: Descendant[]): string {
+  const escapeTableCell = (text: string) =>
+    text.replaceAll('\\', '\\\\').replaceAll('|', '\\|').replace(/\s+/g, ' ').trim();
+
+  const tableToMarkdown = (node: Descendant): string => {
+    if (!('children' in node) || !Array.isArray(node.children)) {
+      return NodeApi.string(node);
+    }
+
+    const rows = node.children
+      .filter((row) => row.type === 'tr' && Array.isArray(row.children))
+      .map((row) =>
+        (row.children as Descendant[])
+          .filter(
+            (cell) => (cell.type === 'td' || cell.type === 'th') && Array.isArray(cell.children),
+          )
+          .map((cell) => escapeTableCell(NodeApi.string(cell))),
+      )
+      .filter((row) => row.length > 0);
+
+    if (rows.length === 0) return NodeApi.string(node);
+
+    const columnCount = Math.max(...rows.map((row) => row.length));
+    const normalizedRows = rows.map((row) =>
+      Array.from({ length: columnCount }, (_, index) => row[index] ?? ''),
+    );
+    const [firstRow, ...bodyRows] = normalizedRows;
+    const separator = Array.from({ length: columnCount }, () => '---');
+    const renderRow = (row: string[]) => `| ${row.join(' | ')} |`;
+
+    return [renderRow(firstRow), renderRow(separator), ...bodyRows.map(renderRow)].join('\n');
+  };
+
   const nodeToText = (node: Descendant): string => {
     if ('text' in node) return typeof node.text === 'string' ? node.text : '';
     // 代码块:子节点是各代码行,逐行用 \n 连(NodeApi.string 会把行拼成一坨)
     if (node.type === 'code_block' && Array.isArray(node.children)) {
       return node.children.map((line) => NodeApi.string(line)).join('\n');
+    }
+    if (node.type === 'table') {
+      return tableToMarkdown(node);
     }
     // 段落/标题等单块:取其文本(行内拼接,无块间换行——本就是一块)
     return NodeApi.string(node);
@@ -214,11 +245,7 @@ export function createLiveChatSelectionAttachment({
  * 静态快照——getText 直接返回划词文本,无 live range、无高亮/dispose。复用同一个
  * ChatSelectionAttachment 接口,塞进同一个 chips 数组,发送/删除/清空逻辑全共用。
  */
-export function createChatMessageAttachment({
-  text,
-}: {
-  text: string;
-}): ChatSelectionAttachment {
+export function createChatMessageAttachment({ text }: { text: string }): ChatSelectionAttachment {
   const clean = text.trim();
   const id =
     typeof crypto !== 'undefined' && 'randomUUID' in crypto

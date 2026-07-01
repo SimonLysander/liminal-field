@@ -56,8 +56,11 @@ const insertBlockMap: Record<
       select: true,
       type: KEYS.img,
     }),
-  [KEYS.table]: (editor) =>
-    editor.getTransforms(TablePlugin).insert.table({}, { select: true }),
+  [KEYS.table]: (editor) => {
+    const block = editor.api.block();
+    const at = block && editor.api.isEmpty(block[0]) ? block[1] : undefined;
+    editor.getTransforms(TablePlugin).insert.table({}, { at, select: true });
+  },
   equation: (editor) => insertEquation(editor, { select: true }),
 };
 

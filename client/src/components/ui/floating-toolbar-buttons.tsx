@@ -1,17 +1,9 @@
 'use client';
 
-import {
-  BoldIcon,
-  Code2Icon,
-  ItalicIcon,
-  PaperclipIcon,
-  StrikethroughIcon,
-  UnderlineIcon,
-} from 'lucide-react';
+import { BoldIcon, Code2Icon, ItalicIcon, StrikethroughIcon, UnderlineIcon } from 'lucide-react';
 import { KEYS } from 'platejs';
 import { useEditorReadOnly } from 'platejs/react';
 
-import { getSelectionTextInContainer } from '@/hooks/use-selected-text';
 import { LinkToolbarButton } from './link-toolbar-button';
 import { MarkToolbarButton } from './mark-toolbar-button';
 import { ToolbarButton, ToolbarGroup, ToolbarSeparator } from './toolbar';
@@ -25,7 +17,7 @@ import { ToolbarButton, ToolbarGroup, ToolbarSeparator } from './toolbar';
 export function FloatingToolbarButtons({
   onAddSelectionToChat,
 }: {
-  onAddSelectionToChat?: (text: string) => void;
+  onAddSelectionToChat?: () => void;
 }) {
   const readOnly = useEditorReadOnly();
 
@@ -37,29 +29,20 @@ export function FloatingToolbarButtons({
         <>
           <ToolbarGroup>
             <ToolbarButton
-              tooltip="添加到聊天"
-              className="gap-1.5 px-2"
+              tooltip="引用到 Aurora"
+              className="gap-1.5 px-2.5 text-xs font-medium"
               onMouseDown={(e) => {
-                // 防止 toolbar 抢焦点导致浏览器 selection 在 click 前折叠。
                 e.preventDefault();
-                const text = getSelectionTextInContainer(
-                  '.prose-draft-editor-surface [data-slate-editor]',
-                );
-                if (text) {
-                  onAddSelectionToChat(text);
-                  window.getSelection()?.removeAllRanges();
-                  // Plate / browser selection reconciliation can restore the range once during
-                  // toolbar click handling; clear again after the current event so the toolbar
-                  // disappears and the attached chip becomes the source of truth.
-                  window.setTimeout(
-                    () => window.getSelection()?.removeAllRanges(),
-                    0,
-                  );
-                }
+                onAddSelectionToChat();
               }}
             >
-              <PaperclipIcon />
-              <span className="text-xs">添加到聊天</span>
+              <img
+                className="h-3.5 w-3.5 object-contain opacity-75"
+                src="/garden/iris-seed.webp"
+                alt=""
+                draggable={false}
+              />
+              <span className="text-xs">引用到 Aurora</span>
             </ToolbarButton>
           </ToolbarGroup>
           <ToolbarSeparator />
@@ -79,10 +62,7 @@ export function FloatingToolbarButtons({
           <UnderlineIcon />
         </MarkToolbarButton>
 
-        <MarkToolbarButton
-          nodeType={KEYS.strikethrough}
-          tooltip="Strikethrough (⌘+⇧+M)"
-        >
+        <MarkToolbarButton nodeType={KEYS.strikethrough} tooltip="Strikethrough (⌘+⇧+M)">
           <StrikethroughIcon />
         </MarkToolbarButton>
 

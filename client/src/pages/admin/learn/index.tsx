@@ -10,40 +10,68 @@
  * 模型只产【规划提案】+【草稿】(经 learning-planner / learning-writer agent),绝不碰结构;建/改名/排序/删全是用户按的。
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useSearchParams, useNavigate, useParams } from 'react-router-dom';
-import {
-  ChevronLeft, ChevronRight, ChevronDown, Circle, Check, Plus,
-  GripVertical, Pencil, X, Sun, Moon, Sparkles, MoreHorizontal, Loader2,
-} from 'lucide-react';
-import {
-  DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  SortableContext, useSortable, verticalListSortingStrategy, arrayMove,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import {
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
-} from '@/components/ui/dropdown-menu';
 import { AdvisorSidebar } from '@/components/ai-advisor/AdvisorSidebar';
-import { WriteApprovalCard } from '@/components/ai-advisor/WriteApprovalCard';
 import { IrisAuroraButton } from '@/components/ai-advisor/IrisAuroraButton';
-import { DraftAssetProvider } from '@/contexts/DraftAssetContext';
+import { WriteApprovalCard } from '@/components/ai-advisor/WriteApprovalCard';
 import { LoadingState } from '@/components/LoadingState';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { DraftAssetProvider } from '@/contexts/DraftAssetContext';
+import { useOnlineStatus } from '@/hooks/use-online-status';
 import { useTheme } from '@/hooks/use-theme';
-import { notesApi } from '@/services/workspace';
 import {
   createChatMessageAttachment,
   type ChatSelectionAttachment,
 } from '@/pages/admin/lib/live-chat-selection';
-import { PlateMarkdownEditor } from '../components/PlateEditor';
-import { useDraftEditor, type DraftEditorController } from '../lib/use-draft-editor';
-import { createNotesDraftAdapter, type NotesDraftState } from '../lib/notes-draft-adapter';
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { notesApi } from '@/services/workspace';
+import {
+  closestCenter,
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import {
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Circle,
+  GripVertical,
+  Loader2,
+  Moon,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Sparkles,
+  Sun,
+  X,
+} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { CommitForm } from '../components/CommitForm';
-import { useOnlineStatus } from '@/hooks/use-online-status';
-import { useLearningData, type LearnPlan, type Chapter, type LearningData } from './useLearningData';
+import { PlateMarkdownEditor } from '../components/PlateEditor';
+import { createNotesDraftAdapter, type NotesDraftState } from '../lib/notes-draft-adapter';
+import { useDraftEditor, type DraftEditorController } from '../lib/use-draft-editor';
+import {
+  useLearningData,
+  type Chapter,
+  type LearningData,
+  type LearnPlan,
+} from './useLearningData';
 
 const FADE_MS = 300;
 const SLIDE_MS = 650;
@@ -58,7 +86,9 @@ function Prose({ text }: { text: string }) {
         <p key={pi} className="mb-3.5" style={{ color: 'var(--ink)' }}>
           {para.split(/(\*\*[^*]+\*\*)/g).map((seg, si) =>
             seg.startsWith('**') ? (
-              <strong key={si} style={{ fontWeight: 600 }}>{seg.slice(2, -2)}</strong>
+              <strong key={si} style={{ fontWeight: 600 }}>
+                {seg.slice(2, -2)}
+              </strong>
             ) : (
               <span key={si}>{seg}</span>
             ),
@@ -71,14 +101,27 @@ function Prose({ text }: { text: string }) {
 
 // ─── 左栏:Aurora 的规划提案(只读;没有则引导去规划)─────────────────────────────
 
-function PlanProduct({ plan, onPlanWithAurora }: { plan: LearnPlan | null; onPlanWithAurora: () => void }) {
+function PlanProduct({
+  plan,
+  onPlanWithAurora,
+}: {
+  plan: LearnPlan | null;
+  onPlanWithAurora: () => void;
+}) {
   if (!plan) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
         <Circle size={20} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)' }} />
         <div className="space-y-1.5">
-          <p className="text-md font-light" style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}>还没有规划</p>
-          <p className="text-sm" style={{ color: 'var(--ink-faded)' }}>让 Aurora 研究这个领域、立锚推演,产出「理解 + 脉络」给你参照。</p>
+          <p
+            className="text-md font-light"
+            style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+          >
+            还没有规划
+          </p>
+          <p className="text-sm" style={{ color: 'var(--ink-faded)' }}>
+            让 Aurora 研究这个领域、立锚推演,产出「理解 + 脉络」给你参照。
+          </p>
         </div>
         <button
           onClick={onPlanWithAurora}
@@ -94,18 +137,39 @@ function PlanProduct({ plan, onPlanWithAurora }: { plan: LearnPlan | null; onPla
     <div className="mx-auto w-full max-w-[38rem] px-8 pb-20 pt-6">
       {/* 目标 */}
       {plan.goal && (
-        <div className="mb-5 flex items-baseline gap-2.5 pb-4" style={{ borderBottom: '1px solid var(--separator)' }}>
-          <span className="shrink-0 text-2xs uppercase" style={{ color: 'var(--ink-faded)', letterSpacing: '0.06em' }}>这次学</span>
-          <span className="text-md" style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}>{plan.goal}</span>
+        <div
+          className="mb-5 flex items-baseline gap-2.5 pb-4"
+          style={{ borderBottom: '1px solid var(--separator)' }}
+        >
+          <span
+            className="shrink-0 text-2xs uppercase"
+            style={{ color: 'var(--ink-faded)', letterSpacing: '0.06em' }}
+          >
+            这次学
+          </span>
+          <span
+            className="text-md"
+            style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
+          >
+            {plan.goal}
+          </span>
         </div>
       )}
 
       {/* 理解(自然段:Aurora 向我解释思路) */}
       <div className="mb-2 flex items-center gap-2 text-xs" style={{ color: 'var(--ink-faded)' }}>
-        <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: 'var(--accent)', boxShadow: '0 0 0 3px var(--accent-soft)' }} />
-        <span><b style={{ color: 'var(--ink)' }}>Aurora 的理解</b> · 研究后</span>
+        <span
+          className="inline-block h-1.5 w-1.5 rounded-full"
+          style={{ background: 'var(--accent)', boxShadow: '0 0 0 3px var(--accent-soft)' }}
+        />
+        <span>
+          <b style={{ color: 'var(--ink)' }}>Aurora 的理解</b> · 研究后
+        </span>
       </div>
-      <div className="text-md" style={{ fontFamily: 'var(--font-serif)', lineHeight: 'var(--leading-reading, 1.75)' }}>
+      <div
+        className="text-md"
+        style={{ fontFamily: 'var(--font-serif)', lineHeight: 'var(--leading-reading, 1.75)' }}
+      >
         <Prose text={plan.understanding} />
       </div>
 
@@ -113,25 +177,62 @@ function PlanProduct({ plan, onPlanWithAurora }: { plan: LearnPlan | null; onPla
       {plan.items.length > 0 && (
         <>
           <div className="mb-1 mt-7">
-            <span className="text-2xs uppercase" style={{ color: 'var(--ink-faded)', letterSpacing: '0.06em' }}>脉络 · 提案</span>
+            <span
+              className="text-2xs uppercase"
+              style={{ color: 'var(--ink-faded)', letterSpacing: '0.06em' }}
+            >
+              脉络 · 提案
+            </span>
           </div>
           <div className="relative">
-            <span className="absolute left-[60px] top-[18px] bottom-6 w-px" style={{ background: 'var(--separator)' }} />
+            <span
+              className="absolute left-[60px] top-[18px] bottom-6 w-px"
+              style={{ background: 'var(--separator)' }}
+            />
             {plan.items.map((p, i) => {
               const prevThread = i > 0 ? plan.items[i - 1].thread : undefined;
               const showThread = p.thread !== prevThread;
               return (
-                <div key={i} className="grid w-full items-start py-2.5" style={{ gridTemplateColumns: '48px 24px 1fr' }}>
-                  <div className="flex justify-end pr-2 pt-[3px] text-2xs" style={{ color: showThread ? 'var(--ink-faded)' : 'transparent', letterSpacing: '0.04em' }}>{p.thread}</div>
+                <div
+                  key={i}
+                  className="grid w-full items-start py-2.5"
+                  style={{ gridTemplateColumns: '48px 24px 1fr' }}
+                >
+                  <div
+                    className="flex justify-end pr-2 pt-[3px] text-2xs"
+                    style={{
+                      color: showThread ? 'var(--ink-faded)' : 'transparent',
+                      letterSpacing: '0.04em',
+                    }}
+                  >
+                    {p.thread}
+                  </div>
                   <div className="relative flex justify-center pt-[7px]">
-                    <span className="h-2 w-2 rounded-full" style={{ background: 'var(--accent)', boxShadow: '0 0 0 4px var(--paper)' }} />
+                    <span
+                      className="h-2 w-2 rounded-full"
+                      style={{ background: 'var(--accent)', boxShadow: '0 0 0 4px var(--paper)' }}
+                    />
                   </div>
                   <div>
                     <div className="flex items-baseline gap-2">
-                      <span className="tabular-nums text-xs" style={{ color: 'var(--ink-ghost)' }}>{i + 1}</span>
-                      <span className="text-md" style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}>{p.title}</span>
+                      <span className="tabular-nums text-xs" style={{ color: 'var(--ink-ghost)' }}>
+                        {i + 1}
+                      </span>
+                      <span
+                        className="text-md"
+                        style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
+                      >
+                        {p.title}
+                      </span>
                     </div>
-                    {p.why && <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-faded)', lineHeight: 1.65 }}>{p.why}</p>}
+                    {p.why && (
+                      <p
+                        className="mt-0.5 text-xs"
+                        style={{ color: 'var(--ink-faded)', lineHeight: 1.65 }}
+                      >
+                        {p.why}
+                      </p>
+                    )}
                   </div>
                 </div>
               );
@@ -146,7 +247,13 @@ function PlanProduct({ plan, onPlanWithAurora }: { plan: LearnPlan | null; onPla
 // ─── 右栏顶部:嵌入式「我的篇目」目录(可折叠 + dnd 拖排序)= 真树 ───────────────────
 
 function SortableChapterRow({
-  ch, index, current, autoEdit, onNavigate, onRename, onRemove,
+  ch,
+  index,
+  current,
+  autoEdit,
+  onNavigate,
+  onRename,
+  onRemove,
 }: {
   ch: Chapter;
   index: number;
@@ -156,33 +263,62 @@ function SortableChapterRow({
   onRename: (navId: string, title: string) => void;
   onRemove: (navId: string) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: ch.navId });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: ch.navId,
+  });
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(ch.title);
   const autoEditedRef = useRef(false);
 
-  const startEdit = () => { setDraft(ch.title); setEditing(true); };
+  const startEdit = () => {
+    setDraft(ch.title);
+    setEditing(true);
+  };
 
   // 新建后该行自动进改名态(光标落标题),只触发一次,不留"未命名"
   useEffect(() => {
     if (autoEdit && !autoEditedRef.current) {
       autoEditedRef.current = true;
-      queueMicrotask(() => { setDraft(ch.title); setEditing(true); });
+      queueMicrotask(() => {
+        setDraft(ch.title);
+        setEditing(true);
+      });
     }
   }, [autoEdit, ch.title]);
-  const commit = () => { const t = draft.trim(); if (t && t !== ch.title) onRename(ch.navId, t); setEditing(false); };
+  const commit = () => {
+    const t = draft.trim();
+    if (t && t !== ch.title) onRename(ch.navId, t);
+    setEditing(false);
+  };
 
   // 纯结构编辑:拖排序 + 序号 + 标题(点进入 / 改名) + 删。研究过实墨、没研究淡墨,不掺状态词。
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1, background: current ? 'var(--accent-soft)' : undefined }}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.4 : 1,
+        background: current ? 'var(--accent-soft)' : undefined,
+      }}
       className="group flex items-center gap-1.5 rounded-md py-1.5 pl-1 pr-1.5 transition-colors hover:bg-[var(--shelf)]"
     >
-      <button type="button" aria-label="拖拽排序" className="flex w-4 shrink-0 cursor-grab items-center justify-center opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing" style={{ color: 'var(--ink-ghost)' }} {...attributes} {...listeners}>
+      <button
+        type="button"
+        aria-label="拖拽排序"
+        className="flex w-4 shrink-0 cursor-grab items-center justify-center opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
+        style={{ color: 'var(--ink-ghost)' }}
+        {...attributes}
+        {...listeners}
+      >
         <GripVertical size={13} strokeWidth={1.5} />
       </button>
-      <span className="w-4 shrink-0 text-right tabular-nums text-2xs" style={{ color: 'var(--ink-ghost)' }}>{index + 1}</span>
+      <span
+        className="w-4 shrink-0 text-right tabular-nums text-2xs"
+        style={{ color: 'var(--ink-ghost)' }}
+      >
+        {index + 1}
+      </span>
 
       {editing ? (
         <input
@@ -190,20 +326,42 @@ function SortableChapterRow({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
-          onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit();
+            if (e.key === 'Escape') setEditing(false);
+          }}
           className="min-w-0 flex-1 rounded border-none bg-transparent px-1 py-0.5 text-sm outline-none"
           style={{ color: 'var(--ink)', boxShadow: '0 0 0 1px var(--accent)' }}
         />
       ) : (
-        <button onClick={() => onNavigate(ch.contentItemId)} className="min-w-0 flex-1 truncate text-left text-sm outline-none" style={{ color: ch.studied ? 'var(--ink)' : 'var(--ink-faded)' }} title="进入这一篇">
+        <button
+          onClick={() => onNavigate(ch.contentItemId)}
+          className="min-w-0 flex-1 truncate text-left text-sm outline-none"
+          style={{ color: ch.studied ? 'var(--ink)' : 'var(--ink-faded)' }}
+          title="进入这一篇"
+        >
           {ch.title}
         </button>
       )}
 
       {!editing && (
         <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-          <button onClick={startEdit} className="rounded p-1 outline-none hover:bg-[var(--paper)]" style={{ color: 'var(--ink-ghost)' }} title="改名"><Pencil size={12} strokeWidth={1.6} /></button>
-          <button onClick={() => onRemove(ch.navId)} className="rounded p-1 outline-none hover:bg-[var(--paper)]" style={{ color: 'var(--ink-ghost)' }} title="删除这一篇"><X size={12} strokeWidth={1.8} /></button>
+          <button
+            onClick={startEdit}
+            className="rounded p-1 outline-none hover:bg-[var(--paper)]"
+            style={{ color: 'var(--ink-ghost)' }}
+            title="改名"
+          >
+            <Pencil size={12} strokeWidth={1.6} />
+          </button>
+          <button
+            onClick={() => onRemove(ch.navId)}
+            className="rounded p-1 outline-none hover:bg-[var(--paper)]"
+            style={{ color: 'var(--ink-ghost)' }}
+            title="删除这一篇"
+          >
+            <X size={12} strokeWidth={1.8} />
+          </button>
         </div>
       )}
     </div>
@@ -211,7 +369,15 @@ function SortableChapterRow({
 }
 
 function ChapterOutline({
-  chapters, currentContentId, isTopic, autoEditNavId, onNavigate, onAdd, onRename, onRemove, onReorder,
+  chapters,
+  currentContentId,
+  isTopic,
+  autoEditNavId,
+  onNavigate,
+  onAdd,
+  onRename,
+  onRemove,
+  onReorder,
 }: {
   chapters: Chapter[];
   currentContentId: string | null;
@@ -238,14 +404,32 @@ function ChapterOutline({
   return (
     <div className="mb-5 pb-3" style={{ borderBottom: '1px solid var(--separator)' }}>
       <div className="flex items-center gap-2">
-        <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-1.5 rounded-md py-0.5 pr-1 outline-none" style={{ color: 'var(--ink-faded)' }}>
-          {open ? <ChevronDown size={13} strokeWidth={1.8} /> : <ChevronRight size={13} strokeWidth={1.8} />}
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="flex items-center gap-1.5 rounded-md py-0.5 pr-1 outline-none"
+          style={{ color: 'var(--ink-faded)' }}
+        >
+          {open ? (
+            <ChevronDown size={13} strokeWidth={1.8} />
+          ) : (
+            <ChevronRight size={13} strokeWidth={1.8} />
+          )}
           <span className="text-2xs uppercase" style={{ letterSpacing: '0.06em' }}>
-            我的篇目{isTopic ? ` · ${chapters.length} 篇` : currentIdx >= 0 ? ` · 第 ${currentIdx + 1}/${chapters.length} 篇` : ''}
+            我的篇目
+            {isTopic
+              ? ` · ${chapters.length} 篇`
+              : currentIdx >= 0
+                ? ` · 第 ${currentIdx + 1}/${chapters.length} 篇`
+                : ''}
           </span>
         </button>
         {open && (
-          <button onClick={onAdd} className="ml-auto flex items-center gap-0.5 rounded px-1.5 py-0.5 text-2xs outline-none transition-colors hover:bg-[var(--shelf)]" style={{ color: 'var(--ink-faded)' }} title="凭空新建一篇">
+          <button
+            onClick={onAdd}
+            className="ml-auto flex items-center gap-0.5 rounded px-1.5 py-0.5 text-2xs outline-none transition-colors hover:bg-[var(--shelf)]"
+            style={{ color: 'var(--ink-faded)' }}
+            title="凭空新建一篇"
+          >
             <Plus size={11} strokeWidth={2} /> 新建一篇
           </button>
         )}
@@ -253,13 +437,31 @@ function ChapterOutline({
 
       {open &&
         (chapters.length === 0 ? (
-          <p className="px-1 py-3 text-xs" style={{ color: 'var(--ink-ghost)' }}>照左边脉络「新建一篇」,搭起你的篇目。</p>
+          <p className="px-1 py-3 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            照左边脉络「新建一篇」,搭起你的篇目。
+          </p>
         ) : (
           <div className="mt-1.5">
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={chapters.map((c) => c.navId)} strategy={verticalListSortingStrategy}>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={chapters.map((c) => c.navId)}
+                strategy={verticalListSortingStrategy}
+              >
                 {chapters.map((c, i) => (
-                  <SortableChapterRow key={c.navId} ch={c} index={i} current={c.contentItemId === currentContentId} autoEdit={c.navId === autoEditNavId} onNavigate={onNavigate} onRename={onRename} onRemove={onRemove} />
+                  <SortableChapterRow
+                    key={c.navId}
+                    ch={c}
+                    index={i}
+                    current={c.contentItemId === currentContentId}
+                    autoEdit={c.navId === autoEditNavId}
+                    onNavigate={onNavigate}
+                    onRename={onRename}
+                    onRemove={onRemove}
+                  />
                 ))}
               </SortableContext>
             </DndContext>
@@ -293,12 +495,20 @@ function EditControls({
       >
         {!online ? (
           <>
-            <span className="size-1.5 shrink-0 rounded-full" style={{ background: 'var(--mark-yellow, #d4a017)' }} aria-hidden />
+            <span
+              className="size-1.5 shrink-0 rounded-full"
+              style={{ background: 'var(--mark-yellow, #d4a017)' }}
+              aria-hidden
+            />
             等待联网
           </>
         ) : editor.isAutosaving ? (
           <>
-            <span className="size-1.5 shrink-0 animate-pulse rounded-full [animation-duration:1.2s]" style={{ background: 'var(--accent)' }} aria-hidden />
+            <span
+              className="size-1.5 shrink-0 animate-pulse rounded-full [animation-duration:1.2s]"
+              style={{ background: 'var(--accent)' }}
+              aria-hidden
+            />
             保存中…
           </>
         ) : editor.lastSavedAt ? (
@@ -307,12 +517,29 @@ function EditControls({
           ''
         )}
       </span>
-      {editor.autosaveError && <span className="text-xs" style={{ color: 'var(--mark-red)' }}>{editor.autosaveError}</span>}
+      {editor.autosaveError && (
+        <span className="text-xs" style={{ color: 'var(--mark-red)' }}>
+          {editor.autosaveError}
+        </span>
+      )}
 
-      <button onClick={() => void editor.saveDraft()} className="rounded-md px-2.5 py-1 text-sm outline-none transition-colors hover:bg-[var(--shelf)]" style={{ color: 'var(--ink-faded)' }} title="保存草稿 ⇧⌘S">保存</button>
+      <button
+        onClick={() => void editor.saveDraft()}
+        className="rounded-md px-2.5 py-1 text-sm outline-none transition-colors hover:bg-[var(--shelf)]"
+        style={{ color: 'var(--ink-faded)' }}
+        title="保存草稿 ⇧⌘S"
+      >
+        保存
+      </button>
       <Popover open={editor.showCommitDialog} onOpenChange={editor.setShowCommitDialog}>
         <PopoverTrigger asChild>
-          <button className="rounded-md px-3 py-1 text-sm outline-none transition-colors" style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }} title="提交一个版本">提交</button>
+          <button
+            className="rounded-md px-3 py-1 text-sm outline-none transition-colors"
+            style={{ background: 'var(--shelf)', color: 'var(--ink-faded)' }}
+            title="提交一个版本"
+          >
+            提交
+          </button>
         </PopoverTrigger>
         <PopoverContent align="end" sideOffset={6} className="w-64 p-3">
           <CommitForm
@@ -332,9 +559,18 @@ function EditControls({
         title="切换主题"
         aria-label="切换主题"
       >
-        {theme === 'midnight' ? <Sun size={16} strokeWidth={1.5} /> : <Moon size={16} strokeWidth={1.5} />}
+        {theme === 'midnight' ? (
+          <Sun size={16} strokeWidth={1.5} />
+        ) : (
+          <Moon size={16} strokeWidth={1.5} />
+        )}
       </button>
-      <button className="rounded-md p-1.5 outline-none transition-colors hover:bg-[var(--shelf)]" style={{ color: 'var(--ink-ghost)' }} title="更多" aria-label="更多">
+      <button
+        className="rounded-md p-1.5 outline-none transition-colors hover:bg-[var(--shelf)]"
+        style={{ color: 'var(--ink-ghost)' }}
+        title="更多"
+        aria-label="更多"
+      >
         <MoreHorizontal size={16} strokeWidth={1.5} />
       </button>
     </>
@@ -344,7 +580,10 @@ function EditControls({
 // ─── 节点屏(对照重写双栏;左 AI 那份 / 右 我的[篇目目录 + 正文重写]) ───────────────
 
 function NodeScreen({
-  isTopic, nodeId, data, onNavigate,
+  isTopic,
+  nodeId,
+  data,
+  onNavigate,
 }: {
   isTopic: boolean;
   nodeId: string; // 当前篇的 contentItemId(总章态为空)
@@ -359,7 +598,7 @@ function NodeScreen({
   const chapter = idx >= 0 ? chapters[idx] : null;
   const prev = idx > 0 ? chapters[idx - 1].contentItemId : null;
   const next = idx >= 0 && idx < chapters.length - 1 ? chapters[idx + 1].contentItemId : null;
-  const title = isTopic ? data.topicTitle : chapter?.title ?? '';
+  const title = isTopic ? data.topicTitle : (chapter?.title ?? '');
 
   // CTA「开始/继续学习」只看主题有没有规划(plan = 主题 aidraft):有规划 = 已经动过这个主题 = 继续学习。
   // 落点仍优先跳顺序上最新的已研究篇,都没研究则落第一篇。
@@ -372,7 +611,10 @@ function NodeScreen({
   const planGoal = data.plan?.goal ? `(目标:${data.plan.goal})` : '';
   const ref = (t: string, id: string | null) => `《${t}》(ID:${id ?? '—'})`;
   const chapterLines = chapters
-    .map((c, i) => `  ${i + 1}. ${ref(c.title, c.contentItemId)} ${c.studied ? '已研究' : '空'}${c.contentItemId === currentCid ? ' ←当前' : ''}`)
+    .map(
+      (c, i) =>
+        `  ${i + 1}. ${ref(c.title, c.contentItemId)} ${c.studied ? '已研究' : '空'}${c.contentItemId === currentCid ? ' ←当前' : ''}`,
+    )
     .join('\n');
   const learningContextStr =
     (isTopic
@@ -398,14 +640,27 @@ function NodeScreen({
   useEffect(() => {
     let alive = true;
     if (isTopic || !currentCid) {
-      queueMicrotask(() => { if (alive) setAiDraft(''); });
-      return () => { alive = false; };
+      queueMicrotask(() => {
+        if (alive) setAiDraft('');
+      });
+      return () => {
+        alive = false;
+      };
     }
-    queueMicrotask(() => { if (alive) setAiDraft(null); }); // 切篇先置 loading
-    notesApi.getAiDraft(currentCid)
-      .then((d) => { if (alive) setAiDraft(d?.bodyMarkdown ?? ''); })
-      .catch(() => { if (alive) setAiDraft(''); });
-    return () => { alive = false; };
+    queueMicrotask(() => {
+      if (alive) setAiDraft(null);
+    }); // 切篇先置 loading
+    notesApi
+      .getAiDraft(currentCid)
+      .then((d) => {
+        if (alive) setAiDraft(d?.bodyMarkdown ?? '');
+      })
+      .catch(() => {
+        if (alive) setAiDraft('');
+      });
+    return () => {
+      alive = false;
+    };
   }, [isTopic, currentCid]);
 
   const studied = (aiDraft?.trim().length ?? 0) > 0;
@@ -416,6 +671,7 @@ function NodeScreen({
   const [auroraVisible, setAuroraVisible] = useState(false);
   const [selections, setSelections] = useState<ChatSelectionAttachment[]>([]);
   const [pending, setPending] = useState<{ text: string; x: number; y: number } | null>(null);
+  const aiPaneRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const timers: number[] = [];
@@ -437,7 +693,8 @@ function NodeScreen({
       void refreshPlan();
     } else if (currentCid) {
       // 拉一次 aidraft body:既更新左栏,又据其非空性直接更新 studied —— 不再二次拉同一 aidraft。
-      notesApi.getAiDraft(currentCid)
+      notesApi
+        .getAiDraft(currentCid)
         .then((d) => {
           const body = d?.bodyMarkdown ?? '';
           setAiDraft((cur) => (cur !== body ? body : cur));
@@ -455,16 +712,41 @@ function NodeScreen({
     refreshLeft();
   };
 
-  const handleDraftMouseUp = () => {
+  const updateDraftSelectionPopover = useCallback(() => {
     const sel = window.getSelection();
     const text = sel?.toString().trim() ?? '';
     if (!text || !sel || sel.rangeCount === 0) {
       setPending(null);
       return;
     }
-    const rect = sel.getRangeAt(0).getBoundingClientRect();
-    setPending({ text, x: rect.left + rect.width / 2, y: rect.top });
-  };
+    const range = sel.getRangeAt(0);
+    const pane = aiPaneRef.current;
+    const common = range.commonAncestorContainer;
+    const commonElement = common.nodeType === Node.ELEMENT_NODE ? common : common.parentElement;
+    if (!pane || !commonElement || !pane.contains(commonElement)) {
+      setPending(null);
+      return;
+    }
+
+    const rects = Array.from(range.getClientRects()).filter(
+      (rect) => rect.width > 0 && rect.height > 0,
+    );
+    const rect = rects.at(-1) ?? range.getBoundingClientRect();
+    if (!rect || (rect.width === 0 && rect.height === 0)) {
+      setPending(null);
+      return;
+    }
+
+    setPending({
+      text,
+      x: Math.min(window.innerWidth - 88, Math.max(88, rect.right)),
+      y: Math.min(window.innerHeight - 44, Math.max(48, rect.bottom + 10)),
+    });
+  }, []);
+
+  const scheduleDraftSelectionPopover = useCallback(() => {
+    window.requestAnimationFrame(updateDraftSelectionPopover);
+  }, [updateDraftSelectionPopover]);
   const addSelectionToAurora = () => {
     if (!pending) return;
     setSelections((prev2) => [...prev2, createChatMessageAttachment({ text: pending.text })]);
@@ -476,7 +758,12 @@ function NodeScreen({
     setSelections((prev2) => prev2.filter((a) => (a.id === id ? (a.dispose(), false) : true)));
   const clearSelections = () => setSelections((prev2) => (prev2.forEach((a) => a.dispose()), []));
 
-  const navBtn = (icon: ReactNode, onClick: (() => void) | null, label?: string, title2?: string) => (
+  const navBtn = (
+    icon: ReactNode,
+    onClick: (() => void) | null,
+    label?: string,
+    title2?: string,
+  ) => (
     <button
       className="flex items-center gap-1 rounded-md px-2 py-1.5 text-sm outline-none transition-colors hover:bg-[var(--shelf)] disabled:cursor-default disabled:opacity-30 disabled:hover:bg-transparent"
       style={{ color: 'var(--ink-faded)' }}
@@ -496,32 +783,77 @@ function NodeScreen({
         {isTopic ? (
           <>
             {/* 退出学习:回到来源主题节点(?at=navId),而非根列表 */}
-            {navBtn(<ChevronLeft size={18} strokeWidth={1.5} />, () => navigate(topicNavId ? `/admin/notes?at=${topicNavId}` : '/admin/notes'), undefined, '退出学习')}
-            <span className="text-sm font-medium" style={{ color: 'var(--ink-faded)' }}>{title}</span>
-            <span className="rounded-full px-2 py-0.5 text-xs" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>规划中</span>
+            {navBtn(
+              <ChevronLeft size={18} strokeWidth={1.5} />,
+              () => navigate(topicNavId ? `/admin/notes?at=${topicNavId}` : '/admin/notes'),
+              undefined,
+              '退出学习',
+            )}
+            <span className="text-sm font-medium" style={{ color: 'var(--ink-faded)' }}>
+              {title}
+            </span>
+            <span
+              className="rounded-full px-2 py-0.5 text-xs"
+              style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
+            >
+              规划中
+            </span>
           </>
         ) : (
           <>
             {/* 章节切换器:‹ › 紧邻上下篇,点篇名弹列表跳任意篇;回主题挪到右侧主操作 pill */}
-            {navBtn(<ChevronLeft size={17} strokeWidth={1.5} />, prev ? () => onNavigate(prev) : null, undefined, '上一篇')}
+            {navBtn(
+              <ChevronLeft size={17} strokeWidth={1.5} />,
+              prev ? () => onNavigate(prev) : null,
+              undefined,
+              '上一篇',
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-1 rounded-md px-2 py-1 text-sm font-medium outline-none transition-colors hover:bg-[var(--shelf)]" style={{ color: 'var(--ink-faded)' }} title="跳到任意篇">
+                <button
+                  className="flex items-center gap-1 rounded-md px-2 py-1 text-sm font-medium outline-none transition-colors hover:bg-[var(--shelf)]"
+                  style={{ color: 'var(--ink-faded)' }}
+                  title="跳到任意篇"
+                >
                   {title}
                   <ChevronDown size={14} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)' }} />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="max-h-[60vh] min-w-[13rem] overflow-y-auto">
+              <DropdownMenuContent
+                align="start"
+                className="max-h-[60vh] min-w-[13rem] overflow-y-auto"
+              >
                 {chapters.map((c, i) => (
-                  <DropdownMenuItem key={c.navId} onClick={() => onNavigate(c.contentItemId)} className="gap-2 text-sm">
-                    <span className="w-4 shrink-0 text-right tabular-nums text-2xs" style={{ color: 'var(--ink-ghost)' }}>{i + 1}</span>
-                    <span className="flex-1 truncate" style={{ color: c.contentItemId === nodeId ? 'var(--accent)' : 'var(--ink)' }}>{c.title}</span>
-                    {c.contentItemId === nodeId && <Check size={13} strokeWidth={2} style={{ color: 'var(--accent)' }} />}
+                  <DropdownMenuItem
+                    key={c.navId}
+                    onClick={() => onNavigate(c.contentItemId)}
+                    className="gap-2 text-sm"
+                  >
+                    <span
+                      className="w-4 shrink-0 text-right tabular-nums text-2xs"
+                      style={{ color: 'var(--ink-ghost)' }}
+                    >
+                      {i + 1}
+                    </span>
+                    <span
+                      className="flex-1 truncate"
+                      style={{ color: c.contentItemId === nodeId ? 'var(--accent)' : 'var(--ink)' }}
+                    >
+                      {c.title}
+                    </span>
+                    {c.contentItemId === nodeId && (
+                      <Check size={13} strokeWidth={2} style={{ color: 'var(--accent)' }} />
+                    )}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-            {navBtn(<ChevronRight size={17} strokeWidth={1.5} />, next ? () => onNavigate(next) : null, undefined, '下一篇')}
+            {navBtn(
+              <ChevronRight size={17} strokeWidth={1.5} />,
+              next ? () => onNavigate(next) : null,
+              undefined,
+              '下一篇',
+            )}
           </>
         )}
         <div className="ml-auto flex items-center gap-1">
@@ -533,7 +865,9 @@ function NodeScreen({
                 style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
                 title={`${hasPlan ? '继续学习' : '开始学习'} · ${resume.title}`}
               >
-                <span className="min-w-0 max-w-[15rem] truncate">{hasPlan ? '继续学习' : '开始学习'} · {resume.title}</span>
+                <span className="min-w-0 max-w-[15rem] truncate">
+                  {hasPlan ? '继续学习' : '开始学习'} · {resume.title}
+                </span>
                 <ChevronRight size={15} strokeWidth={2} className="shrink-0" />
               </button>
               <span className="mx-1 h-4 w-px" style={{ background: 'var(--separator)' }} />
@@ -552,7 +886,12 @@ function NodeScreen({
             </>
           )}
           {/* Aurora 入口在 EditControls 内、提交右边(与编辑草稿页同序:保存→提交→Aurora→主题→⋯)。 */}
-          <EditControls editor={editor} online={online} auroraOpen={auroraOpen} onOpenAurora={() => setAuroraOpen(true)} />
+          <EditControls
+            editor={editor}
+            online={online}
+            auroraOpen={auroraOpen}
+            onOpenAurora={() => setAuroraOpen(true)}
+          />
         </div>
       </header>
 
@@ -560,27 +899,47 @@ function NodeScreen({
       <div className="flex min-h-0 flex-1">
         {/* 左:AI 那份(总章=规划提案;篇=AI 初稿) */}
         <div
+          ref={aiPaneRef}
           className="relative min-h-0 flex-1 overflow-hidden"
-          style={{ minWidth: 0, background: 'color-mix(in srgb, var(--paper) 82%, var(--shelf))', borderRight: '1px solid var(--separator)' }}
-          onMouseUp={!isTopic && studied ? handleDraftMouseUp : undefined}
+          style={{
+            minWidth: 0,
+            background: 'color-mix(in srgb, var(--paper) 82%, var(--shelf))',
+            borderRight: '1px solid var(--separator)',
+          }}
+          onPointerUp={!isTopic && studied ? scheduleDraftSelectionPopover : undefined}
+          onKeyUp={!isTopic && studied ? scheduleDraftSelectionPopover : undefined}
+          onBlurCapture={() => setPending(null)}
         >
           <div className="h-full overflow-y-auto">
             {isTopic ? (
               <PlanProduct plan={plan} onPlanWithAurora={() => setAuroraOpen(true)} />
             ) : aiDraft === null ? (
-              <div className="flex h-full items-center justify-center"><Loader2 size={18} className="animate-spin" style={{ color: 'var(--ink-ghost)' }} /></div>
+              <div className="flex h-full items-center justify-center">
+                <Loader2 size={18} className="animate-spin" style={{ color: 'var(--ink-ghost)' }} />
+              </div>
             ) : studied ? (
               <div className="mx-auto w-full max-w-[var(--layout-editor-max)] pb-24 pt-2">
                 <DraftAssetProvider contentItemId={currentCid ?? ''}>
-                  <PlateMarkdownEditor key={`d-${nodeId}-${aiDraft.length}:${aiDraft.slice(0, 16)}:${aiDraft.slice(-16)}`} initialMarkdown={aiDraft} readOnly />
+                  <PlateMarkdownEditor
+                    key={`d-${nodeId}-${aiDraft.length}:${aiDraft.slice(0, 16)}:${aiDraft.slice(-16)}`}
+                    initialMarkdown={aiDraft}
+                    readOnly
+                  />
                 </DraftAssetProvider>
               </div>
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
                 <Circle size={20} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)' }} />
                 <div className="space-y-1.5">
-                  <p className="text-md font-light" style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}>这一篇还没研究</p>
-                  <p className="text-sm" style={{ color: 'var(--ink-faded)' }}>让 Aurora 联网研究、按文风起草,初稿会产在这一栏。</p>
+                  <p
+                    className="text-md font-light"
+                    style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
+                  >
+                    这一篇还没研究
+                  </p>
+                  <p className="text-sm" style={{ color: 'var(--ink-faded)' }}>
+                    让 Aurora 联网研究、按文风起草,初稿会产在这一栏。
+                  </p>
                 </div>
                 <button
                   onClick={() => setAuroraOpen(true)}
@@ -597,10 +956,19 @@ function NodeScreen({
         {/* 右:我的(总章顶部嵌篇目目录 + 正文重写) */}
         <div
           className="relative min-h-0 shrink-0 overflow-hidden"
-          style={{ background: 'var(--paper)', width: slid ? 0 : '50%', transition: `width ${SLIDE_MS}ms cubic-bezier(0.32, 0.72, 0, 1)` }}
+          style={{
+            background: 'var(--paper)',
+            width: slid ? 0 : '50%',
+            transition: `width ${SLIDE_MS}ms cubic-bezier(0.32, 0.72, 0, 1)`,
+          }}
         >
-          <div className="h-full overflow-y-auto" style={{ opacity: rewriteVisible ? 1 : 0, transition: `opacity ${FADE_MS}ms ease` }}>
-            <div className={`mx-auto w-full max-w-[var(--layout-editor-max)] pb-40 ${isTopic ? 'px-2 pt-4' : 'pt-2'}`}>
+          <div
+            className="h-full overflow-y-auto"
+            style={{ opacity: rewriteVisible ? 1 : 0, transition: `opacity ${FADE_MS}ms ease` }}
+          >
+            <div
+              className={`mx-auto w-full max-w-[var(--layout-editor-max)] pb-40 ${isTopic ? 'px-2 pt-4' : 'pt-2'}`}
+            >
               {isTopic && (
                 <ChapterOutline
                   chapters={chapters}
@@ -608,7 +976,9 @@ function NodeScreen({
                   isTopic={isTopic}
                   autoEditNavId={autoEditNavId}
                   onNavigate={(cid) => onNavigate(cid)}
-                  onAdd={() => void data.createChapter().then((navId) => navId && setAutoEditNavId(navId))}
+                  onAdd={() =>
+                    void data.createChapter().then((navId) => navId && setAutoEditNavId(navId))
+                  }
                   onRename={(navId, t) => void data.renameChapter(navId, t)}
                   onRemove={(navId) => void data.removeChapter(navId)}
                   onReorder={(navIds) => void data.reorderChapters(navIds)}
@@ -620,12 +990,24 @@ function NodeScreen({
                   - 加载完成才挂 Plate:此刻 editor.state.bodyMarkdown 已是草稿或回退的已发布正文,
                     非受控 initialMarkdown 一次到位,不会先空挂再被异步内容覆盖。 */}
               {!currentCid ? null : editor.error && !editor.loaded ? (
-                <p className="px-2 py-20 text-center text-sm" style={{ color: 'var(--mark-red)' }}>{editor.error}</p>
+                <p className="px-2 py-20 text-center text-sm" style={{ color: 'var(--mark-red)' }}>
+                  {editor.error}
+                </p>
               ) : editor.loading ? (
-                <div className="flex items-center justify-center py-20"><Loader2 size={18} className="animate-spin" style={{ color: 'var(--ink-ghost)' }} /></div>
+                <div className="flex items-center justify-center py-20">
+                  <Loader2
+                    size={18}
+                    className="animate-spin"
+                    style={{ color: 'var(--ink-ghost)' }}
+                  />
+                </div>
               ) : (
                 <DraftAssetProvider contentItemId={currentCid}>
-                  <PlateMarkdownEditor key={`r-${nodeId}`} initialMarkdown={editor.state.bodyMarkdown} onChange={(md, isUserEdit) => editor.setBody(md, isUserEdit)} />
+                  <PlateMarkdownEditor
+                    key={`r-${nodeId}`}
+                    initialMarkdown={editor.state.bodyMarkdown}
+                    onChange={(md, isUserEdit) => editor.setBody(md, isUserEdit)}
+                  />
                 </DraftAssetProvider>
               )}
             </div>
@@ -635,9 +1017,16 @@ function NodeScreen({
         {/* Aurora */}
         <div
           className="min-h-0 shrink-0 overflow-hidden"
-          style={{ background: 'var(--paper)', width: slid ? 'clamp(340px, 26vw, 420px)' : 0, transition: `width ${SLIDE_MS}ms cubic-bezier(0.32, 0.72, 0, 1)` }}
+          style={{
+            background: 'var(--paper)',
+            width: slid ? 'clamp(340px, 26vw, 420px)' : 0,
+            transition: `width ${SLIDE_MS}ms cubic-bezier(0.32, 0.72, 0, 1)`,
+          }}
         >
-          <div className="h-full" style={{ opacity: auroraVisible ? 1 : 0, transition: `opacity ${FADE_MS}ms ease` }}>
+          <div
+            className="h-full"
+            style={{ opacity: auroraVisible ? 1 : 0, transition: `opacity ${FADE_MS}ms ease` }}
+          >
             <AdvisorSidebar
               key={`a-${nodeId || 'topic'}`}
               sessionKey={`learn-${currentCid ?? 'topic'}`}
@@ -645,10 +1034,19 @@ function NodeScreen({
               source="learning-editor"
               context={
                 isTopic
-                  ? { learningTopicId: currentCid ?? undefined, learningContext: learningContextStr }
+                  ? {
+                      learningTopicId: currentCid ?? undefined,
+                      learningContext: learningContextStr,
+                    }
                   : { learningNoteId: currentCid ?? undefined, learningContext: learningContextStr }
               }
-              greeting={isTopic ? '想学什么领域?我来立锚、推演脉络。' : studied ? '想改这篇初稿的哪里?' : '这一篇要研究什么?我来起草。'}
+              greeting={
+                isTopic
+                  ? '想学什么领域?我来立锚、推演脉络。'
+                  : studied
+                    ? '想改这篇初稿的哪里?'
+                    : '这一篇要研究什么?我来起草。'
+              }
               selectionAttachments={selections}
               onRemoveSelectionAttachment={removeSelection}
               onClearSelectedText={clearSelections}
@@ -656,12 +1054,27 @@ function NodeScreen({
               onAuroraWrote={refreshLeft}
               renderToolCard={(part, chat) => {
                 // HITL 门禁:写工具 pending_approval 时渲染审批卡,用户允许/拒绝才真正落库
-                const p = part as { type?: string; state?: string; toolCallId?: string; output?: unknown };
-                const GATED = ['tool-write_draft', 'tool-write_learn_plan', 'tool-write_tasks', 'tool-remember'];
-                if (!p.type || !GATED.includes(p.type) || p.state !== 'output-available') return null;
+                const p = part as {
+                  type?: string;
+                  state?: string;
+                  toolCallId?: string;
+                  output?: unknown;
+                };
+                const GATED = [
+                  'tool-write_draft',
+                  'tool-write_learn_plan',
+                  'tool-write_tasks',
+                  'tool-remember',
+                ];
+                if (!p.type || !GATED.includes(p.type) || p.state !== 'output-available')
+                  return null;
                 let meta: Record<string, unknown> | undefined;
                 if (typeof p.output === 'string') {
-                  try { meta = (JSON.parse(p.output) as { meta?: Record<string, unknown> }).meta; } catch { /* 非 JSON 跳过 */ }
+                  try {
+                    meta = (JSON.parse(p.output) as { meta?: Record<string, unknown> }).meta;
+                  } catch {
+                    /* 非 JSON 跳过 */
+                  }
                 } else if (p.output && typeof p.output === 'object') {
                   meta = (p.output as { meta?: Record<string, unknown> }).meta;
                 }
@@ -686,12 +1099,25 @@ function NodeScreen({
 
       {pending && (
         <button
-          className="fixed z-50 flex items-center gap-1 rounded-md px-2.5 py-1 text-xs shadow-md"
-          style={{ left: pending.x, top: pending.y - 38, transform: 'translateX(-50%)', background: 'var(--accent)', color: 'var(--accent-contrast)' }}
+          className="fixed z-50 flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-md transition-colors hover:bg-[var(--shelf)]"
+          style={{
+            left: pending.x,
+            top: pending.y,
+            transform: 'translateX(-100%)',
+            background: 'var(--paper)',
+            borderColor: 'var(--separator)',
+            color: 'var(--ink)',
+          }}
+          onPointerDown={(event) => event.preventDefault()}
           onClick={addSelectionToAurora}
         >
-          <Sparkles size={12} strokeWidth={1.8} />
-          加入 Aurora
+          <img
+            className="h-3.5 w-3.5 object-contain opacity-75"
+            src="/garden/iris-seed.webp"
+            alt=""
+            draggable={false}
+          />
+          引用到 Aurora
         </button>
       )}
     </div>
@@ -715,11 +1141,24 @@ export default function LearnView() {
   if (data.loading) return <LoadingState variant="full" />;
   if (data.error) {
     return (
-      <div className="flex h-screen items-center justify-center" style={{ background: 'var(--paper)' }}>
+      <div
+        className="flex h-screen items-center justify-center"
+        style={{ background: 'var(--paper)' }}
+      >
         <div className="text-center">
-          <p className="text-md" style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}>学习加载失败</p>
-          <p className="mt-1 text-sm" style={{ color: 'var(--ink-faded)' }}>{data.error}</p>
-          <button onClick={() => void data.reload()} className="mt-4 rounded-md px-3.5 py-1.5 text-sm font-medium outline-none" style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}>重试</button>
+          <p className="text-md" style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}>
+            学习加载失败
+          </p>
+          <p className="mt-1 text-sm" style={{ color: 'var(--ink-faded)' }}>
+            {data.error}
+          </p>
+          <button
+            onClick={() => void data.reload()}
+            className="mt-4 rounded-md px-3.5 py-1.5 text-sm font-medium outline-none"
+            style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}
+          >
+            重试
+          </button>
         </div>
       </div>
     );

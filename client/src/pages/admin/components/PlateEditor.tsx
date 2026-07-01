@@ -367,7 +367,7 @@ export function PlateMarkdownEditor({
 
   const handleAnchorChange = useCallback(
     (anchor: AnchorPayload) => {
-      // 添加到聊天后会清掉原生 selection,但 Plate floating toolbar 可能保留上一帧位置。
+      // 引用到 Aurora 后会清掉原生 selection,但 Plate floating toolbar 可能保留上一帧位置。
       // 下一次用户真的拖出 range 时再恢复 toolbar。
       if (anchor.type === 'range') setToolbarSuppressed(false);
       onAnchorChange?.(anchor);
@@ -375,38 +375,37 @@ export function PlateMarkdownEditor({
     [onAnchorChange],
   );
 
-  const handleAddSelectionToChat = useCallback(
-    (text: string) => {
-      const attachment = createLiveChatSelectionAttachment({
-        editor: {
-          children: editor.children as LiveSelectionEditor['children'],
-          selection: editor.selection as LiveSelectionEditor['selection'],
-          api: {
-            after: editor.api.after as LiveSelectionEditor['api']['after'],
-            end: editor.api.end as LiveSelectionEditor['api']['end'],
-            rangeRef: editor.api.rangeRef as LiveSelectionEditor['api']['rangeRef'],
-            start: editor.api.start as LiveSelectionEditor['api']['start'],
-            string: editor.api.string as LiveSelectionEditor['api']['string'],
-            toDOMRange: editor.api.toDOMRange as LiveSelectionEditor['api']['toDOMRange'],
-            fragment: editor.api.fragment as LiveSelectionEditor['api']['fragment'],
-          },
+  const handleAddSelectionToChat = useCallback(() => {
+    const attachment = createLiveChatSelectionAttachment({
+      editor: {
+        children: editor.children as LiveSelectionEditor['children'],
+        selection: editor.selection as LiveSelectionEditor['selection'],
+        api: {
+          after: editor.api.after as LiveSelectionEditor['api']['after'],
+          end: editor.api.end as LiveSelectionEditor['api']['end'],
+          rangeRef: editor.api.rangeRef as LiveSelectionEditor['api']['rangeRef'],
+          start: editor.api.start as LiveSelectionEditor['api']['start'],
+          string: editor.api.string as LiveSelectionEditor['api']['string'],
+          toDOMRange: editor.api.toDOMRange as LiveSelectionEditor['api']['toDOMRange'],
+          fragment: editor.api.fragment as LiveSelectionEditor['api']['fragment'],
         },
-        preview: text,
-      });
-      if (!attachment) return;
-      setToolbarSuppressed(true);
-      if (toolbarSuppressTimerRef.current !== null) {
-        window.clearTimeout(toolbarSuppressTimerRef.current);
-      }
-      editor.tf.deselect();
-      toolbarSuppressTimerRef.current = window.setTimeout(() => {
-        toolbarSuppressTimerRef.current = null;
-        setToolbarSuppressed(false);
-      }, 120);
-      onAddSelectionToChat?.(attachment);
-    },
-    [editor, onAddSelectionToChat],
-  );
+      },
+      preview: editor.selection ? editor.api.string(editor.selection) : '',
+    });
+    if (!attachment) return;
+    setToolbarSuppressed(true);
+    if (toolbarSuppressTimerRef.current !== null) {
+      window.clearTimeout(toolbarSuppressTimerRef.current);
+    }
+    editor.tf.deselect();
+    window.getSelection()?.removeAllRanges();
+    window.setTimeout(() => window.getSelection()?.removeAllRanges(), 0);
+    toolbarSuppressTimerRef.current = window.setTimeout(() => {
+      toolbarSuppressTimerRef.current = null;
+      setToolbarSuppressed(false);
+    }, 120);
+    onAddSelectionToChat?.(attachment);
+  }, [editor, onAddSelectionToChat]);
 
   useEffect(() => {
     return () => {
@@ -458,7 +457,7 @@ export function PlateMarkdownEditor({
         {!readOnlyProp && !toolbarSuppressed && (
           <FloatingToolbar>
             <FloatingToolbarButtons
-              onAddSelectionToChat={handleAddSelectionToChat}
+              onAddSelectionToChat={onAddSelectionToChat ? handleAddSelectionToChat : undefined}
             />
           </FloatingToolbar>
         )}

@@ -114,4 +114,52 @@ describe('createLiveChatSelectionAttachment', () => {
       textPreview: '旧句子',
     });
   });
+
+  it('serializes selected table fragments as markdown tables', () => {
+    const selection = {
+      anchor: { path: [0, 0, 0, 0, 0], offset: 0 },
+      focus: { path: [0, 1, 1, 0, 0], offset: 1 },
+    };
+    const rangeRef = { current: selection, unref: vi.fn() };
+    const table = {
+      type: 'table',
+      children: [
+        {
+          type: 'tr',
+          children: [
+            { type: 'th', children: [{ type: 'p', children: [{ text: '概念' }] }] },
+            { type: 'th', children: [{ type: 'p', children: [{ text: '说明' }] }] },
+          ],
+        },
+        {
+          type: 'tr',
+          children: [
+            { type: 'td', children: [{ type: 'p', children: [{ text: 'A|B' }] }] },
+            { type: 'td', children: [{ type: 'p', children: [{ text: '第一行\n第二行' }] }] },
+          ],
+        },
+      ],
+    };
+
+    const attachment = createLiveChatSelectionAttachment({
+      editor: {
+        children: [table],
+        selection,
+        api: {
+          after: vi.fn(),
+          end: vi.fn(),
+          fragment: vi.fn(() => [table]),
+          rangeRef: vi.fn(() => rangeRef),
+          start: vi.fn(),
+          string: vi.fn(() => '概念说明A|B第一行第二行'),
+          toDOMRange: vi.fn(),
+        },
+      },
+      preview: '概念说明',
+    });
+
+    expect(attachment?.getText()).toBe(
+      '| 概念 | 说明 |\n| --- | --- |\n| A\\|B | 第一行 第二行 |',
+    );
+  });
 });
