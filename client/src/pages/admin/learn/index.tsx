@@ -66,6 +66,7 @@ import { CommitForm } from '../components/CommitForm';
 import { PlateMarkdownEditor } from '../components/PlateEditor';
 import { createNotesDraftAdapter, type NotesDraftState } from '../lib/notes-draft-adapter';
 import { useDraftEditor, type DraftEditorController } from '../lib/use-draft-editor';
+import { findClosestCitationAnchor, normalizeAidraftCitationLinks } from './aidraft-citations';
 import {
   useLearningData,
   type Chapter,
@@ -627,6 +628,11 @@ function NodeScreen({
 
   // 左栏 = Aurora 的 AI 初稿(只读;总章态左是规划提案,不拉 aiDraft)。null=加载中。
   const [aiDraft, setAiDraft] = useState<string | null>(null);
+  const normalizedAiDraft = useMemo(
+    () => (aiDraft ? normalizeAidraftCitationLinks(aiDraft) : aiDraft),
+    [aiDraft],
+  );
+  const displayAiDraft = normalizedAiDraft ?? '';
   const [autoEditNavId, setAutoEditNavId] = useState<string | null>(null); // 新建篇后让该行自动进改名态
   const online = useOnlineStatus();
 
@@ -747,6 +753,24 @@ function NodeScreen({
   const scheduleDraftSelectionPopover = useCallback(() => {
     window.requestAnimationFrame(updateDraftSelectionPopover);
   }, [updateDraftSelectionPopover]);
+
+  useEffect(() => {
+    const pane = aiPaneRef.current;
+    if (!pane) return;
+
+    const handleCitationClick = (e: MouseEvent) => {
+      const target = findClosestCitationAnchor(e.target);
+      if (!target || !pane.contains(target)) {
+        return;
+      }
+      e.preventDefault();
+      window.open(target.getAttribute('href') ?? '', '_blank', 'noopener,noreferrer');
+    };
+
+    pane.addEventListener('click', handleCitationClick);
+    return () => pane.removeEventListener('click', handleCitationClick);
+  }, [studied, aiDraft]);
+
   const addSelectionToAurora = () => {
     if (!pending) return;
     setSelections((prev2) => [...prev2, createChatMessageAttachment({ text: pending.text })]);
@@ -918,11 +942,11 @@ function NodeScreen({
                 <Loader2 size={18} className="animate-spin" style={{ color: 'var(--ink-ghost)' }} />
               </div>
             ) : studied ? (
-              <div className="mx-auto w-full max-w-[var(--layout-editor-max)] pb-24 pt-2">
+              <div className="learn-ai-draft-body mx-auto w-full max-w-[var(--layout-editor-max)] pb-24 pt-2">
                 <DraftAssetProvider contentItemId={currentCid ?? ''}>
                   <PlateMarkdownEditor
-                    key={`d-${nodeId}-${aiDraft.length}:${aiDraft.slice(0, 16)}:${aiDraft.slice(-16)}`}
-                    initialMarkdown={aiDraft}
+                    key={`d-${nodeId}-${displayAiDraft.length}:${displayAiDraft.slice(0, 16)}:${displayAiDraft.slice(-16)}`}
+                    initialMarkdown={displayAiDraft}
                     headingNumbering
                     readOnly
                   />

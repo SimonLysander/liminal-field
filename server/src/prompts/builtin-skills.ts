@@ -38,4 +38,14 @@ export const BUILTIN_SKILLS: BuiltinSkillDef[] = [
     requiredTools: ['web_search', 'web_fetch', 'read_content'],
     bodyFile: 'skills/note-writing.md',
   },
+  {
+    key: 'writing-review',
+    displayName: '审稿（质量审查）',
+    description:
+      '从主旨标题、论证概念、结构推进、节奏可读性和文面错误审查草稿,给出有轻重的修改判断',
+    whenToUse:
+      '当用户要求审稿、检查问题、评估文章质量、看看哪里不成立、哪里读不顺、是否能发布时使用。用于诊断和修改决策,不直接整篇改写。',
+    requiredTools: [],
+    bodyFile: 'skills/writing-review.md',
+  },
 ];

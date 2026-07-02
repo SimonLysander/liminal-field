@@ -40,6 +40,18 @@ export interface DraftSource {
   url: string;
 }
 
+export interface CitationAuditItem {
+  claim: string;
+  sourceIndexes: number[];
+}
+
+export interface CitationAudit {
+  conceptsAndDefinitions?: CitationAuditItem[];
+  attributionAndEvolution?: CitationAuditItem[];
+  dataAndState?: CitationAuditItem[];
+  rulesAndEvidence?: CitationAuditItem[];
+}
+
 /**
  * 正文里的引用标记，与简报模块同一套约定，一个产品一套引用语法：
  *   [@#CIT 1]        引第 1 条
@@ -103,6 +115,63 @@ export function validateCitations(
   return null;
 }
 
+const CITATION_AUDIT_KEYS: Array<keyof CitationAudit> = [
+  'conceptsAndDefinitions',
+  'attributionAndEvolution',
+  'dataAndState',
+  'rulesAndEvidence',
+];
+
+/**
+ * citationAudit 是模型写入前的结构化自查:它不能证明没有漏引,但能强迫模型把
+ * 主线依赖的概念定义、归属演进、数据状态、规则证据逐类过一遍,避免只给零星 sources 点缀。
+ */
+export function validateCitationAudit(
+  audit: CitationAudit | undefined,
+  sources: DraftSource[] | undefined,
+): string | null {
+  const srcs = sources ?? [];
+  if (srcs.length === 0) return null;
+  if (!audit || typeof audit !== 'object') {
+    return '缺少 citationAudit:本篇给了 sources,必须逐类列出已查证且支撑主线的概念定义、归属演进、数据状态、规则证据。没有某类内容可留空数组。';
+  }
+
+  let itemCount = 0;
+  for (const key of CITATION_AUDIT_KEYS) {
+    const items = audit[key] ?? [];
+    if (!Array.isArray(items)) {
+      return `citationAudit.${key} 必须是数组。`;
+    }
+    for (let i = 0; i < items.length; i++) {
+      itemCount += 1;
+      const item = items[i];
+      const claim = typeof item?.claim === 'string' ? item.claim.trim() : '';
+      if (!claim) {
+        return `citationAudit.${key}[${i}].claim 不能为空:用一句话概括被查证的断言。`;
+      }
+      if (
+        !Array.isArray(item.sourceIndexes) ||
+        item.sourceIndexes.length === 0
+      ) {
+        return `citationAudit.${key}[${i}].sourceIndexes 不能为空:至少指向一条 sources 序号。`;
+      }
+      for (const sourceIndex of item.sourceIndexes) {
+        if (
+          !Number.isInteger(sourceIndex) ||
+          sourceIndex < 1 ||
+          sourceIndex > srcs.length
+        ) {
+          return `citationAudit.${key}[${i}].sourceIndexes 包含无效序号 ${sourceIndex}:sources 只有 ${srcs.length} 条。`;
+        }
+      }
+    }
+  }
+
+  return itemCount > 0
+    ? null
+    : 'citationAudit 为空:本篇给了 sources,至少列出一个已查证断言;若没有任何需查证内容,不要传 sources。';
+}
+
 /**
  * 把模型产出的「正文 + sources」合成最终落库的 bodyMarkdown：
  *   1. 正文里的 [@#CIT N] → 可点链接 [N](url)，直达第 N 条来源
@@ -116,11 +185,13 @@ export function composeAiDraftBody(
 ): string {
   const srcs = sources ?? [];
   if (srcs.length === 0) return markdown;
-  // [@#CIT 1,3-5] → 展开成各自可点的 [1](u1),[3](u3),[4](u4),[5](u5)
+  // [@#CIT 1,3-5] → 展开成各自可点的 [1](u1#cit-1 "title")。#cit-N 只供前端稳定命中 citation 样式。
   const linked = markdown.replace(CITATION_MARKER, (whole, refBody: string) => {
     const parts = parseCitationNumbers(refBody).map((n) => {
       const s = srcs[n - 1];
-      return s ? `[${n}](${s.url})` : String(n);
+      if (!s) return String(n);
+      const safeTitle = s.title.replace(/[\\"]/g, '');
+      return `[${n}](${s.url}#cit-${n} "${safeTitle}")`;
     });
     return parts.length ? parts.join(',') : whole;
   });
@@ -146,6 +217,7 @@ export function createWriteDraftTool(
       markdown: string;
       changeSummary: string;
       sources?: DraftSource[];
+      citationAudit?: CitationAudit;
     }>({
       type: 'object',
       properties: {
@@ -172,6 +244,81 @@ export function createWriteDraftTool(
             required: ['title', 'url'],
           },
         },
+        citationAudit: {
+          type: 'object',
+          description:
+            '引用覆盖自查。有 sources 时必须提交。按四类列出正文中已经查证并标 CIT、且支撑主线的断言；没有某类内容传空数组。',
+          properties: {
+            conceptsAndDefinitions: {
+              type: 'array',
+              description:
+                '概念与定义：本篇主线依赖的术语、理论、方法、模型、标准定义和边界。',
+              items: {
+                type: 'object',
+                properties: {
+                  claim: { type: 'string', description: '已查证断言摘要' },
+                  sourceIndexes: {
+                    type: 'array',
+                    items: { type: 'number' },
+                    description: '对应 sources 序号，1-based',
+                  },
+                },
+                required: ['claim', 'sourceIndexes'],
+              },
+            },
+            attributionAndEvolution: {
+              type: 'array',
+              description:
+                '归属与演进：提出者、发布者、维护者、年份、版本、阶段顺序。',
+              items: {
+                type: 'object',
+                properties: {
+                  claim: { type: 'string', description: '已查证断言摘要' },
+                  sourceIndexes: {
+                    type: 'array',
+                    items: { type: 'number' },
+                    description: '对应 sources 序号，1-based',
+                  },
+                },
+                required: ['claim', 'sourceIndexes'],
+              },
+            },
+            dataAndState: {
+              type: 'array',
+              description:
+                '数据与状态：数量、比例、参数、性能、价格、排名、当前状态。',
+              items: {
+                type: 'object',
+                properties: {
+                  claim: { type: 'string', description: '已查证断言摘要' },
+                  sourceIndexes: {
+                    type: 'array',
+                    items: { type: 'number' },
+                    description: '对应 sources 序号，1-based',
+                  },
+                },
+                required: ['claim', 'sourceIndexes'],
+              },
+            },
+            rulesAndEvidence: {
+              type: 'array',
+              description:
+                '规则与证据：法规、政策、规范、官方文档要求、论文报告结论。',
+              items: {
+                type: 'object',
+                properties: {
+                  claim: { type: 'string', description: '已查证断言摘要' },
+                  sourceIndexes: {
+                    type: 'array',
+                    items: { type: 'number' },
+                    description: '对应 sources 序号，1-based',
+                  },
+                },
+                required: ['claim', 'sourceIndexes'],
+              },
+            },
+          },
+        },
       },
       required: ['markdown', 'changeSummary'],
     }),
@@ -179,16 +326,24 @@ export function createWriteDraftTool(
     execute: async ({
       markdown,
       sources,
+      citationAudit,
     }: {
       markdown: string;
       changeSummary?: string;
       sources?: DraftSource[];
+      citationAudit?: CitationAudit;
     }) => {
       try {
         // 直写路径也校验引用一致性,与门禁 validate 同一把关,行为不分叉。
         const citationErr = validateCitations(markdown, sources);
         if (citationErr) {
           return toolResult(`write_draft 校验未过：${citationErr}`, undefined, {
+            status: 'error',
+          });
+        }
+        const auditErr = validateCitationAudit(citationAudit, sources);
+        if (auditErr) {
+          return toolResult(`write_draft 校验未过：${auditErr}`, undefined, {
             status: 'error',
           });
         }

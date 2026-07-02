@@ -39,6 +39,8 @@ export interface SettingsConfigView {
   integration: {
     hasMineruToken: boolean;
     hasTavilyApiKey: boolean;
+    hasFirecrawlApiKey: boolean;
+    hasJinaApiKey: boolean;
   };
   ai: {
     /** 已配置的 AI 提供商列表（API Key 脱敏，不含原文） */
@@ -112,7 +114,7 @@ export class SystemConfigService implements OnModuleInit {
     // 从默认工具集移除 → 不再随启动 refill 补回、不再出现在工具池(getAvailableTools)。
     // 恢复:加回 'propose_document_rewrite' + tool.assembler 取消注释 + prompt.handler 改稿指引 + 前端开关。
     // 'propose_document_rewrite',
-    // 联网能力:web_search(Tavily/Serper/...)+ web_fetch(Jina Reader/...)
+    // 联网能力:web_search(Tavily/Serper/...)+ web_fetch(auto:direct→Firecrawl→Jina)
     // 装配层会按 .env 是否配 key 实际挂载(没 key 时 web_search 自动不挂)
     'web_search',
     'web_fetch',
@@ -170,6 +172,8 @@ export class SystemConfigService implements OnModuleInit {
       integration: {
         hasMineruToken: !!config?.mineruToken,
         hasTavilyApiKey: !!config?.tavilyApiKey,
+        hasFirecrawlApiKey: !!config?.firecrawlApiKey,
+        hasJinaApiKey: !!config?.jinaApiKey,
       },
       ai: {
         providers: (config?.aiProviders ?? []).map((p) => ({
@@ -249,6 +253,8 @@ export class SystemConfigService implements OnModuleInit {
   async saveIntegrationConfig(input: {
     mineruToken?: string;
     tavilyApiKey?: string;
+    firecrawlApiKey?: string;
+    jinaApiKey?: string;
   }): Promise<void> {
     const fields: Record<string, string> = {};
     if (input.mineruToken !== undefined) {
@@ -258,6 +264,14 @@ export class SystemConfigService implements OnModuleInit {
     if (input.tavilyApiKey !== undefined) {
       fields.tavilyApiKey = input.tavilyApiKey;
       process.env.TAVILY_API_KEY = input.tavilyApiKey;
+    }
+    if (input.firecrawlApiKey !== undefined) {
+      fields.firecrawlApiKey = input.firecrawlApiKey;
+      process.env.FIRECRAWL_API_KEY = input.firecrawlApiKey;
+    }
+    if (input.jinaApiKey !== undefined) {
+      fields.jinaApiKey = input.jinaApiKey;
+      process.env.JINA_API_KEY = input.jinaApiKey;
     }
 
     await this.repo.patch(fields);
@@ -835,6 +849,8 @@ export class SystemConfigService implements OnModuleInit {
     gitSyncEnabled?: boolean;
     mineruToken?: string;
     tavilyApiKey?: string;
+    firecrawlApiKey?: string;
+    jinaApiKey?: string;
   }): void {
     if (config.remoteUrl) process.env.KB_REMOTE_URL = config.remoteUrl;
     if (config.gitToken) process.env.KB_GIT_TOKEN = config.gitToken;
@@ -848,6 +864,9 @@ export class SystemConfigService implements OnModuleInit {
       config.gitSyncEnabled === false ? 'false' : 'true';
     if (config.mineruToken) process.env.MINERU_TOKEN = config.mineruToken;
     if (config.tavilyApiKey) process.env.TAVILY_API_KEY = config.tavilyApiKey;
+    if (config.firecrawlApiKey)
+      process.env.FIRECRAWL_API_KEY = config.firecrawlApiKey;
+    if (config.jinaApiKey) process.env.JINA_API_KEY = config.jinaApiKey;
   }
 
   /**

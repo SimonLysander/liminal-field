@@ -160,6 +160,12 @@ describe('SkillService', () => {
       expect(mockRepo.findByIds).toHaveBeenCalledWith(['oid1']); // 内置 key 不进 Mongo 查询
     });
 
+    it('writing-review 不绑定普通编辑器专属工具', async () => {
+      const { service } = createMocks();
+      const s = await service.findByName('writing-review');
+      expect(s?.requiredTools).toEqual([]);
+    });
+
     it('list 含内置且排除 Mongo 同名残留', async () => {
       const { service, mockRepo } = createMocks();
       mockRepo.findAll.mockResolvedValue([
@@ -169,6 +175,7 @@ describe('SkillService', () => {
       const names = (await service.list()).map((s) => s.name);
       expect(names).toContain('note-plan');
       expect(names.filter((n) => n === 'note-writing')).toHaveLength(1);
+      expect(names).toContain('writing-review');
       expect(names).toContain('critic');
     });
   });

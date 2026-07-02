@@ -240,6 +240,14 @@ export class SystemConfig {
   @prop({ trim: true, default: '' })
   tavilyApiKey!: string;
 
+  /** Firecrawl API key,空 → web_fetch 走 Firecrawl keyless,填了用于提高限额与稳定性 */
+  @prop({ trim: true, default: '' })
+  firecrawlApiKey!: string;
+
+  /** Jina Reader API key,空 → 仍可作为 web_fetch 的免费 reader fallback */
+  @prop({ trim: true, default: '' })
+  jinaApiKey!: string;
+
   // ── AI ──
 
   /**

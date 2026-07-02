@@ -9,6 +9,7 @@
 import {
   createWriteDraftTool,
   validateCitations,
+  validateCitationAudit,
   composeAiDraftBody,
 } from '../write-draft.tool';
 import type { EditorDraftRepository } from '../../../workspace/editor-draft.repository';
@@ -89,12 +90,22 @@ describe('write-draft.tool', () => {
     const md = '# 标题\n\nReact 16 于 2017 发布[@#CIT 1]。';
     const sources = [{ title: 'React 博客', url: 'https://r.dev/16' }];
 
-    const result = parse(await run(t, { markdown: md, sources }));
+    const result = parse(
+      await run(t, {
+        markdown: md,
+        sources,
+        citationAudit: {
+          conceptsAndDefinitions: [
+            { claim: 'React 16 发布年份', sourceIndexes: [1] },
+          ],
+        },
+      }),
+    );
     expect(result.meta.status).toBe('ok');
 
     const { bodyMarkdown } = (repo.saveAiDraft as jest.Mock).mock
       .calls[0][0] as { bodyMarkdown: string };
-    expect(bodyMarkdown).toContain('[1](https://r.dev/16)'); // 标记转链接
+    expect(bodyMarkdown).toContain('[1](https://r.dev/16#cit-1 "React 博客")'); // 标记转为可识别 citation 链接
     expect(bodyMarkdown).toContain('## 来源'); // 篇末来源小节
     expect(bodyMarkdown).toContain('1. [React 博客](https://r.dev/16)');
   });
@@ -107,6 +118,19 @@ describe('write-draft.tool', () => {
 
     const result = parse(await run(t, { markdown: md, sources }));
     expect(result.meta.status).toBe('error');
+    expect(repo.saveAiDraft).not.toHaveBeenCalled();
+  });
+
+  it('带 sources 但缺 citationAudit → status=error，不落库', async () => {
+    const repo = makeRepo();
+    const t = createWriteDraftTool(repo as never, NOTE_ID);
+    const md = '# 标题\n\nf-number 是焦距与有效孔径直径之比[@#CIT 1]。';
+    const sources = [{ title: 'Optics', url: 'https://example.dev/f-number' }];
+
+    const result = parse(await run(t, { markdown: md, sources }));
+
+    expect(result.meta.status).toBe('error');
+    expect(result.summary).toContain('citationAudit');
     expect(repo.saveAiDraft).not.toHaveBeenCalled();
   });
 });
@@ -141,6 +165,41 @@ describe('validateCitations', () => {
   });
 });
 
+describe('validateCitationAudit', () => {
+  const sources = [{ title: 'A', url: 'https://a' }];
+
+  it('有 sources 时必须提交 citationAudit', () => {
+    expect(validateCitationAudit(undefined, sources)).toContain(
+      'citationAudit',
+    );
+  });
+
+  it('audit 引用不存在的 source index → 报错', () => {
+    const err = validateCitationAudit(
+      {
+        conceptsAndDefinitions: [
+          { claim: 'f-number 定义', sourceIndexes: [2] },
+        ],
+      },
+      sources,
+    );
+    expect(err).toContain('sourceIndexes');
+  });
+
+  it('audit 覆盖至少一类内容且索引有效 → 通过', () => {
+    expect(
+      validateCitationAudit(
+        {
+          conceptsAndDefinitions: [
+            { claim: 'f-number 定义', sourceIndexes: [1] },
+          ],
+        },
+        sources,
+      ),
+    ).toBeNull();
+  });
+});
+
 describe('composeAiDraftBody', () => {
   it('无来源 → 原样返回（纯思辨篇保持干净）', () => {
     expect(composeAiDraftBody('讲道理的一段。', [])).toBe('讲道理的一段。');
@@ -152,7 +211,9 @@ describe('composeAiDraftBody', () => {
       { title: 'B', url: 'https://b' },
       { title: 'C', url: 'https://c' },
     ]);
-    expect(body).toContain('[1](https://a),[2](https://b),[3](https://c)');
+    expect(body).toContain(
+      '[1](https://a#cit-1 "A"),[2](https://b#cit-2 "B"),[3](https://c#cit-3 "C")',
+    );
     expect(body).toContain('## 来源');
   });
 });

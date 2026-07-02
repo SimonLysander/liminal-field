@@ -31,6 +31,7 @@
 |---|---|---|---|
 | `skills/note-plan.md` | 内置 skill「规划」正文 | `SkillService`(builtin-skills 引用) | 无 |
 | `skills/note-writing.md` | 内置 skill「成稿」正文(含引用规则) | `SkillService`(builtin-skills 引用) | 无 |
+| `skills/writing-review.md` | 内置 skill「审稿」正文(质量审查框架) | `SkillService`(builtin-skills 引用) | 无 |
 | `agents/learning-planner.md` | 学习规划师 systemPrompt | `SystemConfigService`(builtin-agents 引用) | 无 |
 | `agents/learning-writer.md` | 学习写手 systemPrompt | 同上 | 无 |
 | `agents/gallery-caption-writer.md` | 图说写手 systemPrompt | 同上 | 无 |

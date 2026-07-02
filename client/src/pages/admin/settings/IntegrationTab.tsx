@@ -1,7 +1,7 @@
 /*
  * IntegrationTab — 集成 tab
  *
- * MinerU Token 配置 + 多提供商 AI 配置（添加 / 删除 / 切换 / 编辑 tier 绑定 / 验证）。
+ * MinerU Token / 联网搜索 / 网页读取 + 多提供商 AI 配置（添加 / 删除 / 切换 / 编辑 tier 绑定 / 验证）。
  *
  * AI 配置设计：
  * - 每个"提供商"绑定三个 tier 的模型（flash / standard / think）
@@ -587,6 +587,16 @@ export function IntegrationTab() {
   const [savingTavily, setSavingTavily] = useState(false);
   const tavilyDirty = tavilyApiKey.trim().length > 0;
 
+  // Web Fetch
+  const [firecrawlApiKey, setFirecrawlApiKey] = useState('');
+  const [firecrawlVisible, setFirecrawlVisible] = useState(false);
+  const [savingFirecrawl, setSavingFirecrawl] = useState(false);
+  const firecrawlDirty = firecrawlApiKey.trim().length > 0;
+  const [jinaApiKey, setJinaApiKey] = useState('');
+  const [jinaVisible, setJinaVisible] = useState(false);
+  const [savingJina, setSavingJina] = useState(false);
+  const jinaDirty = jinaApiKey.trim().length > 0;
+
   // AI 提供商列表(#5 重构:配过的都可用,agent 自选)
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
@@ -623,6 +633,40 @@ export function IntegrationTab() {
       banner.error('保存失败');
     } finally {
       setSavingTavily(false);
+    }
+  };
+
+  const handleSaveFirecrawl = async () => {
+    if (!firecrawlDirty) return;
+    setSavingFirecrawl(true);
+    try {
+      await settingsApi.saveIntegrationConfig({
+        firecrawlApiKey: firecrawlApiKey.trim() || undefined,
+      });
+      banner.success('Firecrawl API key 已保存');
+      setFirecrawlApiKey('');
+      await loadData(true);
+    } catch {
+      banner.error('保存失败');
+    } finally {
+      setSavingFirecrawl(false);
+    }
+  };
+
+  const handleSaveJina = async () => {
+    if (!jinaDirty) return;
+    setSavingJina(true);
+    try {
+      await settingsApi.saveIntegrationConfig({
+        jinaApiKey: jinaApiKey.trim() || undefined,
+      });
+      banner.success('Jina API key 已保存');
+      setJinaApiKey('');
+      await loadData(true);
+    } catch {
+      banner.error('保存失败');
+    } finally {
+      setSavingJina(false);
     }
   };
 
@@ -772,6 +816,117 @@ export function IntegrationTab() {
               )}
             </div>
           </>
+        )}
+      </section>
+
+      <Separator />
+
+      {/* ── Web Fetch ── */}
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>
+            Web Fetch 网页读取
+          </h2>
+          <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            web_fetch 工具的 fallback 链路:服务器直抓 → Firecrawl → Jina Reader。两个 Key 都可空,填了用于提高限额和稳定性。
+          </p>
+        </div>
+        {loading ? (
+          <div className="h-7 max-w-md rounded-sm animate-pulse" style={{ background: 'var(--shelf)' }} />
+        ) : (
+          <div className="grid gap-5 lg:grid-cols-2">
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <div className="text-xs font-medium" style={{ color: 'var(--ink-faded)' }}>
+                  Firecrawl API Key
+                </div>
+                <div className="relative max-w-md">
+                  <Input
+                    type={firecrawlVisible ? 'text' : 'password'}
+                    value={firecrawlApiKey}
+                    onChange={(e) => setFirecrawlApiKey(e.target.value)}
+                    placeholder={config?.hasFirecrawlApiKey ? '已配置,留空则不修改' : 'fc-...'}
+                    className="pr-8"
+                  />
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => setFirecrawlVisible((v) => !v)}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-sm p-1"
+                    style={{ color: 'var(--ink-ghost)' }}
+                  >
+                    {firecrawlVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => void handleSaveFirecrawl()}
+                  disabled={savingFirecrawl || !firecrawlDirty}
+                >
+                  {savingFirecrawl ? '保存中…' : '保存 Firecrawl'}
+                </Button>
+                {config?.hasFirecrawlApiKey ? (
+                  <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--success)' }}>
+                    <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: 'var(--success)' }} />
+                    已配置
+                  </span>
+                ) : (
+                  <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
+                    未配置 · keyless 可用
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <div className="text-xs font-medium" style={{ color: 'var(--ink-faded)' }}>
+                  Jina API Key
+                </div>
+                <div className="relative max-w-md">
+                  <Input
+                    type={jinaVisible ? 'text' : 'password'}
+                    value={jinaApiKey}
+                    onChange={(e) => setJinaApiKey(e.target.value)}
+                    placeholder={config?.hasJinaApiKey ? '已配置,留空则不修改' : 'jina_...'}
+                    className="pr-8"
+                  />
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => setJinaVisible((v) => !v)}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-sm p-1"
+                    style={{ color: 'var(--ink-ghost)' }}
+                  >
+                    {jinaVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => void handleSaveJina()}
+                  disabled={savingJina || !jinaDirty}
+                >
+                  {savingJina ? '保存中…' : '保存 Jina'}
+                </Button>
+                {config?.hasJinaApiKey ? (
+                  <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--success)' }}>
+                    <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: 'var(--success)' }} />
+                    已配置
+                  </span>
+                ) : (
+                  <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
+                    未配置 · 免费 fallback 可用
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
         )}
       </section>
 

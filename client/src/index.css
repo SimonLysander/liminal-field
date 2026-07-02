@@ -1369,6 +1369,35 @@ body.gallery-immersive aside {
   color: var(--accent);
 }
 
+/* ── 学习 AI 初稿 citation 角标 ────────────────────────────────────────────────
+ * write_draft 会把 [@#CIT N] 合成为 href 含 "#cit-N" 的链接。学习页左栏是供作者
+ * 对照重写的参照稿,引用要可见但不能打断阅读,因此复用简报的克制上标体例。 */
+.learn-ai-draft-body a[href*="#cit-"] {
+  display: inline;
+  font-size: 0.65em;
+  vertical-align: super;
+  line-height: 1;
+  margin: 0 1px;
+  padding: 0 1px;
+  color: var(--ink-faded);
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 150ms ease;
+  cursor: pointer;
+}
+.learn-ai-draft-body a[href*="#cit-"]:hover {
+  color: var(--accent);
+}
+.learn-ai-draft-body a:not([href*="#cit-"]) {
+  color: var(--ink);
+  text-decoration-color: color-mix(in srgb, var(--ink-faded) 42%, transparent);
+  text-underline-offset: 4px;
+}
+.learn-ai-draft-body a:not([href*="#cit-"]):hover {
+  color: var(--accent);
+  text-decoration-color: var(--accent);
+}
+
 /* ── Digest 报告正文 期刊体例(Stratechery 现代严肃) ──────────────────────────
  * 用宋体严肃 stack(Source Han Serif / Songti SC / SimSun)替代默认的 LXGW 文楷,
  * 给 digest 报告独立的"权威 newsletter"视觉权重。

@@ -130,7 +130,13 @@ export class SettingsController {
 
   @Put('integration-config')
   async saveIntegrationConfig(
-    @Body() dto: { mineruToken?: string; tavilyApiKey?: string },
+    @Body()
+    dto: {
+      mineruToken?: string;
+      tavilyApiKey?: string;
+      firecrawlApiKey?: string;
+      jinaApiKey?: string;
+    },
   ): Promise<{ success: boolean }> {
     await this.systemConfigService.saveIntegrationConfig(dto);
     return { success: true };

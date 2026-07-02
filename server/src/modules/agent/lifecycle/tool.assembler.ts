@@ -12,7 +12,7 @@
  * - get_current_draft：获取当前编辑文档
  * - propose_document_rewrite：提议改稿（2026-06-04 用户要求整体停用，已注释不装配）
  * - web_search：联网搜索（配了 TAVILY_API_KEY 等才挂；未配优雅降级）
- * - web_fetch：读 URL 全文（Jina Reader，免 key 总挂）
+ * - web_fetch：读 URL 全文（默认 auto:direct→Firecrawl→Jina，总挂）
  * 2026-05-30 起 remember / forget 已从主 agent 工具集移除(event log 架构):
  * 记忆塑形改由 MemoryObserverService 在 onAfterChat 钩子后台自动跑,
  * 主 agent 完全不感知;只保留读类 recall_memory / search_memories 让模型在
@@ -67,11 +67,14 @@ import { SmartTopicConfigRepository } from '../../digest/smart-topic-config.repo
 import { FetcherRegistry } from '../../digest/fetchers/fetcher-registry.service';
 import { ProcessedFeedItemRepository } from '../../digest/processed-feed-item.repository';
 import { DigestTaskRepository } from '../../digest/digest-task.repository';
+import { ExternalCacheRepository } from '../../external-cache/external-cache.repository';
 // 学习产品：write_learn_plan / write_draft / read_content 工具
 import { createWriteLearnPlanTool } from '../tools/write-learn-plan.tool';
 import {
   createWriteDraftTool,
+  validateCitationAudit,
   validateCitations,
+  type CitationAudit,
   type DraftSource,
 } from '../tools/write-draft.tool';
 import { extractSections } from '../tools/markdown.utils';
@@ -98,7 +101,7 @@ function requireChangeSummary(args: Record<string, unknown>): string | null {
 }
 
 /**
- * write_draft 门禁前置校验:先卡 changeSummary,再卡引用一致性(悬空 [@#CIT N]/来源缺 url)。
+ * write_draft 门禁前置校验:先卡 changeSummary,再卡引用一致性与 citationAudit。
  * 任一不过就 invalid,让模型带着具体错因重调——出处不靠 prompt 自觉,靠门禁兜底。
  */
 function validateDraftWrite(args: Record<string, unknown>): string | null {
@@ -108,7 +111,12 @@ function validateDraftWrite(args: Record<string, unknown>): string | null {
   const sources = Array.isArray(args['sources'])
     ? (args['sources'] as DraftSource[])
     : [];
-  return validateCitations(md, sources);
+  const citationErr = validateCitations(md, sources);
+  if (citationErr) return citationErr;
+  return validateCitationAudit(
+    args['citationAudit'] as CitationAudit | undefined,
+    sources,
+  );
 }
 
 export interface EntryContext {
@@ -169,6 +177,8 @@ export class ToolAssembler {
     private readonly editorDraftRepo: EditorDraftRepository,
     // HITL 门禁：4 个写工具的 execute 改为暂存 pending_writes，带外审批后 commit 落库
     private readonly pendingWriteRepo: PendingWriteRepository,
+    // 外部操作缓存:web_fetch 首个消费者,后续 web_search/OSS/模型列表可复用同一集合
+    private readonly externalCacheRepo: ExternalCacheRepository,
   ) {}
 
   /**
@@ -199,7 +209,7 @@ export class ToolAssembler {
     // 返 undefined,本次装配不挂 web_search 工具(模型看不到自然不会调,优雅降级)。
     // 这里每次 assemble 调一次 — provider 不持久 state,工厂便宜,不必缓存。
     const webSearchProvider = createWebSearchProviderFromEnv();
-    // 联网读 URL:Jina Reader 免 key 起步,总会返 provider;装配层无脑挂工具。
+    // 联网读 URL:auto provider 总会返回;装配层无脑挂工具。
     const webFetchProvider = createWebFetchProviderFromEnv();
 
     // HITL 门禁：有 sessionKey 才把写工具包成门禁层（暂存 pending_writes → 用户确认 → commit）；
@@ -341,8 +351,8 @@ export class ToolAssembler {
       ...(webSearchProvider
         ? { web_search: createWebSearchTool(webSearchProvider) }
         : {}),
-      // 联网读 URL:Jina 免 key 总能用,直接挂
-      web_fetch: createWebFetchTool(webFetchProvider),
+      // 联网读 URL:auto provider 总能用,直接挂
+      web_fetch: createWebFetchTool(webFetchProvider, this.externalCacheRepo),
       // ── digest 场景 browse/pick: 跨场景共享(workflow + report-analyst sub-agent) ──
       // browse 在 workflow 和 reader 场景都挂(workflow 写 fetchedItemsMap 给 pick 用,
       // reader 不挂 pick 所以 fetchedItemsMap 写了也没人读 — 无副作用)。

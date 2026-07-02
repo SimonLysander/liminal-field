@@ -5,8 +5,9 @@
  *   - web_search 给 query → 拿一堆 url + 摘要片段(浅)
  *   - web_fetch 给 url → 拿单页全文 markdown(深读)
  *
- * 首发 provider:Jina AI Reader(`r.jina.ai/{url}`)——免 API key 起步,
- * 自带 readability(只返页面正文,去广告/导航/侧栏),支持 JS 渲染。
+ * 默认 provider:auto(direct → Firecrawl → Jina Reader fallback)。direct 用服务器
+ * 直抓 + Readability;Firecrawl 负责更强的 JS/反爬/AI-ready markdown;Jina 作为
+ * 免费轻量 reader fallback。
  * 切换 provider 同 web-search-provider 模式:加 class + 工厂 case + .env 切换。
  *
  * 不自己写爬虫:SSRF / JS 渲染 / 反爬 / robots.txt 都是坑,业界成熟方案已经
@@ -18,6 +19,14 @@ export interface WebFetchOptions {
   maxLength?: number;
 }
 
+export interface WebFetchAttempt {
+  provider: string;
+  status: 'ok' | 'error';
+  kind?: WebFetchError['kind'];
+  message?: string;
+  durationMs?: number;
+}
+
 export interface WebFetchResponse {
   url: string;
   /** 已抽取/转换的 markdown 正文 */
@@ -26,6 +35,8 @@ export interface WebFetchResponse {
   truncated: boolean;
   /** 实际 provider 名 */
   provider: string;
+  /** auto provider 下记录每层尝试结果;单 provider 可不填 */
+  attempts?: WebFetchAttempt[];
   /** provider 端耗时(秒,部分 provider 不提供) */
   responseTimeSec?: number;
 }
@@ -43,6 +54,7 @@ export class WebFetchError extends Error {
       | 'unknown',
     message: string,
     public readonly cause?: unknown,
+    public readonly attempts?: WebFetchAttempt[],
   ) {
     super(message);
     this.name = 'WebFetchError';
@@ -51,7 +63,224 @@ export class WebFetchError extends Error {
 
 export interface WebFetchProvider {
   readonly name: string;
+  /** 用于 external cache 区分 provider 链路版本;不填则使用 name。 */
+  readonly cacheKey?: string;
   fetch(url: string, options: WebFetchOptions): Promise<WebFetchResponse>;
+}
+
+export class AutoWebFetchProvider implements WebFetchProvider {
+  readonly name = 'auto';
+  readonly cacheKey: string;
+
+  constructor(private readonly providers: WebFetchProvider[]) {
+    const chain = providers.map((p) => p.cacheKey ?? p.name).join('-');
+    this.cacheKey = `auto:${chain}:v1`;
+  }
+
+  async fetch(
+    url: string,
+    options: WebFetchOptions,
+  ): Promise<WebFetchResponse> {
+    const attempts: WebFetchAttempt[] = [];
+    for (const provider of this.providers) {
+      const started = Date.now();
+      try {
+        const response = await provider.fetch(url, options);
+        attempts.push({
+          provider: provider.name,
+          status: 'ok',
+          durationMs: Date.now() - started,
+        });
+        return { ...response, attempts };
+      } catch (err) {
+        const kind = err instanceof WebFetchError ? err.kind : 'unknown';
+        const message = err instanceof Error ? err.message : String(err);
+        attempts.push({
+          provider: provider.name,
+          status: 'error',
+          kind,
+          message,
+          durationMs: Date.now() - started,
+        });
+        if (kind === 'invalid_url') {
+          throw new WebFetchError(kind, message, err, attempts);
+        }
+      }
+    }
+
+    const last = attempts[attempts.length - 1];
+    throw new WebFetchError(
+      last?.kind ?? 'network',
+      `所有 web_fetch provider 均失败: ${attempts
+        .map((a) => `${a.provider}:${a.kind ?? 'unknown'}`)
+        .join(', ')}`,
+      undefined,
+      attempts,
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Firecrawl 实现 — POST https://api.firecrawl.dev/v2/scrape
+// ──────────────────────────────────────────────────────────────────────────
+
+const FIRECRAWL_BASE = 'https://api.firecrawl.dev/v2/scrape';
+
+type FirecrawlScrapeResponse = {
+  success?: boolean;
+  error?: string;
+  data?: {
+    markdown?: string;
+    metadata?: {
+      sourceURL?: string;
+      url?: string;
+      title?: string;
+    };
+  };
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function parseFirecrawlResponse(value: unknown): FirecrawlScrapeResponse {
+  if (!isRecord(value)) return {};
+  const data = isRecord(value.data) ? value.data : undefined;
+  const metadata = data && isRecord(data.metadata) ? data.metadata : undefined;
+  return {
+    success: typeof value.success === 'boolean' ? value.success : undefined,
+    error: typeof value.error === 'string' ? value.error : undefined,
+    data: data
+      ? {
+          markdown:
+            typeof data.markdown === 'string' ? data.markdown : undefined,
+          metadata: metadata
+            ? {
+                sourceURL:
+                  typeof metadata.sourceURL === 'string'
+                    ? metadata.sourceURL
+                    : undefined,
+                url:
+                  typeof metadata.url === 'string' ? metadata.url : undefined,
+                title:
+                  typeof metadata.title === 'string'
+                    ? metadata.title
+                    : undefined,
+              }
+            : undefined,
+        }
+      : undefined,
+  };
+}
+
+function firecrawlErrorKind(status: number): WebFetchError['kind'] {
+  if (status === 404) return 'not_found';
+  if (status === 401 || status === 403) return 'forbidden';
+  if (status === 408) return 'timeout';
+  if (status === 402 || status === 429) return 'rate_limited';
+  return 'unknown';
+}
+
+export class FirecrawlWebFetchProvider implements WebFetchProvider {
+  readonly name = 'firecrawl';
+
+  constructor(
+    private readonly apiKey?: string,
+    private readonly timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  ) {}
+
+  async fetch(
+    url: string,
+    options: WebFetchOptions,
+  ): Promise<WebFetchResponse> {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new WebFetchError('invalid_url', `非法 URL: ${url}`);
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new WebFetchError(
+        'invalid_url',
+        `仅支持 http/https URL,收到: ${parsed.protocol}`,
+      );
+    }
+
+    const maxLength = Math.max(
+      500,
+      Math.min(100_000, options.maxLength ?? DEFAULT_MAX_LENGTH),
+    );
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (this.apiKey) {
+      headers.Authorization = `Bearer ${this.apiKey}`;
+    }
+    let res: Response;
+    try {
+      res = await fetch(FIRECRAWL_BASE, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          url,
+          formats: ['markdown'],
+          onlyMainContent: true,
+          removeBase64Images: true,
+          blockAds: true,
+          timeout: this.timeoutMs,
+        }),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      clearTimeout(timer);
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new WebFetchError(
+          'timeout',
+          `Firecrawl 超时 (${this.timeoutMs}ms)`,
+          err,
+        );
+      }
+      throw new WebFetchError(
+        'network',
+        `Firecrawl 网络错误: ${err instanceof Error ? err.message : String(err)}`,
+        err,
+      );
+    }
+    clearTimeout(timer);
+
+    const json = parseFirecrawlResponse(
+      await res.json().catch(() => undefined),
+    );
+
+    if (!res.ok || json.success === false) {
+      const kind = firecrawlErrorKind(res.status);
+      const message = json.error || `Firecrawl HTTP ${res.status}`;
+      throw new WebFetchError(
+        kind,
+        kind === 'rate_limited'
+          ? `Firecrawl 限速或额度不足: ${message}`
+          : `Firecrawl 抓取失败: ${message}`,
+      );
+    }
+
+    const fullText = json.data?.markdown;
+    if (!fullText) {
+      throw new WebFetchError('not_found', `Firecrawl 返回空内容:${url}`);
+    }
+
+    const truncated = fullText.length > maxLength;
+    const markdown = truncated ? fullText.slice(0, maxLength) : fullText;
+
+    return {
+      url: json.data?.metadata?.sourceURL ?? json.data?.metadata?.url ?? url,
+      markdown,
+      truncated,
+      provider: this.name,
+    };
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -66,6 +295,7 @@ const DEFAULT_MAX_LENGTH = 30_000;
 
 export class JinaReaderProvider implements WebFetchProvider {
   readonly name = 'jina-reader';
+  readonly cacheKey = 'jina';
 
   constructor(
     /** 可选 API key(不传也能用,只是限速更紧)。从 .env JINA_API_KEY 注入。 */
@@ -409,26 +639,42 @@ export class DirectFetchProvider implements WebFetchProvider {
 /**
  * 按 .env 选择 provider 并构造实例。
  *
- * 默认 direct(国内服务器直抓,零依赖国外服务,Mozilla Readability 抽正文)。
- * 切 jina:WEB_FETCH_PROVIDER=jina + JINA_API_KEY=可选(国外部署或有代理时用)。
+ * 默认 auto:direct → Firecrawl → jina。Firecrawl 支持 keyless,配 key 只用于提额;
+ * Jina 是最后一层轻量 reader fallback。
+ * 切 direct:WEB_FETCH_PROVIDER=direct。
+ * 切 firecrawl:WEB_FETCH_PROVIDER=firecrawl + FIRECRAWL_API_KEY=可选。
+ * 切 jina:WEB_FETCH_PROVIDER=jina + JINA_API_KEY=可选。
  *
  * **总会**返回 provider,装配层无脑挂工具。
  */
 export function createWebFetchProviderFromEnv(): WebFetchProvider {
-  const provider = process.env.WEB_FETCH_PROVIDER?.toLowerCase() ?? 'direct';
+  const provider = process.env.WEB_FETCH_PROVIDER?.toLowerCase() ?? 'auto';
+  const jinaKey = process.env.JINA_API_KEY?.trim();
+  const firecrawlKey = process.env.FIRECRAWL_API_KEY?.trim();
 
+  const autoProviders = (): WebFetchProvider[] => [
+    new DirectFetchProvider(),
+    new FirecrawlWebFetchProvider(firecrawlKey || undefined),
+    new JinaReaderProvider(jinaKey || undefined),
+  ];
+
+  if (provider === 'auto') {
+    return new AutoWebFetchProvider(autoProviders());
+  }
   if (provider === 'direct') {
     return new DirectFetchProvider();
   }
+  if (provider === 'firecrawl') {
+    return new FirecrawlWebFetchProvider(firecrawlKey || undefined);
+  }
   if (provider === 'jina') {
-    const key = process.env.JINA_API_KEY?.trim();
-    return new JinaReaderProvider(key || undefined);
+    return new JinaReaderProvider(jinaKey || undefined);
   }
 
-  // 未知 provider → 回 direct(国内最稳)
+  // 未知 provider → 回 auto(直抓优先,失败再走 Firecrawl/Jina fallback)
 
   console.warn(
-    `[web-fetch] 未知 WEB_FETCH_PROVIDER=${provider},fallback 到 direct`,
+    `[web-fetch] 未知 WEB_FETCH_PROVIDER=${provider},fallback 到 auto`,
   );
-  return new DirectFetchProvider();
+  return new AutoWebFetchProvider(autoProviders());
 }

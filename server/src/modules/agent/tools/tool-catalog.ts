@@ -438,9 +438,9 @@ export const TOOL_CATALOG: Record<string, ToolMeta> = {
 
   web_fetch: {
     displayName: '抓网页',
-    summary: '抓 URL 转 markdown(Jina Reader)',
+    summary: '抓 URL 转 markdown(auto:direct→Firecrawl→Jina)',
     detail:
-      '用 Jina Reader 免 key 抓取并清洗为 markdown,适合读 web_search 命中的具体页面。',
+      '默认由服务器直抓并用 Readability 清洗为 markdown;失败后按配置尝试 Firecrawl 与 Jina Reader fallback。适合读 web_search 命中的具体页面。成功和短期失败都会进入通用 external_cache_entries。',
     params: [
       {
         name: 'url',
@@ -470,6 +470,25 @@ export const TOOL_CATALOG: Record<string, ToolMeta> = {
         type: 'string',
         required: true,
         description: '完整 markdown 正文（含 # 标题和所有章节，不要截断）',
+      },
+      {
+        name: 'changeSummary',
+        type: 'string',
+        required: true,
+        description: '本次写入相对现有初稿的改动摘要，供审批卡展示',
+      },
+      {
+        name: 'sources',
+        type: 'array',
+        required: false,
+        description: '正文 [@#CIT N] 对应的真实来源列表，按出现顺序排列',
+      },
+      {
+        name: 'citationAudit',
+        type: 'object',
+        required: false,
+        description:
+          '有 sources 时必填；按概念定义/归属演进/数据状态/规则证据列出已查证断言和 sourceIndexes',
       },
     ],
     returns: '写入成功 → {status:ok, charCount:N}；失败 → {status:error}',

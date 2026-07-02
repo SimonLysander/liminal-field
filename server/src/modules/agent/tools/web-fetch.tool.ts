@@ -1,6 +1,11 @@
 import { tool, jsonSchema } from 'ai';
+import { Logger } from '@nestjs/common';
 import { toolResult } from './tool-result';
 import { WebFetchError, type WebFetchProvider } from './web-fetch-provider';
+import {
+  ExternalCacheRepository,
+  type ExternalCacheKey,
+} from '../../external-cache/external-cache.repository';
 
 /**
  * web_fetch — 给定 URL 读全文(markdown 形式)。
@@ -18,8 +23,31 @@ import { WebFetchError, type WebFetchProvider } from './web-fetch-provider';
  */
 
 const MAX_URL_LENGTH = 2000;
+const OK_CACHE_TTL_MS = 3 * 24 * 60 * 60 * 1000;
+const ERROR_CACHE_TTL_MS = 10 * 60 * 1000;
+const WEB_FETCH_ERROR_SUMMARY = '页面读取失败';
+const logger = new Logger('WebFetchTool');
 
-export function createWebFetchTool(provider: WebFetchProvider) {
+function buildWebFetchCacheKey(
+  provider: WebFetchProvider,
+  url: string,
+  maxLength: number | undefined,
+): ExternalCacheKey {
+  return {
+    namespace: 'web',
+    operation: 'fetch',
+    key: {
+      url,
+      maxLength: maxLength ?? null,
+      provider: provider.cacheKey ?? provider.name,
+    },
+  };
+}
+
+export function createWebFetchTool(
+  provider: WebFetchProvider,
+  cacheRepo?: ExternalCacheRepository,
+) {
   return tool({
     // description 单一真源在 prompts/tool-descriptions.ts，组装层(tool.assembler)统一套用。
     description: '描述见 prompts/tool-descriptions.ts',
@@ -54,13 +82,95 @@ export function createWebFetchTool(provider: WebFetchProvider) {
       }
 
       try {
-        const response = await provider.fetch(url.trim(), { maxLength });
+        const normalizedUrl = url.trim();
+        const cacheKey = buildWebFetchCacheKey(
+          provider,
+          normalizedUrl,
+          maxLength,
+        );
+        const now = new Date();
+        const cached = cacheRepo
+          ? await cacheRepo.getFresh(cacheKey, now)
+          : null;
+        if (cached?.status === 'ok' && cached.payload) {
+          const response = cached.payload as {
+            markdown: string;
+            truncated: boolean;
+            provider: string;
+            responseTimeSec?: number;
+            attempts?: unknown[];
+          };
+          const truncatedNote = response.truncated
+            ? ` · 截断显示前 ${response.markdown.length} 字符(若需要继续可用更大 maxLength 重读)`
+            : '';
+          return toolResult(
+            `web_fetch · ${normalizedUrl} · ${response.markdown.length} 字符 · cache hit${truncatedNote}`,
+            response.markdown,
+            {
+              status: 'ok',
+              provider: response.provider,
+              length: response.markdown.length,
+              truncated: response.truncated,
+              responseTimeSec: response.responseTimeSec,
+              attempts: response.attempts,
+              cached: true,
+            },
+          );
+        }
+        if (cached?.status === 'error' && cached.error) {
+          const error = cached.error as {
+            kind?: string;
+          };
+          const attempts = Array.isArray(cached.meta?.attempts)
+            ? cached.meta.attempts
+            : undefined;
+          return toolResult(
+            `web_fetch 失败(cache hit): ${WEB_FETCH_ERROR_SUMMARY}`,
+            undefined,
+            {
+              status: 'error',
+              kind: error.kind,
+              attempts,
+              cached: true,
+            },
+          );
+        }
+
+        const response = await provider.fetch(normalizedUrl, { maxLength });
 
         const truncatedNote = response.truncated
           ? ` · 截断显示前 ${response.markdown.length} 字符(若需要继续可用更大 maxLength 重读)`
           : '';
         const summary = `web_fetch · ${url} · ${response.markdown.length} 字符${truncatedNote}`;
         const detail = response.markdown;
+        if (cacheRepo) {
+          try {
+            await cacheRepo.setOk(
+              cacheKey,
+              {
+                url: response.url,
+                markdown: response.markdown,
+                truncated: response.truncated,
+                provider: response.provider,
+                responseTimeSec: response.responseTimeSec,
+                attempts: response.attempts,
+              },
+              {
+                provider: response.provider,
+                attempts: response.attempts,
+                length: response.markdown.length,
+              },
+              new Date(now.getTime() + OK_CACHE_TTL_MS),
+              now,
+            );
+          } catch (cacheErr) {
+            logger.warn(
+              `web_fetch ok cache write failed provider=${response.provider} err=${
+                cacheErr instanceof Error ? cacheErr.message : String(cacheErr)
+              }`,
+            );
+          }
+        }
 
         return toolResult(summary, detail, {
           status: 'ok',
@@ -68,14 +178,46 @@ export function createWebFetchTool(provider: WebFetchProvider) {
           length: response.markdown.length,
           truncated: response.truncated,
           responseTimeSec: response.responseTimeSec,
+          attempts: response.attempts,
+          cached: false,
         });
       } catch (err) {
         if (err instanceof WebFetchError) {
           // invalid_url → invalid;其它(network/timeout/404/403/429/未知)→ error
           const status = err.kind === 'invalid_url' ? 'invalid' : 'error';
-          return toolResult(`web_fetch 失败: ${err.message}`, undefined, {
+          if (cacheRepo && status === 'error') {
+            const now = new Date();
+            try {
+              await cacheRepo.setError(
+                buildWebFetchCacheKey(provider, url.trim(), maxLength),
+                {
+                  kind: err.kind,
+                  message: err.message,
+                  retryable:
+                    err.kind === 'network' ||
+                    err.kind === 'timeout' ||
+                    err.kind === 'rate_limited',
+                },
+                { attempts: err.attempts },
+                new Date(now.getTime() + ERROR_CACHE_TTL_MS),
+                now,
+              );
+            } catch (cacheErr) {
+              logger.warn(
+                `web_fetch error cache write failed kind=${err.kind} err=${
+                  cacheErr instanceof Error
+                    ? cacheErr.message
+                    : String(cacheErr)
+                }`,
+              );
+            }
+          }
+          const summary =
+            status === 'invalid' ? err.message : WEB_FETCH_ERROR_SUMMARY;
+          return toolResult(`web_fetch 失败: ${summary}`, undefined, {
             status,
             kind: err.kind,
+            attempts: err.attempts,
           });
         }
         return toolResult(

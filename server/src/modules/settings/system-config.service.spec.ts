@@ -67,6 +67,51 @@ function mkAgent(overrides: Partial<AgentEntryConfig> = {}): AgentEntryConfig {
   };
 }
 
+describe('SystemConfigService integration config — Web Fetch keys', () => {
+  const OLD_ENV = process.env;
+
+  beforeEach(() => {
+    process.env = { ...OLD_ENV };
+  });
+
+  afterAll(() => {
+    process.env = OLD_ENV;
+  });
+
+  it('getConfigView 脱敏返回 Firecrawl/Jina 配置状态', async () => {
+    const { service, mockRepo } = createMocks();
+    mockRepo.get.mockResolvedValue({
+      firecrawlApiKey: 'fc-test',
+      jinaApiKey: 'jina-test',
+    } as never);
+
+    const view = await service.getConfigView();
+
+    expect(view.integration).toEqual(
+      expect.objectContaining({
+        hasFirecrawlApiKey: true,
+        hasJinaApiKey: true,
+      }),
+    );
+  });
+
+  it('saveIntegrationConfig 保存 Web Fetch keys 并同步到 process.env', async () => {
+    const { service, mockRepo } = createMocks();
+
+    await service.saveIntegrationConfig({
+      firecrawlApiKey: 'fc-new',
+      jinaApiKey: 'jina-new',
+    });
+
+    expect(mockRepo.patch).toHaveBeenCalledWith({
+      firecrawlApiKey: 'fc-new',
+      jinaApiKey: 'jina-new',
+    });
+    expect(process.env.FIRECRAWL_API_KEY).toBe('fc-new');
+    expect(process.env.JINA_API_KEY).toBe('jina-new');
+  });
+});
+
 describe('SystemConfigService.saveAgentConfig — Skill 校验(Task 0.5 + F3 收紧两路径)', () => {
   // ── 路径 B(added 子集)— added 全合规 / added 不合规 / added 不存在 ──
 
@@ -474,8 +519,14 @@ describe('SystemConfigService — 内置 agent 合成解析', () => {
     expect(lw?.builtin).toBe(true);
     expect(lw?.systemPrompt).toBe('报告分析师默认 system prompt'); // mock render
     expect(lw?.tools).toContain('write_draft');
-    expect(lw?.enabledSkillIds).toEqual(['note-writing']); // 按 skill key 引用
+    expect(lw?.enabledSkillIds).toEqual(['note-writing', 'writing-review']); // 按 skill key 引用
     expect(lw?.providerId).toBe('');
+
+    const planner = await service.getAgentConfig('learning-planner');
+    expect(planner?.enabledSkillIds).toEqual(['note-plan', 'writing-review']);
+
+    const advisor = await service.getAgentConfig('writing-advisor');
+    expect(advisor?.enabledSkillIds).toEqual(['writing-review']);
   });
 
   it('getAgentConfig 内置 key + Mongo 有 provider → provider 用 Mongo、定义仍用文件', async () => {
