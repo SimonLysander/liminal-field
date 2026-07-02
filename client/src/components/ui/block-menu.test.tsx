@@ -59,12 +59,13 @@ vi.mock('platejs/react', () => ({
 }));
 
 vi.mock('@/components/editor/transforms', () => ({
-  getBlockType: () => 'p',
+  getBlockType: (node: { type: string }) => node.type,
   setBlockType: vi.fn(),
 }));
 
 // block-menu-turn-into mock：渲染固定占位文本，让 C5/C6 只验证 view 切换而无需关心子菜单内部实现
 vi.mock('@/components/ui/block-menu-turn-into', () => ({
+  canTurnInto: (type: string) => type === 'p',
   BlockMenuTurnInto: () => <div>转换成子菜单</div>,
 }));
 
@@ -196,5 +197,16 @@ describe('BlockMenu', () => {
     expect(screen.queryByText('删除块')).not.toBeInTheDocument();
     // trigger 的 aria-expanded / data-state 回到关闭
     expect(trigger).toHaveAttribute('data-state', 'closed');
+  });
+
+  // ── C9 ────────────────────────────────────────────────────────────────────
+  it('复杂结构块不显示转换成入口', async () => {
+    const node = { type: 'table', children: [] } as Parameters<typeof BlockMenu>[0]['blockNode'];
+
+    render(<BlockMenu blockPath={[0]} blockNode={node} />);
+    fireEvent.click(screen.getByRole('button', { name: '块菜单' }));
+
+    expect(await screen.findByText('复制')).toBeInTheDocument();
+    expect(screen.queryByText('转换成')).not.toBeInTheDocument();
   });
 });

@@ -25,6 +25,7 @@ import {
   RadicalIcon,
   SquareCheckIcon,
   TableIcon,
+  Wand2Icon,
 } from 'lucide-react';
 import { type TComboboxInputElement, KEYS } from 'platejs';
 import { PlateElement } from 'platejs/react';
@@ -33,6 +34,7 @@ import {
   insertBlock,
   insertInlineElement,
 } from '@/components/editor/transforms';
+import { requestInlineAssist } from '@/components/editor/inline-assist-events';
 
 import {
   InlineCombobox,
@@ -50,6 +52,7 @@ type SlashGroup = {
     icon: React.ReactNode;
     value: string;
     onSelect: (editor: PlateEditor, value: string) => void;
+    closeOnSelect?: boolean;
     focusEditor?: boolean;
     keywords?: string[];
     label?: string;
@@ -57,6 +60,24 @@ type SlashGroup = {
 };
 
 const groups: SlashGroup[] = [
+  {
+    group: 'AI',
+    items: [
+      {
+        icon: <Wand2Icon />,
+        keywords: ['ai', 'write', 'continue', '续写', '帮我写'],
+        label: '帮我写',
+        value: 'inline-assist',
+        focusEditor: false,
+        onSelect: (editor: PlateEditor) => {
+          requestInlineAssist({
+            action: 'open-menu',
+            editorId: String(editor.id),
+          });
+        },
+      },
+    ],
+  },
   {
     group: '基础块',
     items: [
@@ -69,19 +90,19 @@ const groups: SlashGroup[] = [
       {
         icon: <Heading1Icon />,
         keywords: ['title', 'h1', '标题'],
-        label: '标题 1',
+        label: '一级标题',
         value: 'h1',
       },
       {
         icon: <Heading2Icon />,
         keywords: ['subtitle', 'h2', '标题'],
-        label: '标题 2',
+        label: '二级标题',
         value: 'h2',
       },
       {
         icon: <Heading3Icon />,
         keywords: ['subtitle', 'h3', '标题'],
-        label: '标题 3',
+        label: '三级标题',
         value: 'h3',
       },
       {
@@ -214,7 +235,18 @@ function SlashMenu({
   groups: SlashGroup[];
 }) {
   return (
-    <InlineCombobox element={element} trigger="/">
+    <InlineCombobox
+      element={element}
+      trigger="/"
+      onNavigateNext={(item) => {
+        if (item.value !== 'inline-assist') return false;
+        requestInlineAssist({
+          action: 'open-menu',
+          editorId: String(editor.id),
+        });
+        return true;
+      }}
+    >
       <InlineComboboxInput />
 
       <InlineComboboxContent>
@@ -224,12 +256,13 @@ function SlashMenu({
           <InlineComboboxGroup key={group}>
             <InlineComboboxGroupLabel>{group}</InlineComboboxGroupLabel>
 
-            {items.map(({ focusEditor, icon, keywords, label, value, onSelect }) => (
+            {items.map(({ closeOnSelect, focusEditor, icon, keywords, label, value, onSelect }) => (
               <InlineComboboxItem
                 key={value}
                 value={value}
                 onClick={() => onSelect(editor, value)}
                 label={label}
+                closeOnSelect={closeOnSelect}
                 focusEditor={focusEditor}
                 group={group}
                 keywords={keywords}

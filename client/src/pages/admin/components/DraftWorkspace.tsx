@@ -119,6 +119,7 @@ export const DraftWorkspace = ({
         <PlateMarkdownEditor
           key={resetKey}
           initialMarkdown={draftState.bodyMarkdown}
+          headingNumbering
           onChange={(md) => onEditorChange('bodyMarkdown', md)}
         />
       </DraftAssetProvider>

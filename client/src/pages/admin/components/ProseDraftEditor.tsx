@@ -426,6 +426,7 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
             <PlateMarkdownEditor
               key={editorKey}
               initialMarkdown={editor.state.bodyMarkdown}
+              headingNumbering
               onChange={editor.setBody}
               onAddSelectionToChat={(attachment) =>
                 setChatSelections((prev) => {

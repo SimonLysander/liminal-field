@@ -623,6 +623,38 @@ body:not(.gallery-immersive)::after {
   font-family: var(--font-mono);
 }
 
+/* 编辑器标题层级编号 — 纯视觉 counter,不写入 Markdown/剪贴板数据。 */
+.editor-heading-numbering [data-slate-editor] {
+  counter-reset: editor-h1 editor-h2;
+}
+
+.editor-heading-numbering [data-slate-editor] h1 {
+  counter-increment: editor-h1;
+  counter-reset: editor-h2;
+}
+
+.editor-heading-numbering [data-slate-editor] h2 {
+  counter-increment: editor-h2;
+}
+
+.editor-heading-numbering [data-slate-editor] h1::before,
+.editor-heading-numbering [data-slate-editor] h2::before {
+  display: inline-block;
+  margin-right: 0.16em;
+  color: inherit;
+  font: inherit;
+  letter-spacing: 0;
+  opacity: 0.92;
+}
+
+.editor-heading-numbering [data-slate-editor] h1::before {
+  content: counter(editor-h1, cjk-ideographic) "、";
+}
+
+.editor-heading-numbering [data-slate-editor] h2::before {
+  content: counter(editor-h1) "." counter(editor-h2);
+}
+
 /* Plate toolbar buttons — pill hover state */
 .plate-toolbar-btn:hover {
   background: var(--shelf);

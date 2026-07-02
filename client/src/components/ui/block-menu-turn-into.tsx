@@ -13,10 +13,10 @@
  *     code_line 转 paragraph，自动保留换行和 inline 结构。其他
  *     块时不出现"转代码块"选项，想插代码块走 / 命令菜单 或 ```。
  *
- *   - 表格 / 公式 / 图片 / 视频：块菜单的 path.length === 1 守卫已
- *     过滤掉这些复杂顶层块的子结构，但顶层图片块仍会带块菜单（含
- *     转换成）。这里依然只显示安全的 8 项，让用户能把"图片块"
- *     当容器替换成段落属于另一类需求，本设计暂不暴露。
+ *   - 表格 / 公式 / 图片 / 附件 / 分割线：这些块的 children 结构、
+ *     void 语义或插件状态与普通文本块不同，不暴露 Turn into。
+ *     需要替换内容时走删除 + 插入，避免 setNodes({ type }) 把节点
+ *     结构改坏。
  *
  * 当前块类型对应的项打勾。
  */
@@ -26,32 +26,9 @@ import { KEYS } from 'platejs';
 import { unwrapCodeBlock } from '@platejs/code-block';
 import { useEditorRef } from 'platejs/react';
 import type { Path } from 'platejs';
-import {
-  Heading1Icon, Heading2Icon, Heading3Icon,
-  PilcrowIcon, QuoteIcon, ListIcon, ListOrderedIcon, CheckSquareIcon,
-} from 'lucide-react';
 
 import { setBlockType } from '@/components/editor/transforms';
-
-type TurnIntoItem = { type: string; label: string; Icon: typeof Heading1Icon };
-
-// 文本 + 列表 — 这 8 项互转安全
-const TEXT_AND_LIST_ITEMS: TurnIntoItem[] = [
-  { type: KEYS.p,          label: '段落',     Icon: PilcrowIcon },
-  { type: KEYS.h1,         label: '标题 1',   Icon: Heading1Icon },
-  { type: KEYS.h2,         label: '标题 2',   Icon: Heading2Icon },
-  { type: KEYS.h3,         label: '标题 3',   Icon: Heading3Icon },
-  { type: KEYS.blockquote, label: '引用',     Icon: QuoteIcon },
-  { type: KEYS.ul,         label: '无序列表', Icon: ListIcon },
-  { type: KEYS.ol,         label: '有序列表', Icon: ListOrderedIcon },
-  { type: KEYS.listTodo,   label: '待办',     Icon: CheckSquareIcon },
-];
-
-// 代码块的退路：只暴露"段落"。其他块型（标题/列表/引用）从代码块直转
-// 仍然是结构跨度太大的边界场景，先不开。
-const CODE_BLOCK_ESCAPE_ITEMS: TurnIntoItem[] = [
-  { type: KEYS.p, label: '段落', Icon: PilcrowIcon },
-];
+import { getTurnIntoItems } from '@/components/editor/block-conversion';
 
 interface Props {
   blockPath: Path;
@@ -61,10 +38,11 @@ interface Props {
 
 export function BlockMenuTurnInto({ blockPath, currentType, onPicked }: Props) {
   const editor = useEditorRef();
-  const items =
-    currentType === KEYS.codeBlock
-      ? CODE_BLOCK_ESCAPE_ITEMS
-      : TEXT_AND_LIST_ITEMS;
+  const items = getTurnIntoItems(currentType);
+
+  if (items.length === 0) {
+    return null;
+  }
 
   return (
     <div className="flex flex-col gap-px p-1">

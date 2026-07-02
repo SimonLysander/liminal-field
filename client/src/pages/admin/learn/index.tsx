@@ -923,6 +923,7 @@ function NodeScreen({
                   <PlateMarkdownEditor
                     key={`d-${nodeId}-${aiDraft.length}:${aiDraft.slice(0, 16)}:${aiDraft.slice(-16)}`}
                     initialMarkdown={aiDraft}
+                    headingNumbering
                     readOnly
                   />
                 </DraftAssetProvider>
@@ -1006,6 +1007,7 @@ function NodeScreen({
                   <PlateMarkdownEditor
                     key={`r-${nodeId}`}
                     initialMarkdown={editor.state.bodyMarkdown}
+                    headingNumbering
                     onChange={(md, isUserEdit) => editor.setBody(md, isUserEdit)}
                   />
                 </DraftAssetProvider>

@@ -11,12 +11,12 @@
  * Case 7: Seed sources on startup（幂等 + API 可见 26 条）
  *
  * Mock 策略：
- * - generateText / generateObject：jest.mock('ai')，只 mock LLM 调用不改任何 DB/Git 逻辑
+ * - generateText：jest.mock('ai')，只 mock LLM 调用不改任何 DB/Git 逻辑
  * - RssFetcher.prototype.fetch：jest.spyOn，返回固定 2 条 FetchedItem
  * - 其余全用真服务（NestJS 全模块启动，连接内存 MongoDB + 临时 Git）
  *
  * 注意：jest.mock('ai') 必须在文件顶部（jest 会 hoist mock 调用到 import 之前），
- * 随后 import 的 generateText/generateObject 就是 jest mock function。
+ * 随后 import 的 generateText 就是 jest mock function。
  *
  * v4 工具集变更（Task #41）：
  * - 删除 list_sources / search / view，browse 入参从 source(ref) 改为 sourceId(src_xxx)。
@@ -30,7 +30,6 @@ jest.mock('ai', () => {
   return {
     ...actual,
     generateText: jest.fn(),
-    generateObject: jest.fn(),
   };
 });
 
@@ -42,12 +41,16 @@ jest.mock('@ai-sdk/openai-compatible', () => ({
 }));
 
 // mock makeRepairToolCall（react-agent.node 依赖，不影响测试目的）
-jest.mock('../src/modules/agent/agent.utils', () => ({
-  makeRepairToolCall: jest.fn(() => jest.fn()),
-}));
+jest.mock('../src/modules/agent/agent.utils', () => {
+  const actual = jest.requireActual('../src/modules/agent/agent.utils');
+  return {
+    ...actual,
+    makeRepairToolCall: jest.fn(() => jest.fn()),
+  };
+});
 
 import supertest from 'supertest';
-import { generateText, generateObject } from 'ai';
+import { generateText } from 'ai';
 import { TestContext, login } from './helpers';
 import { DigestModule } from '../src/modules/digest/digest.module';
 import { RssFetcher } from '../src/modules/digest/fetchers/rss-fetcher.service';
@@ -66,10 +69,6 @@ import { InfoSourceService } from '../src/modules/digest/info-source.service';
 const mockGenerateText = generateText as jest.MockedFunction<
   typeof generateText
 >;
-const mockGenerateObject = generateObject as jest.MockedFunction<
-  typeof generateObject
->;
-
 // ─── 固定 mock 数据 ───────────────────────────────────────────────────────────
 
 // publishedAt 设为"昨天"和"前天"，确保通过 browse 工具的 since=7天前 过滤
@@ -93,6 +92,67 @@ const MOCK_FEED_ITEMS: FetchedItem[] = [
     snippet: '这是 mock 摘要 2，补充背景资料。',
   },
 ];
+
+function installDigestGenerateTextMock({
+  pick,
+  sourceId,
+}: {
+  pick: boolean;
+  sourceId?: string;
+}) {
+  mockGenerateText.mockImplementation(async (args: any) => {
+    const { prompt, tools } = args;
+
+    if (tools) {
+      if (!sourceId) {
+        return { steps: [], text: 'no source' } as any;
+      }
+
+      const browseResult = await tools.browse.execute({ sourceId }, {} as any);
+
+      if (pick) {
+        const parsedBrowse = JSON.parse(browseResult) as {
+          meta: { items: Array<{ ref: string }> };
+        };
+        const items = parsedBrowse.meta.items;
+        if (!items || items.length === 0) {
+          throw new Error('browse returned no items');
+        }
+
+        await tools.pick.execute(
+          {
+            items: items.slice(0, 2).map((i: { ref: string }) => ({
+              ref: i.ref,
+              reason: 'e2e mock 挑这条',
+            })),
+          },
+          {} as any,
+        );
+      }
+
+      return { steps: [{}], text: pick ? 'done' : 'no picks' } as any;
+    }
+
+    const textPrompt = String(prompt ?? '');
+    if (textPrompt.includes('"topics"') || textPrompt.includes('citationIds')) {
+      return {
+        finishReason: 'stop',
+        text: JSON.stringify({
+          headline: 'e2e 测试本期',
+          deck: '本期覆盖 e2e 工作流中的两篇 mock 文章。',
+          topics: [{ title: '概要', citationIds: [1, 2] }],
+        }),
+      } as any;
+    }
+
+    return {
+      finishReason: 'stop',
+      text:
+        '### Mock 文章 1\n\n本期内容 [@#CIT 1]。\n\n' +
+        '### Mock 文章 2\n\n这是 e2e 自动生成的报告正文 [@#CIT 2]。',
+    } as any;
+  });
+}
 
 // ─── 辅助函数 ─────────────────────────────────────────────────────────────────
 
@@ -183,6 +243,7 @@ describe('Digest Case 1: POST /digest/topics/:topicId/run-now 创建 task', () =
   let ctx: TestContext;
   let cookie: string;
   let topicId: string;
+  let fetchSpy: jest.SpyInstance;
 
   beforeAll(async () => {
     ctx = new TestContext();
@@ -192,18 +253,19 @@ describe('Digest Case 1: POST /digest/topics/:topicId/run-now 创建 task', () =
     await ctx.setup([PromptManagerModule, SettingsModule, DigestModule]);
     cookie = await login(ctx.app);
 
+    fetchSpy = jest
+      .spyOn(RssFetcher.prototype, 'fetch')
+      .mockResolvedValue(MOCK_FEED_ITEMS);
+
     const sourceId = await createInfoSource(ctx.app, cookie);
     topicId = await createTopic(ctx.app, cookie, sourceId);
 
-    // Case 1 只验 taskId 格式 + 状态可查，不需要 workflow 真跑完
-    // mock generateText/generateObject 返回极简假值，防止真跑 LLM 或 throw
-    mockGenerateText.mockResolvedValue({ steps: [], text: '' } as any);
-    mockGenerateObject.mockResolvedValue({
-      object: { headline: 'noop', markdown: '## noop' },
-    } as any);
+    // Case 1 只验 taskId 格式 + 状态可查，不需要 workflow 真跑完。
+    installDigestGenerateTextMock({ pick: false, sourceId });
   });
 
   afterAll(async () => {
+    fetchSpy.mockRestore();
     await ctx.teardown();
   });
 
@@ -287,43 +349,7 @@ describe('Digest Case 2: 完整 workflow 跑通（mock LLM）', () => {
     sourceId = await createInfoSource(ctx.app, cookie, 'e2e-workflow-源');
     topicId = await createTopic(ctx.app, cookie, sourceId, 'e2e-workflow-事项');
 
-    // ─── mock generateText：v4 工具集序列（browse(sourceId) → pick）───────────
-    // Task #41：删除 list_sources，browse 入参从 source(ref) 改为 sourceId(src_xxx)。
-    // sourceId 由 system prompt 注入 LLM，这里直接用闭包捕获（模拟 LLM "读" system prompt）。
-    mockGenerateText.mockImplementation(async ({ tools }: any) => {
-      if (!tools) throw new Error('tools missing in generateText mock');
-
-      // 步骤 1: browse（直接用 sourceId，不再调 list_sources 分配 ref）
-      const browseResult = await tools.browse.execute({ sourceId }, {} as any);
-      const parsedBrowse = JSON.parse(browseResult) as {
-        meta: { items: Array<{ ref: string }> };
-      };
-      const items = parsedBrowse.meta.items;
-      if (!items || items.length === 0)
-        throw new Error('browse returned no items');
-
-      // 步骤 2: pick 所有拉到的 items
-      await tools.pick.execute(
-        {
-          items: items.slice(0, 2).map((i: { ref: string }) => ({
-            ref: i.ref,
-            reason: 'e2e mock 挑这条',
-          })),
-        },
-        {} as any,
-      );
-
-      return { steps: [{}, {}], text: 'done' } as any;
-    });
-
-    // ─── mock generateObject：compose 节点用 ───
-    mockGenerateObject.mockResolvedValue({
-      object: {
-        headline: 'e2e 测试本期',
-        markdown:
-          '## 概要\n\n本期内容 [@#CIT 1] 与 [@#CIT 2]。\n\n这是 e2e 自动生成的报告正文。',
-      },
-    } as any);
+    installDigestGenerateTextMock({ pick: true, sourceId });
   });
 
   afterAll(async () => {
@@ -423,22 +449,7 @@ describe('Digest Case 3: findings=0 早停', () => {
       'e2e-early-stop-事项',
     );
 
-    // mock generateText：只调 browse（用 sourceId），**不调 pick**
-    // → findings 保持 0 → workflow 早停 → status=failed
-    // Task #41：去掉已删除的 list_sources 调用，直接 browse({sourceId})。
-    mockGenerateText.mockImplementation(async ({ tools }: any) => {
-      if (!tools) throw new Error('tools missing in generateText mock');
-
-      // 直接 browse（不再依赖 list_sources 分配 ref）
-      await tools.browse.execute({ sourceId }, {} as any);
-      // 不调 pick → findings 为空
-
-      return { steps: [{}], text: 'no picks' } as any;
-    });
-
-    mockGenerateObject.mockResolvedValue({
-      object: { headline: 'noop', markdown: '## noop' },
-    } as any);
+    installDigestGenerateTextMock({ pick: false, sourceId });
   });
 
   afterAll(async () => {
@@ -482,10 +493,7 @@ describe('Digest Case 4: GET /digest/topics/:id/tasks 列最近', () => {
     topicId = await createTopic(ctx.app, cookie, sid, 'e2e-list-tasks-事项');
 
     // 简单 mock：不 pick → 快速早停（只测 list，不关心 done/failed）
-    mockGenerateText.mockResolvedValue({ steps: [], text: '' } as any);
-    mockGenerateObject.mockResolvedValue({
-      object: { headline: 'noop', markdown: '## noop' },
-    } as any);
+    installDigestGenerateTextMock({ pick: false, sourceId: sid });
   });
 
   afterAll(async () => {
@@ -553,13 +561,9 @@ describe('Digest Case 5: 未登录 → 401', () => {
     await ctx.setup([PromptManagerModule, SettingsModule, DigestModule]);
     cookie = await login(ctx.app);
 
-    mockGenerateText.mockResolvedValue({ steps: [], text: '' } as any);
-    mockGenerateObject.mockResolvedValue({
-      object: { headline: 'noop', markdown: '## noop' },
-    } as any);
-
     const sourceId = await createInfoSource(ctx.app, cookie, 'e2e-401-源');
     topicId = await createTopic(ctx.app, cookie, sourceId, 'e2e-401-事项');
+    installDigestGenerateTextMock({ pick: false, sourceId });
   });
 
   afterAll(async () => {

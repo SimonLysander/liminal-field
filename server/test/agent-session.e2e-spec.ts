@@ -51,21 +51,23 @@ describe('Agent Session & Config (E2E)', () => {
   });
 
   describe('PUT /settings/agent-configs/:key', () => {
-    it('应能更新已有配置的 systemPrompt', async () => {
+    it('内置 agent 应只接受运行时配置更新，定义字段仍以文件为准', async () => {
       await supertest(ctx.app.getHttpServer())
         .put('/api/v1/settings/agent-configs/writing-advisor')
         .set('Cookie', cookie)
         .send({
           name: '写作顾问',
           description: '测试描述',
-          enabled: true,
+          enabled: false,
           systemPrompt: '你是一个测试助手',
           tools: ['search_knowledge_base', 'remember'],
           tier: 'flash',
+          providerId: 'provider-e2e',
         })
         .expect(200);
 
-      // 验证更新生效
+      // 内置 agent 的 prompt/tools/tier/name/description 由 prompts/builtin-agents.ts
+      // 与对应 markdown 文件托管；Mongo 只保存 enabled/provider 这类运行时配置。
       const res = await supertest(ctx.app.getHttpServer())
         .get('/api/v1/settings/agent-configs')
         .set('Cookie', cookie)
@@ -74,9 +76,11 @@ describe('Agent Session & Config (E2E)', () => {
       const config = res.body.data.find(
         (c: any) => c.key === 'writing-advisor',
       );
-      expect(config.systemPrompt).toBe('你是一个测试助手');
-      expect(config.tools).toEqual(['search_knowledge_base', 'remember']);
-      expect(config.tier).toBe('flash');
+      expect(config.enabled).toBe(false);
+      expect(config.providerId).toBe('provider-e2e');
+      expect(config.systemPrompt).not.toBe('你是一个测试助手');
+      expect(config.tools).not.toEqual(['search_knowledge_base', 'remember']);
+      expect(config.tier).toBe('standard');
     });
 
     it('应能新建一个 agent 配置', async () => {

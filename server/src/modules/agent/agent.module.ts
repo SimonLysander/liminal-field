@@ -26,6 +26,8 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { TypegooseModule } from 'nestjs-typegoose';
 import { AgentController } from './agent.controller';
 import { AgentService } from './agent.service';
+import { InlineAssistController } from './inline-assist.controller';
+import { InlineAssistService } from './inline-assist.service';
 import { AgentMemory } from './memory/agent-memory.entity';
 import { AgentMemoryRepository } from './memory/agent-memory.repository';
 import { PendingWrite } from './approval/pending-write.entity';
@@ -77,7 +79,7 @@ import { DigestSharedModule } from '../digest/digest-shared.module';
     SkillModule,
     DigestSharedModule,
   ],
-  controllers: [AgentController],
+  controllers: [AgentController, InlineAssistController],
   providers: [
     // Handler 层：各司其职的单一职责服务
     SessionHandler,
@@ -91,6 +93,7 @@ import { DigestSharedModule } from '../digest/digest-shared.module';
     ToolUseListener,
     // 底层服务与仓储
     AgentService,
+    InlineAssistService,
     AgentMemoryRepository,
     AgentMemoryObservationRepository,
     AgentSessionRepository,

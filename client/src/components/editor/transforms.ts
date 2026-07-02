@@ -19,6 +19,8 @@ import {
   PathApi,
 } from 'platejs';
 
+import { canSetTopLevelBlockType } from './block-conversion';
+
 const insertList = (editor: PlateEditor, type: string) => {
   editor.tf.insertNodes(
     editor.api.create.block({
@@ -152,6 +154,56 @@ const setList = (
   );
 };
 
+const getInlineChildren = (node: TElement) => {
+  const firstChild = node.children[0];
+
+  if (firstChild && 'text' in firstChild) {
+    return structuredClone(node.children);
+  }
+
+  return [{ text: '' }];
+};
+
+const createTextLikeBlock = (
+  editor: PlateEditor,
+  type: string,
+  children: TElement['children'],
+) => {
+  if (type in setBlockMap) {
+    return {
+      ...editor.api.create.block({
+        indent: 1,
+        listStyleType: type,
+      }),
+      children,
+    } as TElement;
+  }
+
+  return { type, children } as TElement;
+};
+
+const unwrapBlockquoteAsType = (
+  editor: PlateEditor,
+  type: string,
+  entry: NodeEntry<TElement>,
+) => {
+  const [node, path] = entry;
+  const hasInlineChildren = node.children.some((child) => 'text' in child);
+  const replacement = hasInlineChildren
+    ? [createTextLikeBlock(editor, type, getInlineChildren(node))]
+    : node.children
+        .filter((child): child is TElement => 'children' in child)
+        .map((child) => createTextLikeBlock(editor, type, getInlineChildren(child)));
+
+  editor.tf.removeNodes({ at: path });
+  editor.tf.insertNodes(
+    replacement.length > 0
+      ? replacement
+      : [createTextLikeBlock(editor, type, [{ text: '' }])],
+    { at: path },
+  );
+};
+
 const setBlockMap: Record<
   string,
   (editor: PlateEditor, type: string, entry: NodeEntry<TElement>) => void
@@ -169,6 +221,14 @@ export const setBlockType = (
 ) => {
   editor.tf.withoutNormalizing(() => {
     if (type === KEYS.blockquote) {
+      if (at) {
+        const entry = editor.api.node<TElement>(at);
+
+        if (!entry || !canSetTopLevelBlockType(getBlockType(entry[0]), type)) {
+          return;
+        }
+      }
+
       const target = at ?? editor.selection;
 
       if (!target || editor.api.some({ at: target, match: { type } })) {
@@ -186,6 +246,11 @@ export const setBlockType = (
     const setEntry = (entry: NodeEntry<TElement>) => {
       const [node, path] = entry;
 
+      if (node.type === KEYS.blockquote && type !== KEYS.blockquote) {
+        unwrapBlockquoteAsType(editor, type, entry);
+        return;
+      }
+
       if (node[KEYS.listType]) {
         editor.tf.unsetNodes([KEYS.listType, 'indent'], { at: path });
       }
@@ -201,6 +266,10 @@ export const setBlockType = (
       const entry = editor.api.node<TElement>(at);
 
       if (entry) {
+        if (!canSetTopLevelBlockType(getBlockType(entry[0]), type)) {
+          return;
+        }
+
         setEntry(entry);
 
         return;

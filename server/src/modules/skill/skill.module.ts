@@ -14,9 +14,10 @@ import { Skill } from './skill.entity';
 import { SkillRepository } from './skill.repository';
 import { SkillService } from './skill.service';
 import { SkillController } from './skill.controller';
+import { PromptManagerModule } from '../../infrastructure/prompt/prompt-manager.module';
 
 @Module({
-  imports: [TypegooseModule.forFeature([Skill])],
+  imports: [TypegooseModule.forFeature([Skill]), PromptManagerModule],
   controllers: [SkillController],
   providers: [SkillRepository, SkillService],
   exports: [SkillService, SkillRepository],

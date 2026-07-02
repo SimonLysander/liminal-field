@@ -1,6 +1,6 @@
 'use client';
 
-import { BoldIcon, Code2Icon, ItalicIcon, StrikethroughIcon, UnderlineIcon } from 'lucide-react';
+import { BoldIcon, Code2Icon, ItalicIcon, StrikethroughIcon, UnderlineIcon, Wand2Icon } from 'lucide-react';
 import { KEYS } from 'platejs';
 import { useEditorReadOnly } from 'platejs/react';
 
@@ -16,8 +16,10 @@ import { ToolbarButton, ToolbarGroup, ToolbarSeparator } from './toolbar';
  */
 export function FloatingToolbarButtons({
   onAddSelectionToChat,
+  onInlineAssist,
 }: {
   onAddSelectionToChat?: () => void;
+  onInlineAssist?: () => void;
 }) {
   const readOnly = useEditorReadOnly();
 
@@ -25,25 +27,40 @@ export function FloatingToolbarButtons({
 
   return (
     <>
-      {onAddSelectionToChat && (
+      {(onAddSelectionToChat || onInlineAssist) && (
         <>
           <ToolbarGroup>
-            <ToolbarButton
-              tooltip="引用到 Aurora"
-              className="gap-1.5 px-2.5 text-xs font-medium"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                onAddSelectionToChat();
-              }}
-            >
-              <img
-                className="h-3.5 w-3.5 object-contain opacity-75"
-                src="/garden/iris-seed.webp"
-                alt=""
-                draggable={false}
-              />
-              <span className="text-xs">引用到 Aurora</span>
-            </ToolbarButton>
+            {onInlineAssist && (
+              <ToolbarButton
+                tooltip="帮我写"
+                className="gap-1.5 px-2.5 text-xs font-medium"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onInlineAssist?.();
+                }}
+              >
+                <Wand2Icon className="h-3.5 w-3.5 opacity-75" />
+                <span className="text-xs">帮我写</span>
+              </ToolbarButton>
+            )}
+            {onAddSelectionToChat && (
+              <ToolbarButton
+                tooltip="引用到 Aurora"
+                className="gap-1.5 px-2.5 text-xs font-medium"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onAddSelectionToChat();
+                }}
+              >
+                <img
+                  className="h-3.5 w-3.5 object-contain opacity-75"
+                  src="/garden/iris-seed.webp"
+                  alt=""
+                  draggable={false}
+                />
+                <span className="text-xs">引用到 Aurora</span>
+              </ToolbarButton>
+            )}
           </ToolbarGroup>
           <ToolbarSeparator />
         </>

@@ -8,6 +8,7 @@
 'use client';
 
 import { SuggestionPlugin } from '@platejs/suggestion/react';
+import { AIChatPlugin, AIPlugin } from '@platejs/ai/react';
 import { ExitBreakPlugin, TrailingBlockPlugin } from 'platejs';
 
 import { SuggestionLeaf } from '@/components/ui/suggestion-node';
@@ -26,6 +27,7 @@ import { MediaKit } from './plugins/media-kit';
 import { SlashKit } from './plugins/slash-kit';
 import { TableKit } from './plugins/table-kit';
 import { ProposalNewPlugin, ProposalOldPlugin } from './proposal-plugin';
+import { AIAnchorElement, AILeaf } from '@/components/ui/ai-node';
 
 export const EditorKit = [
   ...BasicNodesKit,
@@ -44,6 +46,11 @@ export const EditorKit = [
   ...PasteCleanupKit,
   ...BlockMenuKit,
   ...SlashKit,
+
+  /* Plate 官方 AI preview/streaming 基础能力。/帮我写 使用它把流式 Markdown
+     直接插入为可接受/取消的编辑器内预览,避免维护额外的外部预览状态。 */
+  AIPlugin.withComponent(AILeaf),
+  AIChatPlugin.withComponent(AIAnchorElement),
 
   /* ⌘+Enter 跳出代码块/引用等嵌套结构，在后面插入新段落 */
   ExitBreakPlugin.configure({

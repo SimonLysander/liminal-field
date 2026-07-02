@@ -39,10 +39,17 @@ type FilterFn = (
   search: string
 ) => boolean;
 
+type NavigateNextItem = {
+  group?: string;
+  label?: string;
+  value: string;
+};
+
 type InlineComboboxContextValue = {
   filter: FilterFn | false;
   inputProps: UseComboboxInputResult['props'];
   inputRef: React.RefObject<HTMLInputElement | null>;
+  onNavigateNext?: (item: NavigateNextItem) => boolean;
   removeInput: UseComboboxInputResult['removeInput'];
   showTrigger: boolean;
   trigger: string;
@@ -72,6 +79,7 @@ type InlineComboboxProps = {
   trigger: string;
   filter?: FilterFn | false;
   hideWhenNoValue?: boolean;
+  onNavigateNext?: (item: NavigateNextItem) => boolean;
   showTrigger?: boolean;
   value?: string;
   setValue?: (value: string) => void;
@@ -82,6 +90,7 @@ const InlineCombobox = ({
   element,
   filter = defaultFilter,
   hideWhenNoValue = false,
+  onNavigateNext,
   setValue: setValueProp,
   showTrigger = true,
   trigger,
@@ -162,12 +171,13 @@ const InlineCombobox = ({
       filter,
       inputProps,
       inputRef,
+      onNavigateNext,
       removeInput,
       setHasEmpty,
       showTrigger,
       trigger,
     }),
-    [trigger, showTrigger, filter, inputRef, inputProps, removeInput, setHasEmpty]
+    [trigger, showTrigger, filter, inputRef, inputProps, onNavigateNext, removeInput, setHasEmpty]
   );
 
   const store = useComboboxStore({
@@ -202,6 +212,7 @@ const InlineCombobox = ({
 
 const InlineComboboxInput = ({
   className,
+  onKeyDown,
   ref: propRef,
   ...props
 }: React.HTMLAttributes<HTMLInputElement> & {
@@ -210,6 +221,8 @@ const InlineComboboxInput = ({
   const {
     inputProps,
     inputRef: contextRef,
+    onNavigateNext,
+    removeInput,
     showTrigger,
     trigger,
   } = React.useContext(InlineComboboxContext);
@@ -218,6 +231,35 @@ const InlineComboboxInput = ({
   const value = store.useState('value');
 
   const ref = useComposedRef(propRef, contextRef);
+
+  const handleKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'ArrowRight' && onNavigateNext) {
+        const activeId = store.getState().activeId;
+        const activeElement = activeId ? document.getElementById(activeId) : null;
+        const value = activeElement?.getAttribute('data-inline-combobox-value');
+
+        if (value) {
+          const handled = onNavigateNext({
+            group: activeElement?.getAttribute('data-inline-combobox-group') ?? undefined,
+            label: activeElement?.getAttribute('data-inline-combobox-label') ?? undefined,
+            value,
+          });
+
+          if (handled) {
+            event.preventDefault();
+            event.stopPropagation();
+            removeInput(false);
+            return;
+          }
+        }
+      }
+
+      inputProps.onKeyDown(event);
+      onKeyDown?.(event);
+    },
+    [inputProps, onKeyDown, onNavigateNext, removeInput, store]
+  );
 
   return (
     <>
@@ -243,6 +285,7 @@ const InlineComboboxInput = ({
           autoSelect
           {...inputProps}
           {...props}
+          onKeyDown={handleKeyDown}
         />
       </span>
     </>
@@ -308,6 +351,7 @@ const comboboxItemVariants = cva(
 
 const InlineComboboxItem = ({
   className,
+  closeOnSelect = true,
   focusEditor = true,
   group,
   keywords,
@@ -315,6 +359,7 @@ const InlineComboboxItem = ({
   onClick,
   ...props
 }: {
+  closeOnSelect?: boolean;
   focusEditor?: boolean;
   group?: string;
   keywords?: string[];
@@ -340,8 +385,16 @@ const InlineComboboxItem = ({
   return (
     <ComboboxItem
       className={cn(comboboxItemVariants(), className)}
+      data-inline-combobox-group={group}
+      data-inline-combobox-label={label}
+      data-inline-combobox-value={value}
+      onMouseDown={(event) => {
+        event.preventDefault();
+      }}
       onClick={(event) => {
-        removeInput(focusEditor);
+        if (closeOnSelect) {
+          removeInput(focusEditor);
+        }
         onClick?.(event);
       }}
       {...props}

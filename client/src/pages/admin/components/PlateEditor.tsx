@@ -17,7 +17,16 @@ import {
   type ChatSelectionAttachment,
   type LiveSelectionEditor,
 } from '@/pages/admin/lib/live-chat-selection';
+import {
+  acceptSuggestion,
+  getActiveSuggestionDescriptions,
+  insertTextSuggestion,
+  rejectSuggestion,
+} from '@platejs/suggestion';
 import { SuggestionPlugin } from '@platejs/suggestion/react';
+import { BaseAIPlugin } from '@platejs/ai';
+import { KEYS, getPluginType } from 'platejs';
+import { AIChatPlugin, streamInsertChunk } from '@platejs/ai/react';
 import type { Descendant } from 'platejs';
 import {
   Plate,
@@ -39,6 +48,20 @@ import { FloatingToolbar } from '@/components/ui/floating-toolbar';
 import { FloatingToolbarButtons } from '@/components/ui/floating-toolbar-buttons';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useDraftAssetContext } from '@/contexts/DraftAssetContext';
+import { streamInlineAssist } from '@/services/inline-assist';
+import { INLINE_ASSIST_EVENT, type InlineAssistAction, type InlineAssistRequestDetail } from '@/components/editor/inline-assist-events';
+import {
+  InlineAssistControls,
+  type InlineAssistRangeRef,
+  type InlineAssistState,
+} from '@/components/editor/inline-assist-controls';
+import {
+  getInlineAssistInstruction,
+  hasInlineAssistPreview,
+  hasTransientEditorNode,
+  readNodeText,
+  toResolvedSuggestionDescription,
+} from '@/components/editor/inline-assist-utils';
 
 /**
  * EditorChildrenBridge — 在 <Plate> context 内把 editor 实例 + children 写进父级传入的 ref。
@@ -259,6 +282,7 @@ export function PlateMarkdownEditor({
   onChange = () => {},
   onAnchorChange,
   onAddSelectionToChat,
+  headingNumbering = false,
   v3Proposal,
   onV3Resolved,
   onHasV3PendingChange,
@@ -289,6 +313,8 @@ export function PlateMarkdownEditor({
   onAnchorChange?: (anchor: AnchorPayload) => void;
   /** 浮动工具栏「添加到聊天」:显式把当前 live range 作为聊天附件传给左侧 Aurora */
   onAddSelectionToChat?: (attachment: ChatSelectionAttachment) => void;
+  /** 纯视觉标题编号。用于学习编辑体验,不写入 Slate/Markdown 内容。 */
+  headingNumbering?: boolean;
   /** v3 改稿:聊天侧上抛的待审批 proposal(含 newMarkdown + reason + hunks) */
   v3Proposal?: Proposal;
   /** v3 改稿:所有 hunks 裁决完后干净 markdown 的回调 */
@@ -308,7 +334,16 @@ export function PlateMarkdownEditor({
   // 审阅锁定态(v3):由 ProposalBridge 上报。有未裁决 hunk → readOnly。
   const [hasV3Pending, setHasV3Pending] = useState(false);
   const [toolbarSuppressed, setToolbarSuppressed] = useState(false);
+  const [inlineAssistState, setInlineAssistState] = useState<InlineAssistState>({ status: 'idle' });
+  const [inlineAssistMenuSession, setInlineAssistMenuSession] = useState(0);
   const toolbarSuppressTimerRef = useRef<number | null>(null);
+  const inlineAssistAbortRef = useRef<AbortController | null>(null);
+  const inlineAssistStateRef = useRef<InlineAssistState>(inlineAssistState);
+  const inlineAssistSelectionRef = useRef<InlineAssistRangeRef | null>(null);
+  const setInlineAssistStateSync = useCallback((state: InlineAssistState) => {
+    inlineAssistStateRef.current = state;
+    setInlineAssistState(state);
+  }, []);
   const editorMarkdown = useMemo(
     () => toEditorAssetUrls(initialMarkdown || '', contentItemId),
     [contentItemId, initialMarkdown],
@@ -334,6 +369,9 @@ export function PlateMarkdownEditor({
 
   const handleChange = useCallback(() => {
     if (!editor) return;
+    if (inlineAssistStateRef.current.status !== 'idle') return;
+    if (hasInlineAssistPreview(editor.children as Descendant[])) return;
+    if (hasTransientEditorNode(editor.children as Descendant[])) return;
     // 有未决 suggestion → 不同步进 bodyMarkdown(防旧+新叠加序列化成 <suggestion> 垃圾污染草稿)。
     // 裁决完毕后由 controller 主动 serializeMd 干净正文回流(onResolved),不走这条 onChange。
     // api.nodes({at:[]}) 返回数组,非空即还有未决。
@@ -364,6 +402,222 @@ export function PlateMarkdownEditor({
       /* Serialize can fail during rapid edits — skip, next change will catch up */
     }
   }, [contentItemId, editor, onChange]);
+
+  useEffect(() => {
+    inlineAssistStateRef.current = inlineAssistState;
+  }, [inlineAssistState]);
+
+  const startInlineAssist = useCallback(async (
+    action: InlineAssistAction = 'continue',
+    customInstruction?: string,
+  ) => {
+    if (readOnlyProp || hasV3Pending) return;
+    if (inlineAssistStateRef.current.status !== 'idle' && inlineAssistStateRef.current.status !== 'menu') return;
+
+    const currentState = inlineAssistStateRef.current;
+    const replacementRange = inlineAssistSelectionRef.current?.current ?? null;
+    const shouldSuggestReplacement =
+      currentState.status === 'menu' &&
+      currentState.variant === 'selection' &&
+      (action === 'make-shorter' || action === 'revise' || action === 'custom') &&
+      !!replacementRange;
+
+    let beforeText = '';
+    let selectedText = '';
+    try {
+      beforeText = toStoredAssetPaths(serializeMd(editor), contentItemId);
+      selectedText = replacementRange
+        ? editor.api.string(replacementRange)
+        : editor.selection ? editor.api.string(editor.selection) : '';
+    } catch {
+      beforeText = editor.children
+        .map(readNodeText)
+        .join('\n');
+    }
+
+    const abortController = new AbortController();
+    inlineAssistAbortRef.current = abortController;
+    setInlineAssistStateSync({
+      mode: shouldSuggestReplacement ? 'suggestion' : 'insert',
+      status: 'streaming',
+    });
+    if (!shouldSuggestReplacement) {
+      editor.getTransforms(BaseAIPlugin).ai.beginPreview();
+      editor.setOption(AIChatPlugin, 'mode', 'insert');
+      editor.setOption(AIChatPlugin, 'streaming', true);
+      editor.setOption(AIChatPlugin, '_blockChunks', '');
+      editor.setOption(AIChatPlugin, '_blockPath', null);
+      editor.setOption(AIChatPlugin, '_mdxName', null);
+    }
+
+    try {
+      let suggestionText = '';
+      await streamInlineAssist(
+        {
+          mode: 'continue',
+          beforeText,
+          instruction: customInstruction?.trim() || getInlineAssistInstruction(action),
+          selectedText,
+          scope: 'draft-editor',
+        },
+        {
+          signal: abortController.signal,
+          onChunk: (chunk) => {
+            if (abortController.signal.aborted || !chunk) return;
+            if (shouldSuggestReplacement) {
+              suggestionText += chunk;
+              return;
+            }
+            streamInsertChunk(editor, chunk, {
+              textProps: {
+                [getPluginType(editor, KEYS.ai)]: true,
+              },
+            });
+          },
+        },
+      );
+      if (abortController.signal.aborted) return;
+      if (shouldSuggestReplacement) {
+        const range = replacementRange;
+        const text = suggestionText.trim();
+        if (!range || !text) {
+          setInlineAssistStateSync({ status: 'error', message: '没有生成可用建议，请重试' });
+          inlineAssistSelectionRef.current?.unref();
+          inlineAssistSelectionRef.current = null;
+          return;
+        }
+        editor.tf.select(range);
+        insertTextSuggestion(editor, text);
+        const [description] = getActiveSuggestionDescriptions(editor);
+        if (!description) {
+          setInlineAssistStateSync({ status: 'error', message: '生成建议失败，请重试' });
+          inlineAssistSelectionRef.current?.unref();
+          inlineAssistSelectionRef.current = null;
+          return;
+        }
+        setInlineAssistStateSync({
+          action,
+          description: toResolvedSuggestionDescription(description),
+          instruction: customInstruction,
+          status: 'suggestion',
+        });
+        inlineAssistSelectionRef.current?.unref();
+        inlineAssistSelectionRef.current = null;
+        return;
+      }
+      setInlineAssistStateSync({ status: 'preview' });
+    } catch (err) {
+      if (abortController.signal.aborted) return;
+      setInlineAssistStateSync({
+        status: 'error',
+        message: err instanceof Error ? err.message : '生成失败，请稍后重试',
+      });
+    } finally {
+      if (!shouldSuggestReplacement) {
+        editor.setOption(AIChatPlugin, 'streaming', false);
+      }
+      if (inlineAssistAbortRef.current === abortController) {
+        inlineAssistAbortRef.current = null;
+      }
+    }
+  }, [contentItemId, editor, hasV3Pending, readOnlyProp, setInlineAssistStateSync]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<InlineAssistRequestDetail>).detail;
+      if (!detail || detail.editorId !== editorId) return;
+      if (detail.action === 'open-menu') {
+        setInlineAssistMenuSession((session) => session + 1);
+        inlineAssistSelectionRef.current?.unref();
+        const isSelection = !!editor.selection && !editor.api.isCollapsed();
+        inlineAssistSelectionRef.current = isSelection
+          ? editor.api.rangeRef(editor.selection!, { affinity: 'outward' })
+          : null;
+        setInlineAssistStateSync({
+          status: 'menu',
+          variant: isSelection ? 'selection' : 'cursor',
+        });
+        return;
+      }
+      void startInlineAssist(detail.action, detail.instruction);
+    };
+    window.addEventListener(INLINE_ASSIST_EVENT, handler);
+    return () => window.removeEventListener(INLINE_ASSIST_EVENT, handler);
+  }, [editor, editorId, setInlineAssistStateSync, startInlineAssist]);
+
+  const cancelInlineAssist = useCallback(() => {
+    const current = inlineAssistStateRef.current;
+    inlineAssistAbortRef.current?.abort();
+    inlineAssistAbortRef.current = null;
+    if (current.status === 'suggestion') {
+      rejectSuggestion(editor, current.description);
+    } else {
+      editor.getApi(AIChatPlugin).aiChat.reset({ undo: true });
+    }
+    setInlineAssistStateSync({ status: 'idle' });
+    inlineAssistSelectionRef.current?.unref();
+    inlineAssistSelectionRef.current = null;
+    queueMicrotask(() => editor.tf.focus());
+  }, [editor, setInlineAssistStateSync]);
+
+  const backInlineAssistMenu = useCallback(() => {
+    const selection = editor.selection;
+    const focusPoint = selection?.focus ?? selection?.anchor ?? null;
+    setInlineAssistStateSync({ status: 'idle' });
+    inlineAssistSelectionRef.current?.unref();
+    inlineAssistSelectionRef.current = null;
+    queueMicrotask(() => {
+      editor.tf.focus();
+      if (focusPoint) {
+        editor.tf.select(focusPoint);
+      }
+      editor.tf.insertText('/');
+    });
+  }, [editor, setInlineAssistStateSync]);
+
+  const acceptInlineAssist = useCallback(() => {
+    const current = inlineAssistStateRef.current;
+    if (current.status !== 'preview' && current.status !== 'suggestion') return;
+    try {
+      if (current.status === 'suggestion') {
+        acceptSuggestion(editor, current.description);
+      } else {
+        editor.getTransforms(AIChatPlugin).aiChat.accept();
+      }
+      const md = toStoredAssetPaths(serializeMd(editor), contentItemId);
+      onChange(md, true);
+      setInlineAssistStateSync({ status: 'idle' });
+      inlineAssistSelectionRef.current?.unref();
+      inlineAssistSelectionRef.current = null;
+      queueMicrotask(() => editor.tf.focus());
+    } catch {
+      setInlineAssistStateSync({ status: 'error', message: '接受失败，请重试' });
+    }
+  }, [contentItemId, editor, onChange, setInlineAssistStateSync]);
+
+  const retryInlineAssist = useCallback(() => {
+    const current = inlineAssistStateRef.current;
+    if (current.status !== 'preview' && current.status !== 'suggestion' && current.status !== 'error') return;
+    const action = current.status === 'suggestion' ? current.action : 'continue';
+    const instruction = current.status === 'suggestion' ? current.instruction : undefined;
+    if (current.status === 'suggestion') {
+      rejectSuggestion(editor, current.description);
+    } else {
+      editor.getApi(AIChatPlugin).aiChat.reset({ undo: true });
+    }
+    setInlineAssistStateSync({ status: 'idle' });
+    queueMicrotask(() => void startInlineAssist(action, instruction));
+  }, [editor, setInlineAssistStateSync, startInlineAssist]);
+
+  useEffect(() => {
+    return () => {
+      inlineAssistAbortRef.current?.abort();
+      inlineAssistAbortRef.current = null;
+      inlineAssistSelectionRef.current?.unref();
+      inlineAssistSelectionRef.current = null;
+      editor.getApi(AIChatPlugin).aiChat.reset({ undo: true });
+    };
+  }, [editor]);
 
   const handleAnchorChange = useCallback(
     (anchor: AnchorPayload) => {
@@ -407,6 +661,19 @@ export function PlateMarkdownEditor({
     onAddSelectionToChat?.(attachment);
   }, [editor, onAddSelectionToChat]);
 
+  const openInlineAssistMenu = useCallback(() => {
+    setInlineAssistMenuSession((session) => session + 1);
+    inlineAssistSelectionRef.current?.unref();
+    const isSelection = !!editor.selection && !editor.api.isCollapsed();
+    inlineAssistSelectionRef.current = isSelection
+      ? editor.api.rangeRef(editor.selection!, { affinity: 'outward' })
+      : null;
+    setInlineAssistStateSync({
+      status: 'menu',
+      variant: isSelection ? 'selection' : 'cursor',
+    });
+  }, [editor, setInlineAssistStateSync]);
+
   useEffect(() => {
     return () => {
       if (toolbarSuppressTimerRef.current !== null) {
@@ -418,6 +685,8 @@ export function PlateMarkdownEditor({
 
   if (!editor) return null;
 
+  const isInlineAssistActive = inlineAssistState.status !== 'idle';
+
   return (
     <TooltipProvider>
       {/* readOnly：v3 有未裁决 hunk 时锁定,或调用方显式 readOnly(如学习视图 AI 初稿) */}
@@ -425,7 +694,7 @@ export function PlateMarkdownEditor({
         key={editorId}
         editor={editor}
         onValueChange={handleChange}
-        readOnly={hasV3Pending || !!readOnlyProp}
+        readOnly={hasV3Pending || isInlineAssistActive || !!readOnlyProp}
       >
         {/* AnchorBridge 订阅 selection 并上报 AnchorPayload */}
         {onAnchorChange && (
@@ -447,17 +716,28 @@ export function PlateMarkdownEditor({
           onProposalUiChange={onProposalUiChange}
         >
           <EditorContainer
-            className="prose-draft-editor-surface"
+            className={`prose-draft-editor-surface ${headingNumbering ? 'editor-heading-numbering' : ''}`}
             onPointerDownCapture={() => setToolbarSuppressed(false)}
+            style={isInlineAssistActive ? { pointerEvents: 'none' } : undefined}
           >
             <Editor variant="default" placeholder="开始写作..." />
           </EditorContainer>
+          <InlineAssistControls
+            key={inlineAssistMenuSession}
+            state={inlineAssistState}
+            onAccept={acceptInlineAssist}
+            onBack={backInlineAssistMenu}
+            onCancel={cancelInlineAssist}
+            onRun={(action, instruction) => void startInlineAssist(action, instruction)}
+            onRetry={retryInlineAssist}
+          />
         </ProposalBridge>
         {/* 只读模式不显示浮动工具栏(无编辑操作可执行);正常模式受 toolbarSuppressed 控制 */}
-        {!readOnlyProp && !toolbarSuppressed && (
+        {!readOnlyProp && !isInlineAssistActive && !toolbarSuppressed && (
           <FloatingToolbar>
             <FloatingToolbarButtons
               onAddSelectionToChat={onAddSelectionToChat ? handleAddSelectionToChat : undefined}
+              onInlineAssist={openInlineAssistMenu}
             />
           </FloatingToolbar>
         )}

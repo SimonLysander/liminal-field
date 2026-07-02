@@ -28,6 +28,7 @@ import type { Path, TElement } from 'platejs';
 import { useEditorRef } from 'platejs/react';
 
 import { getBlockType } from '@/components/editor/transforms';
+import { canTurnInto } from '@/components/editor/block-conversion';
 import { BlockMenuTurnInto } from './block-menu-turn-into';
 
 interface Props {
@@ -87,6 +88,7 @@ export function BlockMenu({
 
   const [view, setView] = useState<'main' | 'turnInto'>('main');
   const currentType = getBlockType(blockNode);
+  const showTurnInto = canTurnInto(currentType);
 
   const close = () => {
     setOpen(false);
@@ -176,7 +178,9 @@ export function BlockMenu({
                 transition={{ duration: DURATION, ease: EASE_OUT }}
                 className="flex flex-col gap-px p-1"
               >
-                <MenuItem label="转换成" trailingIcon={ChevronRightIcon} onClick={() => setView('turnInto')} />
+                {showTurnInto && (
+                  <MenuItem label="转换成" trailingIcon={ChevronRightIcon} onClick={() => setView('turnInto')} />
+                )}
                 <MenuItem icon={CopyIcon} label="复制" onClick={handleDuplicate} />
                 <MenuItem icon={ArrowUpIcon} label="在上方插入" onClick={handleInsertAbove} />
                 <MenuItem icon={ArrowDownIcon} label="在下方插入" onClick={handleInsertBelow} />

@@ -3,7 +3,7 @@
  *
  * 验证范围(spec §5):
  * 1. POST /admin/skills 创建 skill(slug + body + 元数据)
- * 2. SystemConfigService.saveAgentConfig 给 agent 启用该 skill(写 enabledSkillIds)
+ * 2. SystemConfigService.saveAgentConfig 给用户自建 agent 启用该 skill(写 enabledSkillIds)
  * 3. AgentLifecycle.onBeforeChat 拼装 system prompt + tools:
  *    a) systemPrompt 含 <available_skills> 且列出 skill name/description/whenToUse
  *    b) systemPrompt 绝不含 skill.body(spec §5.1 红线)
@@ -37,7 +37,7 @@ describe('Agent Skills 后端拼装链路 (E2E)', () => {
   const SKILL_NAME = 'critic';
   const SKILL_DESC = '挑稿子结构与逻辑问题';
   const SKILL_WHEN = '用户求"严点说"/"挑毛病"时';
-  const AGENT_KEY = 'writing-advisor'; // 预置 agent,默认 enabled
+  const AGENT_KEY = 'skill-e2e-agent';
 
   beforeAll(async () => {
     ctx = new TestContext();
@@ -76,9 +76,15 @@ describe('Agent Skills 后端拼装链路 (E2E)', () => {
   });
 
   // ─── 步骤 2: 给 agent 启用该 skill ───────────────────────────────
-  it('启用 skill:writing-advisor.enabledSkillIds 包含 created id', async () => {
+  it('启用 skill:agent.enabledSkillIds 包含 created id', async () => {
     // controller body 类型暂未列 enabledSkillIds(Phase 0 遗留),走 service 写。
     await configService.saveAgentConfig(AGENT_KEY, {
+      name: 'Skill E2E Agent',
+      description: '用于验证 skill 持久化链路',
+      enabled: true,
+      systemPrompt: '',
+      tools: ['web_search', 'recall_memory'],
+      tier: 'standard',
       enabledSkillIds: [createdSkillId],
     });
     const config = await configService.getAgentConfig(AGENT_KEY);
