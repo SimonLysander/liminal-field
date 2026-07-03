@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import MarkdownBody from '@/components/shared/MarkdownBody';
+import { CopyPageButton } from '@/components/shared/CopyPageButton';
 import type { ContentVersionViewProps } from '../types';
 import { LoadingState, ContentFade } from '@/components/LoadingState';
 
@@ -84,6 +85,10 @@ export const ContentVersionView = ({
   const viewingVersionId = preview?.versionId ?? content.latestVersion.versionId;
   const isViewingPublished = viewingVersionId === content.publishedVersion?.versionId;
   const isViewingLatest = !preview;
+  const viewingTitle = preview?.title ?? content.latestVersion.title;
+  const viewingSummary = preview?.summary ?? content.latestVersion.summary;
+  const viewingBodyMarkdown = preview ? preview.bodyMarkdown : content.bodyMarkdown;
+  const viewingDate = preview?.committedAt ?? content.updatedAt;
 
   const handlePublish = async (): Promise<boolean> => {
     if (preview) {
@@ -167,6 +172,19 @@ export const ContentVersionView = ({
 
         {/* 操作按钮 — 跟着当前展示的版本走 */}
         <div className="flex items-center gap-4 pt-1">
+          <CopyPageButton
+            page={{
+              bodyMarkdown: viewingBodyMarkdown,
+              metadata: [
+                { key: 'version', label: '版本', value: viewingVersionId.slice(0, 8) },
+                { key: 'timestamp', label: '时间', value: new Date(viewingDate).toLocaleString('zh-CN') },
+                { key: 'status', label: '状态', value: isViewingPublished ? 'published' : 'committed' },
+              ],
+              source: 'content_version',
+              summary: viewingSummary,
+              title: viewingTitle || node.name,
+            }}
+          />
           {isViewingLatest && (
             <TextLink label="刷新" onClick={() => void onReload()} />
           )}
@@ -316,7 +334,7 @@ export const ContentVersionView = ({
         className="text-lg leading-[1.9]"
       >
         <MarkdownBody
-          markdown={(preview ? preview.bodyMarkdown : content.bodyMarkdown) || ''}
+          markdown={viewingBodyMarkdown || ''}
           contentItemId={node.contentItemId}
         />
       </div>

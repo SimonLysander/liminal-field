@@ -1,9 +1,14 @@
 import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class InlineAssistDto {
-  @IsIn(['continue'])
+  @IsIn(['continue', 'illustration_plan'])
   @IsOptional()
-  mode?: 'continue';
+  mode?: 'continue' | 'illustration_plan';
+
+  @IsString()
+  @MaxLength(60_000)
+  @IsOptional()
+  documentMarkdown?: string;
 
   @IsString()
   @MaxLength(40_000)

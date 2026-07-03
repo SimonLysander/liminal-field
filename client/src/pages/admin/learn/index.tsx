@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { CopyPageButton } from '@/components/shared/CopyPageButton';
 import { DraftAssetProvider } from '@/contexts/DraftAssetContext';
 import { useOnlineStatus } from '@/hooks/use-online-status';
 import { useTheme } from '@/hooks/use-theme';
@@ -100,13 +101,38 @@ function Prose({ text }: { text: string }) {
   );
 }
 
+function learnPlanToMarkdown(plan: LearnPlan): string {
+  const sections: string[] = [];
+  if (plan.goal) sections.push(`目标: ${plan.goal}`);
+  if (plan.understanding.trim()) sections.push(plan.understanding.trim());
+  if (plan.items.length > 0) {
+    sections.push(
+      [
+        '## 脉络提案',
+        ...plan.items.map((item, index) =>
+          [
+            `${index + 1}. ${item.title}`,
+            item.thread ? `   - 线索: ${item.thread}` : '',
+            item.why ? `   - 理由: ${item.why}` : '',
+          ]
+            .filter(Boolean)
+            .join('\n'),
+        ),
+      ].join('\n'),
+    );
+  }
+  return sections.join('\n\n');
+}
+
 // ─── 左栏:Aurora 的规划提案(只读;没有则引导去规划)─────────────────────────────
 
 function PlanProduct({
   plan,
+  title,
   onPlanWithAurora,
 }: {
   plan: LearnPlan | null;
+  title: string;
   onPlanWithAurora: () => void;
 }) {
   if (!plan) {
@@ -136,6 +162,31 @@ function PlanProduct({
   }
   return (
     <div className="mx-auto w-full max-w-[38rem] px-8 pb-20 pt-6">
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <h2
+            className="text-2xl font-semibold leading-snug"
+            style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
+          >
+            {title}
+          </h2>
+          <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+            Aurora 的学习规划
+          </p>
+        </div>
+        <CopyPageButton
+          page={{
+            bodyMarkdown: learnPlanToMarkdown(plan),
+            metadata: [
+              { key: 'scope', label: '范围', value: 'learning' },
+              { key: 'goal', label: '目标', value: plan.goal },
+              { key: 'item_count', label: '条目数', value: plan.items.length },
+            ],
+            source: 'learning_plan',
+            title: `${title} · 学习规划`,
+          }}
+        />
+      </div>
       {/* 目标 */}
       {plan.goal && (
         <div
@@ -936,13 +987,41 @@ function NodeScreen({
         >
           <div className="h-full overflow-y-auto">
             {isTopic ? (
-              <PlanProduct plan={plan} onPlanWithAurora={() => setAuroraOpen(true)} />
+              <PlanProduct
+                plan={plan}
+                title={title}
+                onPlanWithAurora={() => setAuroraOpen(true)}
+              />
             ) : aiDraft === null ? (
               <div className="flex h-full items-center justify-center">
                 <Loader2 size={18} className="animate-spin" style={{ color: 'var(--ink-ghost)' }} />
               </div>
             ) : studied ? (
-              <div className="learn-ai-draft-body mx-auto w-full max-w-[var(--layout-editor-max)] pb-24 pt-2">
+              <div className="learn-ai-draft-body learn-ai-draft-body-with-header mx-auto w-full max-w-[var(--layout-editor-max)] pb-24 pt-2">
+                <div className="flex items-start justify-between gap-4 px-16 pb-1 pt-2 sm:px-[max(64px,calc(50%-350px))]">
+                  <div>
+                    <h2
+                      className="text-2xl font-semibold leading-snug"
+                      style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
+                    >
+                      {title}
+                    </h2>
+                    <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
+                      Aurora 的 AI 初稿
+                    </p>
+                  </div>
+                  <CopyPageButton
+                    page={{
+                      bodyMarkdown: displayAiDraft,
+                      metadata: [
+                        { key: 'scope', label: '范围', value: 'learning' },
+                        { key: 'topic', label: '主题', value: data.topicTitle },
+                      ],
+                      source: 'ai_draft',
+                      title,
+                    }}
+                  />
+                </div>
                 <DraftAssetProvider contentItemId={currentCid ?? ''}>
                   <PlateMarkdownEditor
                     key={`d-${nodeId}-${displayAiDraft.length}:${displayAiDraft.slice(0, 16)}:${displayAiDraft.slice(-16)}`}

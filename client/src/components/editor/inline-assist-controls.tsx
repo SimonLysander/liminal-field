@@ -9,6 +9,7 @@ import {
   ListMinusIcon,
   PauseIcon,
   PenLineIcon,
+  PencilRulerIcon,
   XIcon,
 } from 'lucide-react';
 
@@ -29,14 +30,23 @@ export type InlineAssistState =
       mode: 'insert' | 'suggestion';
       anchorRect?: InlineAssistControlsRect;
     }
-  | { status: 'preview' }
+  | {
+      status: 'preview';
+      action: InlineAssistAction;
+      instruction?: string;
+    }
   | {
       status: 'suggestion';
       description: TResolvedSuggestion;
       action: InlineAssistAction;
       instruction?: string;
     }
-  | { status: 'error'; message: string };
+  | {
+      status: 'error';
+      message: string;
+      action?: InlineAssistAction;
+      instruction?: string;
+    };
 
 export type InlineAssistRangeRef = {
   current: TRange | null;
@@ -302,6 +312,11 @@ export function InlineAssistControls({
                   icon={<CheckIcon />}
                   label="修订"
                   onSelect={() => onRun('revise')}
+                />
+                <InlineAssistMenuItem
+                  icon={<PencilRulerIcon />}
+                  label="想想怎么画"
+                  onSelect={() => onRun('illustration-plan')}
                 />
               </>
             )}

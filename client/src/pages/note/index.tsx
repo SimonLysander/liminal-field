@@ -17,6 +17,7 @@ import MarkdownBody from '@/components/shared/MarkdownBody';
 import { MarkdownTocPanel, type TocEntry } from '@/components/shared/MarkdownTocPanel';
 import { LoadingState } from '@/components/LoadingState';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { CopyPageButton } from '@/components/shared/CopyPageButton';
 
 /* ================================================================
  * 阅读端按 URL query 分发(与 Sidebar 同源:URL 是唯一真相):
@@ -120,21 +121,38 @@ function FolderReader({ nodeId }: { nodeId: string }) {
   const displayDate = content.updatedAt
     ? new Date(content.updatedAt)
     : content.createdAt ? new Date(content.createdAt) : null;
+  const displayDateText = displayDate
+    ? `${displayDate.getFullYear()}/${displayDate.getMonth() + 1}/${displayDate.getDate()}`
+    : null;
 
   return (
     <div className="relative flex w-full items-stretch overflow-hidden">
       <div className="flex-1 overflow-y-auto py-12">
         <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 max-[520px]:px-4">
-          {/* 主题标题 — 与 NoteReader 一致的衬线大标题入场,mb-4 跟 NoteReader 对齐(原 mb-10 偏大) */}
-          <motion.div
-            className="relative mb-4 text-5xl font-bold leading-snug tracking-tight"
-            style={{ fontFamily: 'var(--font-serif)', color: 'var(--ink)' }}
-            initial={{ opacity: 0, y: 10, filter: 'blur(4px)' }}
-            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-            transition={{ duration: 0.5, ease: smoothBounce }}
-          >
-            {title}
-          </motion.div>
+          <div className="mb-4 flex items-start justify-between gap-4 max-[520px]:flex-col">
+            {/* 主题标题 — 与 NoteReader 一致的衬线大标题入场,mb-4 跟 NoteReader 对齐(原 mb-10 偏大) */}
+            <motion.div
+              className="relative text-5xl font-bold leading-snug tracking-tight"
+              style={{ fontFamily: 'var(--font-serif)', color: 'var(--ink)' }}
+              initial={{ opacity: 0, y: 10, filter: 'blur(4px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              transition={{ duration: 0.5, ease: smoothBounce }}
+            >
+              {title}
+            </motion.div>
+            <CopyPageButton
+              page={{
+                bodyMarkdown: content.bodyMarkdown,
+                metadata: [
+                  { key: 'updated', label: '更新于', value: displayDateText },
+                  { key: 'words', label: '字数', value: wordCount },
+                  { key: 'reading_time', label: '阅读时间', value: `${readMin} min` },
+                ],
+                source: 'note_topic',
+                title,
+              }}
+            />
+          </div>
 
           {/* 元信息行(纯墨,§3.3 reader 主体一律纯墨;原 pip-a 雾蓝色条违规已删) */}
           <motion.p
@@ -144,7 +162,7 @@ function FolderReader({ nodeId }: { nodeId: string }) {
             animate={{ opacity: 1, filter: 'blur(0px)' }}
             transition={{ duration: 0.4, delay: 0.2, ease: smoothBounce }}
           >
-            {displayDate && `更新于 ${displayDate.getFullYear()}/${displayDate.getMonth() + 1}/${displayDate.getDate()} · `}
+            {displayDateText && `更新于 ${displayDateText} · `}
             {wordCount > 1000 ? `${(wordCount / 1000).toFixed(1)}k` : wordCount} 字 · {readMin} min
           </motion.p>
 
@@ -228,6 +246,9 @@ function NoteReader({ id }: { id: string }) {
   const displayDate = content?.updatedAt
     ? new Date(content.updatedAt)
     : content?.createdAt ? new Date(content.createdAt) : null;
+  const displayDateText = displayDate
+    ? `${displayDate.getFullYear()}/${displayDate.getMonth() + 1}/${displayDate.getDate()}`
+    : null;
 
   if (loading) {
     return (
@@ -252,19 +273,34 @@ function NoteReader({ id }: { id: string }) {
        <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 max-[520px]:px-4">
         {/* 返回入口已统一到左 Sidebar 面包屑,中区不再放重复的「← 返回」 */}
 
-        {/* 文章标题 — fade+rise 入场 */}
-        <motion.div
-          className="relative mb-4 text-5xl font-bold leading-snug tracking-tight"
-          style={{
-            fontFamily: 'var(--font-serif)',
-            color: 'var(--ink)',
-          }}
-          initial={{ opacity: 0, y: 10, filter: 'blur(4px)' }}
-          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-          transition={{ duration: 0.5, ease: smoothBounce }}
-        >
-          {title}
-        </motion.div>
+        <div className="mb-4 flex items-start justify-between gap-4 max-[520px]:flex-col">
+          {/* 文章标题 — fade+rise 入场 */}
+          <motion.div
+            className="relative text-5xl font-bold leading-snug tracking-tight"
+            style={{
+              fontFamily: 'var(--font-serif)',
+              color: 'var(--ink)',
+            }}
+            initial={{ opacity: 0, y: 10, filter: 'blur(4px)' }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            transition={{ duration: 0.5, ease: smoothBounce }}
+          >
+            {title}
+          </motion.div>
+          <CopyPageButton
+            page={{
+              bodyMarkdown: content.bodyMarkdown,
+              metadata: [
+                { key: 'updated', label: '更新于', value: displayDateText },
+                { key: 'words', label: '字数', value: wordCount },
+                { key: 'reading_time', label: '阅读时间', value: `${readMin} min` },
+              ],
+              source: 'note',
+              summary,
+              title,
+            }}
+          />
+        </div>
 
         {/* 元信息行(纯墨,跟 §3.3「reader 主体一律纯墨」对齐;原 pip-a 雾蓝色条违规已删) */}
         <motion.p
@@ -274,7 +310,7 @@ function NoteReader({ id }: { id: string }) {
           animate={{ opacity: 1, filter: 'blur(0px)' }}
           transition={{ duration: 0.4, delay: 0.2, ease: smoothBounce }}
         >
-          {displayDate && `更新于 ${displayDate.getFullYear()}/${displayDate.getMonth() + 1}/${displayDate.getDate()} · `}
+          {displayDateText && `更新于 ${displayDateText} · `}
           {wordCount > 1000 ? `${(wordCount / 1000).toFixed(1)}k` : wordCount} 字 · {readMin} min
         </motion.p>
 
@@ -319,4 +355,3 @@ function NoteReader({ id }: { id: string }) {
     </div>
   );
 }
-

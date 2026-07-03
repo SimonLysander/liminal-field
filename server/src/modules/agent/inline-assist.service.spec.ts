@@ -78,6 +78,63 @@ describe('InlineAssistService', () => {
     );
   });
 
+  it('uses marked document markdown instead of fake before cursor context', async () => {
+    mockGenerateText.mockResolvedValue({ text: '续写内容' } as never);
+
+    const { service } = makeService();
+
+    await service.assist({
+      documentMarkdown:
+        '# 标题\n\n正文前\n\n<!-- INLINE_ASSIST_CURSOR -->\n\n正文后',
+      instruction: '续写',
+    });
+
+    const call = mockGenerateText.mock.calls[0]?.[0] as {
+      prompt?: string;
+    };
+
+    expect(call.prompt).toContain('<document_markdown>');
+    expect(call.prompt).toContain('<!-- INLINE_ASSIST_CURSOR -->');
+    expect(call.prompt).not.toContain('<before_cursor>');
+  });
+
+  it('builds an illustration planning prompt for selected text', async () => {
+    mockGenerateText.mockResolvedValue({
+      text: '### 想想怎么画\n\n适合画: 是',
+    } as never);
+
+    const { service } = makeService();
+
+    await service.assist({
+      beforeText: '前文',
+      mode: 'illustration_plan',
+      selectedText: 'Agent 通过工具调用改变外部状态。',
+    });
+
+    const call = mockGenerateText.mock.calls[0]?.[0] as {
+      prompt?: string;
+      system?: string;
+    };
+
+    expect(call.system).toContain('图解构思助手');
+    expect(call.prompt).toContain(
+      '推荐图型: 流程 / 架构 / 因果 / 对比 / 分类 / 无',
+    );
+    expect(call.prompt).toContain('请只输出上述 Markdown');
+    expect(call.prompt).not.toContain(
+      '请只输出用于替换 selected_text 的 Markdown 正文。',
+    );
+  });
+
+  it('requires selected text for illustration planning', async () => {
+    const { service } = makeService();
+
+    await expect(
+      service.assist({ beforeText: '上下文', mode: 'illustration_plan' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(mockGenerateText).not.toHaveBeenCalled();
+  });
+
   it('rejects requests without usable context', async () => {
     const { service } = makeService();
 

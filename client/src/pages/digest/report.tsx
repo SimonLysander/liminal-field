@@ -28,6 +28,7 @@ import { Link, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { appleEase } from '@/lib/motion';
 import MarkdownBody from '@/components/shared/MarkdownBody';
+import { CopyPageButton } from '@/components/shared/CopyPageButton';
 import { digestPublicApi } from '@/services/digest-public';
 import type { PublicReportData, PublicSibling } from '@/services/digest-public';
 import { isApiError } from '@/services/request';
@@ -294,10 +295,25 @@ export default function DigestReportPage() {
               </Link>
             </div>
 
-            {/* 右上 Aurora 按钮已删:右栏永远有内容(margin notes 或 Aurora),
-                "打开 Aurora"语义不是"展开右栏"而是"切换右栏内容"——入口移到
-                MarginColumn 底部的"叫 Aurora ✦"按钮 + ⌘K 快捷键 + 文末软入口。
-                右上孤悬胶囊按钮会跟面包屑形成视觉冲突,删后顶栏更干净。 */}
+            <CopyPageButton
+              page={{
+                bodyMarkdown: processedMarkdown,
+                metadata: [
+                  { key: 'topic', label: '专栏', value: topic.name },
+                  { key: 'published_at', label: '发布于', value: formatDateTime(report.publishedAt) },
+                  { key: 'reference_count', label: '参考数', value: report.findings.length },
+                ],
+                references: report.findings.map((finding) => ({
+                  index: finding.citationId,
+                  sourceName: finding.sourceName,
+                  title: finding.title,
+                  url: finding.url,
+                })),
+                source: 'digest_report',
+                summary: report.deck,
+                title: report.headline,
+              }}
+            />
           </motion.nav>
 
           {/* ── 报头（Stratechery 现代严肃 newsletter 风）── */}
@@ -460,4 +476,3 @@ export default function DigestReportPage() {
     </div>
   );
 }
-

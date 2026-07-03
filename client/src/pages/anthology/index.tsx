@@ -26,6 +26,7 @@ import MarkdownBody from '@/components/shared/MarkdownBody';
 import { MarkdownTocPanel } from '@/components/shared/MarkdownTocPanel';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { LoadingState } from '@/components/LoadingState';
+import { CopyPageButton } from '@/components/shared/CopyPageButton';
 
 /* ================================================================
  * 路由分发：根据 query params 决定渲染哪个子视图
@@ -218,16 +219,27 @@ function AnthologyOverview({ id }: { id: string }) {
       <div ref={centerRef} className="flex-1 overflow-y-auto py-12">
         <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 max-[520px]:px-4">
 
-        {/* 文集标题 — 左对齐,跟其他 reader 一致(扉页装饰已撤,Overview 内容够完整不需要 banner) */}
-        <motion.h1
-          className="mb-4 text-5xl font-bold leading-snug tracking-tight"
-          style={{ fontFamily: 'var(--font-serif)', color: 'var(--ink)' }}
-          initial={{ opacity: 0, y: 10, filter: 'blur(4px)' }}
-          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-          transition={{ duration: 0.5, ease: smoothBounce }}
-        >
-          {detail.title}
-        </motion.h1>
+        <div className="mb-4 flex items-start justify-between gap-4 max-[520px]:flex-col">
+          {/* 文集标题 — 左对齐,跟其他 reader 一致(扉页装饰已撤,Overview 内容够完整不需要 banner) */}
+          <motion.h1
+            className="text-5xl font-bold leading-snug tracking-tight"
+            style={{ fontFamily: 'var(--font-serif)', color: 'var(--ink)' }}
+            initial={{ opacity: 0, y: 10, filter: 'blur(4px)' }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            transition={{ duration: 0.5, ease: smoothBounce }}
+          >
+            {detail.title}
+          </motion.h1>
+          <CopyPageButton
+            page={{
+              bodyMarkdown: detail.bodyMarkdown,
+              metadata: [{ key: 'entries', label: '篇数', value: detail.entries.length }],
+              source: 'anthology_overview',
+              summary: detail.description,
+              title: detail.title,
+            }}
+          />
+        </div>
 
         {/* 元信息行(纯墨;原 pip-a 雾蓝色条违规已删) */}
         <motion.p
@@ -359,6 +371,9 @@ function EntryReader({ anthologyId, entryNodeId }: { anthologyId: string; entryN
 
   /* 日期：统一用 updatedAt，与 NoteReader 同逻辑 */
   const displayDate = entry.updatedAt ? new Date(entry.updatedAt) : null;
+  const displayDateText = displayDate
+    ? `${displayDate.getFullYear()}/${displayDate.getMonth() + 1}/${displayDate.getDate()}`
+    : null;
   /* 字数 + 阅读时间 — 与 NoteReader 完全一致的计算逻辑 */
   const wordCount = entry.bodyMarkdown.length || 0;
   const readMin = Math.max(1, Math.ceil(wordCount / 400));
@@ -372,16 +387,35 @@ function EntryReader({ anthologyId, entryNodeId }: { anthologyId: string; entryN
         <div className="mx-auto w-full max-w-[var(--layout-reading-max)] px-10 max-[520px]:px-4">
         {/* 返回入口已统一到左 Sidebar 面包屑,中区不再放重复的「← 文集名」 */}
 
-        {/* 条目标题 — 与 NoteReader 同规格 */}
-        <motion.h1
-          className="mb-4 text-5xl font-bold leading-snug tracking-tight"
-          style={{ fontFamily: 'var(--font-serif)', color: 'var(--ink)' }}
-          initial={{ opacity: 0, y: 10, filter: 'blur(4px)' }}
-          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-          transition={{ duration: 0.5, ease: smoothBounce }}
-        >
-          {entry.title}
-        </motion.h1>
+        <div className="mb-4 flex items-start justify-between gap-4 max-[520px]:flex-col">
+          {/* 条目标题 — 与 NoteReader 同规格 */}
+          <motion.h1
+            className="text-5xl font-bold leading-snug tracking-tight"
+            style={{ fontFamily: 'var(--font-serif)', color: 'var(--ink)' }}
+            initial={{ opacity: 0, y: 10, filter: 'blur(4px)' }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            transition={{ duration: 0.5, ease: smoothBounce }}
+          >
+            {entry.title}
+          </motion.h1>
+          <CopyPageButton
+            page={{
+              bodyMarkdown: entry.bodyMarkdown,
+              metadata: [
+                { key: 'updated', label: '更新于', value: displayDateText },
+                { key: 'words', label: '字数', value: wordCount },
+                { key: 'reading_time', label: '阅读时间', value: `${readMin} min` },
+                {
+                  key: 'entry_position',
+                  label: '篇目',
+                  value: progress ? `第 ${progress.current} / ${progress.total} 篇` : null,
+                },
+              ],
+              source: 'anthology_entry',
+              title: entry.title,
+            }}
+          />
+        </div>
 
         {/* 元信息行(纯墨,§3.3 reader 主体一律纯墨;原 pip-a 雾蓝色条违规已删) */}
         <motion.p
@@ -391,7 +425,7 @@ function EntryReader({ anthologyId, entryNodeId }: { anthologyId: string; entryN
           animate={{ opacity: 1, filter: 'blur(0px)' }}
           transition={{ duration: 0.4, delay: 0.2, ease: smoothBounce }}
         >
-          {displayDate && `更新于 ${displayDate.getFullYear()}/${displayDate.getMonth() + 1}/${displayDate.getDate()} · `}
+          {displayDateText && `更新于 ${displayDateText} · `}
           {wordCount > 1000 ? `${(wordCount / 1000).toFixed(1)}k` : wordCount} 字 · {readMin} min
           {progress && ` · 第 ${progress.current} / ${progress.total} 篇`}
         </motion.p>

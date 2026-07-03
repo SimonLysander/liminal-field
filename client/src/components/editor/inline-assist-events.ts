@@ -4,6 +4,7 @@ export type InlineAssistAction =
   | 'open-menu'
   | 'continue'
   | 'make-shorter'
+  | 'illustration-plan'
   | 'revise'
   | 'custom';
 

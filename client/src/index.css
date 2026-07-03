@@ -1397,6 +1397,9 @@ body.gallery-immersive aside {
   color: var(--accent);
   text-decoration-color: var(--accent);
 }
+.learn-ai-draft-body-with-header [data-slate-editor] h1:first-child {
+  margin-top: 0.65em;
+}
 
 /* ── Digest 报告正文 期刊体例(Stratechery 现代严肃) ──────────────────────────
  * 用宋体严肃 stack(Source Han Serif / Songti SC / SimSun)替代默认的 LXGW 文楷,
@@ -1422,13 +1425,11 @@ body.gallery-immersive aside {
 }
 /* 段落: 不缩进 / 段间 1.4em / 最后段无下间距。
  * 兼容两种渲染: Plate readonly 出 .slate-p(实际渲染),原生 markdown 出 <p>(保留兜底) */
-.digest-report-body p,
-.digest-report-body .slate-p {
+.digest-report-body :where(p, .slate-p) {
   margin: 0 0 1.4em 0;
   text-align: left;   /* 左对齐:网页/中文/移动端可读性最佳(justify 会产生字距不均的"河流"空隙,WCAG AAA 亦要求非 justify) */
 }
-.digest-report-body p:last-child,
-.digest-report-body .slate-p:last-child { margin-bottom: 0; }
+.digest-report-body :where(p, .slate-p):last-child { margin-bottom: 0; }
 
 /* H2 章节标题:左对齐实义标题,靠字号 + 字重 + 留白建立层级(不居中、无 ✦、无分隔线、无首字下沉)。
  * 调研(The Atlantic 等 editorial):正文层级靠字号/留白而非装饰符,"安静的权威";
@@ -1509,5 +1510,12 @@ body.gallery-immersive aside {
   padding-left: 1.6em;
 }
 .digest-report-body li {
-  margin-bottom: 0.4em;
+  margin-bottom: 0.55em;
+  line-height: 1.7;
+}
+/* Plate readonly 会把列表项内容渲染成 .slate-p。
+ * 列表内不应继承正文段落的 1.4em 段间距，否则每个 bullet 都像隔了一整段。 */
+.digest-report-body li :where(p, .slate-p) {
+  margin: 0;
+  padding-block: 0;
 }

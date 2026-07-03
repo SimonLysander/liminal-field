@@ -27,7 +27,7 @@ import { SuggestionPlugin } from '@platejs/suggestion/react';
 import { BaseAIPlugin } from '@platejs/ai';
 import { KEYS, getPluginType } from 'platejs';
 import { AIChatPlugin, streamInsertChunk } from '@platejs/ai/react';
-import type { Descendant } from 'platejs';
+import type { Descendant, TRange } from 'platejs';
 import {
   Plate,
   usePlateEditor,
@@ -62,6 +62,45 @@ import {
   readNodeText,
   toResolvedSuggestionDescription,
 } from '@/components/editor/inline-assist-utils';
+
+const INLINE_ASSIST_CURSOR_MARKER = '<!-- INLINE_ASSIST_CURSOR -->';
+const INLINE_ASSIST_SELECTION_START_MARKER = '<!-- INLINE_ASSIST_SELECTION_START -->';
+const INLINE_ASSIST_SELECTION_END_MARKER = '<!-- INLINE_ASSIST_SELECTION_END -->';
+
+type EditorPoint = { offset: number; path: number[] };
+
+function comparePath(a: number[], b: number[]): number {
+  const length = Math.min(a.length, b.length);
+  for (let index = 0; index < length; index += 1) {
+    if (a[index] !== b[index]) return a[index] - b[index];
+  }
+  return a.length - b.length;
+}
+
+function comparePoint(a: EditorPoint, b: EditorPoint): number {
+  const pathOrder = comparePath(a.path, b.path);
+  return pathOrder === 0 ? a.offset - b.offset : pathOrder;
+}
+
+function isSamePoint(
+  a: EditorPoint | null | undefined,
+  b: EditorPoint | null | undefined,
+): boolean {
+  return !!a && !!b && comparePoint(a, b) === 0;
+}
+
+function normalizeRange(range: TRange): TRange {
+  return comparePoint(range.anchor, range.focus) <= 0
+    ? range
+    : { anchor: range.focus, focus: range.anchor };
+}
+
+function joinMarkdownParts(parts: string[]): string {
+  return parts
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join('\n\n');
+}
 
 /**
  * EditorChildrenBridge — 在 <Plate> context 内把 editor 实例 + children 写进父级传入的 ref。
@@ -421,18 +460,76 @@ export function PlateMarkdownEditor({
       currentState.variant === 'selection' &&
       (action === 'make-shorter' || action === 'revise' || action === 'custom') &&
       !!replacementRange;
+    const shouldInsertAfterSelection =
+      currentState.status === 'menu' &&
+      currentState.variant === 'selection' &&
+      action === 'illustration-plan' &&
+      !!replacementRange;
 
-    let beforeText = '';
+    const serializeFragmentMarkdown = (range: TRange): string => {
+      if (isSamePoint(range.anchor, range.focus)) return '';
+      const fragment = editor.api.fragment(range) as Descendant[];
+      if (!fragment.length) return '';
+      const originalChildren = editor.children;
+      try {
+        // serializeMd 只能序列化当前 editor.children；这里同步替换为 fragment 后立即恢复，
+        // 用同一套 Plate Markdown serializer 保住列表、表格、媒体等结构。
+        (editor as unknown as { children: Descendant[] }).children = fragment;
+        return toStoredAssetPaths(serializeMd(editor), contentItemId);
+      } finally {
+        (editor as unknown as { children: typeof originalChildren }).children =
+          originalChildren;
+      }
+    };
+
+    const buildMarkedDocumentMarkdown = (range: TRange | null): string => {
+      const fullMarkdown = toStoredAssetPaths(serializeMd(editor), contentItemId);
+      if (!range) return joinMarkdownParts([fullMarkdown, INLINE_ASSIST_CURSOR_MARKER]);
+
+      const normalized = normalizeRange(range);
+      const docStart = editor.api.start([]) ?? editor.api.start([0]);
+      const docEnd =
+        editor.api.end([]) ?? editor.api.end([Math.max(0, editor.children.length - 1)]);
+      if (!docStart || !docEnd) return joinMarkdownParts([fullMarkdown, INLINE_ASSIST_CURSOR_MARKER]);
+
+      const beforeMarkdown = isSamePoint(docStart, normalized.anchor)
+        ? ''
+        : serializeFragmentMarkdown({ anchor: docStart, focus: normalized.anchor });
+      const afterMarkdown = isSamePoint(normalized.focus, docEnd)
+        ? ''
+        : serializeFragmentMarkdown({ anchor: normalized.focus, focus: docEnd });
+
+      if (isSamePoint(normalized.anchor, normalized.focus)) {
+        return joinMarkdownParts([
+          beforeMarkdown,
+          INLINE_ASSIST_CURSOR_MARKER,
+          afterMarkdown,
+        ]);
+      }
+
+      const selectedMarkdown = serializeFragmentMarkdown(normalized);
+      return joinMarkdownParts([
+        beforeMarkdown,
+        INLINE_ASSIST_SELECTION_START_MARKER,
+        selectedMarkdown,
+        INLINE_ASSIST_SELECTION_END_MARKER,
+        afterMarkdown,
+      ]);
+    };
+
+    let documentMarkdown = '';
     let selectedText = '';
     try {
-      beforeText = toStoredAssetPaths(serializeMd(editor), contentItemId);
+      const contextRange = replacementRange ?? editor.selection ?? null;
+      documentMarkdown = buildMarkedDocumentMarkdown(contextRange);
       selectedText = replacementRange
         ? editor.api.string(replacementRange)
         : editor.selection ? editor.api.string(editor.selection) : '';
     } catch {
-      beforeText = editor.children
-        .map(readNodeText)
-        .join('\n');
+      documentMarkdown = joinMarkdownParts([
+        editor.children.map(readNodeText).join('\n'),
+        INLINE_ASSIST_CURSOR_MARKER,
+      ]);
     }
 
     const abortController = new AbortController();
@@ -442,6 +539,9 @@ export function PlateMarkdownEditor({
       status: 'streaming',
     });
     if (!shouldSuggestReplacement) {
+      if (shouldInsertAfterSelection && replacementRange) {
+        editor.tf.select(editor.api.end(replacementRange));
+      }
       editor.getTransforms(BaseAIPlugin).ai.beginPreview();
       editor.setOption(AIChatPlugin, 'mode', 'insert');
       editor.setOption(AIChatPlugin, 'streaming', true);
@@ -454,8 +554,8 @@ export function PlateMarkdownEditor({
       let suggestionText = '';
       await streamInlineAssist(
         {
-          mode: 'continue',
-          beforeText,
+          mode: action === 'illustration-plan' ? 'illustration_plan' : 'continue',
+          documentMarkdown,
           instruction: customInstruction?.trim() || getInlineAssistInstruction(action),
           selectedText,
           scope: 'draft-editor',
@@ -481,7 +581,12 @@ export function PlateMarkdownEditor({
         const range = replacementRange;
         const text = suggestionText.trim();
         if (!range || !text) {
-          setInlineAssistStateSync({ status: 'error', message: '没有生成可用建议，请重试' });
+          setInlineAssistStateSync({
+            action,
+            instruction: customInstruction,
+            message: '没有生成可用建议，请重试',
+            status: 'error',
+          });
           inlineAssistSelectionRef.current?.unref();
           inlineAssistSelectionRef.current = null;
           return;
@@ -490,7 +595,12 @@ export function PlateMarkdownEditor({
         insertTextSuggestion(editor, text);
         const [description] = getActiveSuggestionDescriptions(editor);
         if (!description) {
-          setInlineAssistStateSync({ status: 'error', message: '生成建议失败，请重试' });
+          setInlineAssistStateSync({
+            action,
+            instruction: customInstruction,
+            message: '生成建议失败，请重试',
+            status: 'error',
+          });
           inlineAssistSelectionRef.current?.unref();
           inlineAssistSelectionRef.current = null;
           return;
@@ -505,12 +615,18 @@ export function PlateMarkdownEditor({
         inlineAssistSelectionRef.current = null;
         return;
       }
-      setInlineAssistStateSync({ status: 'preview' });
+      setInlineAssistStateSync({
+        action,
+        instruction: customInstruction,
+        status: 'preview',
+      });
     } catch (err) {
       if (abortController.signal.aborted) return;
       setInlineAssistStateSync({
-        status: 'error',
+        action,
+        instruction: customInstruction,
         message: err instanceof Error ? err.message : '生成失败，请稍后重试',
+        status: 'error',
       });
     } finally {
       if (!shouldSuggestReplacement) {
@@ -598,15 +714,21 @@ export function PlateMarkdownEditor({
   const retryInlineAssist = useCallback(() => {
     const current = inlineAssistStateRef.current;
     if (current.status !== 'preview' && current.status !== 'suggestion' && current.status !== 'error') return;
-    const action = current.status === 'suggestion' ? current.action : 'continue';
-    const instruction = current.status === 'suggestion' ? current.instruction : undefined;
+    const action =
+      current.status === 'suggestion' || current.status === 'preview' || current.status === 'error'
+        ? current.action
+        : undefined;
+    const instruction =
+      current.status === 'suggestion' || current.status === 'preview' || current.status === 'error'
+        ? current.instruction
+        : undefined;
     if (current.status === 'suggestion') {
       rejectSuggestion(editor, current.description);
     } else {
       editor.getApi(AIChatPlugin).aiChat.reset({ undo: true });
     }
     setInlineAssistStateSync({ status: 'idle' });
-    queueMicrotask(() => void startInlineAssist(action, instruction));
+    queueMicrotask(() => void startInlineAssist(action ?? 'continue', instruction));
   }, [editor, setInlineAssistStateSync, startInlineAssist]);
 
   useEffect(() => {
