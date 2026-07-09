@@ -15,6 +15,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { AgentModule } from './modules/agent/agent.module';
 import { SkillModule } from './modules/skill/skill.module';
 import { DigestModule } from './modules/digest/digest.module';
+import { LearningModule } from './modules/learning/learning.module';
 import { PromptManagerModule } from './infrastructure/prompt/prompt-manager.module';
 import { yamlLoader } from './config/yaml.loader';
 import { StartupDiagnosticsService } from './startup-diagnostics.service';
@@ -70,6 +71,7 @@ import { StartupDiagnosticsService } from './startup-diagnostics.service';
     SettingsModule,
     AgentModule,
     DigestModule,
+    LearningModule,
   ],
   controllers: [AppController],
   providers: [AppService, StartupDiagnosticsService],

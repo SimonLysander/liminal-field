@@ -202,8 +202,8 @@ export function MemoriesSection() {
           认知
         </h2>
         <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-          Aurora 在对话中持续观察沉淀的认知(岁月史书,append-only) · 共 {totalObservations} 条观察
-          {currentViewMarkdown ? ' · 含派生画像' : ''}
+          Aurora 会在对话中持续沉淀对你的理解 · 共 {totalObservations} 条观察
+          {currentViewMarkdown ? ' · 已整理成画像' : ''}
         </p>
       </div>
 
@@ -220,7 +220,7 @@ export function MemoriesSection() {
             className="mb-1 text-xs font-medium"
             style={{ color: 'var(--ink-faded)' }}
           >
-            当前画像(观察者派生)
+            当前画像
           </div>
           <pre
             className="whitespace-pre-wrap font-sans text-md leading-relaxed"
@@ -275,7 +275,7 @@ export function MemoriesSection() {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="搜索观察(关键词模糊匹配)..."
+          placeholder="搜索观察..."
           className="flex h-7 w-full max-w-md rounded-sm border border-transparent bg-[var(--shelf)] pl-8 pr-2.5 text-md transition-colors placeholder:text-[var(--ink-ghost)] hover:bg-[var(--hover-overlay)] focus:bg-[var(--paper)] focus-visible:outline-none"
           style={{ color: 'var(--ink)' }}
         />
@@ -285,7 +285,7 @@ export function MemoriesSection() {
       {filtered.length === 0 ? (
         <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
           {data?.observations.length === 0
-            ? 'Aurora 还没观察到任何东西(开始对话她就会慢慢沉淀)'
+            ? 'Aurora 还没有可沉淀的观察；开始对话后这里会逐渐丰富'
             : '当前筛选下无匹配'}
         </p>
       ) : (

@@ -111,17 +111,17 @@ describe('<SkillsTab>', () => {
       target: { value: '润色师' },
     });
     fireEvent.change(
-      screen.getByPlaceholderText('一句话说明这个 skill 的作用'),
+      screen.getByPlaceholderText('一句话说明这个技能的作用'),
       { target: { value: '把粗稿改得通顺' } },
     );
     fireEvent.change(
       screen.getByPlaceholderText(
-        '什么时候该用这个 skill,引导 agent 自动判断',
+        '什么时候该用这个技能，帮助 Aurora 自动判断',
       ),
       { target: { value: '用户问"帮我润色"时' } },
     );
     fireEvent.change(
-      screen.getByPlaceholderText('agent invoke 这个 skill 时注入的方法论 prompt'),
+      screen.getByPlaceholderText('Aurora 使用这个技能时需要遵循的说明'),
       { target: { value: '## 润色师 body' } },
     );
 
@@ -160,17 +160,17 @@ describe('<SkillsTab>', () => {
       target: { value: '批评家' },
     });
     fireEvent.change(
-      screen.getByPlaceholderText('一句话说明这个 skill 的作用'),
+      screen.getByPlaceholderText('一句话说明这个技能的作用'),
       { target: { value: '挑毛病' } },
     );
     fireEvent.change(
       screen.getByPlaceholderText(
-        '什么时候该用这个 skill,引导 agent 自动判断',
+        '什么时候该用这个技能，帮助 Aurora 自动判断',
       ),
       { target: { value: '用户要批评时' } },
     );
     fireEvent.change(
-      screen.getByPlaceholderText('agent invoke 这个 skill 时注入的方法论 prompt'),
+      screen.getByPlaceholderText('Aurora 使用这个技能时需要遵循的说明'),
       { target: { value: '## body' } },
     );
 

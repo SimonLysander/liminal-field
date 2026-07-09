@@ -126,7 +126,7 @@ export function FormalSidePanel({
           ) : (
             <>
               <p className="mb-3.5 text-xs leading-relaxed" style={{ color: 'var(--ink-ghost)' }}>
-                让 Aurora 规划并陪你逐篇学这个领域
+                让 Aurora 帮你规划路线，并陪你逐篇学习
               </p>
               <SideLink label="开始学习 →" accent onClick={onEnterLearning} />
             </>

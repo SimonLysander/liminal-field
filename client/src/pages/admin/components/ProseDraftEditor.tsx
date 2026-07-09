@@ -25,6 +25,7 @@ import { DraftAssetProvider } from '@/contexts/DraftAssetContext';
 import { useKeyboardShortcutsDialog } from '@/hooks/use-keyboard-shortcuts-dialog';
 import { useOnlineStatus } from '@/hooks/use-online-status';
 import { useTheme } from '@/hooks/use-theme';
+import type { HeadingNumberingInput } from '@/components/shared/heading-numbering';
 import type { ChatSelectionAttachment } from '@/pages/admin/lib/live-chat-selection';
 import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
 import { ChevronLeft, Keyboard, Moon, MoreHorizontal, Sun, Trash2 } from 'lucide-react';
@@ -50,6 +51,8 @@ export interface ProseDraftEditorProps<TState extends BaseDraftState> {
   /** PlateEditor 的 key(切换文档时重建编辑器) */
   editorKey: string;
   titlePlaceholder?: string;
+  /** 纯视觉标题编号,由调用方按内容 scope 决定。 */
+  headingNumbering?: HeadingNumberingInput;
   /** 写作顾问(可选);未启用则左栏留等宽空白,保持三栏结构 */
   advisor?: AdvisorMount;
 }
@@ -59,6 +62,7 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
   draftScopeId,
   editorKey,
   titlePlaceholder = '无标题',
+  headingNumbering = 'none',
   advisor,
 }: ProseDraftEditorProps<TState>) {
   const { theme, setTheme } = useTheme();
@@ -426,7 +430,7 @@ export function ProseDraftEditor<TState extends BaseDraftState>({
             <PlateMarkdownEditor
               key={editorKey}
               initialMarkdown={editor.state.bodyMarkdown}
-              headingNumbering
+              headingNumbering={headingNumbering}
               onChange={editor.setBody}
               onAddSelectionToChat={(attachment) =>
                 setChatSelections((prev) => {

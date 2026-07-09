@@ -88,8 +88,8 @@ export function StorageTab() {
 
   const handleClear = async (archive: boolean) => {
     const msg = archive
-      ? '将归档后清空所有本地数据(MongoDB + Git 内容)。归档文件保留在服务器磁盘上。'
-      : '将直接清空所有本地数据(MongoDB + Git 内容),不可恢复。';
+      ? '将先备份当前本地内容，再清空本地内容库和同步记录。备份文件会保留在服务器上。'
+      : '将直接清空本地内容库和同步记录，不可恢复。';
     const ok = await confirm({
       title: archive ? '归档并清空' : '清空本地数据',
       message: msg,
@@ -232,7 +232,7 @@ export function StorageTab() {
             数据管理
           </h2>
           <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-            清空 MongoDB 全部内容 + Git 仓库文件。归档会先导出到服务器磁盘。
+            清空本地内容库和同步记录。归档会先在服务器上保留一份备份。
           </p>
         </div>
         <div className="flex items-center gap-2">

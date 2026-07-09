@@ -19,10 +19,11 @@ import { AdminStructurePanel } from '../components/AdminStructurePanel';
 import { MoveToDialog } from '../components/MoveToDialog';
 import { useAdminWorkspace } from '../hooks/useAdminWorkspace';
 import { structureApi } from '@/services/structure';
-import { notesApi } from '@/services/workspace';
 import { deleteSession } from '@/services/agent';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { banner } from '@/components/ui/banner-api';
+import { learningApi, type LearningProjectResolve } from '@/services/learning';
+import { buildStartLearningConfirmMessage } from './learning-entry';
 
 interface ContentAdminProps {
   scope?: 'notes' | 'anthology';
@@ -121,61 +122,77 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
     ? `/admin/${scope}/${activeNode.contentItemId}/edit`
     : null;
 
-  /* 学习入口:LearningProject 实体已删。文案「开始/继续学习」靠探当前节点有没有规划/AI 稿
-   * (aidraft:{contentItemId}),与学习页 CTA 同一信号——有 = 已动过这个领域 = 继续,无 = 开始。
-   * 仅 notes scope 有此入口(文集不学习)。
-   * learningRootId(=主题 NavigationNode id)给 learnUrl 拉子节点=篇目;探 aidraft 用 contentItemId。 */
-  const learningRootId = scope === 'notes' ? activeNode?.id : undefined;
-  const learnUrl = learningRootId ? `/admin/notes/${learningRootId}/learn` : null;
-  const learnProbeCid = scope === 'notes' ? activeNode?.contentItemId : undefined;
-  const [learningExists, setLearningExists] = useState(false);
+  const [learningResolve, setLearningResolve] = useState<LearningProjectResolve | null>(null);
   useEffect(() => {
     let alive = true;
-    queueMicrotask(() => { if (alive) setLearningExists(false); }); // 切节点先复位,别残留上一个节点的状态
-    if (learnProbeCid) {
-      notesApi
-        .getAiDraft(learnProbeCid)
-        .then((d) => { if (alive) setLearningExists((d?.bodyMarkdown.trim().length ?? 0) > 0); })
-        .catch(() => {});
+    queueMicrotask(() => {
+      if (alive) setLearningResolve(null);
+    });
+    if (scope === 'notes' && activeNode?.id) {
+      learningApi
+        .resolve(activeNode.id)
+        .then((result) => {
+          if (alive) setLearningResolve(result);
+        })
+        .catch(() => {
+          if (alive) setLearningResolve(null);
+        });
     }
     return () => { alive = false; };
-  }, [learnProbeCid]);
+  }, [activeNode?.id, scope]);
+  const learningExists = !!learningResolve?.project;
 
-  /* 放弃学习:清掉主题 + 各篇的 AI 产物(主题规划 aidraft + 各篇 AI 初稿 aidraft),
-   * 保留篇目结构与我自己的草稿/正文。前端收齐 id(主题 + 子篇)交后端批量删 aidraft。 */
+  const enterLearning = useCallback(async () => {
+    if (scope !== 'notes' || !activeNode?.id || !activeNode.contentItemId) return;
+    try {
+      const resolved = learningResolve ?? await learningApi.resolve(activeNode.id);
+      if (resolved.project) {
+        const query = `?node=${encodeURIComponent(activeNode.contentItemId)}`;
+        window.location.href = `/admin/notes/${resolved.rootNode.id}/learn${query}`;
+        return;
+      }
+
+      const ok = await confirm({
+        title: '开始学习',
+        message: buildStartLearningConfirmMessage(activeNode.name),
+        confirmLabel: '开始学习',
+        wide: true,
+      });
+      if (!ok) return;
+
+      const project = await learningApi.create(activeNode.id);
+      window.location.href = `/admin/notes/${project.rootNodeId}/learn`;
+    } catch (e) {
+      banner.error(e instanceof Error ? e.message : '进入学习失败');
+    }
+  }, [activeNode, confirm, learningResolve, scope]);
+
+  /* 放弃学习:清掉所属 LearningProject 下 root + 所有后代的 AI 产物,
+   * 保留篇目结构与我自己的草稿/正文。删除范围以后端 resolver 为准,前端只清对应会话。 */
   const handleDiscardLearning = useCallback(async () => {
-    if (!activeNode?.id || !activeNode.contentItemId) return;
+    if (!learningResolve?.project) return;
     const ok = await confirm({
       title: '放弃学习',
-      message:
-        '将清掉 Aurora 在这个领域的全部产物(规划 + 各篇 AI 初稿)。你建的篇目、自己写的草稿/正文都保留。确认放弃?',
+      message: `将清除「${learningResolve.rootNode.name}」学习空间里由 Aurora 生成的规划和草稿。你创建的页面、自己写的草稿和正文都会保留。确认放弃？`,
       danger: true,
       confirmLabel: '放弃',
     });
     if (!ok) return;
     try {
-      const res = await structureApi.getChildren(activeNode.id, {
-        scope: 'notes',
-        visibility: 'all',
-      });
-      const ids = [
-        activeNode.contentItemId,
-        ...res.children
-          .map((c) => c.contentItemId)
-          .filter((id): id is string => !!id),
-      ];
-      await notesApi.discardAidrafts(ids);
+      const result = await learningApi.discard(learningResolve.project.id);
       // 一并清掉 Aurora 对话会话(主题规划 + 各篇写作),否则再「开始学习」会挂着旧上下文。
       // 会话 key 与学习页一致:learn-{contentItemId}。best-effort,单条失败不阻塞。
       await Promise.all(
-        ids.map((id) => deleteSession(`learn-${id}`).catch(() => undefined)),
+        result.affectedContentItemIds.map((id) =>
+          deleteSession(`learn-${id}`).catch(() => undefined),
+        ),
       );
-      setLearningExists(false);
-      banner.success('已放弃,AI 产物与对话已清空');
+      setLearningResolve((cur) => cur ? { ...cur, project: null, canStart: true } : cur);
+      banner.success('已放弃，Aurora 生成内容与对话已清空');
     } catch (e) {
       banner.error(e instanceof Error ? e.message : '放弃失败');
     }
-  }, [activeNode, confirm]);
+  }, [confirm, learningResolve]);
 
   /* 侧栏顶部标题随 scope 切换:笔记 admin="笔记",文集 admin="文集"。 */
   const sectionTitle = scope === 'notes' ? '笔记' : '文集';
@@ -230,6 +247,7 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
                       preview={workspace.preview}
                       previewLoading={workspace.previewLoading}
                       canEditSummary={canEditSummary}
+                      headingNumbering="note"
                       onSaveSummary={workspace.updateSummary}
                       onReload={() => workspace.loadFormalContent(activeNode.contentItemId!)}
                       onPublish={workspace.publishContent}
@@ -281,10 +299,7 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
                 }}
                 onSelectVersion={workspace.previewVersion}
                 learningExists={learningExists}
-                onEnterLearning={() => {
-                  // 整页导航(同编辑页):学习视图自带 Plate 编辑器,SPA 软导航会让 inputRules 失效
-                  if (learnUrl) window.location.href = learnUrl;
-                }}
+                onEnterLearning={() => void enterLearning()}
                 onDiscardLearning={() => void handleDiscardLearning()}
               />
             ) : (

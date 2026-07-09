@@ -139,8 +139,8 @@ function SkillsSection({
     return (
       <p className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
         {loadError
-          ? '技能列表加载失败,请刷新重试'
-          : '还没有技能。可去「技能」tab 创建一个。'}
+          ? '技能列表加载失败，请刷新重试'
+          : '还没有技能。可去「技能」页创建一个。'}
       </p>
     );
   }
@@ -164,14 +164,14 @@ function SkillsSection({
         renderLabel={(id) => skillsById.get(id)?.displayName ?? id}
         renderMeta={(id) => {
           const reqs = skillsById.get(id)?.requiredTools ?? [];
-          return reqs.length > 0 ? `需 ${reqs.map(labelOf).join('、')}` : undefined;
+          return reqs.length > 0 ? `需要 ${reqs.map(labelOf).join('、')}` : undefined;
         }}
         groupBy={(id) =>
-          missingTools(id).length === 0 ? '可添加' : '不可添加'
+          missingTools(id).length === 0 ? '可添加' : '需先开启能力'
         }
         disabledReason={(id) => {
           const miss = missingTools(id);
-          return miss.length > 0 ? `缺工具: ${miss.map(labelOf).join('、')}` : undefined;
+          return miss.length > 0 ? `需要先开启：${miss.map(labelOf).join('、')}` : undefined;
         }}
         onAdd={(id) => {
           // 前端硬校验:防止 disabledReason 被绕过(理论上 ChipSelector 已经挡)
@@ -179,7 +179,7 @@ function SkillsSection({
           onChange([...selected, id]);
         }}
         onRemove={(id) => onChange(selected.filter((x) => x !== id))}
-        addLabel="授权技能"
+        addLabel="添加技能"
       />
     </div>
   );
@@ -336,7 +336,7 @@ function AgentCard({
                 onClick={() => void handleDelete()}
                 className="rounded p-1 transition-opacity duration-100 disabled:opacity-40"
                 style={{ color: 'var(--ink-ghost)' }}
-                title="删除此 agent 配置"
+                title="删除此助手配置"
               >
                 <Trash2 size={14} />
               </button>
@@ -355,10 +355,10 @@ function AgentCard({
           )}
           <div className="flex flex-wrap gap-x-5 gap-y-1">
             <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
-              层级：<span style={{ color: 'var(--ink-faded)' }}>{tierLabel}</span>
+              档位：<span style={{ color: 'var(--ink-faded)' }}>{tierLabel}</span>
             </span>
             <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
-              工具：<span style={{ color: 'var(--ink-faded)' }}>{agent.tools.length} 个</span>
+              能力：<span style={{ color: 'var(--ink-faded)' }}>{agent.tools.length} 个</span>
             </span>
             {agent.systemPrompt && (
               <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
@@ -375,7 +375,7 @@ function AgentCard({
           {/* 启用开关:必须先选 provider 才能启用(#5 重构守卫);复用 SettingsUI.Toggle */}
           <div
             className="flex items-center justify-between"
-            title={!providerValid ? '先选 Provider 才能启用' : undefined}
+            title={!providerValid ? '先选择模型服务才能启用' : undefined}
           >
             <FieldLabel>启用</FieldLabel>
             <Toggle
@@ -402,7 +402,7 @@ function AgentCard({
             <TextInput
               value={draft.description ?? ''}
               onChange={(v) => setDraft((d) => ({ ...d, description: v }))}
-              placeholder="一句话说明此 agent 的用途"
+              placeholder="一句话说明这个入口的用途"
               disabled={saving}
             />
           </div>
@@ -410,19 +410,19 @@ function AgentCard({
           {/* 模型绑定(#143 改造:4 个 tier 独立选 Provider,留空回退到通用 fallback) */}
           <div>
             <FieldLabel>
-              模型绑定
+              模型服务
               {!providerValid && (
                 <span
                   className="ml-1.5 font-normal text-xs"
                   style={{ color: 'var(--mark-red)' }}
                 >
-                  默认 tier 至少要有一个 Provider 才能启用
+                  默认档位至少要有一个模型服务才能启用
                 </span>
               )}
             </FieldLabel>
             {providers.length === 0 ? (
               <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-                还没有 Provider,请先到「集成」tab 添加。
+                还没有模型服务，请先到「集成」添加。
               </p>
             ) : (
               <div className="mt-1 space-y-2">
@@ -441,7 +441,7 @@ function AgentCard({
                         setDraft((d) => ({ ...d, providerId: v }))
                       }
                       options={[
-                        { value: '', label: '— 不指定(用全局默认)—' },
+                        { value: '', label: '— 不指定，使用默认服务 —' },
                         ...providers.map((p) => ({
                           value: p.id,
                           label: p.name,
@@ -478,7 +478,7 @@ function AgentCard({
                           setDraft((d) => ({ ...d, [key]: v }))
                         }
                         options={[
-                          { value: '', label: '— 回退到「通用」—' },
+                          { value: '', label: '— 使用「通用」设置 —' },
                           ...providers.map((p) => ({
                             value: p.id,
                             label: p.name,
@@ -495,7 +495,7 @@ function AgentCard({
 
           {/* 默认层级 */}
           <div>
-            <FieldLabel>默认模型层级</FieldLabel>
+            <FieldLabel>默认模型档位</FieldLabel>
             <SelectInput
               value={draft.tier ?? 'standard'}
               onChange={(v) => setDraft((d) => ({ ...d, tier: v }))}
@@ -506,7 +506,7 @@ function AgentCard({
 
           {/* 工具列表 */}
           <div>
-            <FieldLabel>启用的工具</FieldLabel>
+            <FieldLabel>可使用的能力</FieldLabel>
             <div className="mt-1.5">
               <ToolsEditor
                 tools={draft.tools ?? []}
@@ -523,12 +523,12 @@ function AgentCard({
             * 注意:把 enabledSkillIds 显式带进 draft 才会触发后端严格 validate 路径。 */}
           <div>
             <FieldLabel>
-              授权使用的技能
+              可使用的技能
               <span
                 className="ml-1.5 font-normal text-xs"
                 style={{ color: 'var(--ink-ghost)' }}
               >
-                依赖工具齐备才能添加
+                需要的能力开启后才能添加
               </span>
             </FieldLabel>
             <div className="mt-1.5">
@@ -551,7 +551,7 @@ function AgentCard({
             <FieldLabel>
               自定义指令
               <span className="ml-1.5 font-normal text-xs" style={{ color: 'var(--ink-ghost)' }}>
-                留空则使用默认 system prompt
+                留空则使用默认指令
               </span>
             </FieldLabel>
             <textarea
@@ -626,7 +626,7 @@ export function AgentTab() {
       setAgents(agentsRes.value);
     } else {
       console.warn('[AgentTab] getAgentConfigs failed', agentsRes.reason);
-      banner.error('加载 Agent 配置失败');
+      banner.error('加载助手配置失败');
     }
     if (configRes.status === 'fulfilled') {
       setProviders(
@@ -683,7 +683,7 @@ export function AgentTab() {
           .join('、');
         banner.info(`工具变化导致 ${names} 自动取消授权`);
       } else {
-        banner.success('Agent 配置已保存');
+        banner.success('助手配置已保存');
       }
       await loadData(true);
       return true;
@@ -719,10 +719,10 @@ export function AgentTab() {
           className="text-base font-semibold"
           style={{ color: 'var(--ink)' }}
         >
-          Agent
+          助手
         </h1>
         <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-          自定义对话风格、入口工具集与对你的认知
+          管理 Aurora 的对话入口、可用能力和个人化记忆
         </p>
       </div>
       <Separator />
@@ -737,7 +737,7 @@ export function AgentTab() {
             全局自定义指令
           </h2>
           <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-            追加到所有 agent 默认角色定义之后,影响所有对话
+            追加到所有默认指令之后，影响所有对话
           </p>
         </div>
         {loading ? (
@@ -787,10 +787,10 @@ export function AgentTab() {
             className="text-sm font-semibold"
             style={{ color: 'var(--ink)' }}
           >
-            Agent 入口
+            对话入口
           </h2>
           <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-            每个入口对应一个对话场景,独立配置 provider、工具集、指令和模型层级
+            每个入口对应一个使用场景，可分别配置模型服务、可用能力、指令和模型档位
           </p>
         </div>
         {loading ? (
@@ -822,7 +822,7 @@ export function AgentTab() {
               border: '1px dashed var(--separator)',
             }}
           >
-            暂无内置 Agent 入口
+            暂无内置助手入口
           </div>
         )}
       </section>

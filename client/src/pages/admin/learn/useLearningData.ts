@@ -5,7 +5,7 @@
  * 规划提案 = 主题节点的 aidraft(write_learn_plan 落库的 frontmatter),解析成 goal/understanding/items。
  * 每篇的"研究过没有" = 该篇 contentItemId 有没有非空 aidraft。
  *
- * 结构 CRUD(建/改名/排序/删)直接打 structureApi;读写正文走 notesApi(draft / aidraft)。
+ * 结构 CRUD(建/排序/删)直接打 structureApi;读写正文和标题走 notesApi(draft / aidraft)。
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -24,9 +24,11 @@ export interface LearnPlan {
   items: PlanItem[];
 }
 export interface Chapter {
-  navId: string; // NavigationNode._id —— 结构操作(改名/删/排序)用
+  navId: string; // NavigationNode._id —— 结构操作(删/排序)用
   contentItemId: string; // ContentItem._id —— 读写草稿 / Aurora 上下文 / 导航 ?node 用
   title: string;
+  depth: number;
+  parentId?: string;
   studied: boolean; // 有非空 aidraft = 研究过
 }
 
@@ -102,11 +104,11 @@ export interface LearningData {
   error: string | null;
   topicContentItemId: string | null;
   topicTitle: string;
+  allChapters: Chapter[];
   chapters: Chapter[];
   plan: LearnPlan | null;
   reload: () => Promise<void>;
-  createChapter: () => Promise<string | null>; // 返回新篇的 navId(供新建后立即进改名态)
-  renameChapter: (navId: string, title: string) => Promise<void>;
+  createChapter: () => Promise<string | null>; // 返回新篇的 contentItemId,供创建后进入编辑
   removeChapter: (navId: string) => Promise<void>;
   reorderChapters: (navIds: string[]) => Promise<void>;
   setStudied: (contentItemId: string, studied: boolean) => void;
@@ -118,6 +120,7 @@ export function useLearningData(topicNavId: string): LearningData {
   const [error, setError] = useState<string | null>(null);
   const [topicContentItemId, setTopicContentItemId] = useState<string | null>(null);
   const [topicTitle, setTopicTitle] = useState('');
+  const [allChapters, setAllChapters] = useState<Chapter[]>([]);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [plan, setPlan] = useState<LearnPlan | null>(null);
 
@@ -148,9 +151,10 @@ export function useLearningData(topicNavId: string): LearningData {
       setTopicTitle(self?.name ?? '学习');
 
       const kids = res.children;
+      const allNodes = await collectDescendantNodes(topicNavId);
       // 一次批量探针判每篇是否研究过(有非空 aidraft);整批失败按"都没研究"降级,不阻塞整体。
       // 替掉原先「逐篇 getAiDraft 拉整篇正文只为一个布尔」的 N 个重复请求 + 流量浪费。
-      const cids = kids
+      const cids = allNodes
         .map((c) => c.contentItemId)
         .filter((id): id is string => !!id);
       const studiedSet = new Set(
@@ -161,14 +165,16 @@ export function useLearningData(topicNavId: string): LearningData {
               .catch(() => [] as string[])
           : [],
       );
-      setChapters(
-        kids.map((c) => ({
+      const toChapter = (c: TreeNodeRef): Chapter => ({
           navId: c.id,
           contentItemId: c.contentItemId ?? '',
           title: c.name,
+          depth: c.depth,
+          parentId: c.parentId,
           studied: !!c.contentItemId && studiedSet.has(c.contentItemId),
-        })),
-      );
+        });
+      setAllChapters(allNodes.map(toChapter));
+      setChapters(kids.map((c) => toChapter({ ...c, depth: 0 })));
 
       if (topicCid) {
         const planDraft = await notesApi.getAiDraft(topicCid).catch(() => null);
@@ -201,25 +207,12 @@ export function useLearningData(topicNavId: string): LearningData {
         scope: 'notes',
       });
       await load();
-      return node.id; // navId,供调用方新建后立即让该行进改名态
+      return node.contentItemId ?? null;
     } catch (e) {
       banner.error(e instanceof Error ? e.message : '新建篇目失败');
       return null;
     }
   }, [topicNavId, load]);
-
-  const renameChapter = useCallback(
-    async (navId: string, title: string) => {
-      setChapters((cs) => cs.map((c) => (c.navId === navId ? { ...c, title } : c)));
-      try {
-        await structureApi.updateNode(navId, { name: title });
-      } catch (e) {
-        banner.error(e instanceof Error ? e.message : '改名失败');
-        await load();
-      }
-    },
-    [load],
-  );
 
   const removeChapter = useCallback(
     async (navId: string) => {
@@ -255,6 +248,9 @@ export function useLearningData(topicNavId: string): LearningData {
   // 纯 setter:由调用方(refreshLeft 拉到 body 后)直接告知 studied,不再自己重拉 aidraft。
   // 消掉「refreshLeft 拉一遍 body + refreshStudied 内部又拉一遍同一 aidraft」的重复请求。
   const setStudied = useCallback((contentItemId: string, studied: boolean) => {
+    setAllChapters((cs) =>
+      cs.map((c) => (c.contentItemId === contentItemId ? { ...c, studied } : c)),
+    );
     setChapters((cs) =>
       cs.map((c) => (c.contentItemId === contentItemId ? { ...c, studied } : c)),
     );
@@ -272,14 +268,48 @@ export function useLearningData(topicNavId: string): LearningData {
     error,
     topicContentItemId,
     topicTitle,
+    allChapters,
     chapters,
     plan,
     reload: load,
     createChapter,
-    renameChapter,
     removeChapter,
     reorderChapters,
     setStudied,
     refreshPlan,
   };
+}
+
+type TreeNodeRef = {
+  id: string;
+  name: string;
+  parentId?: string;
+  contentItemId?: string;
+  depth: number;
+};
+
+async function collectDescendantNodes(rootNodeId: string): Promise<TreeNodeRef[]> {
+  const result: TreeNodeRef[] = [];
+
+  async function visit(parentId: string, depth: number) {
+    const res = await structureApi.getChildren(parentId, {
+      scope: 'notes',
+      visibility: 'all',
+    });
+    for (const child of res.children) {
+      result.push({
+        id: child.id,
+        name: child.name,
+        parentId: child.parentId,
+        contentItemId: child.contentItemId,
+        depth,
+      });
+      if (child.hasChildren) {
+        await visit(child.id, depth + 1);
+      }
+    }
+  }
+
+  await visit(rootNodeId, 0);
+  return result;
 }

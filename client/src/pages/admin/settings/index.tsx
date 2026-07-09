@@ -69,10 +69,10 @@ const TAB_GROUPS: TabGroup[] = [
     items: [
       { id: 'sync', label: '同步', icon: RefreshCw },
       { id: 'integration', label: '集成', icon: Puzzle },
-      { id: 'agent', label: 'Agent', icon: Bot },
+      { id: 'agent', label: '助手', icon: Bot },
       // 工具 / 技能跟 Agent 同组:agent 用工具、调技能,语义堆叠
       // 顺序 agent → tools → skills:从「调度者」往「能力」走,概念由近及远
-      { id: 'tools', label: '工具', icon: Wrench },
+      { id: 'tools', label: '能力', icon: Wrench },
       // 智能采集 + 信息源：在 tools 之后、skills 之前，Sparkles/Rss 图标与语义自然搭配
       { id: 'digest', label: '智能采集', icon: Sparkles },
       { id: 'digest-sources', label: '信息源', icon: Rss },

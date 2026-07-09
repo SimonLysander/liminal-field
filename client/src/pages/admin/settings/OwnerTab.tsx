@@ -176,7 +176,7 @@ export function OwnerTab() {
           资料
         </h1>
         <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-          Agent 会在对话中知道你是谁,据此调整建议的风格和方向
+          Aurora 会在对话中参考这些信息，据此调整建议的风格和方向
         </p>
       </div>
       <Separator />

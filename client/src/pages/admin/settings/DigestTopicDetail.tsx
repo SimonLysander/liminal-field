@@ -54,15 +54,57 @@ function formatTime(iso: string): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
 }
 
-/** args 展示：简短字符串，长值截断 */
+const STEP_TOOL_LABEL: Record<string, string> = {
+  browse: '浏览信息源',
+  web_search: '联网搜索',
+  web_fetch: '读取网页',
+  pick: '筛选内容',
+};
+
+const STEP_ARG_LABEL: Record<string, string> = {
+  query: '搜索词',
+  q: '搜索词',
+  url: '网页',
+  sourceId: '信息源',
+  sourceIds: '信息源',
+  limit: '数量',
+  maxResults: '数量',
+};
+
+const STEP_META_LABEL: Record<string, string> = {
+  totalFetched: '抓取',
+  afterDedupe: '去重后',
+  saved: '保存',
+  picked: '入选',
+  count: '数量',
+  findingsCount: '条目',
+  results: '结果',
+  total: '总计',
+};
+
+/** 过程参数只展示用户能理解的关键信息，避免把后端字段名直接露出来。 */
 function formatArgs(args: Record<string, unknown>): string {
-  const parts = Object.entries(args).map(([k, v]) => {
-    const val = typeof v === 'string'
-      ? (v.length > 30 ? `${v.slice(0, 30)}…` : v)
-      : String(v);
-    return `${k}:${val}`;
-  });
-  return parts.length ? `{${parts.join(', ')}}` : '{}';
+  const parts = Object.entries(args)
+    .filter(([k]) => STEP_ARG_LABEL[k])
+    .map(([k, v]) => {
+      const label = STEP_ARG_LABEL[k];
+      const val = Array.isArray(v)
+        ? `${v.length} 个`
+        : typeof v === 'string'
+          ? (v.length > 36 ? `${v.slice(0, 36)}…` : v)
+          : String(v);
+      return `${label}: ${val}`;
+    });
+  return parts.join(' · ');
+}
+
+function formatMeta(meta: Record<string, unknown> | undefined): string {
+  if (!meta) return '';
+  return Object.entries(meta)
+    .filter(([k, v]) => STEP_META_LABEL[k] && typeof v === 'number')
+    .slice(0, 3)
+    .map(([k, v]) => `${STEP_META_LABEL[k]} ${v}`)
+    .join(' · ');
 }
 
 // ── 工具图标 ──────────────────────────────────────────────────────────────────
@@ -114,20 +156,14 @@ function StepTimeline({ steps }: { steps: AgentStep[] }) {
       {steps.map((step, idx) => {
         const Icon = TOOL_ICON[step.toolName] ?? Wrench;
         const isError = !!step.error;
-        // meta 里有数值类聚合（totalFetched/afterDedupe/saved...），取前 3 个显示
-        const metaSummary = step.meta
-          ? Object.entries(step.meta)
-              .filter(([, v]) => typeof v === 'number')
-              .slice(0, 3)
-              .map(([k, v]) => `${k}=${v}`)
-              .join(' ')
-          : '';
+        const argsSummary = formatArgs(step.args);
+        const metaSummary = formatMeta(step.meta);
 
         return (
           <div
             key={idx}
             className="flex items-start gap-2 border-l-2 pl-3 py-1"
-            style={{ borderColor: 'var(--separator)', fontFamily: 'var(--font-mono, monospace)' }}
+            style={{ borderColor: 'var(--separator)' }}
           >
             {/* 时间戳 */}
             <span
@@ -145,14 +181,16 @@ function StepTimeline({ steps }: { steps: AgentStep[] }) {
               style={{ color: isError ? 'var(--danger, #ef4444)' : 'var(--ink-faded)' }}
             />
 
-            {/* 工具名 + args + summary */}
-            <div className="min-w-0 flex-1 text-xs" style={{ fontFamily: 'inherit' }}>
+            {/* 过程名 + 关键参数 + 摘要 */}
+            <div className="min-w-0 flex-1 text-xs">
               <span className="font-medium" style={{ color: 'var(--ink)' }}>
-                {step.toolName}
+                {STEP_TOOL_LABEL[step.toolName] ?? '处理内容'}
               </span>
-              <span className="ml-1" style={{ color: 'var(--ink-ghost)' }}>
-                {formatArgs(step.args)}
-              </span>
+              {argsSummary && (
+                <span className="ml-1" style={{ color: 'var(--ink-ghost)' }}>
+                  {argsSummary}
+                </span>
+              )}
               {step.summary && (
                 <span className="ml-1" style={{ color: isError ? 'var(--danger, #ef4444)' : 'var(--ink-faded)' }}>
                   · {step.summary}
@@ -160,12 +198,12 @@ function StepTimeline({ steps }: { steps: AgentStep[] }) {
               )}
               {metaSummary && (
                 <span className="ml-1 text-2xs" style={{ color: 'var(--ink-ghost)' }}>
-                  · {metaSummary}
+                  {step.summary ? ' · ' : ''}{metaSummary}
                 </span>
               )}
               {step.error && (
                 <span className="ml-1 text-2xs" style={{ color: 'var(--danger, #ef4444)' }}>
-                  [{step.error}]
+                  问题：{step.error}
                 </span>
               )}
             </div>
@@ -296,14 +334,14 @@ function TaskRow({
               onClick={onToggleExpand}
               className="flex items-center gap-1 rounded px-2 py-1 text-2xs transition-colors hover:bg-[var(--shelf)]"
               style={{ color: 'var(--ink-faded)' }}
-              title={expanded ? '收起调用链' : '查看调用链'}
+              title={expanded ? '收起过程' : '查看过程'}
             >
               {expanded ? (
                 <ChevronUp size={12} strokeWidth={1.75} />
               ) : (
                 <ChevronDown size={12} strokeWidth={1.75} />
               )}
-              <span>调用链</span>
+              <span>过程</span>
             </button>
           ) : (
             <span className="text-2xs" style={{ color: 'var(--ink-ghost)' }}>—</span>
@@ -506,7 +544,7 @@ export function DigestTopicDetail() {
             <div className="space-y-4">
               {topic.prompt && (
                 <div>
-                  <div className="text-xs" style={{ color: 'var(--ink-ghost)' }}>任务描述</div>
+                  <div className="text-xs" style={{ color: 'var(--ink-ghost)' }}>采集要求</div>
                   <p
                     className="mt-1 whitespace-pre-wrap text-sm leading-relaxed"
                     style={{ color: 'var(--ink)' }}
@@ -524,7 +562,7 @@ export function DigestTopicDetail() {
                   </p>
                 </div>
                 <div>
-                  <div className="text-xs" style={{ color: 'var(--ink-ghost)' }}>Agent 最大轮次</div>
+                  <div className="text-xs" style={{ color: 'var(--ink-ghost)' }}>研究深度</div>
                   <p className="mt-1 text-sm" style={{ color: 'var(--ink)' }}>
                     {topic.maxSteps ?? 20} 轮
                   </p>
@@ -562,7 +600,7 @@ export function DigestTopicDetail() {
             <div className="mb-5 flex items-center justify-between">
               <div className="flex items-baseline gap-3">
                 <h2 className="text-xs uppercase tracking-[0.18em]" style={{ color: 'var(--ink-ghost)' }}>
-                  运行历史 &amp; 期刊产物
+                  运行历史 &amp; 简报内容
                 </h2>
                 {hasRunning && (
                   <span className="text-xs italic" style={{ color: 'var(--accent)' }}>
@@ -612,10 +650,10 @@ export function DigestTopicDetail() {
                 >
                   <span>时间</span>
                   <span>状态</span>
-                  <span>步数 · 条数</span>
-                  <span>摘要 / 错误</span>
-                  <span className="text-right">产物操作</span>
-                  <span className="text-right">调用链</span>
+                  <span>步骤 · 条数</span>
+                  <span>摘要 / 问题</span>
+                  <span className="text-right">内容操作</span>
+                  <span className="text-right">过程</span>
                 </div>
                 <div className="divide-y" style={{ borderColor: 'var(--separator)' }}>
                   {tasks.map((task) => (

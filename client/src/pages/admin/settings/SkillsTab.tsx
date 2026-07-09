@@ -107,15 +107,15 @@ function SkillForm({
   // 前端硬校验 — 后端也校验,这里给即时反馈
   const errors = useMemo(() => {
     const errs: Record<string, string> = {};
-    if (!draft.name) errs.name = 'name 必填';
+    if (!draft.name) errs.name = '内部名称必填';
     else if (!NAME_REGEX.test(draft.name))
       errs.name = '小写字母起头,允许 - _ 数字,2-41 字符';
-    if (!draft.displayName) errs.displayName = '展示名必填';
+    if (!draft.displayName) errs.displayName = '显示名称必填';
     if (!draft.description) errs.description = '描述必填';
     else if (draft.description.length > 80) errs.description = '≤ 80 字';
     if (!draft.whenToUse) errs.whenToUse = '使用场景必填';
     else if (draft.whenToUse.length > 200) errs.whenToUse = '≤ 200 字';
-    if (!draft.body) errs.body = '方法论正文必填';
+    if (!draft.body) errs.body = '执行指令必填';
     return errs;
   }, [draft]);
 
@@ -131,7 +131,7 @@ function SkillForm({
       {/* name slug — 编辑时也允许改,后端会检查重名 */}
       <div>
         <FieldLabel>
-          name (slug)
+          内部名称
           {errors.name && (
             <span
               className="ml-2 font-normal text-xs"
@@ -151,7 +151,7 @@ function SkillForm({
 
       <div>
         <FieldLabel>
-          展示名
+          显示名称
           {errors.displayName && (
             <span
               className="ml-2 font-normal text-xs"
@@ -184,7 +184,7 @@ function SkillForm({
         <TextInput
           value={draft.description}
           onChange={(v) => setDraft((d) => ({ ...d, description: v }))}
-          placeholder="一句话说明这个 skill 的作用"
+          placeholder="一句话说明这个技能的作用"
           disabled={saving || isBuiltin}
         />
       </div>
@@ -206,7 +206,7 @@ function SkillForm({
           onChange={(e) =>
             setDraft((d) => ({ ...d, whenToUse: e.target.value }))
           }
-          placeholder="什么时候该用这个 skill,引导 agent 自动判断"
+          placeholder="什么时候该用这个技能，帮助 Aurora 自动判断"
           rows={2}
           disabled={saving || isBuiltin}
           className="mt-1 w-full rounded-lg px-3 py-2 text-sm outline-none disabled:opacity-50"
@@ -221,7 +221,7 @@ function SkillForm({
 
       <div>
         <FieldLabel>
-          方法论正文 (markdown)
+          执行指令
           {errors.body && (
             <span
               className="ml-2 font-normal text-xs"
@@ -234,7 +234,7 @@ function SkillForm({
         <textarea
           value={draft.body}
           onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))}
-          placeholder="agent invoke 这个 skill 时注入的方法论 prompt"
+          placeholder="Aurora 使用这个技能时需要遵循的说明"
           rows={10}
           disabled={saving || isBuiltin}
           className="mt-1 w-full rounded-lg px-3 py-2 font-mono text-xs outline-none disabled:opacity-50"
@@ -248,9 +248,9 @@ function SkillForm({
       </div>
 
       <div>
-        <FieldLabel>必需工具 (requiredTools)</FieldLabel>
+        <FieldLabel>需要开启的能力</FieldLabel>
         <p className="mt-1 mb-2 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-          agent 启用本 skill 时必须已开启这些工具,否则后端拒绝授权。
+          只有对应能力已开启时，助手才能使用这个技能。
         </p>
         <div style={{ opacity: isBuiltin ? 0.5 : 1, pointerEvents: isBuiltin ? 'none' : undefined }}>
           <ChipSelector
@@ -473,7 +473,7 @@ export function SkillsTab() {
             技能
           </h1>
           <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-            可被 Agent 调用的方法论;在 Agent 设置里授权使用。
+            可供 Aurora 使用的做事方法；在「助手」设置里选择哪些入口能用。
           </p>
         </div>
         <PrimaryButton onClick={() => setCreating(true)}>
@@ -518,7 +518,7 @@ export function SkillsTab() {
           <DialogHeader>
             <DialogTitle>新建技能</DialogTitle>
             <DialogDescription className="sr-only">
-              新建一个全局技能,可被 Agent 在设置里授权使用
+              新建一个全局技能，可在助手设置里选择使用
             </DialogDescription>
           </DialogHeader>
           <SkillForm
@@ -540,7 +540,7 @@ export function SkillsTab() {
           <DialogHeader>
             <DialogTitle>编辑技能</DialogTitle>
             <DialogDescription className="sr-only">
-              修改技能内容,改 name 时后端会校验重名
+              修改技能内容，内部名称不可与已有技能重复
             </DialogDescription>
           </DialogHeader>
           {editing && (
@@ -567,7 +567,7 @@ export function SkillsTab() {
               删除技能「{confirmingDelete?.displayName}」?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              此操作不可撤销。所有 Agent 中已启用的引用会被自动清理。
+              此操作不可撤销。所有助手中已启用的引用会被自动清理。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

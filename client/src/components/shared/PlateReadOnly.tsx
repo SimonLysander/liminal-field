@@ -5,7 +5,7 @@
  * 通过 startTransition 将解析和渲染标记为低优先级，
  * 先展示轻量 loading 骨架，保持 UI 响应。
  *
- * heading 元素在渲染后通过 layout effect 标记 data-heading-id，
+ * H1-H3 元素在渲染后通过 layout effect 标记 data-heading-id，
  * 供 TOC 面板提取目录结构。
  */
 
@@ -35,6 +35,10 @@ import { Editor } from '@/components/ui/editor';
 import { MarkdownPlugin } from '@platejs/markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
+import {
+  getHeadingNumberingClass,
+  type HeadingNumberingInput,
+} from './heading-numbering';
 
 /**
  * read-only 插件集：不含 remarkMdx。
@@ -139,12 +143,14 @@ export default function PlateReadOnly({
   markdown,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 保留接口兼容
   contentItemId: _,
-  /** Plate 异步就绪并为 h1–h6 打上 data-heading-id 之后调用（用于父组件从 DOM 聚合 TOC） */
+  headingNumbering,
+  /** Plate 异步就绪并为 h1–h3 打上 data-heading-id 之后调用（用于父组件从 DOM 聚合 TOC） */
   onHeadingsMarked,
 }: {
   markdown: string;
   /** @deprecated 服务端已完成 URL 重写，此参数保留仅为接口兼容 */
   contentItemId?: string;
+  headingNumbering?: HeadingNumberingInput;
   onHeadingsMarked?: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -168,12 +174,12 @@ export default function PlateReadOnly({
     });
   }, [processedMarkdown]);
 
-  // 渲染后标记 heading ID，供 TOC 提取
+  // 渲染后只标记 H1-H3；更深层级保留正文样式,但不进入阅读/编辑大纲。
   useLayoutEffect(() => {
     if (!ready) return;
     const container = containerRef.current;
     if (!container) return;
-    const headings = container.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    const headings = container.querySelectorAll('h1, h2, h3');
     headings.forEach((el, i) => {
       el.setAttribute('data-heading-id', `heading-${i}`);
     });
@@ -185,7 +191,11 @@ export default function PlateReadOnly({
   }
 
   return (
-    <div ref={containerRef} style={{ color: 'var(--ink-light)' }}>
+    <div
+      ref={containerRef}
+      className={getHeadingNumberingClass(headingNumbering)}
+      style={{ color: 'var(--ink-light)' }}
+    >
       <PlateReadOnlyInner markdown={processedMarkdown} />
     </div>
   );

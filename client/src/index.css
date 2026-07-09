@@ -623,36 +623,61 @@ body:not(.gallery-immersive)::after {
   font-family: var(--font-mono);
 }
 
-/* 编辑器标题层级编号 — 纯视觉 counter,不写入 Markdown/剪贴板数据。 */
-.editor-heading-numbering [data-slate-editor] {
+/* 标题层级编号 — 纯视觉 counter,不写入 Markdown/剪贴板数据。 */
+.heading-numbering-note [data-slate-editor] {
   counter-reset: editor-h1 editor-h2;
 }
 
-.editor-heading-numbering [data-slate-editor] h1 {
+.heading-numbering-note [data-slate-editor] h1 {
   counter-increment: editor-h1;
   counter-reset: editor-h2;
 }
 
-.editor-heading-numbering [data-slate-editor] h2 {
+.heading-numbering-note [data-slate-editor] h2 {
   counter-increment: editor-h2;
 }
 
-.editor-heading-numbering [data-slate-editor] h1::before,
-.editor-heading-numbering [data-slate-editor] h2::before {
+.heading-numbering-note [data-slate-editor] h1::before,
+.heading-numbering-note [data-slate-editor] h2::before {
   display: inline-block;
-  margin-right: 0.16em;
+  margin-right: 0.28em;
   color: inherit;
   font: inherit;
   letter-spacing: 0;
   opacity: 0.92;
 }
 
-.editor-heading-numbering [data-slate-editor] h1::before {
+.heading-numbering-note [data-slate-editor] h1::before {
   content: counter(editor-h1, cjk-ideographic) "、";
 }
 
-.editor-heading-numbering [data-slate-editor] h2::before {
+.heading-numbering-note [data-slate-editor] h2::before {
   content: counter(editor-h1) "." counter(editor-h2);
+}
+
+.heading-numbering-anthology [data-slate-editor] {
+  counter-reset: anthology-h2;
+}
+
+.heading-numbering-anthology [data-slate-editor] h2 {
+  counter-increment: anthology-h2;
+}
+
+.heading-numbering-anthology [data-slate-editor] h2::before {
+  content: "§ " counter(anthology-h2);
+  display: inline-block;
+  margin-right: 0.28em;
+  color: inherit;
+  font: inherit;
+  letter-spacing: 0;
+  opacity: 0.76;
+}
+
+.heading-numbering-anthology [data-slate-editor] h4,
+.heading-numbering-anthology [data-slate-editor] h5,
+.heading-numbering-anthology [data-slate-editor] h6 {
+  font-size: var(--text-base);
+  opacity: 0.82;
 }
 
 /* Plate toolbar buttons — pill hover state */

@@ -47,6 +47,10 @@ import { Editor, EditorContainer } from '@/components/ui/editor';
 import { FloatingToolbar } from '@/components/ui/floating-toolbar';
 import { FloatingToolbarButtons } from '@/components/ui/floating-toolbar-buttons';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import {
+  getHeadingNumberingClass,
+  type HeadingNumberingInput,
+} from '@/components/shared/heading-numbering';
 import { useDraftAssetContext } from '@/contexts/DraftAssetContext';
 import { streamInlineAssist } from '@/services/inline-assist';
 import { INLINE_ASSIST_EVENT, type InlineAssistAction, type InlineAssistRequestDetail } from '@/components/editor/inline-assist-events';
@@ -321,7 +325,7 @@ export function PlateMarkdownEditor({
   onChange = () => {},
   onAnchorChange,
   onAddSelectionToChat,
-  headingNumbering = false,
+  headingNumbering = 'none',
   v3Proposal,
   onV3Resolved,
   onHasV3PendingChange,
@@ -352,8 +356,8 @@ export function PlateMarkdownEditor({
   onAnchorChange?: (anchor: AnchorPayload) => void;
   /** 浮动工具栏「添加到聊天」:显式把当前 live range 作为聊天附件传给左侧 Aurora */
   onAddSelectionToChat?: (attachment: ChatSelectionAttachment) => void;
-  /** 纯视觉标题编号。用于学习编辑体验,不写入 Slate/Markdown 内容。 */
-  headingNumbering?: boolean;
+  /** 纯视觉标题编号。只影响展示,不写入 Slate/Markdown 内容。 */
+  headingNumbering?: HeadingNumberingInput;
   /** v3 改稿:聊天侧上抛的待审批 proposal(含 newMarkdown + reason + hunks) */
   v3Proposal?: Proposal;
   /** v3 改稿:所有 hunks 裁决完后干净 markdown 的回调 */
@@ -838,7 +842,7 @@ export function PlateMarkdownEditor({
           onProposalUiChange={onProposalUiChange}
         >
           <EditorContainer
-            className={`prose-draft-editor-surface ${headingNumbering ? 'editor-heading-numbering' : ''}`}
+            className={`prose-draft-editor-surface ${getHeadingNumberingClass(headingNumbering)}`}
             onPointerDownCapture={() => setToolbarSuppressed(false)}
             style={isInlineAssistActive ? { pointerEvents: 'none' } : undefined}
           >

@@ -7,7 +7,8 @@
  *   - 右栏 = 我的:顶部嵌【我的篇目】目录(= 外面那棵真 NavigationNode 树,双向同步),下接我的正文重写(draft)。
  *
  * 数据全走真后端(useLearningData):篇目=structureApi 真树、初稿/草稿=notesApi、规划提案=主题 aidraft 解析。
- * 模型只产【规划提案】+【草稿】(经 learning-planner / learning-writer agent),绝不碰结构;建/改名/排序/删全是用户按的。
+ * 模型只产【规划提案】+【草稿】(经 learning-planner / learning-writer agent),绝不碰结构;
+ * 篇目标题跟正文一起走草稿版本,结构层只保留建/排序/删。
  */
 
 import { AdvisorSidebar } from '@/components/ai-advisor/AdvisorSidebar';
@@ -55,7 +56,6 @@ import {
   Loader2,
   Moon,
   MoreHorizontal,
-  Pencil,
   Plus,
   Sparkles,
   Sun,
@@ -68,6 +68,7 @@ import { PlateMarkdownEditor } from '../components/PlateEditor';
 import { createNotesDraftAdapter, type NotesDraftState } from '../lib/notes-draft-adapter';
 import { useDraftEditor, type DraftEditorController } from '../lib/use-draft-editor';
 import { findClosestCitationAnchor, normalizeAidraftCitationLinks } from './aidraft-citations';
+import { LearningDraftTitleInput } from './LearningDraftTitleInput';
 import {
   useLearningData,
   type Chapter,
@@ -302,48 +303,19 @@ function SortableChapterRow({
   ch,
   index,
   current,
-  autoEdit,
   onNavigate,
-  onRename,
   onRemove,
 }: {
   ch: Chapter;
   index: number;
   current: boolean;
-  autoEdit?: boolean;
   onNavigate: (contentItemId: string) => void;
-  onRename: (navId: string, title: string) => void;
   onRemove: (navId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: ch.navId,
   });
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(ch.title);
-  const autoEditedRef = useRef(false);
-
-  const startEdit = () => {
-    setDraft(ch.title);
-    setEditing(true);
-  };
-
-  // 新建后该行自动进改名态(光标落标题),只触发一次,不留"未命名"
-  useEffect(() => {
-    if (autoEdit && !autoEditedRef.current) {
-      autoEditedRef.current = true;
-      queueMicrotask(() => {
-        setDraft(ch.title);
-        setEditing(true);
-      });
-    }
-  }, [autoEdit, ch.title]);
-  const commit = () => {
-    const t = draft.trim();
-    if (t && t !== ch.title) onRename(ch.navId, t);
-    setEditing(false);
-  };
-
-  // 纯结构编辑:拖排序 + 序号 + 标题(点进入 / 改名) + 删。研究过实墨、没研究淡墨,不掺状态词。
+  // 纯结构编辑:拖排序 + 序号 + 标题(点进入) + 删。标题不在这里改,避免绕过正文版本管理。
   return (
     <div
       ref={setNodeRef}
@@ -372,50 +344,25 @@ function SortableChapterRow({
         {index + 1}
       </span>
 
-      {editing ? (
-        <input
-          autoFocus
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commit();
-            if (e.key === 'Escape') setEditing(false);
-          }}
-          className="min-w-0 flex-1 rounded border-none bg-transparent px-1 py-0.5 text-sm outline-none"
-          style={{ color: 'var(--ink)', boxShadow: '0 0 0 1px var(--accent)' }}
-        />
-      ) : (
-        <button
-          onClick={() => onNavigate(ch.contentItemId)}
-          className="min-w-0 flex-1 truncate text-left text-sm outline-none"
-          style={{ color: ch.studied ? 'var(--ink)' : 'var(--ink-faded)' }}
-          title="进入这一篇"
-        >
-          {ch.title}
-        </button>
-      )}
+      <button
+        onClick={() => onNavigate(ch.contentItemId)}
+        className="min-w-0 flex-1 truncate text-left text-sm outline-none"
+        style={{ color: ch.studied ? 'var(--ink)' : 'var(--ink-faded)' }}
+        title="进入这一篇"
+      >
+        {ch.title}
+      </button>
 
-      {!editing && (
-        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-          <button
-            onClick={startEdit}
-            className="rounded p-1 outline-none hover:bg-[var(--paper)]"
-            style={{ color: 'var(--ink-ghost)' }}
-            title="改名"
-          >
-            <Pencil size={12} strokeWidth={1.6} />
-          </button>
-          <button
-            onClick={() => onRemove(ch.navId)}
-            className="rounded p-1 outline-none hover:bg-[var(--paper)]"
-            style={{ color: 'var(--ink-ghost)' }}
-            title="删除这一篇"
-          >
-            <X size={12} strokeWidth={1.8} />
-          </button>
-        </div>
-      )}
+      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+        <button
+          onClick={() => onRemove(ch.navId)}
+          className="rounded p-1 outline-none hover:bg-[var(--paper)]"
+          style={{ color: 'var(--ink-ghost)' }}
+          title="删除这一篇"
+        >
+          <X size={12} strokeWidth={1.8} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -424,20 +371,16 @@ function ChapterOutline({
   chapters,
   currentContentId,
   isTopic,
-  autoEditNavId,
   onNavigate,
   onAdd,
-  onRename,
   onRemove,
   onReorder,
 }: {
   chapters: Chapter[];
   currentContentId: string | null;
   isTopic: boolean;
-  autoEditNavId: string | null;
   onNavigate: (contentItemId: string) => void;
   onAdd: () => void;
-  onRename: (navId: string, title: string) => void;
   onRemove: (navId: string) => void;
   onReorder: (navIds: string[]) => void;
 }) {
@@ -509,9 +452,7 @@ function ChapterOutline({
                     ch={c}
                     index={i}
                     current={c.contentItemId === currentContentId}
-                    autoEdit={c.navId === autoEditNavId}
                     onNavigate={onNavigate}
-                    onRename={onRename}
                     onRemove={onRemove}
                   />
                 ))}
@@ -645,27 +586,29 @@ function NodeScreen({
   const navigate = useNavigate();
   const { id: topicNavId } = useParams<{ id: string }>(); // 学习路由 /admin/notes/:id/learn,:id = 主题 navId
   const { chapters, plan, refreshPlan, setStudied } = data;
+  const learningNodes = data.allChapters.length > 0 ? data.allChapters : chapters;
   const currentCid = isTopic ? data.topicContentItemId : nodeId;
-  const idx = isTopic ? -1 : chapters.findIndex((c) => c.contentItemId === nodeId);
-  const chapter = idx >= 0 ? chapters[idx] : null;
-  const prev = idx > 0 ? chapters[idx - 1].contentItemId : null;
-  const next = idx >= 0 && idx < chapters.length - 1 ? chapters[idx + 1].contentItemId : null;
+  const idx = isTopic ? -1 : learningNodes.findIndex((c) => c.contentItemId === nodeId);
+  const chapter = idx >= 0 ? learningNodes[idx] : null;
+  const prev = idx > 0 ? learningNodes[idx - 1].contentItemId : null;
+  const next =
+    idx >= 0 && idx < learningNodes.length - 1 ? learningNodes[idx + 1].contentItemId : null;
   const title = isTopic ? data.topicTitle : (chapter?.title ?? '');
 
   // CTA「开始/继续学习」只看主题有没有规划(plan = 主题 aidraft):有规划 = 已经动过这个主题 = 继续学习。
   // 落点仍优先跳顺序上最新的已研究篇,都没研究则落第一篇。
   const hasPlan = !!plan;
-  const resume = [...chapters].reverse().find((c) => c.studied) ?? chapters[0] ?? null;
+  const resume = [...learningNodes].reverse().find((c) => c.studied) ?? learningNodes[0] ?? null;
 
   // 工作上下文(实时拼、无正文)→ 后端原样投影进 <current_context>。
   // 约定:凡出现的节点一律写成「标题(ID:contentItemId)」,ID 随标题走——agent 读/引用该节点
   // (read_content)直接用这个 ID,不会再把「第几篇」的序号当 ID(此前 read_content("1") 读空即此)。
   const planGoal = data.plan?.goal ? `(目标:${data.plan.goal})` : '';
   const ref = (t: string, id: string | null) => `《${t}》(ID:${id ?? '—'})`;
-  const chapterLines = chapters
+  const chapterLines = learningNodes
     .map(
       (c, i) =>
-        `  ${i + 1}. ${ref(c.title, c.contentItemId)} ${c.studied ? '已研究' : '空'}${c.contentItemId === currentCid ? ' ←当前' : ''}`,
+        `  ${i + 1}. ${'  '.repeat(c.depth)}${ref(c.title, c.contentItemId)} ${c.studied ? '已研究' : '空'}${c.contentItemId === currentCid ? ' ←当前' : ''}`,
     )
     .join('\n');
   const learningContextStr =
@@ -673,8 +616,8 @@ function NodeScreen({
       ? `在规划 ${ref(data.topicTitle, currentCid)}${planGoal}。`
       : `在写 ${ref(title, currentCid)},所属 ${ref(data.topicTitle, data.topicContentItemId)}${planGoal}。`) +
     '\n' +
-    (chapters.length
-      ? `《${data.topicTitle}》的篇目(共 ${chapters.length}):\n${chapterLines}`
+    (learningNodes.length
+      ? `《${data.topicTitle}》的学习节点(共 ${learningNodes.length},含所有后代):\n${chapterLines}`
       : `《${data.topicTitle}》的篇目:(还没建,照规划新建一篇)`);
 
   // 左栏 = Aurora 的 AI 初稿(只读;总章态左是规划提案,不拉 aiDraft)。null=加载中。
@@ -684,7 +627,6 @@ function NodeScreen({
     [aiDraft],
   );
   const displayAiDraft = normalizedAiDraft ?? '';
-  const [autoEditNavId, setAutoEditNavId] = useState<string | null>(null); // 新建篇后让该行自动进改名态
   const online = useOnlineStatus();
 
   // 右栏「我的重写」复用编辑草稿页同一套控制器:无草稿先回退已发布正文、首次真编辑才懒建草稿、
@@ -850,6 +792,7 @@ function NodeScreen({
       {label && <span className="text-sm">{label}</span>}
     </button>
   );
+  const canEditTitle = !isTopic && editor.loaded && !editor.loading;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden" style={{ background: 'var(--paper)' }}>
@@ -876,53 +819,68 @@ function NodeScreen({
           </>
         ) : (
           <>
-            {/* 章节切换器:‹ › 紧邻上下篇,点篇名弹列表跳任意篇;回主题挪到右侧主操作 pill */}
+            {/* 章节切换器:‹ › 紧邻上下篇,标题在顶栏编辑;旁边箭头弹列表跳任意篇。 */}
             {navBtn(
               <ChevronLeft size={17} strokeWidth={1.5} />,
               prev ? () => onNavigate(prev) : null,
               undefined,
               '上一篇',
             )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  className="flex items-center gap-1 rounded-md px-2 py-1 text-sm font-medium outline-none transition-colors hover:bg-[var(--shelf)]"
-                  style={{ color: 'var(--ink-faded)' }}
-                  title="跳到任意篇"
-                >
-                  {title}
-                  <ChevronDown size={14} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)' }} />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="start"
-                className="max-h-[60vh] min-w-[13rem] overflow-y-auto"
-              >
-                {chapters.map((c, i) => (
-                  <DropdownMenuItem
-                    key={c.navId}
-                    onClick={() => onNavigate(c.contentItemId)}
-                    className="gap-2 text-sm"
+            <div className="flex min-w-0 items-center gap-0.5">
+              <LearningDraftTitleInput
+                value={canEditTitle ? editor.state.title : title}
+                isDirty={editor.isDirty}
+                disabled={!canEditTitle}
+                className="w-[clamp(10rem,28vw,24rem)]"
+                onChange={(value) => {
+                  if (canEditTitle) editor.setField('title', value);
+                }}
+                onSave={() => void editor.saveDraft({ silent: true })}
+              />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="shrink-0 rounded-md p-1.5 outline-none transition-colors hover:bg-[var(--shelf)]"
+                    style={{ color: 'var(--ink-ghost)' }}
+                    title="跳到任意篇"
+                    aria-label="跳到任意篇"
                   >
-                    <span
-                      className="w-4 shrink-0 text-right tabular-nums text-2xs"
-                      style={{ color: 'var(--ink-ghost)' }}
+                    <ChevronDown size={14} strokeWidth={1.5} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="start"
+                  className="max-h-[60vh] min-w-[13rem] overflow-y-auto"
+                >
+                  {learningNodes.map((c, i) => (
+                    <DropdownMenuItem
+                      key={c.navId}
+                      onClick={() => onNavigate(c.contentItemId)}
+                      className="gap-2 text-sm"
                     >
-                      {i + 1}
-                    </span>
-                    <span
-                      className="flex-1 truncate"
-                      style={{ color: c.contentItemId === nodeId ? 'var(--accent)' : 'var(--ink)' }}
-                    >
-                      {c.title}
-                    </span>
-                    {c.contentItemId === nodeId && (
-                      <Check size={13} strokeWidth={2} style={{ color: 'var(--accent)' }} />
-                    )}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                      <span
+                        className="w-4 shrink-0 text-right tabular-nums text-2xs"
+                        style={{ color: 'var(--ink-ghost)' }}
+                      >
+                        {i + 1}
+                      </span>
+                      <span
+                        className="flex-1 truncate"
+                        style={{
+                          color: c.contentItemId === nodeId ? 'var(--accent)' : 'var(--ink)',
+                          paddingLeft: `${c.depth * 0.9}rem`,
+                        }}
+                      >
+                        {c.title}
+                      </span>
+                      {c.contentItemId === nodeId && (
+                        <Check size={13} strokeWidth={2} style={{ color: 'var(--accent)' }} />
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
             {navBtn(
               <ChevronRight size={17} strokeWidth={1.5} />,
               next ? () => onNavigate(next) : null,
@@ -1026,7 +984,7 @@ function NodeScreen({
                   <PlateMarkdownEditor
                     key={`d-${nodeId}-${displayAiDraft.length}:${displayAiDraft.slice(0, 16)}:${displayAiDraft.slice(-16)}`}
                     initialMarkdown={displayAiDraft}
-                    headingNumbering
+                    headingNumbering="note"
                     readOnly
                   />
                 </DraftAssetProvider>
@@ -1078,12 +1036,12 @@ function NodeScreen({
                   chapters={chapters}
                   currentContentId={nodeId || null}
                   isTopic={isTopic}
-                  autoEditNavId={autoEditNavId}
                   onNavigate={(cid) => onNavigate(cid)}
                   onAdd={() =>
-                    void data.createChapter().then((navId) => navId && setAutoEditNavId(navId))
+                    void data.createChapter().then((contentItemId) => {
+                      if (contentItemId) onNavigate(contentItemId);
+                    })
                   }
-                  onRename={(navId, t) => void data.renameChapter(navId, t)}
                   onRemove={(navId) => void data.removeChapter(navId)}
                   onReorder={(navIds) => void data.reorderChapters(navIds)}
                 />
@@ -1110,7 +1068,7 @@ function NodeScreen({
                   <PlateMarkdownEditor
                     key={`r-${nodeId}`}
                     initialMarkdown={editor.state.bodyMarkdown}
-                    headingNumbering
+                    headingNumbering="note"
                     onChange={(md, isUserEdit) => editor.setBody(md, isUserEdit)}
                   />
                 </DraftAssetProvider>

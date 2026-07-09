@@ -106,7 +106,7 @@ function VisionModelField({
   return (
     <div>
       <FieldLabel>
-        视觉 模型
+        视觉模型
         <span className="ml-1.5 font-normal text-xs" style={{ color: 'var(--ink-ghost)' }}>
           可选 · 画廊看图写图说;留空则画廊无 AI
         </span>
@@ -158,7 +158,7 @@ function ProviderRow({
           onClick={onEdit}
           className="rounded p-1 transition-opacity duration-100"
           style={{ color: 'var(--ink-ghost)' }}
-          title="编辑 tier 绑定"
+          title="编辑模型档位"
         >
           <Pencil size={13} />
         </button>
@@ -170,7 +170,7 @@ function ProviderRow({
           onClick={onDelete}
           className="rounded p-1 transition-opacity duration-100 disabled:opacity-40"
           style={{ color: 'var(--ink-ghost)' }}
-          title="删除此提供商"
+          title="删除此模型服务"
         >
           <Trash2 size={13} />
         </button>
@@ -245,7 +245,7 @@ function EditProviderForm({
     try {
       const ctxNum = Number(contextWindow);
       if (!Number.isFinite(ctxNum) || ctxNum <= 0) {
-        banner.error('请填写上下文窗口(token,如 65536)');
+        banner.error('请填写可读取长度，例如 65536');
         return;
       }
       const updates: Parameters<typeof settingsApi.updateAiProvider>[1] = {
@@ -257,7 +257,7 @@ function EditProviderForm({
       };
       if (apiKey.trim()) updates.apiKey = apiKey.trim();
       await settingsApi.updateAiProvider(provider.id, updates);
-      banner.success('提供商配置已更新');
+      banner.success('模型服务配置已更新');
       await onSuccess();
     } catch {
       banner.error('保存失败，请重试');
@@ -272,7 +272,7 @@ function EditProviderForm({
       style={{ background: 'var(--shelf)', border: '1px solid var(--separator)' }}
     >
       <p className="text-xs font-medium" style={{ color: 'var(--ink-faded)' }}>
-        编辑 {AI_PROVIDERS.find((p) => p.id === provider.provider)?.name ?? provider.provider} tier 绑定
+        编辑 {AI_PROVIDERS.find((p) => p.id === provider.provider)?.name ?? provider.provider} 模型档位
       </p>
 
       {/* 可选：更新 API Key */}
@@ -324,9 +324,9 @@ function EditProviderForm({
       {/* 上下文窗口(必填):各家 API 不暴露,手动填,作 compaction 分母 */}
       <div>
         <FieldLabel>
-          上下文窗口 (token)
+          可读取长度
           <span className="ml-2 font-normal" style={{ color: 'var(--ink-ghost)' }}>
-            必填;各家 API 不提供,查模型文档,如 65536 / 131072
+            必填；通常可在模型文档中查到，如 65536 / 131072
           </span>
         </FieldLabel>
         <TextInput
@@ -422,12 +422,12 @@ function AddProviderForm({ onSuccess, onCancel }: {
       return;
     }
     if (!allTiersFilled) {
-      banner.error('请为三个 tier 各选择一个模型');
+      banner.error('请为三个模型档位各选择一个模型');
       return;
     }
     const ctxNum = Number(contextWindow);
     if (!Number.isFinite(ctxNum) || ctxNum <= 0) {
-      banner.error('请填写上下文窗口(token,如 65536)');
+      banner.error('请填写可读取长度，例如 65536');
       return;
     }
     setSaving(true);
@@ -453,7 +453,7 @@ function AddProviderForm({ onSuccess, onCancel }: {
         visionModel: visionModel.trim() || undefined,
         contextWindow: ctxNum,
       });
-      banner.success('AI 提供商已添加');
+      banner.success('模型服务已添加');
       await onSuccess();
     } catch {
       banner.error('操作失败，请重试');
@@ -469,7 +469,7 @@ function AddProviderForm({ onSuccess, onCancel }: {
     >
       {/* 提供商选择 */}
       <div>
-        <FieldLabel>提供商</FieldLabel>
+        <FieldLabel>模型服务商</FieldLabel>
         <SelectInput
           value={provider}
           onChange={handleProviderChange}
@@ -520,9 +520,9 @@ function AddProviderForm({ onSuccess, onCancel }: {
       {/* 上下文窗口(必填):各家 API 不暴露,手动填(查模型文档),作 compaction 分母 */}
       <div>
         <FieldLabel>
-          上下文窗口 (token)
+          可读取长度
           <span className="ml-2 font-normal" style={{ color: 'var(--ink-ghost)' }}>
-            必填;各家 API 不提供,查模型文档,如 65536 / 131072
+            必填；通常可在模型文档中查到，如 65536 / 131072
           </span>
         </FieldLabel>
         <TextInput
@@ -674,7 +674,7 @@ export function IntegrationTab() {
     setDeletingId(id);
     try {
       await settingsApi.deleteAiProvider(id);
-      banner.success('提供商已删除');
+      banner.success('模型服务已删除');
       await loadData(true);
     } catch {
       banner.error('删除失败');
@@ -694,7 +694,7 @@ export function IntegrationTab() {
           集成
         </h1>
         <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-          第三方服务集成:文档解析、联网搜索、AI 提供商
+          配置文档解析、联网搜索、网页读取和模型服务
         </p>
       </div>
       <Separator />
@@ -765,7 +765,7 @@ export function IntegrationTab() {
             Tavily 联网搜索
           </h2>
           <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-            Aurora web_search 工具的 API Key,免费层 1000 次/月
+            用于 Aurora 联网搜索；免费层 1000 次/月
           </p>
         </div>
         {loading ? (
@@ -811,7 +811,7 @@ export function IntegrationTab() {
                 </span>
               ) : (
                 <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
-                  未配置 · web_search 工具不挂载
+                  未配置 · 搜索能力不可用
                 </span>
               )}
             </div>
@@ -828,7 +828,7 @@ export function IntegrationTab() {
             Web Fetch 网页读取
           </h2>
           <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-            web_fetch 工具的 fallback 链路:服务器直抓 → Firecrawl → Jina Reader。两个 Key 都可空,填了用于提高限额和稳定性。
+            网页读取会依次尝试服务器直连、Firecrawl、Jina Reader；填写 Key 可提高限额和稳定性。
           </p>
         </div>
         {loading ? (
@@ -875,7 +875,7 @@ export function IntegrationTab() {
                   </span>
                 ) : (
                   <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
-                    未配置 · keyless 可用
+                    未配置 · 仍可低限额使用
                   </span>
                 )}
               </div>
@@ -921,7 +921,7 @@ export function IntegrationTab() {
                   </span>
                 ) : (
                   <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
-                    未配置 · 免费 fallback 可用
+                    未配置 · 仍可作为备用读取使用
                   </span>
                 )}
               </div>
@@ -936,10 +936,10 @@ export function IntegrationTab() {
       <section className="space-y-4">
         <div>
           <h2 className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>
-            AI 提供商
+            模型服务
           </h2>
           <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-            每个提供商绑三档模型(快/中/深思) + 可选视觉。配过的都可用,由各 agent 在「Agent」tab 自选用谁。
+            每个服务配置快、标准、深思三档模型，可选视觉模型；助手入口会选择使用哪个服务。
           </p>
         </div>
 
@@ -974,7 +974,7 @@ export function IntegrationTab() {
               className="rounded-sm px-3 py-4 text-center text-xs"
               style={{ color: 'var(--ink-ghost)', border: '1px dashed var(--separator)' }}
             >
-              尚未配置 AI 提供商
+              尚未配置模型服务
             </div>
           )
         )}
@@ -998,7 +998,7 @@ export function IntegrationTab() {
             onClick={() => setShowAddForm(true)}
           >
             <Plus size={14} />
-            添加提供商
+            添加模型服务
           </Button>
         )}
       </section>

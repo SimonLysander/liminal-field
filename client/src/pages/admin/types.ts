@@ -10,6 +10,7 @@ import type {
   StructureNode,
   UpdateStructureNodeDto,
 } from '@/services/structure';
+import type { HeadingNumberingInput } from '@/components/shared/heading-numbering';
 
 export type TreeNode = StructureNode & {
   children?: TreeNode[];
@@ -79,6 +80,7 @@ export type ContentVersionViewProps = {
   previewLoading: boolean;
   /** 仅用户提交的最新版允许 inline-edit 摘要；系统/AI/导入版本保持只读。 */
   canEditSummary?: boolean;
+  headingNumbering?: HeadingNumberingInput;
   onSaveSummary: (summary: string) => Promise<void>;
   onReload: () => Promise<void>;
   onPublish: () => Promise<void>;

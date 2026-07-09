@@ -34,6 +34,7 @@ export const ContentVersionView = ({
   preview,
   previewLoading,
   canEditSummary = true,
+  headingNumbering,
   onSaveSummary,
   onReload,
   onPublish,
@@ -336,6 +337,7 @@ export const ContentVersionView = ({
         <MarkdownBody
           markdown={viewingBodyMarkdown || ''}
           contentItemId={node.contentItemId}
+          headingNumbering={headingNumbering}
         />
       </div>
     </div>

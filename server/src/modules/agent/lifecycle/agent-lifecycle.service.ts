@@ -32,6 +32,7 @@ import { AnthologyViewService } from '../../workspace/anthology-view.service';
 import { MemoryViewService } from '../memory/memory-view.service';
 import { AgentMemoryObservationRepository } from '../memory/agent-memory-observation.repository';
 import { SkillService } from '../../skill/skill.service';
+import { LearningProjectService } from '../../learning/learning-project.service';
 import { sliceSessionPage } from './session-pagination';
 import type { AgentChatDto } from '../dto/agent-chat.dto';
 
@@ -62,6 +63,8 @@ export class AgentLifecycle {
     private readonly observationRepo: AgentMemoryObservationRepository,
     // agent skills:onBeforeChat 时按 enabledSkillIds 查 Skill 实体,注入 <available_skills>
     private readonly skillService: SkillService,
+    // 学习场景:后端解析 LearningProject/root/current,覆盖前端传来的写入目标
+    private readonly learningProjectService: LearningProjectService,
   ) {}
 
   /**
@@ -211,6 +214,9 @@ export class AgentLifecycle {
       }
     }
 
+    const normalizedLearningEntryContext =
+      await this.normalizeLearningEntryContext(dto);
+
     const systemPrompt = this.prompt.buildSystemPrompt({
       ownerProfile: ownerProfile.name ? ownerProfile : undefined,
       coreMemories,
@@ -226,7 +232,7 @@ export class AgentLifecycle {
       customSystemPrompt: aiConfig.aiSystemPrompt,
       entrySystemPrompt: aiConfig.entrySystemPrompt,
       // 学习场景:前端实时拼好的"当前业务场景"状态串(篇目结构,无正文)
-      learningContext: dto.entryContext.learningContext,
+      learningContext: normalizedLearningEntryContext.learningContext,
       tasks,
       // agent skills:轻量元数据进 prompt;body 永不进(在 Skill 工具 tool_result 才载入)
       enabledSkills,
@@ -235,16 +241,16 @@ export class AgentLifecycle {
     // 简报阅读页 sub-agent 想用 browse 工具时,要传 digestTaskContext 让 ToolAssembler
     // 识别"digest 场景"。reader 模式:taskId 留空,topicId 用报告的 topicId,
     // fetchedItemsMap 空(reader 不挂 pick,fetchedItemsMap 写了没人读)。
-    const entryContextWithDigest = dto.entryContext.digestReport
+    const entryContextWithDigest = normalizedLearningEntryContext.digestReport
       ? {
-          ...dto.entryContext,
+          ...normalizedLearningEntryContext,
           digestTaskContext: {
-            topicId: dto.entryContext.digestReport.topicId,
+            topicId: normalizedLearningEntryContext.digestReport.topicId,
             refCounter: { item: 0 },
             fetchedItemsMap: new Map(),
           },
         }
-      : dto.entryContext;
+      : normalizedLearningEntryContext;
 
     // allowedTools 为空时使用全部工具；有白名单时按白名单过滤
     // enabledSkillIds 非空时叠加挂 Skill 工具(独立于 allowedTools 白名单)
@@ -256,6 +262,51 @@ export class AgentLifecycle {
     );
 
     return { systemPrompt, tools };
+  }
+
+  private async normalizeLearningEntryContext(
+    dto: AgentChatDto,
+  ): Promise<AgentChatDto['entryContext']> {
+    const ctx = dto.entryContext;
+    if (ctx.source !== 'learning-editor') {
+      return ctx;
+    }
+    const requestedContentItemId = ctx.learningNoteId ?? ctx.learningTopicId;
+    if (!requestedContentItemId) {
+      return ctx;
+    }
+
+    try {
+      const resolved = await this.learningProjectService.resolveByContentItemId(
+        requestedContentItemId,
+      );
+      const project = resolved.project;
+      const rootContentItemId =
+        project?.rootContentItemId ?? resolved.rootNode.contentItemId;
+      const currentContentItemId = resolved.currentNode.contentItemId;
+
+      const learningHeader = [
+        `学习项目:${project?.id ?? '未创建'}`,
+        `学习根:${resolved.rootNode.name}(Node:${resolved.rootNode.id},ID:${rootContentItemId ?? '—'})`,
+        `当前节点:${resolved.currentNode.name}(Node:${resolved.currentNode.id},ID:${currentContentItemId ?? '—'})`,
+      ].join('\n');
+
+      return {
+        ...ctx,
+        learningTopicId: ctx.learningTopicId ? rootContentItemId : undefined,
+        learningNoteId: ctx.learningNoteId ? currentContentItemId : undefined,
+        learningContext: [learningHeader, ctx.learningContext]
+          .filter((part) => part?.trim())
+          .join('\n\n'),
+      };
+    } catch (err) {
+      this.logger.warn(
+        `normalize learning context failed contentItemId=${requestedContentItemId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return ctx;
+    }
   }
 
   /**

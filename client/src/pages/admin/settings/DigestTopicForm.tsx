@@ -342,37 +342,37 @@ export function DigestTopicForm({
       {/* 栏目宗旨 — 给"读者"看的 (与下面的"任务描述"区分) */}
       <div>
         <FieldLabel>
-          栏目宗旨 <span className="ml-2 text-xs" style={{ color: 'var(--accent)' }}>给读者</span>
+          栏目简介 <span className="ml-2 text-xs" style={{ color: 'var(--accent)' }}>给读者</span>
         </FieldLabel>
         <input
           type="text"
           value={draft.tagline}
           onChange={(e) => setDraft((d) => ({ ...d, tagline: e.target.value }))}
-          placeholder="一句话定位 — 公开端栏目页展示给读者看(如:为关注 AI 工程落地的开发者每天精选一份内容)"
+          placeholder="一句话说明这个栏目关注什么、适合谁看"
           maxLength={120}
           className={inputClass}
           style={inputStyle}
         />
         <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-          报刊业内叫 standfirst — 紧贴栏目大字下方那行 italic 副标,告诉读者"这个栏目讲什么、为谁讲"。
+          这段会展示在栏目标题下方，用来说明栏目主题和读者定位。
         </p>
       </div>
 
       {/* 任务描述 — 给"AI agent"看的 (跟栏目宗旨完全不同语义) */}
       <div>
         <FieldLabel>
-          任务描述 <span className="ml-2 text-xs" style={{ color: 'var(--accent)' }}>给 agent</span>
+          采集要求 <span className="ml-2 text-xs" style={{ color: 'var(--accent)' }}>给 Aurora</span>
         </FieldLabel>
         <textarea
           value={draft.prompt}
           onChange={(e) => setDraft((d) => ({ ...d, prompt: e.target.value }))}
-          placeholder="给 AI agent 的工作指令 — 描述你关心什么、什么算相关(如:关注 AI 应用进展、Agent 框架、大模型新发布,倾向工程实操,不要纯学术)"
+          placeholder="告诉 Aurora 该关注什么、什么内容算相关。例如：关注 AI 应用进展、智能体框架、大模型新发布，偏工程实操，不要纯学术"
           rows={6}
           className={inputClass}
           style={{ ...inputStyle, resize: 'vertical' }}
         />
         <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-          AI agent 跑工作流时按这段指令判定"什么 finding 算相关",**不会**展示给读者。
+          Aurora 会按这段要求筛选和整理内容；这段不会展示给读者。
         </p>
       </div>
 
@@ -388,9 +388,9 @@ export function DigestTopicForm({
       {/* Agent 最大轮次 — 4 档固定选项，不允许自由输入 */}
       <div>
         <FieldLabel>
-          Agent 最大轮次
+          研究深度
           <span className="ml-2 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-            （{draft.maxSteps} 轮 · 每轮可调多个工具）
+            （最多 {draft.maxSteps} 轮）
           </span>
         </FieldLabel>
         <select

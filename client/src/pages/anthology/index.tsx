@@ -286,6 +286,7 @@ function AnthologyOverview({ id }: { id: string }) {
               <MarkdownBody
                 markdown={detail.bodyMarkdown}
                 contentItemId={detail.id}
+                headingNumbering="anthology"
                 onHeadingsMarked={refreshToc}
               />
             </div>
@@ -438,7 +439,11 @@ function EntryReader({ anthologyId, entryNodeId }: { anthologyId: string; entryN
           animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
           transition={{ duration: 0.5, delay: 0.25, ease: smoothBounce }}
         >
-          <MarkdownBody markdown={entry.bodyMarkdown} onHeadingsMarked={refreshToc} />
+          <MarkdownBody
+            markdown={entry.bodyMarkdown}
+            headingNumbering="anthology"
+            onHeadingsMarked={refreshToc}
+          />
         </motion.div>
 
         {/* 章末收束 — 一束勿忘我(纸艺,§3.3 合规;花语「记忆」呼应卷宗记忆主题) */}

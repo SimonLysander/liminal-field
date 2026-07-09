@@ -47,6 +47,7 @@ const NotesEditPanel = ({ id }: { id: string }) => {
       editor={editor}
       draftScopeId={id}
       editorKey={id}
+      headingNumbering="note"
       titlePlaceholder="无标题"
       advisor={agentEnabled ? { enabled: true, sessionKey: `draft-${id}`, contentItemId: id } : undefined}
     />
@@ -127,6 +128,7 @@ const AnthologyNodeEditPanel = ({ id }: { id: string }) => {
       editor={editor}
       draftScopeId={id}
       editorKey={`anthology-${id}`}
+      headingNumbering="anthology"
       titlePlaceholder="条目标题"
       advisor={agentEnabled ? { enabled: true, sessionKey: `anthology-draft-${id}`, contentItemId: id } : undefined}
     />

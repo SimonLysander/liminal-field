@@ -30,19 +30,19 @@ interface ToolCallCardProps {
   sessionKey?: string;
 }
 
-// 工具显示名沿用英文(与后端函数名一致,Claude Code 风)
+// 工具函数名仍与后端契约一致,这里只处理面向用户的显示名。
 const DISPLAY_NAMES: Record<string, string> = {
-  search_knowledge_base: 'Search',
-  list_knowledge_base: 'List',
-  read_document_content: 'Read',
-  get_current_draft: 'Read Current Draft',
+  search_knowledge_base: '搜索资料',
+  list_knowledge_base: '查看资料库',
+  read_document_content: '阅读内容',
+  get_current_draft: '查看当前草稿',
   // 2026-05-30 event log 架构:remember 批量 append 岁月史书;forget 已拔
-  remember: 'Note Memory',
-  forget: 'Delete Memory',
+  remember: '记录记忆',
+  forget: '删除记忆',
   // #150(2026-05-31):recall = 按标题精读单条;search = 模糊搜候选
-  recall_memory: 'Read Memory',
-  search_memories: 'Search Memory',
-  sub_agent: 'Delegate',
+  recall_memory: '读取记忆',
+  search_memories: '搜索记忆',
+  sub_agent: '委托研究',
   propose_edit: '提议修改',
   // v3 改稿工具:生成完整改稿方案,等待编辑器审批
   propose_document_rewrite: '生成改稿',

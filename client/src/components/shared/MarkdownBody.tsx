@@ -15,15 +15,19 @@
 
 import { memo } from 'react';
 import PlateReadOnly from './PlateReadOnly';
+import type { HeadingNumberingInput } from './heading-numbering';
 
 const MarkdownBody = memo(function MarkdownBody({
   markdown,
   contentItemId,
+  headingNumbering,
   onHeadingsMarked,
 }: {
   markdown: string;
   /** 传入后会将 ./assets/{name} 改写为服务端代理 URL */
   contentItemId?: string;
+  /** 纯视觉标题编号:note 为结构化知识编号,anthology 为出版式小节编号。 */
+  headingNumbering?: HeadingNumberingInput;
   /** Plate 为标题打上 data-heading-id 后调用（例如导入预览页刷新大纲） */
   onHeadingsMarked?: () => void;
 }) {
@@ -31,6 +35,7 @@ const MarkdownBody = memo(function MarkdownBody({
     <PlateReadOnly
       markdown={markdown}
       contentItemId={contentItemId}
+      headingNumbering={headingNumbering}
       onHeadingsMarked={onHeadingsMarked}
     />
   );

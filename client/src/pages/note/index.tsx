@@ -174,7 +174,11 @@ function FolderReader({ nodeId }: { nodeId: string }) {
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
             transition={{ duration: 0.5, delay: 0.25, ease: smoothBounce }}
           >
-            <MarkdownBody markdown={content.bodyMarkdown} contentItemId={content.id} />
+            <MarkdownBody
+              markdown={content.bodyMarkdown}
+              contentItemId={content.id}
+              headingNumbering="note"
+            />
           </motion.div>
 
           {/* 章末收束 — 一束勿忘我(纸艺,§3.3 合规) */}
@@ -335,7 +339,11 @@ function NoteReader({ id }: { id: string }) {
           animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
           transition={{ duration: 0.5, delay: 0.25, ease: smoothBounce }}
         >
-          <MarkdownBody markdown={content.bodyMarkdown} contentItemId={id} />
+          <MarkdownBody
+            markdown={content.bodyMarkdown}
+            contentItemId={id}
+            headingNumbering="note"
+          />
         </motion.div>
 
         {/* 章末收束 — 一束勿忘我(纸艺,§3.3 合规;花语「记忆」) */}

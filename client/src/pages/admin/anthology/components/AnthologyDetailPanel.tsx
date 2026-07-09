@@ -486,6 +486,7 @@ export function AnthologyDetailPanel({ row, onReload, onDelete }: Props) {
                   preview={preview}
                   previewLoading={previewLoading}
                   canEditSummary={canEditSummary}
+                  headingNumbering="anthology"
                   onSaveSummary={handleSaveSummary}
                   onReload={() => reloadActive({ silent: true })}
                   onPublish={handlePublish}

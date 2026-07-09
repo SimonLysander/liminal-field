@@ -205,11 +205,10 @@ export function ToolsTab() {
           className="font-serif text-2xl"
           style={{ color: 'var(--ink)', fontVariantNumeric: 'oldstyle-nums' }}
         >
-          工具
+          能力
         </h2>
         <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-          Agent 能调用的能力单元。由代码定义,管理员只查看不编辑;
-          技能的「必需工具」和 Agent 的「启用工具」都从这里选。点击行可展开看完整参数和返回结构。
+          Aurora 可使用的系统能力。这里仅供查看；技能和助手入口会从这些能力中选择可用项。
         </p>
       </div>
 
@@ -231,7 +230,7 @@ export function ToolsTab() {
               border: '1px dashed var(--separator)',
             }}
           >
-            工具清单为空。
+            能力清单为空。
           </div>
         )}
       </section>

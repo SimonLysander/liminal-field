@@ -681,7 +681,10 @@ export default function BatchImportPage() {
                 {previewLoading ? (
                   <p className="text-sm py-20 text-center" style={{ color: 'var(--ink-ghost)' }}>加载预览…</p>
                 ) : previewMarkdown ? (
-                  <MarkdownBody markdown={previewMarkdown} />
+                  <MarkdownBody
+                    markdown={previewMarkdown}
+                    headingNumbering="note"
+                  />
                 ) : (
                   <p className="text-sm py-20 text-center" style={{ color: 'var(--ink-ghost)' }}>
                     {localEntries.length > 0 ? '选择左侧文件预览内容' : ''}

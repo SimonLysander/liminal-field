@@ -212,6 +212,7 @@ export default function ImportPreviewPage() {
         >
           <MarkdownBody
             markdown={data.markdown}
+            headingNumbering="note"
             onHeadingsMarked={() => setPlateLayoutGen((n) => n + 1)}
           />
         </main>

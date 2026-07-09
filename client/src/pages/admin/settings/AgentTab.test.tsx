@@ -123,12 +123,12 @@ describe('<AgentTab> SkillsSection 集成', () => {
     fireEvent.click(screen.getByText('编辑'));
 
     // 展开 SkillsSection 的 popover
-    const addBtns = screen.getAllByText(/授权技能/);
+    const addBtns = screen.getAllByText(/添加技能/);
     fireEvent.click(addBtns[0]);
 
     // 「不可添加」组标题出现
     await waitFor(() => {
-      expect(screen.getByText('不可添加')).toBeInTheDocument();
+      expect(screen.getByText('需先开启能力')).toBeInTheDocument();
     });
 
     // 「批评家」项 tooltip 列出缺哪些工具
@@ -159,7 +159,7 @@ describe('<AgentTab> SkillsSection 集成', () => {
     fireEvent.click(screen.getByText('编辑'));
 
     // 打开 SkillsSection popover
-    const addBtns = screen.getAllByText(/授权技能/);
+    const addBtns = screen.getAllByText(/添加技能/);
     fireEvent.click(addBtns[0]);
 
     // 「可添加」组下点「批评家」

@@ -59,6 +59,7 @@ import { ExternalCacheModule } from '../external-cache/external-cache.module';
 import { SkillModule } from '../skill/skill.module';
 // P3 重构:browse/pick 工具归 agent/tools/,需要 digest 的 repo + RssFetcher → 走 SharedModule
 import { DigestSharedModule } from '../digest/digest-shared.module';
+import { LearningModule } from '../learning/learning.module';
 
 @Module({
   imports: [
@@ -80,6 +81,7 @@ import { DigestSharedModule } from '../digest/digest-shared.module';
     ExternalCacheModule,
     SkillModule,
     DigestSharedModule,
+    LearningModule,
   ],
   controllers: [AgentController, InlineAssistController],
   providers: [
