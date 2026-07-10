@@ -17,6 +17,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 
+const { loggerError } = vi.hoisted(() => ({ loggerError: vi.fn() }));
+
+vi.mock('@/lib/logger', () => ({
+  createLogger: vi.fn(() => ({
+    debug: vi.fn(),
+    warn: vi.fn(),
+    error: loggerError,
+  })),
+}));
+
 import {
   deserializeDocumentMarkdown,
   normalizeDocumentNodes,
@@ -78,6 +88,7 @@ function visitNodes(nodes: unknown[], visit: (node: Record<string, unknown>) => 
 
 afterEach(() => {
   vi.restoreAllMocks();
+  loggerError.mockReset();
 });
 
 describe('document Markdown parsing contract', () => {
@@ -211,15 +222,13 @@ describe('document Markdown parsing contract', () => {
         throw parserError;
       }),
     } as unknown as SlateEditor;
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-
     expect(deserializeDocumentMarkdown(editor, markdown)).toEqual([
       { type: 'p', children: [{ text: markdown }] },
     ]);
-    expect(errorSpy).toHaveBeenCalledWith('[document-markdown] Markdown parsing failed', {
+    expect(loggerError).toHaveBeenCalledWith('markdown_parse_failed', {
       errorType: 'Error',
       markdownLength: markdown.length,
     });
-    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain(markdown);
+    expect(JSON.stringify(loggerError.mock.calls)).not.toContain(markdown);
   });
 });

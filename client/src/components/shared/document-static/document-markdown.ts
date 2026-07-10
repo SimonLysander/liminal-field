@@ -2,6 +2,7 @@ import { deserializeMd } from '@platejs/markdown';
 import type { SlateEditor, TElement, Value } from 'platejs';
 
 import { fixCodeBlockLines } from '@/components/shared/plate-transforms';
+import { createLogger } from '@/lib/logger';
 
 type DocumentNode = {
   children?: DocumentNode[];
@@ -13,6 +14,7 @@ const DATE_TAG_RE = /<date\s+value="([^"]+)"\s*\/>/g;
 const DATE_MARKER_START = '\uE000';
 const DATE_MARKER_END = '\uE001';
 const DATE_MARKER_PREFIX = `${DATE_MARKER_START}DATE:`;
+const logger = createLogger('document-markdown');
 
 export function preprocessDocumentMarkdown(markdown: string): string {
   // 先双写原文中的私有起始符，保证只有本次替换产生的单起始符能被还原为 date。
@@ -102,7 +104,7 @@ export function deserializeDocumentMarkdown(
     return normalizeDocumentNodes(nodes as TElement[]);
   } catch (error) {
     // 第三方错误的 message/stack 可能回显正文，因此只记录固定分类与长度。
-    console.error('[document-markdown] Markdown parsing failed', {
+    logger.error('markdown_parse_failed', {
       errorType: error instanceof Error ? 'Error' : 'Unknown',
       markdownLength: markdown.length,
     });
