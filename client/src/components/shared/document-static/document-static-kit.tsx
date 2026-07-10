@@ -30,6 +30,8 @@ import {
 } from '@platejs/code-block';
 import { BaseDatePlugin } from '@platejs/date';
 import { BaseLinkPlugin } from '@platejs/link';
+import { BaseListPlugin } from '@platejs/list';
+import { MarkdownPlugin } from '@platejs/markdown';
 import { BaseEquationPlugin, BaseInlineEquationPlugin } from '@platejs/math';
 import { BaseCaptionPlugin } from '@platejs/caption';
 import { BaseFilePlugin, BaseImagePlugin } from '@platejs/media';
@@ -41,6 +43,8 @@ import {
 } from '@platejs/table';
 import { common, createLowlight } from 'lowlight';
 import { BaseParagraphPlugin, createSlatePlugin } from 'platejs';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 
 import {
   StaticBlockquoteElement,
@@ -115,6 +119,11 @@ export const StaticDocumentKit = [
   BaseFontSizePlugin.withComponent(StaticFontSizeLeaf),
   BaseFontFamilyPlugin.withComponent(StaticFontFamilyLeaf),
   BaseLinkPlugin.withComponent(StaticLinkElement),
+  // 保留纯 base list 插件供 Markdown 反序列化产生 listStyleType；
+  // 静态 DOM 由下面的 static_list 节点渲染，不使用交互式 wrapper。
+  BaseListPlugin.configure({
+    render: { belowNodes: () => undefined },
+  }),
   StaticListPlugin,
   StaticListItemPlugin,
   BaseTablePlugin.withComponent(StaticTableElement),
@@ -132,4 +141,7 @@ export const StaticDocumentKit = [
   BaseCodeSyntaxPlugin.withComponent(StaticCodeSyntaxLeaf),
   BaseEquationPlugin.withComponent(StaticEquationElement),
   BaseInlineEquationPlugin.withComponent(StaticInlineEquationElement),
+  MarkdownPlugin.configure({
+    options: { remarkPlugins: [remarkGfm, remarkMath] },
+  }),
 ];

@@ -28,6 +28,7 @@ vi.mock('@/components/shared/ImageLightbox', () => ({
 }));
 
 import { StaticDocumentKit } from './document-static-kit';
+import { deserializeDocumentMarkdown } from './document-markdown';
 
 const writeText = vi.fn().mockResolvedValue(undefined);
 
@@ -164,6 +165,20 @@ afterEach(() => {
 });
 
 describe('StaticDocumentKit', () => {
+  it('deserializes Markdown lists through the static kit into nested semantic lists', () => {
+    const parser = createStaticEditor({ plugins: StaticDocumentKit });
+    const value = deserializeDocumentMarkdown(
+      parser,
+      ['- Parent item', '  - Nested item', '- Second parent item'].join('\n'),
+    );
+    const editor = createStaticEditor({ plugins: StaticDocumentKit, value });
+    const { container } = render(<PlateStatic editor={editor} />);
+
+    expect(container.querySelectorAll('ul')).toHaveLength(2);
+    expect(container.querySelectorAll('ul > li')).toHaveLength(3);
+    expect(container.querySelector('ul > li > ul > li')).toHaveTextContent('Nested item');
+  });
+
   it('renders each contiguous list run in one semantic list container', () => {
     const { container } = renderStaticDocument(CONTIGUOUS_LIST_VALUE);
 
