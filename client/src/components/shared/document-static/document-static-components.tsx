@@ -287,7 +287,7 @@ export function StaticEquationElement(props: SlateElementProps<TEquationElement>
   return (
     <SlateElement {...props}>
       <div
-        className={`${equationBlockLayoutClassName} ${equationBlockPresentationClassName} ${
+        className={`min-w-0 overflow-x-auto ${equationBlockLayoutClassName} ${equationBlockPresentationClassName} ${
           expression ? equationBlockFilledClassName : equationBlockEmptyClassName
         }`}
       >

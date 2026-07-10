@@ -219,6 +219,9 @@ describe('StaticDocumentKit', () => {
     expect(screen.getByText('cell').closest('td')).toHaveStyle({ backgroundColor: '#ffffff' });
     expect(document.querySelector('table')).not.toBeNull();
     expect(document.querySelector('.katex')).not.toBeNull();
+    expect(document.querySelector('.katex-display')?.parentElement?.parentElement).toHaveClass(
+      'overflow-x-auto',
+    );
     expect(document.querySelector('.hljs-keyword')).not.toBeNull();
     expect(screen.getByRole('img', { name: 'first image' })).toHaveAttribute('src', '/assets/first.jpg');
     expect(screen.getByRole('link', { name: /notes\.pdf/ })).toHaveAttribute('href', '/assets/notes.pdf');
