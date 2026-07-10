@@ -1,10 +1,6 @@
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class InlineAssistDto {
-  @IsIn(['continue', 'illustration_plan'])
-  @IsOptional()
-  mode?: 'continue' | 'illustration_plan';
-
   @IsString()
   @MaxLength(60_000)
   @IsOptional()

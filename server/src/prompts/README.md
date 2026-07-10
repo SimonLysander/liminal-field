@@ -37,6 +37,7 @@
 | `agents/gallery-caption-writer.md` | 图说写手 systemPrompt | 同上 | 无 |
 | `agents/writing-advisor.md` | 写作顾问 systemPrompt（含编辑场景的工具与约束，原 instructions/tools-guide 写作专属部分迁入此处） | 同上 | `owner_name` |
 | `settings/digest-report-analyst.md` | 报告分析师 systemPrompt(builtin-agents 引用此路径) | 同上 | 无 |
+| `inline-assist/continue-system.md` | 普通 inline assist systemPrompt | `InlineAssistService` | 无 |
 | `digest/react-agent.md` | digest workflow react-agent 主 prompt | `ReactAgentNode` | `topic_name`, `topic_prompt`, `since_iso`, `until_iso` |
 | `digest/compose-plan.md` | digest compose 阶段1:分主题+定刊头 | `ComposeNode.plan` | `topic_name`, `findings_list` |
 | `digest/compose-write-section.md` | digest compose 阶段2:分主题写正文 | `ComposeNode.writeSection` | `topic_name`, `section_title`, `sources_xml` |

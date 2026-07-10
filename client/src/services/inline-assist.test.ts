@@ -34,29 +34,6 @@ describe('streamInlineAssist', () => {
     expect(chunks.join('')).toBe('你好');
   });
 
-  it('sends illustration planning mode to the stream endpoint', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(textStream(['ok']), { status: 200 }),
-    );
-
-    await streamInlineAssist(
-      {
-        beforeText: '前文',
-        mode: 'illustration_plan',
-        selectedText: '选中文本',
-      },
-      { onChunk: vi.fn() },
-    );
-
-    const body = JSON.parse(
-      fetchMock.mock.calls[0]?.[1]?.body as string,
-    ) as { mode?: string; selectedText?: string };
-    expect(body).toMatchObject({
-      mode: 'illustration_plan',
-      selectedText: '选中文本',
-    });
-  });
-
   it('sends marked document markdown to the stream endpoint', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(textStream(['ok']), { status: 200 }),

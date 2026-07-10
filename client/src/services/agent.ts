@@ -6,6 +6,9 @@ export interface SessionTask {
   status: 'pending' | 'in_progress' | 'done';
 }
 
+/** HITL 写入审批在服务端持久化的展示状态。 */
+export type WriteApprovalStatus = 'pending' | 'approved' | 'rejected' | 'expired';
+
 /**
  * 后端分页响应结构（U5 聚合分页 endpoint）。
  *
@@ -26,6 +29,8 @@ export interface SessionData {
   summary: string;
   tasks: SessionTask[];
   lastActiveAt: string | null;
+  /** toolCallId → 审批状态；历史 TTL 已过期的卡片显式标为 expired。 */
+  writeApprovalStatuses: Record<string, WriteApprovalStatus>;
 }
 
 export interface BusinessSessionSummary {

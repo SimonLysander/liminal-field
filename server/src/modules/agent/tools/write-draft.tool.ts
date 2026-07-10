@@ -13,6 +13,7 @@
  */
 import { tool, jsonSchema } from 'ai';
 import type { EditorDraftRepository } from '../../workspace/editor-draft.repository';
+import { replaceDraftSection } from './draft-section';
 import { toolResult } from './tool-result';
 
 /** 从 markdown 提取标题：优先取第一个 # 标题，退而取首行（去除空白），截断至 80 字。 */
@@ -50,6 +51,28 @@ export interface CitationAudit {
   attributionAndEvolution?: CitationAuditItem[];
   dataAndState?: CitationAuditItem[];
   rulesAndEvidence?: CitationAuditItem[];
+}
+
+export type DraftWriteOperation = 'replace_document' | 'replace_section';
+
+export interface DraftWriteInput {
+  operation?: DraftWriteOperation;
+  markdown?: string;
+  sectionPath?: string[];
+  sectionOccurrence?: number;
+  sectionMarkdown?: string;
+  changeSummary?: string;
+  sources?: DraftSource[];
+  citationAudit?: CitationAudit;
+}
+
+export interface DraftWriteResult {
+  bodyMarkdown: string;
+  operation: DraftWriteOperation;
+  sectionLabel?: string;
+  sourceCount: number;
+  summary: string;
+  title: string;
 }
 
 /**
@@ -172,6 +195,115 @@ export function validateCitationAudit(
     : 'citationAudit 为空:本篇给了 sources,至少列出一个已查证断言;若没有任何需查证内容,不要传 sources。';
 }
 
+function citationMarkers(markdown: string): boolean {
+  return [...markdown.matchAll(CITATION_MARKER)].length > 0;
+}
+
+function operationOf(input: DraftWriteInput): DraftWriteOperation | null {
+  const operation = input.operation ?? 'replace_document';
+  return operation === 'replace_document' || operation === 'replace_section'
+    ? operation
+    : null;
+}
+
+/**
+ * 写入前的纯参数校验，门禁与实际执行共用。局部模式的 sources 是整篇来源表，
+ * 用它把已有 aidraft 中的渲染引用还原成 CIT 标记，不能缺失。
+ */
+export function validateDraftWriteInput(input: DraftWriteInput): string | null {
+  const operation = operationOf(input);
+  if (!operation) {
+    return 'operation 只能是 replace_document 或 replace_section。';
+  }
+
+  if (operation === 'replace_document') {
+    const markdown = typeof input.markdown === 'string' ? input.markdown : '';
+    if (!markdown.trim())
+      return '缺少 markdown:整篇重写必须提供完整 Markdown 正文。';
+    const citationErr = validateCitations(markdown, input.sources);
+    if (citationErr) return citationErr;
+    return validateCitationAudit(input.citationAudit, input.sources);
+  }
+
+  if (!Array.isArray(input.sectionPath) || input.sectionPath.length === 0) {
+    return '缺少 sectionPath:局部重写必须按从 H1 到目标标题的完整路径定位章节。';
+  }
+  if (
+    !input.sectionPath.every((part) => typeof part === 'string' && part.trim())
+  ) {
+    return 'sectionPath 只能包含非空标题文本。';
+  }
+  if (
+    input.sectionOccurrence !== undefined &&
+    (!Number.isInteger(input.sectionOccurrence) || input.sectionOccurrence < 1)
+  ) {
+    return 'sectionOccurrence 必须是从 1 开始的整数。';
+  }
+  const sectionMarkdown =
+    typeof input.sectionMarkdown === 'string' ? input.sectionMarkdown : '';
+  if (!sectionMarkdown.trim()) {
+    return '缺少 sectionMarkdown:局部重写必须提供目标标题下的新正文。';
+  }
+  if (!Array.isArray(input.sources)) {
+    return '局部重写必须提供完整 sources 数组；没有来源时传 []。';
+  }
+  const citationErr = validateCitations(sectionMarkdown, input.sources);
+  if (citationErr) return citationErr;
+
+  // 局部改写不会重新审计相邻章节；只要本次小节新增了引用，才要求这次的审计。
+  return citationMarkers(sectionMarkdown)
+    ? validateCitationAudit(input.citationAudit, input.sources)
+    : null;
+}
+
+function sourceAppendix(sources: DraftSource[]): string {
+  const list = sources
+    .map((source, index) => `${index + 1}. [${source.title}](${source.url})`)
+    .join('\n');
+  return `## 来源\n\n${list}`;
+}
+
+function renderedCitationLink(source: DraftSource, index: number): string {
+  const safeTitle = source.title.replace(/[\\"]/g, '');
+  return `[${index + 1}](${source.url}#cit-${index + 1} "${safeTitle}")`;
+}
+
+/**
+ * aidraft 落库时会将 CIT 标记编译成链接并追加来源表。局部重写先精确撤销
+ * 这一层系统生成的表示，替换完成后再交给 composeAiDraftBody 重新编译，避免
+ * 把「来源」当作用户正文的一节，也避免旧链接与新 sources 脱节。
+ */
+export function restoreAiDraftMarkdown(
+  bodyMarkdown: string,
+  sources: DraftSource[],
+): string {
+  if (sources.length === 0) {
+    if (
+      /\]\([^\s)]+#cit-\d+(?:\s+"[^"]*")?\)/.test(bodyMarkdown) ||
+      /(?:^|\n)## 来源\s*$/m.test(bodyMarkdown)
+    ) {
+      throw new Error(
+        '当前 AI 初稿含来源；局部重写时必须传入完整 sources 数组。',
+      );
+    }
+    return bodyMarkdown;
+  }
+
+  const appendix = `\n\n${sourceAppendix(sources)}`;
+  if (!bodyMarkdown.endsWith(appendix)) {
+    throw new Error(
+      '当前 AI 初稿的来源表与本次 sources 不一致，无法安全局部重写。',
+    );
+  }
+
+  let restored = bodyMarkdown.slice(0, -appendix.length);
+  sources.forEach((source, index) => {
+    const link = renderedCitationLink(source, index);
+    restored = restored.split(link).join(`[@#CIT ${index + 1}]`);
+  });
+  return restored;
+}
+
 /**
  * 把模型产出的「正文 + sources」合成最终落库的 bodyMarkdown：
  *   1. 正文里的 [@#CIT N] → 可点链接 [N](url)，直达第 N 条来源
@@ -190,15 +322,79 @@ export function composeAiDraftBody(
     const parts = parseCitationNumbers(refBody).map((n) => {
       const s = srcs[n - 1];
       if (!s) return String(n);
-      const safeTitle = s.title.replace(/[\\"]/g, '');
-      return `[${n}](${s.url}#cit-${n} "${safeTitle}")`;
+      return renderedCitationLink(s, n - 1);
     });
     return parts.length ? parts.join(',') : whole;
   });
-  const list = srcs
-    .map((s, i) => `${i + 1}. [${s.title}](${s.url})`)
-    .join('\n');
-  return `${linked}\n\n## 来源\n\n${list}`;
+  return `${linked}\n\n${sourceAppendix(srcs)}`;
+}
+
+/**
+ * write_draft 的唯一落库入口。直写工具与 HITL 审批都调用它，确保整篇覆盖、
+ * 局部替换、引用恢复及标题策略在两条路径中完全一致。
+ */
+export async function commitDraftWrite(
+  editorDraftRepo: Pick<
+    EditorDraftRepository,
+    'findAiDraftByContentItemId' | 'saveAiDraft'
+  >,
+  noteContentItemId: string,
+  input: DraftWriteInput,
+  savedAt = new Date(),
+): Promise<DraftWriteResult> {
+  const validationError = validateDraftWriteInput(input);
+  if (validationError) throw new Error(validationError);
+
+  const operation = operationOf(input)!;
+  const sources = input.sources ?? [];
+  let markdown: string;
+  let sectionLabel: string | undefined;
+  let title: string;
+
+  if (operation === 'replace_document') {
+    markdown = input.markdown!;
+    title = extractTitle(markdown);
+  } else {
+    const existingDraft =
+      await editorDraftRepo.findAiDraftByContentItemId(noteContentItemId);
+    if (!existingDraft) {
+      throw new Error('当前没有可重写的 AI 初稿，请先整篇生成初稿。');
+    }
+    const currentMarkdown = restoreAiDraftMarkdown(
+      existingDraft.bodyMarkdown,
+      sources,
+    );
+    const replaced = replaceDraftSection(currentMarkdown, {
+      sectionPath: input.sectionPath!,
+      sectionOccurrence: input.sectionOccurrence,
+      sectionMarkdown: input.sectionMarkdown!,
+    });
+    const citationError = validateCitations(replaced.markdown, sources);
+    if (citationError) throw new Error(citationError);
+    markdown = replaced.markdown;
+    sectionLabel = replaced.sectionLabel;
+    title = existingDraft.title?.trim() || extractTitle(markdown);
+  }
+
+  const bodyMarkdown = composeAiDraftBody(markdown, sources);
+  const summary = extractSummary(markdown);
+  await editorDraftRepo.saveAiDraft({
+    contentItemId: noteContentItemId,
+    bodyMarkdown,
+    title,
+    summary,
+    changeNote: 'learn-draft',
+    savedAt,
+  });
+
+  return {
+    bodyMarkdown,
+    operation,
+    sectionLabel,
+    sourceCount: sources.length,
+    summary,
+    title,
+  };
 }
 
 /**
@@ -214,17 +410,43 @@ export function createWriteDraftTool(
     // 此处留指针占位即可——assemble() 收尾会用文件内容覆盖它。
     description: '描述见 prompts/tool-descriptions.ts',
     inputSchema: jsonSchema<{
-      markdown: string;
+      operation?: DraftWriteOperation;
+      markdown?: string;
+      sectionPath?: string[];
+      sectionOccurrence?: number;
+      sectionMarkdown?: string;
       changeSummary: string;
       sources?: DraftSource[];
       citationAudit?: CitationAudit;
     }>({
       type: 'object',
       properties: {
+        operation: {
+          type: 'string',
+          enum: ['replace_document', 'replace_section'],
+          description:
+            'replace_document 整篇覆盖（默认）；replace_section 只替换指定标题下的正文。',
+        },
         markdown: {
           type: 'string',
           description:
-            '完整 markdown 正文（# 标题开头，包含所有章节内容，不要截断）。可证伪的事实句末就近标 [@#CIT N]。',
+            '仅 replace_document：完整 Markdown 正文（# 标题开头，包含所有章节）。可证伪的事实句末就近标 [@#CIT N]。',
+        },
+        sectionPath: {
+          type: 'array',
+          description:
+            '仅 replace_section：从 H1 到目标标题的完整标题路径，例如 ["曝光三角形", "快门"]。',
+          items: { type: 'string' },
+        },
+        sectionOccurrence: {
+          type: 'number',
+          description:
+            '仅 replace_section：同一路径重复时指定第几个，1-based；路径唯一时省略。',
+        },
+        sectionMarkdown: {
+          type: 'string',
+          description:
+            '仅 replace_section：目标标题下的新正文，不含目标标题本身；可含更低级子标题，不可含同级或更高级标题。',
         },
         changeSummary: {
           type: 'string',
@@ -320,51 +542,25 @@ export function createWriteDraftTool(
           },
         },
       },
-      required: ['markdown', 'changeSummary'],
+      required: ['changeSummary'],
     }),
-    // changeSummary 是审批用元信息,不参与落库(gate 暂存进 preview);execute 用 markdown + sources。
-    execute: async ({
-      markdown,
-      sources,
-      citationAudit,
-    }: {
-      markdown: string;
-      changeSummary?: string;
-      sources?: DraftSource[];
-      citationAudit?: CitationAudit;
-    }) => {
+    // changeSummary 是审批元信息，不参与落库；实际写入统一经 commitDraftWrite。
+    execute: async (input: DraftWriteInput) => {
       try {
-        // 直写路径也校验引用一致性,与门禁 validate 同一把关,行为不分叉。
-        const citationErr = validateCitations(markdown, sources);
-        if (citationErr) {
-          return toolResult(`write_draft 校验未过：${citationErr}`, undefined, {
-            status: 'error',
-          });
-        }
-        const auditErr = validateCitationAudit(citationAudit, sources);
-        if (auditErr) {
-          return toolResult(`write_draft 校验未过：${auditErr}`, undefined, {
-            status: 'error',
-          });
-        }
-        const title = extractTitle(markdown);
-        const summary = extractSummary(markdown);
-        const bodyMarkdown = composeAiDraftBody(markdown, sources);
-
-        // aidraft 前缀保证 commit/publish 路径天然看不见此草稿；对用户只读。
-        await editorDraftRepo.saveAiDraft({
-          contentItemId: noteContentItemId,
-          bodyMarkdown,
-          title,
-          summary,
-          changeNote: 'learn-draft',
-          savedAt: new Date(),
-        });
+        const result = await commitDraftWrite(
+          editorDraftRepo,
+          noteContentItemId,
+          input,
+        );
+        const written =
+          result.operation === 'replace_section'
+            ? `AI 初稿小节「${result.sectionLabel}」已写入`
+            : 'AI 初稿已写入';
 
         return toolResult(
-          `AI 初稿已写入（${bodyMarkdown.length} 字，${(sources ?? []).length} 源）`,
+          `${written}（${result.bodyMarkdown.length} 字，${result.sourceCount} 源）`,
           undefined,
-          { status: 'ok', charCount: bodyMarkdown.length },
+          { status: 'ok', charCount: result.bodyMarkdown.length },
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

@@ -6,12 +6,11 @@
  * 各写工具把自己的内容映射成这同一 shape(在后端 buildPreview 一处),卡片不感知具体工具。
  *
  * 被门禁的写工具输出 pending_approval 时浮现,允许/拒绝后才真正落库。
- * 裁决结果用 resolved-store(localStorage)持久化:刷新后不重现按钮(只记 callId,不分方向)。
+ * 裁决结果由会话加载接口返回，Mongo 是唯一真源；不依赖单台浏览器 localStorage。
  */
 
 import { useState } from 'react';
-import { approveWrite, rejectWrite } from '@/services/agent';
-import { readResolved, markResolved } from '@/pages/admin/lib/resolved-store';
+import { approveWrite, rejectWrite, type WriteApprovalStatus } from '@/services/agent';
 import { banner } from '@/components/ui/banner-api';
 
 interface PreviewItem {
@@ -24,22 +23,33 @@ export interface WriteApprovalCardProps {
   sessionKey: string;
   /** 工具结果 meta,含统一契约字段 summary / items / ordered / stats */
   preview: Record<string, unknown>;
+  /** 后端随会话加载批量返回的权威状态。未传仅用于刚完成流式输出、尚未重新加载的卡片。 */
+  status?: WriteApprovalStatus;
+  /** 裁决成功后同步更新父级状态，避免等待下次加载才刷新卡片。 */
+  onStatusChange?: (
+    toolCallId: string,
+    status: Extract<WriteApprovalStatus, 'approved' | 'rejected'>,
+  ) => void;
   /** 允许后回调(如刷新左栏产出) */
   onApproved?: () => void;
 }
 
-type ResolvedState = 'approved' | 'rejected' | 'already' | null;
+type LocalResolvedState = 'approved' | 'rejected' | 'already' | null;
 
 export function WriteApprovalCard({
   toolCallId,
   sessionKey,
   preview,
+  status,
+  onStatusChange,
   onApproved,
 }: WriteApprovalCardProps) {
-  const [resolved, setResolved] = useState<ResolvedState>(() =>
-    readResolved().has(toolCallId) ? 'already' : null,
-  );
+  const [resolved, setResolved] = useState<LocalResolvedState>(null);
   const [loading, setLoading] = useState(false);
+  // 实时流刚产出时，会话加载的状态表尚未刷新；这时才暂按 pending 展示。
+  // 历史卡片由服务端显式补齐 expired，不会因此错误地获得审批按钮。
+  const effectiveStatus = resolved ?? status ?? 'pending';
+  const canResolve = effectiveStatus === 'pending';
 
   // 统一契约三层(纯读取,不按工具分支)
   const summary = typeof preview.summary === 'string' ? preview.summary : '';
@@ -50,16 +60,15 @@ export function WriteApprovalCard({
   // 必须看后端返回的 status:只有 'ok' 才是真落库。否则(sessionKey 不符 forbidden /
   // not_found)绝不能 markResolved + 显示成功——那会让用户以为审批生效、实则没落库(踩过的坑)。
   const handleApprove = async () => {
-    if (loading || resolved) return;
+    if (loading || !canResolve) return;
     setLoading(true);
     try {
       const { status } = await approveWrite(toolCallId, sessionKey);
       if (status === 'ok') {
-        markResolved(toolCallId);
         setResolved('approved');
+        onStatusChange?.(toolCallId, 'approved');
         onApproved?.();
       } else if (status === 'already_resolved') {
-        markResolved(toolCallId);
         setResolved('already');
       } else {
         banner.error(`审批未生效(${status}),未落库,请刷新后重试`);
@@ -72,15 +81,14 @@ export function WriteApprovalCard({
   };
 
   const handleReject = async () => {
-    if (loading || resolved) return;
+    if (loading || !canResolve) return;
     setLoading(true);
     try {
       const { status } = await rejectWrite(toolCallId, sessionKey);
       if (status === 'ok') {
-        markResolved(toolCallId);
         setResolved('rejected');
+        onStatusChange?.(toolCallId, 'rejected');
       } else if (status === 'already_resolved') {
-        markResolved(toolCallId);
         setResolved('already');
       } else {
         banner.error(`拒绝未生效(${status}),请刷新后重试`);
@@ -93,20 +101,22 @@ export function WriteApprovalCard({
   };
 
   const statusLabel =
-    resolved === 'approved'
+    effectiveStatus === 'approved'
       ? '已写入 ✓'
-      : resolved === 'rejected'
+      : effectiveStatus === 'rejected'
         ? '已拒绝'
-        : resolved === 'already'
+        : effectiveStatus === 'already'
           ? '已处理'
-          : '';
+          : effectiveStatus === 'expired'
+            ? '审批已过期'
+            : '';
 
   return (
     <div
       className="my-1 rounded-md border px-3 py-2.5"
       style={{
         borderColor: 'var(--separator)',
-        background: resolved ? 'transparent' : 'var(--shelf)',
+        background: canResolve ? 'var(--shelf)' : 'transparent',
       }}
     >
       {/* 顶:改动摘要 */}
@@ -157,7 +167,7 @@ export function WriteApprovalCard({
       )}
 
       {/* 未裁决 → 允许/拒绝;已裁决 → 状态标(内容仍在上方) */}
-      {resolved ? (
+      {!canResolve ? (
         <p className="mt-2.5 text-xs" style={{ color: 'var(--ink-ghost)' }}>
           {statusLabel}
         </p>

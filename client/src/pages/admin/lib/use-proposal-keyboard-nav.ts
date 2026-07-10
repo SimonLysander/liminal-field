@@ -13,8 +13,7 @@ import { useEffect } from 'react';
  *   - 没有"全部接受/全部拒绝"快捷键(toolbar 按钮够用,这俩低频)
  *   - 没有 navigate 快捷键变体(j/k 等 vim 派) — ↑↓ 通用心智已足
  *   - 接管 ↑↓ 抢走浏览器默认页面滚动 — 审批是聚焦任务,navigate hunk 优先级
- *     高于自由滚动,且 active 切换会 scrollIntoView 把视野带过去,用户不太
- *     需要手动滚;真要手动滚走鼠标滚轮 / PageUp / PageDown
+ *     高于自由滚动;真要手动滚走鼠标滚轮 / PageUp / PageDown
  *
  * 守卫:
  *   - 焦点在 input/textarea/contenteditable=true 时不触发(用户正在打字)

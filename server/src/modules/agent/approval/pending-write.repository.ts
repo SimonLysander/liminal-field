@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { ReturnModelType } from '@typegoose/typegoose';
 import { getModelToken } from 'nestjs-typegoose';
-import { PendingWrite } from './pending-write.entity';
+import { PendingWrite, type PendingWriteStatus } from './pending-write.entity';
 
 export interface StashPendingWriteInput {
   toolCallId: string;
@@ -49,6 +49,17 @@ export class PendingWriteRepository {
     return this.model.findById(toolCallId);
   }
 
+  /**
+   * 会话加载时批量取审批状态，避免历史消息中的每张卡各发一次请求。
+   * TTL 已清理的记录不在这里伪造状态，由生命周期层结合消息历史标为 expired。
+   */
+  async findStatusesBySessionKey(
+    sessionKey: string,
+  ): Promise<Record<string, PendingWriteStatus>> {
+    const writes = await this.model.find({ sessionKey }, { _id: 1, status: 1 });
+    return Object.fromEntries(writes.map((write) => [write._id, write.status]));
+  }
+
   /** 裁决:只在仍 pending 时翻转(防重复审批 / 竞态),返回是否成功翻转。 */
   async resolve(
     toolCallId: string,
@@ -58,6 +69,18 @@ export class PendingWriteRepository {
     const res = await this.model.updateOne(
       { _id: toolCallId, status: 'pending' },
       { $set: { status, resolvedAt: now } },
+    );
+    return res.modifiedCount === 1;
+  }
+
+  /**
+   * 写入在批准后失败时撤销本次裁决，让前端保留同一张审批卡并允许重试。
+   * 条件限定为 approved，避免覆盖用户已做出的 reject 或后续正常裁决。
+   */
+  async reopenAfterFailedApproval(toolCallId: string): Promise<boolean> {
+    const res = await this.model.updateOne(
+      { _id: toolCallId, status: 'approved' },
+      { $set: { status: 'pending', resolvedAt: null } },
     );
     return res.modifiedCount === 1;
   }

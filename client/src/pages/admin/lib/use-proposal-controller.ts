@@ -75,7 +75,7 @@ export function useProposalController(
   /**
    * activeHunkId:当前被"聚焦"的 hunk,供:
    *   - 视觉高亮(element renderer 读 context 判断当前 hunk 是不是它)
-   *   - 快捷键操作目标(Y/N 接受拒绝、scrollIntoView 自动滚动)
+   *   - 快捷键操作目标(Y/N 接受拒绝)
    *
    * 派生策略:**全部由 setter 主动推进**,不在 useEffect 里同步——避免 effect
    * 内 setState 触发 cascading renders(react-hooks/set-state-in-effect 也禁这个)。
@@ -177,7 +177,7 @@ export function useProposalController(
         decisionsRef.current = new Map();
         setProposalState(p);
         setDecisions(new Map());
-        // active 推进:新 proposal 进来,active = 第一个 hunk
+        // 新 proposal 默认聚焦第一个 hunk,但不自动滚动,避免改稿生成后把用户视口拉走。
         setActiveHunkIdState(p.hunks[0]?.id);
         // 关键:立刻展开节点树
         applyProposalToEditor(editor, p.hunks);

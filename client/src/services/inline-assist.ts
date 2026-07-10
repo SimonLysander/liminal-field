@@ -1,7 +1,6 @@
 import { ApiError, request } from './request';
 
 export interface InlineAssistPayload {
-  mode?: 'continue' | 'illustration_plan';
   documentMarkdown?: string;
   beforeText?: string;
   selectedText?: string;

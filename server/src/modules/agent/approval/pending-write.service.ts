@@ -4,7 +4,7 @@
  * approve：
  *   1. 按 toolCallId 查 pending 记录 → 不存在/sessionKey 不符则短路返回
  *   2. resolve(approved) → 若已裁决则 already_resolved（防竞态重复审批）
- *   3. 按 toolName 分派对应仓储调用，真正落库
+ *   3. 按 toolName 分派对应仓储调用，真正落库；write_draft 失败则退回 pending 供重试
  *
  * reject：仅标 rejected，不执行任何写操作。
  *
@@ -16,12 +16,7 @@ import { PendingWriteRepository } from './pending-write.repository';
 import { EditorDraftRepository } from '../../workspace/editor-draft.repository';
 import { AgentMemoryRepository } from '../memory/agent-memory.repository';
 import { AgentMemoryObservationRepository } from '../memory/agent-memory-observation.repository';
-import {
-  extractTitle,
-  extractSummary,
-  composeAiDraftBody,
-  type DraftSource,
-} from '../tools/write-draft.tool';
+import { commitDraftWrite } from '../tools/write-draft.tool';
 import {
   serializeToDraftMarkdown,
   type PlanItem,
@@ -87,25 +82,19 @@ export class PendingWriteCommitService {
     try {
       switch (toolName) {
         case 'write_draft': {
-          // 写逻辑与 write-draft.tool.ts execute 完全等价（复用同一 helper）
-          const markdown = payload['markdown'] as string;
-          const sources =
-            (payload['sources'] as DraftSource[] | undefined) ?? [];
           if (!pending.targetContentItemId) {
             // 已标 approved 却没目标可写 → 抛错走 catch(500),绝不静默返回 ok 误导回灌
             throw new Error(
               `write_draft commit 缺少 targetContentItemId toolCallId=${toolCallId}`,
             );
           }
-          await this.editorDraftRepo.saveAiDraft({
-            contentItemId: pending.targetContentItemId,
-            // composeAiDraftBody:[@#CIT N] 转链接 + 篇末「来源」小节,与工具 execute 同一处合成
-            bodyMarkdown: composeAiDraftBody(markdown, sources),
-            title: extractTitle(markdown),
-            summary: extractSummary(markdown),
-            changeNote: 'learn-draft',
-            savedAt: now,
-          });
+          // 与直写路径共用同一个落库入口，避免审批后退化成全文覆盖。
+          await commitDraftWrite(
+            this.editorDraftRepo,
+            pending.targetContentItemId,
+            payload,
+            now,
+          );
           break;
         }
 
@@ -173,10 +162,23 @@ export class PendingWriteCommitService {
       }
     } catch (err) {
       const stack = err instanceof Error ? err.stack : String(err);
+      let reopened = false;
+      // write_draft 最终是同一 aidraft 的覆盖写，失败后重试不会制造重复副作用。
+      // remember 是 append-only 事件流，不能在未知部分成功后盲目重放。
+      if (toolName === 'write_draft') {
+        try {
+          reopened =
+            await this.pendingWriteRepo.reopenAfterFailedApproval(toolCallId);
+        } catch (reopenErr) {
+          this.logger.error(
+            `approve: 恢复 pending 失败 toolCallId=${toolCallId} toolName=${toolName} err=${reopenErr instanceof Error ? reopenErr.stack : String(reopenErr)}`,
+          );
+        }
+      }
       this.logger.error(
-        `approve: commit 失败 toolCallId=${toolCallId} toolName=${toolName} err=${stack}`,
+        `approve: commit 失败 toolCallId=${toolCallId} toolName=${toolName} reopened=${reopened} err=${stack}`,
       );
-      throw err; // 让端点返回 500，让调用方感知写失败
+      throw err; // write_draft 保留 pending 审批卡，可在修正条件后重试
     }
 
     return { status: 'ok' };

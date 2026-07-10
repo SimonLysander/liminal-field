@@ -2,7 +2,10 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App.tsx';
+import { installCustomHighlightStyles } from './lib/custom-highlight-styles';
 import './index.css';
+
+installCustomHighlightStyles();
 
 // Apply the persisted shell theme before React mounts so the room does not
 // flash from an unrelated palette on initial load.

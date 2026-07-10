@@ -28,6 +28,8 @@ import { ToolAssembler } from './tool.assembler';
 import { SystemConfigService } from '../../settings/system-config.service';
 import { AgentMemoryRepository } from '../memory/agent-memory.repository';
 import { AgentSessionRepository } from '../session/agent-session.repository';
+import { PendingWriteRepository } from '../approval/pending-write.repository';
+import type { PendingWriteStatus } from '../approval/pending-write.entity';
 import { AnthologyViewService } from '../../workspace/anthology-view.service';
 import { MemoryViewService } from '../memory/memory-view.service';
 import { AgentMemoryObservationRepository } from '../memory/agent-memory-observation.repository';
@@ -38,6 +40,53 @@ import type { AgentChatDto } from '../dto/agent-chat.dto';
 
 /** 跨段聚合分页默认每页条数 */
 const SESSION_PAGE_LIMIT = 50;
+
+type WriteApprovalDisplayStatus = PendingWriteStatus | 'expired';
+
+/** 从持久化 UI 消息中找出曾要求人工审批的工具调用。 */
+function collectPendingWriteToolCallIds(
+  messages: Record<string, unknown>[],
+): string[] {
+  const toolCallIds = new Set<string>();
+
+  for (const message of messages) {
+    const parts = message.parts;
+    if (!Array.isArray(parts)) continue;
+
+    for (const part of parts) {
+      if (!part || typeof part !== 'object') continue;
+      const candidate = part as Record<string, unknown>;
+      const rawOutput = candidate.output;
+      let output: Record<string, unknown> | undefined;
+      if (typeof rawOutput === 'string') {
+        try {
+          const parsed: unknown = JSON.parse(rawOutput);
+          if (parsed && typeof parsed === 'object') {
+            output = parsed as Record<string, unknown>;
+          }
+        } catch {
+          continue;
+        }
+      } else if (rawOutput && typeof rawOutput === 'object') {
+        output = rawOutput as Record<string, unknown>;
+      }
+
+      const meta = output?.meta;
+      if (!meta || typeof meta !== 'object') continue;
+      if ((meta as Record<string, unknown>).status !== 'pending_approval')
+        continue;
+
+      const toolCallId =
+        typeof candidate.toolCallId === 'string'
+          ? candidate.toolCallId
+          : (meta as Record<string, unknown>).toolCallId;
+      if (typeof toolCallId === 'string' && toolCallId)
+        toolCallIds.add(toolCallId);
+    }
+  }
+
+  return [...toolCallIds];
+}
 
 @Injectable()
 export class AgentLifecycle {
@@ -55,6 +104,8 @@ export class AgentLifecycle {
     private readonly memoryRepo: AgentMemoryRepository,
     // 跨段聚合分页：getAllMessages 跨段全量后内存 slice（对话量可控，YAGNI）
     private readonly sessionRepo: AgentSessionRepository,
+    // 会话历史里的 HITL 卡片需要后端权威状态，不能依赖单台浏览器 localStorage。
+    private readonly pendingWriteRepo: PendingWriteRepository,
     // #150 续:文集场景在 onBeforeChat 里按需查整集脉络,前端不再透传 collectionContext
     private readonly anthology: AnthologyViewService,
     // 2026-05-30 event log:画像渲染器(主 agent 主动 remember,view 异步派生)
@@ -96,17 +147,28 @@ export class AgentLifecycle {
     summary: string;
     tasks: Array<Record<string, unknown>>;
     lastActiveAt: Date | null;
+    /** toolCallId → pending/approved/rejected；TTL 清理过的历史卡片为 expired。 */
+    writeApprovalStatuses: Record<string, WriteApprovalDisplayStatus>;
   }> {
     const memoryKey = agentInstanceKey ?? sessionKey;
     // 并行加载：全量消息（分页用）+ session 记忆（脉络/tasks）+ 最新段（lastActiveAt）
-    const [allMessages, sessionMem, latestSeg] = await Promise.all([
-      this.sessionRepo.getAllMessages(sessionKey),
-      this.memoryRepo.findSession(memoryKey),
-      this.sessionRepo.findLatestSeg(sessionKey),
-    ]);
+    const [allMessages, sessionMem, latestSeg, persistedWriteStatuses] =
+      await Promise.all([
+        this.sessionRepo.getAllMessages(sessionKey),
+        this.memoryRepo.findSession(memoryKey),
+        this.sessionRepo.findLatestSeg(sessionKey),
+        this.pendingWriteRepo.findStatusesBySessionKey(sessionKey),
+      ]);
 
     // 内存分页：before 是绝对 index（全量数组下标），纯函数 sliceSessionPage 算切片
     const page = sliceSessionPage(allMessages, before, limit);
+    const writeApprovalStatuses: Record<string, WriteApprovalDisplayStatus> = {
+      ...persistedWriteStatuses,
+    };
+    for (const toolCallId of collectPendingWriteToolCallIds(allMessages)) {
+      // 记录已被 TTL 删除时不能重新给出可操作按钮，否则点击只会得到 not_found。
+      writeApprovalStatuses[toolCallId] ??= 'expired';
+    }
 
     return {
       sessionKey,
@@ -117,6 +179,7 @@ export class AgentLifecycle {
       summary: sessionMem?.content ?? '',
       tasks: (sessionMem?.tasks as Array<Record<string, unknown>>) ?? [],
       lastActiveAt: latestSeg?.lastActiveAt ?? null,
+      writeApprovalStatuses,
     };
   }
 

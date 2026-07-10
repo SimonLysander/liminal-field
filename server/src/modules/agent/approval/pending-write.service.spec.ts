@@ -5,8 +5,15 @@
 import { PendingWriteCommitService } from './pending-write.service';
 
 function mocks() {
-  const pendingRepo = { findById: jest.fn(), resolve: jest.fn() };
-  const editorRepo = { saveAiDraft: jest.fn().mockResolvedValue(undefined) };
+  const pendingRepo = {
+    findById: jest.fn(),
+    reopenAfterFailedApproval: jest.fn().mockResolvedValue(true),
+    resolve: jest.fn(),
+  };
+  const editorRepo = {
+    findAiDraftByContentItemId: jest.fn().mockResolvedValue(null),
+    saveAiDraft: jest.fn().mockResolvedValue(undefined),
+  };
   const memoryRepo = { setTasks: jest.fn().mockResolvedValue(undefined) };
   const obsRepo = { appendMany: jest.fn().mockResolvedValue([]) };
   const svc = new PendingWriteCommitService(
@@ -68,6 +75,32 @@ describe('PendingWriteCommitService.approve', () => {
     });
   });
 
+  it('write_draft 局部重写 → 复用同一替换逻辑，不覆盖相邻小节', async () => {
+    const { svc, pendingRepo, editorRepo } = mocks();
+    editorRepo.findAiDraftByContentItemId.mockResolvedValue({
+      bodyMarkdown: '# 标题\n\n## 目标\n\n旧内容。\n\n## 保留\n\n相邻内容。',
+      title: '原标题',
+    });
+    pendingRepo.findById.mockResolvedValue({
+      sessionKey: 's',
+      toolName: 'write_draft',
+      payload: {
+        operation: 'replace_section',
+        sectionPath: ['标题', '目标'],
+        sectionMarkdown: '新内容。',
+        sources: [],
+      },
+      targetContentItemId: 'ci',
+    });
+    pendingRepo.resolve.mockResolvedValue(true);
+
+    expect(await svc.approve('tc', 's')).toEqual({ status: 'ok' });
+    expect(editorRepo.saveAiDraft.mock.calls[0][0]).toMatchObject({
+      bodyMarkdown: '# 标题\n\n## 目标\n\n新内容。\n\n## 保留\n\n相邻内容。',
+      title: '原标题',
+    });
+  });
+
   it('write_learn_plan → saveAiDraft(learn-plan, title=goal)', async () => {
     const { svc, pendingRepo, editorRepo } = mocks();
     pendingRepo.findById.mockResolvedValue({
@@ -121,6 +154,7 @@ describe('PendingWriteCommitService.approve', () => {
     pendingRepo.resolve.mockResolvedValue(true);
     await expect(svc.approve('tc', 's')).rejects.toThrow();
     expect(editorRepo.saveAiDraft).not.toHaveBeenCalled();
+    expect(pendingRepo.reopenAfterFailedApproval).toHaveBeenCalledWith('tc');
   });
 });
 

@@ -29,7 +29,11 @@ import type { UIMessage } from 'ai';
 import { useChat } from '@ai-sdk/react';
 import type { Descendant } from 'platejs';
 import { deserializeMd } from '@platejs/markdown';
-import { loadSession, type SessionTask } from '@/services/agent';
+import {
+  loadSession,
+  type SessionTask,
+  type WriteApprovalStatus,
+} from '@/services/agent';
 import { computeDocDiff } from '@/pages/admin/lib/compute-doc-diff';
 import { readResolved, markResolved } from '@/pages/admin/lib/resolved-store';
 import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
@@ -163,6 +167,10 @@ export function useAdvisorChat({
 }: UseAdvisorChatOptions) {
   const [tier, setTier] = useState<Tier>('standard');
   const [sessionReady, setSessionReady] = useState(false);
+  // 审批状态以后端为真源：跨设备、刷新和历史分页都一致。
+  const [writeApprovalStatuses, setWriteApprovalStatuses] = useState<
+    Record<string, WriteApprovalStatus>
+  >({});
 
   // 懒加载状态：hasMore 控制是否显示"加载更多"触发区，isLoadingMore 防重复请求
   const [hasMore, setHasMore] = useState(false);
@@ -415,11 +423,13 @@ export function useAdvisorChat({
       if (cancelled) return;
       setSessionReady(false);
       setMessages([]);
+      setWriteApprovalStatuses({});
     });
     loadSession(sessionKey, { agentInstanceKey })
       .then((data) => {
         if (cancelled) return;
         setMessages(data.messages as unknown as UIMessage[]);
+        setWriteApprovalStatuses(data.writeApprovalStatuses);
         // 初始化懒加载游标（绝对 index，用于下次 before 参数）
         firstIndexRef.current = data.firstIndex;
         setHasMore(data.hasMore);
@@ -454,6 +464,7 @@ export function useAdvisorChat({
         ...(data.messages as unknown as UIMessage[]),
         ...prev,
       ]);
+      setWriteApprovalStatuses(data.writeApprovalStatuses);
       // 更新懒加载游标：指向更早一页的起点
       firstIndexRef.current = data.firstIndex;
       setHasMore(data.hasMore);
@@ -518,6 +529,16 @@ export function useAdvisorChat({
 
   const cycleTier = useCallback(() => setTier((t) => TIER_NEXT[t]), []);
 
+  const setWriteApprovalStatus = useCallback(
+    (toolCallId: string, writeApprovalStatus: Extract<WriteApprovalStatus, 'approved' | 'rejected'>) => {
+      setWriteApprovalStatuses((previous) => ({
+        ...previous,
+        [toolCallId]: writeApprovalStatus,
+      }));
+    },
+    [],
+  );
+
   const isStreaming = status === 'streaming' || status === 'submitted';
 
   return {
@@ -531,6 +552,8 @@ export function useAdvisorChat({
     hasMore,
     isLoadingMore,
     loadMore,
+    writeApprovalStatuses,
+    setWriteApprovalStatus,
     tasks,
     planTitle,
     // v3 改稿

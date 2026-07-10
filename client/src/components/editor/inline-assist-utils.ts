@@ -60,22 +60,11 @@ export function getInlineAssistInstruction(action: InlineAssistAction): string {
       return '压缩选中内容或当前段落,保留关键信息,表达更简洁。';
     case 'revise':
       return '修订选中内容或光标附近内容,修正问题并让表达更准确自然。';
-    case 'illustration-plan':
-      return '判断选中文本是否适合画图,并给出可编辑的画法构思。';
     case 'custom':
     case 'continue':
     default:
       return '从光标处自然续写一小段。';
   }
-}
-
-export function extractIllustrationPrompt(markdown: string): string {
-  const text = markdown.trim();
-  const section = text.match(
-    /(?:^|\n)生图提示词[:：]\s*\n+```(?:text|prompt|markdown|md)?\s*\n([\s\S]*?)\n```/i,
-  );
-  const prompt = section?.[1]?.trim();
-  return prompt || text;
 }
 
 export type InlineAssistViewportRect = {
