@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react';
 import { getDateDisplayLabel } from '@platejs/date';
 import { isOrderedList } from '@platejs/list';
 import { getEquationHtml } from '@platejs/math';
+import { getTableCellBorders } from '@platejs/table';
 import { FileUp } from 'lucide-react';
 import type {
   TDateElement,
@@ -62,6 +63,7 @@ import {
   todoListItemClassName,
 } from './document-node-styles';
 import { StaticMediaPreview } from './document-static-media-preview';
+import { cn } from '@/lib/utils';
 
 type StaticElement = TElement & Record<string, unknown>;
 
@@ -207,12 +209,21 @@ export function StaticTableCellElement({
 }: SlateElementProps<TTableCellElement> & { isHeader?: boolean }) {
   const element = props.element as TTableCellElement & { background?: string; colSpan?: number; rowSpan?: number };
   const cellStyle = element.background ? { background: element.background } : undefined;
+  const borders = getTableCellBorders(props.editor, { element });
 
   return (
     <SlateElement
       {...props}
       as={isHeader ? 'th' : 'td'}
-      className={`${tableCellClassName} ${isHeader ? tableHeaderCellClassName : ''}`}
+      className={cn(
+        tableCellClassName,
+        isHeader && tableHeaderCellClassName,
+        'before:absolute before:box-border before:select-none before:size-full before:content-[\'\']',
+        borders.bottom?.size && 'before:border-b before:border-b-border',
+        borders.right?.size && 'before:border-r before:border-r-border',
+        borders.left?.size && 'before:border-l before:border-l-border',
+        borders.top?.size && 'before:border-t before:border-t-border',
+      )}
       style={cellStyle}
       attributes={{ ...props.attributes, colSpan: element.colSpan, rowSpan: element.rowSpan }}
     >

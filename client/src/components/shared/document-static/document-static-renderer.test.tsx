@@ -216,7 +216,14 @@ describe('StaticDocumentKit', () => {
     expect(screen.getByText('ordered item').closest('ol')).toHaveAttribute('start', '3');
     expect(screen.getByRole('checkbox')).toBeChecked();
     expect(screen.getByText('header').closest('th')).toHaveStyle({ backgroundColor: '#eeeeee' });
+    expect(screen.getByText('header').closest('th')).toHaveClass(
+      'before:border-b',
+      'before:border-r',
+      'before:border-l',
+      'before:border-t',
+    );
     expect(screen.getByText('cell').closest('td')).toHaveStyle({ backgroundColor: '#ffffff' });
+    expect(screen.getByText('cell').closest('td')).toHaveClass('before:border-b', 'before:border-r');
     expect(document.querySelector('table')).not.toBeNull();
     expect(document.querySelector('.katex')).not.toBeNull();
     expect(document.querySelector('.katex-display')?.parentElement?.parentElement).toHaveClass(
