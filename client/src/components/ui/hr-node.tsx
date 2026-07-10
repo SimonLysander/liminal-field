@@ -9,6 +9,10 @@ import {
   useSelected,
 } from 'platejs/react';
 
+import {
+  hrClassName,
+  hrContainerClassName,
+} from '@/components/shared/document-static/document-node-styles';
 import { cn } from '@/lib/utils';
 
 export function HrElement(props: PlateElementProps) {
@@ -18,10 +22,10 @@ export function HrElement(props: PlateElementProps) {
 
   return (
     <PlateElement {...props}>
-      <div className="py-6" contentEditable={false}>
+      <div className={hrContainerClassName} contentEditable={false}>
         <hr
           className={cn(
-            'h-0.5 rounded-sm border-none bg-muted bg-clip-content',
+            hrClassName,
             selected && focused && 'ring-2 ring-ring ring-offset-2',
             !readOnly && 'cursor-pointer'
           )}

@@ -21,6 +21,16 @@ import {
   useSelected,
 } from 'platejs/react';
 
+import {
+  equationBlockEmptyClassName,
+  equationBlockFilledClassName,
+  equationBlockLayoutClassName,
+  equationBlockPresentationClassName,
+  equationEmptyClassName,
+  equationEmptyIconClassName,
+  equationValueClassName,
+  inlineEquationContentClassName,
+} from '@/components/shared/document-static/document-node-styles';
 import { Button } from '@/components/ui/button';
 import {
   Popover,
@@ -62,10 +72,13 @@ export function EquationElement(props: PlateElementProps<TEquationElement>) {
         <PopoverTrigger asChild>
           <div
             className={cn(
-              'group flex cursor-pointer select-none items-center justify-center rounded-sm hover:bg-primary/10 data-[selected=true]:bg-primary/10',
+              equationBlockLayoutClassName,
+              'cursor-pointer',
+              equationBlockPresentationClassName,
+              'hover:bg-primary/10 data-[selected=true]:bg-primary/10',
               props.element.texExpression.length === 0
-                ? 'bg-muted p-3 pr-9'
-                : 'px-2 py-1'
+                ? equationBlockEmptyClassName
+                : equationBlockFilledClassName
             )}
             data-selected={selected}
             contentEditable={false}
@@ -74,8 +87,8 @@ export function EquationElement(props: PlateElementProps<TEquationElement>) {
             {props.element.texExpression.length > 0 ? (
               <span ref={katexRef} />
             ) : (
-              <div className="flex h-7 w-full items-center gap-2 whitespace-nowrap text-muted-foreground text-sm">
-                <RadicalIcon className="size-6 text-muted-foreground/80" />
+              <div className={equationEmptyClassName}>
+                <RadicalIcon className={equationEmptyIconClassName} />
                 <div>Add a Tex equation</div>
               </div>
             )}
@@ -144,7 +157,7 @@ export function InlineEquationElement(
         <PopoverTrigger asChild>
           <div
             className={cn(
-              'after:-top-0.5 after:-left-1 after:absolute after:inset-0 after:z-1 after:h-[calc(100%)+4px] after:w-[calc(100%+8px)] after:rounded-sm after:content-[""]',
+              inlineEquationContentClassName,
               inlineSuggestionVariants(),
               ((element.texExpression.length > 0 && open) || selected) &&
                 'after:bg-brand/15',
@@ -157,7 +170,7 @@ export function InlineEquationElement(
               ref={katexRef}
               className={cn(
                 element.texExpression.length === 0 && 'hidden',
-                'font-mono leading-none'
+                equationValueClassName
               )}
             />
             {element.texExpression.length === 0 && (

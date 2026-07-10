@@ -5,6 +5,19 @@ import { getEquationHtml } from '@platejs/math';
 import { RadicalIcon } from 'lucide-react';
 import { SlateElement } from 'platejs/static';
 
+import {
+  equationBlockEmptyClassName,
+  equationBlockFilledClassName,
+  equationBlockLayoutClassName,
+  equationBlockPresentationClassName,
+  equationDocxBlockStyle,
+  equationDocxEmptyStyle,
+  equationDocxInlineStyle,
+  equationEmptyClassName,
+  equationEmptyIconClassName,
+  equationValueClassName,
+  inlineEquationContentClassName,
+} from '@/components/shared/document-static/document-node-styles';
 import { cn } from '@/lib/utils';
 import { inlineSuggestionVariants } from '@/lib/suggestion';
 
@@ -32,8 +45,12 @@ export function EquationElementStatic(
     <SlateElement className="my-1" {...props}>
       <div
         className={cn(
-          'group flex select-none items-center justify-center rounded-sm hover:bg-primary/10 data-[selected=true]:bg-primary/10',
-          element.texExpression.length === 0 ? 'bg-muted p-3 pr-9' : 'px-2 py-1'
+          equationBlockLayoutClassName,
+          equationBlockPresentationClassName,
+          'hover:bg-primary/10 data-[selected=true]:bg-primary/10',
+          element.texExpression.length === 0
+            ? equationBlockEmptyClassName
+            : equationBlockFilledClassName
         )}
       >
         {element.texExpression.length > 0 ? (
@@ -43,8 +60,8 @@ export function EquationElementStatic(
             }}
           />
         ) : (
-          <div className="flex h-7 w-full items-center gap-2 whitespace-nowrap text-muted-foreground text-sm">
-            <RadicalIcon className="size-6 text-muted-foreground/80" />
+          <div className={equationEmptyClassName}>
+            <RadicalIcon className={equationEmptyIconClassName} />
             <div>Add a Tex equation</div>
           </div>
         )}
@@ -79,7 +96,7 @@ export function InlineEquationElementStatic(
     >
       <div
         className={cn(
-          'after:-top-0.5 after:-left-1 after:absolute after:inset-0 after:z-1 after:h-[calc(100%)+4px] after:w-[calc(100%+8px)] after:rounded-sm after:content-[""]',
+          inlineEquationContentClassName,
           'h-6',
           inlineSuggestionVariants(),
           props.element.texExpression.length === 0 &&
@@ -89,7 +106,7 @@ export function InlineEquationElementStatic(
         <span
           className={cn(
             props.element.texExpression.length === 0 && 'hidden',
-            'font-mono leading-none'
+            equationValueClassName
           )}
           dangerouslySetInnerHTML={{ __html: html }}
         />
@@ -111,7 +128,7 @@ export function EquationElementDocx(
   if (!element.texExpression || element.texExpression.length === 0) {
     return (
       <SlateElement {...props}>
-        <p style={{ color: '#888', fontStyle: 'italic' }}>[Empty equation]</p>
+        <p style={equationDocxEmptyStyle}>[Empty equation]</p>
         {props.children}
       </SlateElement>
     );
@@ -120,12 +137,7 @@ export function EquationElementDocx(
   return (
     <SlateElement {...props}>
       <p
-        style={{
-          fontFamily: 'Cambria Math, Consolas, monospace',
-          fontSize: '12pt',
-          margin: '8pt 0',
-          textAlign: 'center',
-        }}
+        style={equationDocxBlockStyle}
       >
         {element.texExpression}
       </p>
@@ -146,7 +158,7 @@ export function InlineEquationElementDocx(
   if (!element.texExpression || element.texExpression.length === 0) {
     return (
       <SlateElement {...props} as="span">
-        <span style={{ color: '#888', fontStyle: 'italic' }}>[equation]</span>
+        <span style={equationDocxEmptyStyle}>[equation]</span>
         {props.children}
       </SlateElement>
     );
@@ -154,11 +166,7 @@ export function InlineEquationElementDocx(
 
   return (
     <SlateElement {...props} as="span">
-      <span
-        style={{
-          fontFamily: 'Cambria Math, Consolas, monospace',
-        }}
-      >
+      <span style={equationDocxInlineStyle}>
         {element.texExpression}
       </span>
       {props.children}

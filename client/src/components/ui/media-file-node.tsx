@@ -8,6 +8,12 @@ import { ResizableProvider } from '@platejs/resizable';
 import { FileUp } from 'lucide-react';
 import { PlateElement, useReadOnly, withHOC } from 'platejs/react';
 
+import {
+  mediaFileCaptionClassName,
+  mediaFileContentClassName,
+  mediaFileElementClassName,
+  mediaFileIconClassName,
+} from '@/components/shared/document-static/document-node-styles';
 import { Caption, CaptionTextarea } from './caption';
 
 export const FileElement = withHOC(
@@ -17,7 +23,7 @@ export const FileElement = withHOC(
     const { name, unsafeUrl } = useMediaState();
 
     return (
-      <PlateElement className="my-px rounded-sm" {...props}>
+      <PlateElement className={mediaFileElementClassName} {...props}>
         <a
           className="group relative m-0 flex cursor-pointer items-center rounded px-0.5 py-[3px] hover:bg-muted"
           contentEditable={false}
@@ -27,14 +33,14 @@ export const FileElement = withHOC(
           role="button"
           target="_blank"
         >
-          <div className="flex items-center gap-1 p-1">
-            <FileUp className="size-5" />
+          <div className={mediaFileContentClassName}>
+            <FileUp className={mediaFileIconClassName} />
             <div>{name}</div>
           </div>
 
           <Caption align="left">
             <CaptionTextarea
-              className="text-left"
+              className={mediaFileCaptionClassName}
               readOnly={readOnly}
               placeholder="说明（可选）"
             />

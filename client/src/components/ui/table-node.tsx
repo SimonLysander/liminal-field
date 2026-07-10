@@ -67,6 +67,15 @@ import {
   withHOC,
 } from 'platejs/react';
 
+import {
+  tableBodyClassName,
+  tableCellClassName,
+  tableCellContentClassName,
+  tableClassName,
+  tableElementClassName,
+  tableHeaderCellClassName,
+  tableWrapperClassName,
+} from '@/components/shared/document-static/document-node-styles';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -624,7 +633,7 @@ export const TableElement = withHOC(
       <PlateElement
         {...props}
         className={cn(
-          'overflow-x-auto pb-5 pt-2',
+          tableElementClassName,
           hasControls && '-ml-2 *:data-[slot=block-selection]:left-2',
         )}
         style={{ paddingLeft: marginLeft }}
@@ -633,7 +642,11 @@ export const TableElement = withHOC(
           <TableLayoutContext.Provider value={{ hasExplicitColSizes }}>
             <div
               ref={wrapperRef}
-              className={cn('group/table relative', hasExplicitColSizes ? 'w-fit' : 'w-full')}
+              className={cn(
+                'group/table',
+                tableWrapperClassName,
+                hasExplicitColSizes ? 'w-fit' : 'w-full',
+              )}
               style={tableVariableStyle}
             >
               <div
@@ -649,7 +662,7 @@ export const TableElement = withHOC(
               <table
                 ref={tableRef}
                 className={cn(
-                  'mr-0 table h-px border-collapse',
+                  tableClassName,
                   hasExplicitColSizes && 'ml-px',
                   // 自动布局用于未手动调整的表格；拖过列宽后切到 fixed 精确控制。
                   readOnly || !hasExplicitColSizes ? 'table-auto' : 'table-fixed',
@@ -686,7 +699,7 @@ export const TableElement = withHOC(
                     ))}
                   </colgroup>
                 )}
-                <tbody className="min-w-full">{children}</tbody>
+                <tbody className={tableBodyClassName}>{children}</tbody>
               </table>
 
               {isSelectingTable && (
@@ -1216,9 +1229,9 @@ export function TableCellElement({
       {...props}
       as={isHeader ? 'th' : 'td'}
       className={cn(
-        'relative h-full overflow-visible border-none bg-background p-0',
+        tableCellClassName,
         element.background ? 'bg-(--cellBackground)' : 'bg-background',
-        isHeader && 'text-left *:m-0',
+        isHeader && tableHeaderCellClassName,
         'before:size-full',
         'data-[table-cell-selected=true]:before:z-10',
         'data-[table-cell-selected=true]:before:bg-brand/5',
@@ -1242,7 +1255,7 @@ export function TableCellElement({
       }}
     >
       <div
-        className="relative z-20 box-border h-full px-3 py-2"
+        className={tableCellContentClassName}
         style={rowSpan === 1 ? { minHeight: 'var(--tableRowMinHeight, 0px)' } : undefined}
       >
         {props.children}

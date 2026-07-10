@@ -8,6 +8,12 @@ import { Image, ImagePlugin, useMediaState } from '@platejs/media/react';
 import { ResizableProvider, useResizableValue } from '@platejs/resizable';
 import { PlateElement, withHOC } from 'platejs/react';
 
+import {
+  mediaImageClassName,
+  mediaImageElementClassName,
+  mediaImageFigureClassName,
+  mediaImageLayoutClassName,
+} from '@/components/shared/document-static/document-node-styles';
 import { cn } from '@/lib/utils';
 
 import { Caption, CaptionTextarea } from './caption';
@@ -30,8 +36,8 @@ export const ImageElement = withHOC(
 
     return (
       <MediaToolbar plugin={ImagePlugin}>
-        <PlateElement {...props} className="py-2.5">
-          <figure className="group relative m-0" contentEditable={false}>
+        <PlateElement {...props} className={mediaImageElementClassName}>
+          <figure className={cn('group', mediaImageFigureClassName)} contentEditable={false}>
             <Resizable
               align={align}
               options={{
@@ -46,8 +52,9 @@ export const ImageElement = withHOC(
               <Image
                 ref={handleRef}
                 className={cn(
-                  'block w-full max-w-full cursor-pointer object-cover px-0',
-                  'rounded-sm',
+                  mediaImageLayoutClassName,
+                  'cursor-pointer',
+                  mediaImageClassName,
                   focused && selected && 'ring-2 ring-ring ring-offset-2',
                   isDragging && 'opacity-50'
                 )}

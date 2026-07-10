@@ -13,6 +13,13 @@ import {
 } from 'platejs/react';
 import { useEditorRef, useElement, useReadOnly } from 'platejs/react';
 
+import {
+  codeBlockClassName,
+  codeBlockCodeClassName,
+  codeBlockPreClassName,
+  codeBlockPreStyle,
+  codeLineClassName,
+} from '@/components/shared/document-static/document-node-styles';
 import { Button } from '@/components/ui/button';
 import {
   Command,
@@ -35,7 +42,7 @@ export function CodeBlockElement(props: PlateElementProps<TCodeBlockElement>) {
 
   return (
     <PlateElement {...props}>
-      <div className="my-4 rounded-lg bg-muted">
+      <div className={codeBlockClassName}>
         {/* 工具栏独立行，避免与代码第一行重叠 */}
         <div
           className="flex items-center justify-end gap-0.5 border-b px-2 py-1"
@@ -68,8 +75,8 @@ export function CodeBlockElement(props: PlateElementProps<TCodeBlockElement>) {
           />
         </div>
 
-        <pre className="overflow-x-auto px-4 pb-4 pt-1 font-mono leading-relaxed [tab-size:2] print:break-inside-avoid" style={{ fontSize: 'var(--text-sm)' }}>
-          <code className="block">{props.children}</code>
+        <pre className={codeBlockPreClassName} style={codeBlockPreStyle}>
+          <code className={codeBlockCodeClassName}>{props.children}</code>
         </pre>
       </div>
     </PlateElement>
@@ -212,7 +219,7 @@ function CopyButton({
 }
 
 export function CodeLineElement(props: PlateElementProps) {
-  return <PlateElement className="min-h-[1.5em]" {...props} />;
+  return <PlateElement className={codeLineClassName} {...props} />;
 }
 
 export function CodeSyntaxLeaf(props: PlateLeafProps<TCodeSyntaxLeaf>) {
