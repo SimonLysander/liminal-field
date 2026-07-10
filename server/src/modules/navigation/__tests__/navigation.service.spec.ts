@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { ContentService } from '../../content/content.service';
 import { ContentVisibility } from '../../content/dto/content-query.dto';
+import { NavigationScope } from '../navigation.entity';
 import { NavigationRepository } from '../navigation.repository';
 import { NavigationNodeService } from '../navigation.service';
 
@@ -40,6 +41,7 @@ describe('NavigationNodeService', () => {
       hasChildren: jest.fn(),
       findByContentItemId: jest.fn(),
       findDuplicateName: jest.fn().mockResolvedValue(null),
+      maxOrder: jest.fn(),
       update: jest.fn(),
       deleteById: jest.fn(),
       findAllDescendants: jest.fn(),
@@ -47,6 +49,7 @@ describe('NavigationNodeService', () => {
     } as unknown as jest.Mocked<NavigationRepository>;
 
     contentService = {
+      createContent: jest.fn(),
       assertContentItemExists: jest.fn(),
       isContentItemReadable: jest.fn(),
     } as unknown as jest.Mocked<ContentService>;
@@ -89,6 +92,45 @@ describe('NavigationNodeService', () => {
         name: 'Invalid node',
       } as never),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('结构创建未传 sortOrder 时追加到同级最后', async () => {
+    const parentId = new Types.ObjectId().toString();
+    const contentItemId = new Types.ObjectId().toString();
+    const parent = createNode({
+      id: parentId,
+      name: '主题',
+      contentItemId: 'ci_parent',
+    });
+    const created = createNode({
+      name: '新篇目',
+      parentId,
+      contentItemId,
+      order: 4,
+    });
+    contentService.createContent.mockResolvedValue({
+      id: contentItemId,
+    } as never);
+    navigationRepository.findById.mockResolvedValue(parent as never);
+    navigationRepository.maxOrder.mockResolvedValue(3);
+    navigationRepository.create.mockResolvedValue(created as never);
+
+    await service.createStructureNode({
+      name: '新篇目',
+      parentId,
+      scope: NavigationScope.notes,
+      type: 'DOC',
+    });
+
+    expect(navigationRepository.maxOrder).toHaveBeenCalledWith(parentId);
+    expect(navigationRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: '新篇目',
+        parentId,
+        contentItemId,
+        order: 4,
+      }),
+    );
   });
 
   it('级联删除节点及其全部后代', async () => {

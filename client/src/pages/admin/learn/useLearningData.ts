@@ -108,7 +108,7 @@ export interface LearningData {
   chapters: Chapter[];
   plan: LearnPlan | null;
   reload: () => Promise<void>;
-  createChapter: () => Promise<string | null>; // 返回新篇的 contentItemId,供创建后进入编辑
+  createChapter: (title: string) => Promise<string | null>; // 返回新篇的 contentItemId,供创建后进入编辑
   removeChapter: (navId: string) => Promise<void>;
   reorderChapters: (navIds: string[]) => Promise<void>;
   setStudied: (contentItemId: string, studied: boolean) => void;
@@ -198,10 +198,10 @@ export function useLearningData(topicNavId: string): LearningData {
   }, [load]);
 
   // 写操作统一:失败弹 banner + reload 把乐观更新纠回服务端真值(不静默吞错,守 CLAUDE.md "catch 必 log/提示")。
-  const createChapter = useCallback(async () => {
+  const createChapter = useCallback(async (title: string) => {
     try {
       const node = await structureApi.createNode({
-        name: '未命名',
+        name: title,
         type: 'DOC', // 篇 = 叶子文档节点
         parentId: topicNavId,
         scope: 'notes',
