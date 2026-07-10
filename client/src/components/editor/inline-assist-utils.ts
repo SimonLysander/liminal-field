@@ -78,6 +78,33 @@ export function extractIllustrationPrompt(markdown: string): string {
   return prompt || text;
 }
 
+export type InlineAssistViewportRect = {
+  top: number;
+  maxHeight: number;
+};
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+export function fitInlineAssistRectToViewport(
+  top: number,
+  surfaceHeight: number,
+  viewportHeight: number,
+  margin = 12,
+): InlineAssistViewportRect {
+  const maxHeight = Math.max(160, viewportHeight - margin * 2);
+  const visibleSurfaceHeight = Math.min(surfaceHeight, maxHeight);
+  return {
+    maxHeight,
+    top: clampNumber(
+      top,
+      margin,
+      Math.max(margin, viewportHeight - margin - visibleSurfaceHeight),
+    ),
+  };
+}
+
 export function toResolvedSuggestionDescription(
   description: TSuggestionDescription,
 ): TResolvedSuggestion {
