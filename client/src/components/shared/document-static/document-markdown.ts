@@ -10,10 +10,65 @@ type DocumentNode = {
 };
 
 const DATE_TAG_RE = /<date\s+value="([^"]+)"\s*\/>/g;
-const DATE_PLACEHOLDER_RE = /%%DATE:([^%]+)%%/g;
+const DATE_MARKER_START = '\uE000';
+const DATE_MARKER_END = '\uE001';
+const DATE_MARKER_PREFIX = `${DATE_MARKER_START}DATE:`;
 
 export function preprocessDocumentMarkdown(markdown: string): string {
-  return markdown.replace(DATE_TAG_RE, '%%DATE:$1%%');
+  // 先双写原文中的私有起始符，保证只有本次替换产生的单起始符能被还原为 date。
+  return markdown
+    .replaceAll(DATE_MARKER_START, `${DATE_MARKER_START}${DATE_MARKER_START}`)
+    .replace(DATE_TAG_RE, (_, date: string) => {
+      return `${DATE_MARKER_PREFIX}${encodeURIComponent(date)}${DATE_MARKER_END}`;
+    });
+}
+
+function restoreDateMarkers(textNode: DocumentNode & { text: string }): DocumentNode[] {
+  const restored: DocumentNode[] = [];
+  let text = '';
+  let cursor = 0;
+
+  const flushText = () => {
+    if (text !== '') restored.push({ ...textNode, text });
+    text = '';
+  };
+
+  while (cursor < textNode.text.length) {
+    if (!textNode.text.startsWith(DATE_MARKER_START, cursor)) {
+      text += textNode.text[cursor];
+      cursor += 1;
+      continue;
+    }
+    if (textNode.text.startsWith(`${DATE_MARKER_START}${DATE_MARKER_START}`, cursor)) {
+      text += DATE_MARKER_START;
+      cursor += 2;
+      continue;
+    }
+    if (!textNode.text.startsWith(DATE_MARKER_PREFIX, cursor)) {
+      text += DATE_MARKER_START;
+      cursor += 1;
+      continue;
+    }
+
+    const valueStart = cursor + DATE_MARKER_PREFIX.length;
+    const markerEnd = textNode.text.indexOf(DATE_MARKER_END, valueStart);
+    if (markerEnd === -1) {
+      text += DATE_MARKER_START;
+      cursor += 1;
+      continue;
+    }
+
+    flushText();
+    restored.push({
+      type: 'date',
+      date: decodeURIComponent(textNode.text.slice(valueStart, markerEnd)),
+      children: [{ text: '' }],
+    });
+    cursor = markerEnd + DATE_MARKER_END.length;
+  }
+
+  flushText();
+  return restored.length > 0 ? restored : [{ ...textNode, text: '' }];
 }
 
 function restoreDatePlaceholders(nodes: DocumentNode[]): DocumentNode[] {
@@ -26,26 +81,7 @@ function restoreDatePlaceholders(nodes: DocumentNode[]): DocumentNode[] {
         children.push(child.children ? restoreDatePlaceholders([child])[0] : child);
         continue;
       }
-
-      let cursor = 0;
-      for (const match of child.text.matchAll(DATE_PLACEHOLDER_RE)) {
-        const matchIndex = match.index;
-        if (matchIndex > cursor) {
-          children.push({ ...child, text: child.text.slice(cursor, matchIndex) });
-        }
-        children.push({
-          type: 'date',
-          date: match[1],
-          children: [{ text: '' }],
-        });
-        cursor = matchIndex + match[0].length;
-      }
-
-      if (cursor === 0) {
-        children.push(child);
-      } else if (cursor < child.text.length) {
-        children.push({ ...child, text: child.text.slice(cursor) });
-      }
+      children.push(...restoreDateMarkers(child as DocumentNode & { text: string }));
     }
 
     return { ...node, children };
@@ -65,8 +101,11 @@ export function deserializeDocumentMarkdown(
     const nodes = deserializeMd(editor, preprocessDocumentMarkdown(markdown));
     return normalizeDocumentNodes(nodes as TElement[]);
   } catch (error) {
-    // 正文可能包含敏感内容；异常日志只记录解析器错误，不附带 Markdown。
-    console.error('[document-markdown] Markdown parsing failed', error);
+    // 第三方错误的 message/stack 可能回显正文，因此只记录固定分类与长度。
+    console.error('[document-markdown] Markdown parsing failed', {
+      errorType: error instanceof Error ? 'Error' : 'Unknown',
+      markdownLength: markdown.length,
+    });
     return [{ type: 'p', children: [{ text: markdown }] }];
   }
 }
