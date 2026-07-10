@@ -13,6 +13,7 @@ import {
   mediaFileContentClassName,
   mediaFileElementClassName,
   mediaFileIconClassName,
+  mediaFileLinkClassName,
 } from '@/components/shared/document-static/document-node-styles';
 import { Caption, CaptionTextarea } from './caption';
 
@@ -25,7 +26,7 @@ export const FileElement = withHOC(
     return (
       <PlateElement className={mediaFileElementClassName} {...props}>
         <a
-          className="group relative m-0 flex cursor-pointer items-center rounded px-0.5 py-[3px] hover:bg-muted"
+          className={mediaFileLinkClassName}
           contentEditable={false}
           download={name}
           href={unsafeUrl}

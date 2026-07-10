@@ -44,10 +44,13 @@ import {
   mediaFileContentClassName,
   mediaFileElementClassName,
   mediaFileIconClassName,
+  mediaFileLinkClassName,
   mediaImageClassName,
   mediaImageElementClassName,
   mediaImageFigureClassName,
   mediaImageLayoutClassName,
+  mediaCaptionClassName,
+  mediaCaptionStyle,
   paragraphClassName,
   tableBodyClassName,
   tableCellClassName,
@@ -179,19 +182,10 @@ export function StaticDateElement(props: SlateElementProps<TDateElement>) {
 }
 
 export function StaticTableElement(props: SlateElementProps<TTableElement>) {
-  const colSizes = Array.isArray(props.element.colSizes) ? props.element.colSizes : [];
-
   return (
     <SlateElement {...props} className={tableElementClassName}>
       <div className={tableWrapperClassName}>
         <table className={tableClassName}>
-          {colSizes.length > 0 && (
-            <colgroup>
-              {colSizes.map((width, index) => (
-                <col key={index} style={typeof width === 'number' ? { width } : undefined} />
-              ))}
-            </colgroup>
-          )}
           <tbody className={tableBodyClassName}>{props.children}</tbody>
         </table>
       </div>
@@ -251,7 +245,14 @@ export function StaticImageElement(props: SlateElementProps<TImageElement>) {
         ) : (
           <span>{alt}</span>
         )}
-        {caption && <figcaption className={mediaFileCaptionClassName}>{caption}</figcaption>}
+        {caption && (
+          <figcaption
+            className={`${mediaCaptionClassName} text-center`}
+            style={mediaCaptionStyle}
+          >
+            {caption}
+          </figcaption>
+        )}
         {props.children}
       </figure>
     </SlateElement>
@@ -266,7 +267,13 @@ export function StaticFileElement(props: SlateElementProps<TFileElement>) {
   return (
     <SlateElement {...props} className={mediaFileElementClassName}>
       {typeof element.url === 'string' && element.url.length > 0 ? (
-        <a download={name} href={element.url} rel="noopener noreferrer" target="_blank">
+        <a
+          className={mediaFileLinkClassName}
+          download={name}
+          href={element.url}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
           <div className={mediaFileContentClassName}>
             <FileUp className={mediaFileIconClassName} />
             <span>{name}</span>
@@ -278,14 +285,28 @@ export function StaticFileElement(props: SlateElementProps<TFileElement>) {
           <span>{name}</span>
         </div>
       )}
-      {caption && <div className={mediaFileCaptionClassName}>{caption}</div>}
+      {caption && (
+        <div
+          className={`${mediaCaptionClassName} ${mediaFileCaptionClassName}`}
+          style={mediaCaptionStyle}
+        >
+          {caption}
+        </div>
+      )}
       {props.children}
     </SlateElement>
   );
 }
 
 export function StaticCaptionElement(props: SlateElementProps) {
-  return <SlateElement {...props} as="figcaption" className={mediaFileCaptionClassName} />;
+  return (
+    <SlateElement
+      {...props}
+      as="figcaption"
+      className={`${mediaCaptionClassName} text-center`}
+      style={mediaCaptionStyle}
+    />
+  );
 }
 
 export function StaticEquationElement(props: SlateElementProps<TEquationElement>) {

@@ -212,7 +212,7 @@ describe('StaticDocumentKit', () => {
       'https://example.com/source',
     );
     expect(document.querySelector('[data-date-value="2026-07-10"]')).not.toBeNull();
-    expect(screen.getByText('unordered item').closest('ul')).not.toBeNull();
+    expect(screen.getByText('unordered item').closest('ul')).toHaveClass('pl-6');
     expect(screen.getByText('ordered item').closest('ol')).toHaveAttribute('start', '3');
     expect(screen.getByRole('checkbox')).toBeChecked();
     expect(screen.getByText('header').closest('th')).toHaveStyle({ backgroundColor: '#eeeeee' });
@@ -225,6 +225,7 @@ describe('StaticDocumentKit', () => {
     expect(screen.getByText('cell').closest('td')).toHaveStyle({ backgroundColor: '#ffffff' });
     expect(screen.getByText('cell').closest('td')).toHaveClass('before:border-b', 'before:border-r');
     expect(document.querySelector('table')).not.toBeNull();
+    expect(document.querySelector('table colgroup')).toBeNull();
     expect(document.querySelector('.katex')).not.toBeNull();
     expect(document.querySelector('.katex-display')?.parentElement?.parentElement).toHaveClass(
       'overflow-x-auto',
@@ -233,8 +234,8 @@ describe('StaticDocumentKit', () => {
     expect(screen.getByText('TypeScript')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'first image' })).toHaveAttribute('src', '/assets/first.jpg');
     expect(screen.getByRole('link', { name: /notes\.pdf/ })).toHaveAttribute('href', '/assets/notes.pdf');
-    expect(screen.getByText('first caption')).toBeInTheDocument();
-    expect(screen.getByText('file caption')).toBeInTheDocument();
+    expect(screen.getByText('first caption')).toHaveClass('text-center', 'text-xs');
+    expect(screen.getByText('file caption')).toHaveClass('text-left', 'text-xs');
     expect(screen.getByText('fallback text')).toBeInTheDocument();
     expect(document.querySelector('[contenteditable="true"]')).toBeNull();
   });

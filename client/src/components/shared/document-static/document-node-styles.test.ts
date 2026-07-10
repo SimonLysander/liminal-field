@@ -8,6 +8,7 @@ import {
   headingVariants,
   hrClassName,
   hrContainerClassName,
+  listClassName,
   paragraphClassName,
 } from './document-node-styles';
 
@@ -46,5 +47,9 @@ describe('document node presentation styles', () => {
     expect(hrClassName).toBe(
       'h-0.5 rounded-sm border-none bg-muted bg-clip-content',
     );
+  });
+
+  it('keeps list markers within the document column', () => {
+    expect(listClassName).toBe('relative m-0 pl-6');
   });
 });

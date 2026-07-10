@@ -48,7 +48,8 @@ export const dateClassName =
 export const linkClassName =
   'font-medium text-primary underline decoration-primary underline-offset-4';
 
-export const listClassName = 'relative m-0 p-0';
+// Keep marker space inside the document column for both the editor and reader.
+export const listClassName = 'relative m-0 pl-6';
 export const todoListItemClassName = 'flex list-none items-start gap-2';
 export const todoListCheckedClassName =
   'text-muted-foreground line-through';
@@ -71,8 +72,12 @@ export const mediaImageFigureClassName = 'relative m-0';
 export const mediaImageLayoutClassName = 'block w-full max-w-full';
 export const mediaImageClassName = 'object-cover px-0 rounded-sm';
 export const mediaFileElementClassName = 'my-px rounded-sm';
+export const mediaFileLinkClassName =
+  'group relative m-0 flex cursor-pointer items-center rounded px-0.5 py-[3px] hover:bg-muted';
 export const mediaFileContentClassName = 'flex items-center gap-1 p-1';
 export const mediaFileIconClassName = 'size-5';
+export const mediaCaptionClassName = 'mt-1.5 w-full p-0 text-xs';
+export const mediaCaptionStyle = { color: 'var(--ink-ghost)' } as const;
 export const mediaFileCaptionClassName = 'text-left';
 
 // The split keeps the editor-only cursor class in its original position while
