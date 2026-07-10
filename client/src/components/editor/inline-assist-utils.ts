@@ -69,6 +69,15 @@ export function getInlineAssistInstruction(action: InlineAssistAction): string {
   }
 }
 
+export function extractIllustrationPrompt(markdown: string): string {
+  const text = markdown.trim();
+  const section = text.match(
+    /(?:^|\n)生图提示词[:：]\s*\n+```(?:text|prompt|markdown|md)?\s*\n([\s\S]*?)\n```/i,
+  );
+  const prompt = section?.[1]?.trim();
+  return prompt || text;
+}
+
 export function toResolvedSuggestionDescription(
   description: TSuggestionDescription,
 ): TResolvedSuggestion {

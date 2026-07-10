@@ -5,7 +5,10 @@ import { useEditorRef, useEditorSelector } from 'platejs/react';
 import {
   ArrowLeftIcon,
   CheckIcon,
+  ClipboardIcon,
   CornerUpLeftIcon,
+  CopyIcon,
+  FilePlus2Icon,
   ListMinusIcon,
   PauseIcon,
   PenLineIcon,
@@ -14,7 +17,10 @@ import {
 } from 'lucide-react';
 
 import type { InlineAssistAction } from '@/components/editor/inline-assist-events';
-import { readNodeText } from '@/components/editor/inline-assist-utils';
+import {
+  extractIllustrationPrompt,
+  readNodeText,
+} from '@/components/editor/inline-assist-utils';
 
 export type InlineAssistControlsRect = {
   left: number;
@@ -34,6 +40,12 @@ export type InlineAssistState =
       status: 'preview';
       action: InlineAssistAction;
       instruction?: string;
+    }
+  | {
+      status: 'brief';
+      action: 'illustration-plan';
+      instruction?: string;
+      markdown: string;
     }
   | {
       status: 'suggestion';
@@ -97,6 +109,7 @@ export function InlineAssistControls({
   const editor = useEditorRef();
   const [rect, setRect] = useState<InlineAssistControlsRect | null>(null);
   const [instruction, setInstruction] = useState('');
+  const [copied, setCopied] = useState<'prompt' | 'brief' | null>(null);
   const previewSignature = useEditorSelector((e) => {
     let lastIndex = -1;
     let textLength = 0;
@@ -202,6 +215,12 @@ export function InlineAssistControls({
 
   if (state.status === 'idle' || !rect) return null;
 
+  const copyText = async (kind: 'prompt' | 'brief', text: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopied(kind);
+    window.setTimeout(() => setCopied(null), 1200);
+  };
+
   return (
     <div
       className="fixed z-[var(--z-dropdown)] overflow-hidden rounded-md border shadow-md"
@@ -278,6 +297,7 @@ export function InlineAssistControls({
                 ? '正在生成修改建议...'
                 : '正在帮你写...')}
             {state.status === 'preview' && '已生成内容'}
+            {state.status === 'brief' && '配图构思已生成'}
             {state.status === 'suggestion' && '已生成修改建议'}
             {state.status === 'error' && state.message}
           </span>
@@ -347,6 +367,47 @@ export function InlineAssistControls({
               icon={<CornerUpLeftIcon />}
               label="重试"
               onSelect={onRetry}
+            />
+          </>
+        )}
+        {state.status === 'brief' && (
+          <>
+            <div
+              className="mb-1 max-h-80 overflow-auto whitespace-pre-wrap rounded-md px-3 py-2 text-xs leading-relaxed"
+              style={{
+                background: 'var(--shelf)',
+                color: 'var(--ink)',
+              }}
+            >
+              {state.markdown}
+            </div>
+            <InlineAssistMenuItem
+              active
+              icon={<ClipboardIcon />}
+              label={copied === 'prompt' ? '已复制提示词' : '复制提示词'}
+              onSelect={() =>
+                void copyText('prompt', extractIllustrationPrompt(state.markdown))
+              }
+            />
+            <InlineAssistMenuItem
+              icon={<CopyIcon />}
+              label={copied === 'brief' ? '已复制完整构思' : '复制完整构思'}
+              onSelect={() => void copyText('brief', state.markdown)}
+            />
+            <InlineAssistMenuItem
+              icon={<FilePlus2Icon />}
+              label="插入到正文"
+              onSelect={onAccept}
+            />
+            <InlineAssistMenuItem
+              icon={<CornerUpLeftIcon />}
+              label="重试"
+              onSelect={onRetry}
+            />
+            <InlineAssistMenuItem
+              icon={<XIcon />}
+              label="丢弃"
+              onSelect={onCancel}
             />
           </>
         )}

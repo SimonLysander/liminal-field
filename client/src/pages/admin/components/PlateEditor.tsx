@@ -464,10 +464,13 @@ export function PlateMarkdownEditor({
       currentState.variant === 'selection' &&
       (action === 'make-shorter' || action === 'revise' || action === 'custom') &&
       !!replacementRange;
+    const shouldCreateIllustrationBrief =
+      action === 'illustration-plan' &&
+      !!replacementRange;
     const shouldInsertAfterSelection =
       currentState.status === 'menu' &&
       currentState.variant === 'selection' &&
-      action === 'illustration-plan' &&
+      action !== 'illustration-plan' &&
       !!replacementRange;
 
     const serializeFragmentMarkdown = (range: TRange): string => {
@@ -542,7 +545,7 @@ export function PlateMarkdownEditor({
       mode: shouldSuggestReplacement ? 'suggestion' : 'insert',
       status: 'streaming',
     });
-    if (!shouldSuggestReplacement) {
+    if (!shouldSuggestReplacement && !shouldCreateIllustrationBrief) {
       if (shouldInsertAfterSelection && replacementRange) {
         editor.tf.select(editor.api.end(replacementRange));
       }
@@ -556,6 +559,7 @@ export function PlateMarkdownEditor({
 
     try {
       let suggestionText = '';
+      let illustrationBrief = '';
       await streamInlineAssist(
         {
           mode: action === 'illustration-plan' ? 'illustration_plan' : 'continue',
@@ -568,6 +572,10 @@ export function PlateMarkdownEditor({
           signal: abortController.signal,
           onChunk: (chunk) => {
             if (abortController.signal.aborted || !chunk) return;
+            if (shouldCreateIllustrationBrief) {
+              illustrationBrief += chunk;
+              return;
+            }
             if (shouldSuggestReplacement) {
               suggestionText += chunk;
               return;
@@ -581,6 +589,27 @@ export function PlateMarkdownEditor({
         },
       );
       if (abortController.signal.aborted) return;
+      if (shouldCreateIllustrationBrief) {
+        const markdown = illustrationBrief.trim();
+        if (!markdown) {
+          setInlineAssistStateSync({
+            action,
+            instruction: customInstruction,
+            message: '没有生成可用构思，请重试',
+            status: 'error',
+          });
+          inlineAssistSelectionRef.current?.unref();
+          inlineAssistSelectionRef.current = null;
+          return;
+        }
+        setInlineAssistStateSync({
+          action: 'illustration-plan',
+          instruction: customInstruction,
+          markdown,
+          status: 'brief',
+        });
+        return;
+      }
       if (shouldSuggestReplacement) {
         const range = replacementRange;
         const text = suggestionText.trim();
@@ -633,7 +662,7 @@ export function PlateMarkdownEditor({
         status: 'error',
       });
     } finally {
-      if (!shouldSuggestReplacement) {
+      if (!shouldSuggestReplacement && !shouldCreateIllustrationBrief) {
         editor.setOption(AIChatPlugin, 'streaming', false);
       }
       if (inlineAssistAbortRef.current === abortController) {
@@ -671,7 +700,7 @@ export function PlateMarkdownEditor({
     inlineAssistAbortRef.current = null;
     if (current.status === 'suggestion') {
       rejectSuggestion(editor, current.description);
-    } else {
+    } else if (current.status !== 'brief') {
       editor.getApi(AIChatPlugin).aiChat.reset({ undo: true });
     }
     setInlineAssistStateSync({ status: 'idle' });
@@ -697,10 +726,23 @@ export function PlateMarkdownEditor({
 
   const acceptInlineAssist = useCallback(() => {
     const current = inlineAssistStateRef.current;
-    if (current.status !== 'preview' && current.status !== 'suggestion') return;
+    if (
+      current.status !== 'preview' &&
+      current.status !== 'suggestion' &&
+      current.status !== 'brief'
+    ) {
+      return;
+    }
     try {
       if (current.status === 'suggestion') {
         acceptSuggestion(editor, current.description);
+      } else if (current.status === 'brief') {
+        const range = inlineAssistSelectionRef.current?.current ?? editor.selection;
+        if (range) {
+          editor.tf.select(editor.api.end(range));
+        }
+        const nodes = deserializeMd(editor, current.markdown);
+        editor.tf.insertNodes(nodes as never);
       } else {
         editor.getTransforms(AIChatPlugin).aiChat.accept();
       }
@@ -717,18 +759,31 @@ export function PlateMarkdownEditor({
 
   const retryInlineAssist = useCallback(() => {
     const current = inlineAssistStateRef.current;
-    if (current.status !== 'preview' && current.status !== 'suggestion' && current.status !== 'error') return;
+    if (
+      current.status !== 'preview' &&
+      current.status !== 'brief' &&
+      current.status !== 'suggestion' &&
+      current.status !== 'error'
+    ) {
+      return;
+    }
     const action =
-      current.status === 'suggestion' || current.status === 'preview' || current.status === 'error'
+      current.status === 'suggestion' ||
+      current.status === 'preview' ||
+      current.status === 'brief' ||
+      current.status === 'error'
         ? current.action
         : undefined;
     const instruction =
-      current.status === 'suggestion' || current.status === 'preview' || current.status === 'error'
+      current.status === 'suggestion' ||
+      current.status === 'preview' ||
+      current.status === 'brief' ||
+      current.status === 'error'
         ? current.instruction
         : undefined;
     if (current.status === 'suggestion') {
       rejectSuggestion(editor, current.description);
-    } else {
+    } else if (current.status !== 'brief') {
       editor.getApi(AIChatPlugin).aiChat.reset({ undo: true });
     }
     setInlineAssistStateSync({ status: 'idle' });

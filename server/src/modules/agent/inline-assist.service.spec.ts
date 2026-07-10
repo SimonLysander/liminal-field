@@ -100,7 +100,7 @@ describe('InlineAssistService', () => {
 
   it('builds an illustration planning prompt for selected text', async () => {
     mockGenerateText.mockResolvedValue({
-      text: '### 想想怎么画\n\n适合画: 是',
+      text: '### 配图构思\n\n适合画: 是',
     } as never);
 
     const { service } = makeService();
@@ -118,8 +118,10 @@ describe('InlineAssistService', () => {
 
     expect(call.system).toContain('图解构思助手');
     expect(call.prompt).toContain(
-      '推荐图型: 流程 / 架构 / 因果 / 对比 / 分类 / 无',
+      '推荐图型: 因果流程图 / 系统架构图 / 概念关系图 / 对比取舍图 / 状态变化图 / 无',
     );
+    expect(call.prompt).toContain('生图提示词:');
+    expect(call.prompt).toContain('负向提示词:');
     expect(call.prompt).toContain('请只输出上述 Markdown');
     expect(call.prompt).not.toContain(
       '请只输出用于替换 selected_text 的 Markdown 正文。',
