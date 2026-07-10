@@ -68,6 +68,7 @@ import { PlateMarkdownEditor } from '../components/PlateEditor';
 import { createNotesDraftAdapter, type NotesDraftState } from '../lib/notes-draft-adapter';
 import { useDraftEditor, type DraftEditorController } from '../lib/use-draft-editor';
 import { findClosestCitationAnchor, normalizeAidraftCitationLinks } from './aidraft-citations';
+import { CreateLearningChapterDialog } from './CreateLearningChapterDialog';
 import { LearningDraftTitleInput } from './LearningDraftTitleInput';
 import {
   useLearningData,
@@ -670,6 +671,8 @@ function NodeScreen({
   const [auroraVisible, setAuroraVisible] = useState(false);
   const [selections, setSelections] = useState<ChatSelectionAttachment[]>([]);
   const [pending, setPending] = useState<{ text: string; x: number; y: number } | null>(null);
+  const [createChapterOpen, setCreateChapterOpen] = useState(false);
+  const [creatingChapter, setCreatingChapter] = useState(false);
   const aiPaneRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -709,6 +712,19 @@ function NodeScreen({
   const closeAurora = () => {
     setAuroraOpen(false);
     refreshLeft();
+  };
+
+  const createChapter = async (chapterTitle: string) => {
+    setCreatingChapter(true);
+    try {
+      const contentItemId = await data.createChapter(chapterTitle);
+      if (contentItemId) {
+        setCreateChapterOpen(false);
+        onNavigate(contentItemId);
+      }
+    } finally {
+      setCreatingChapter(false);
+    }
   };
 
   const updateDraftSelectionPopover = useCallback(() => {
@@ -1037,13 +1053,19 @@ function NodeScreen({
                   currentContentId={nodeId || null}
                   isTopic={isTopic}
                   onNavigate={(cid) => onNavigate(cid)}
-                  onAdd={() =>
-                    void data.createChapter().then((contentItemId) => {
-                      if (contentItemId) onNavigate(contentItemId);
-                    })
-                  }
+                  onAdd={() => setCreateChapterOpen(true)}
                   onRemove={(navId) => void data.removeChapter(navId)}
                   onReorder={(navIds) => void data.reorderChapters(navIds)}
+                />
+              )}
+              {createChapterOpen && (
+                <CreateLearningChapterDialog
+                  open
+                  submitting={creatingChapter}
+                  onClose={() => {
+                    if (!creatingChapter) setCreateChapterOpen(false);
+                  }}
+                  onConfirm={(chapterTitle) => void createChapter(chapterTitle)}
                 />
               )}
               {/* 右栏正文编辑器:

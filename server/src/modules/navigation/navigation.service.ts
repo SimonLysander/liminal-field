@@ -384,6 +384,9 @@ export class NavigationNodeService {
     dto: CreateStructureNodeDto,
   ): Promise<StructureNodeDto> {
     let contentItemId = dto.contentItemId;
+    const sortOrder =
+      dto.sortOrder ??
+      (await this.navigationRepository.maxOrder(dto.parentId ?? null)) + 1;
 
     // 节点同质化:任何节点(原 FOLDER/DOC 皆然)未带 contentItemId 时,后端自动 mint 一个空 ContentItem。
     // createContent 只建 MongoDB 记录（无 Git commit），内容通过后续 draft/commit 写入。
@@ -395,7 +398,7 @@ export class NavigationNodeService {
     }
 
     const created = await this.createNavigationNode(
-      this.toCreateNavigationNodeDto(dto, contentItemId),
+      this.toCreateNavigationNodeDto({ ...dto, sortOrder }, contentItemId),
     );
     return {
       id: created.id,
