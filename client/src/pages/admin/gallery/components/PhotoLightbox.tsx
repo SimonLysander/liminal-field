@@ -1,12 +1,10 @@
 /**
  * PhotoLightbox — 图片预览弹窗（只读查看大图）。
  *
- * 基于 yet-another-react-lightbox，提供遮罩 + 大图 + 左右切换 + 键盘导航。
- * 通过 CSS 变量覆盖默认纯黑背景，使其跟随主题。
+ * 公共 ImageLightbox 保留遮罩、大图、左右切换与键盘导航；本组件只适配画廊数据。
  */
 
-import Lightbox from 'yet-another-react-lightbox';
-import 'yet-another-react-lightbox/styles.css';
+import { ImageLightbox } from '@/components/shared/ImageLightbox';
 
 interface PhotoLightboxProps {
   open: boolean;
@@ -16,16 +14,5 @@ interface PhotoLightboxProps {
 }
 
 export function PhotoLightbox({ open, urls, initialIndex, onClose }: PhotoLightboxProps) {
-  return (
-    <Lightbox
-      open={open}
-      close={onClose}
-      index={initialIndex}
-      slides={urls.map((src) => ({ src }))}
-      styles={{
-        // 用高不透明度替代 backdropFilter: blur()，避免大图背景模糊导致严重卡顿
-        container: { backgroundColor: 'rgba(0, 0, 0, 0.85)' },
-      }}
-    />
-  );
+  return <ImageLightbox initialIndex={initialIndex} onClose={onClose} open={open} urls={urls} />;
 }

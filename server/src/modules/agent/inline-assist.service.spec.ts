@@ -3,6 +3,7 @@ import { generateText } from 'ai';
 
 import { InlineAssistService } from './inline-assist.service';
 import type { SystemConfigService } from '../settings/system-config.service';
+import type { PromptManagerService } from '../../infrastructure/prompt/prompt-manager.service';
 
 jest.mock('ai', () => ({
   generateText: jest.fn(),
@@ -31,9 +32,19 @@ const makeService = (
     }),
   } as unknown as SystemConfigService;
 
+  const promptManager = {
+    render: jest.fn((name: string) => {
+      if (name === 'inline-assist/continue-system.md') {
+        return '你是一个轻量的中文写作补全助手。';
+      }
+      throw new Error(`unexpected prompt: ${name}`);
+    }),
+  } as unknown as PromptManagerService;
+
   return {
-    service: new InlineAssistService(systemConfig),
+    service: new InlineAssistService(systemConfig, promptManager),
     systemConfig,
+    promptManager,
   };
 };
 
@@ -96,43 +107,6 @@ describe('InlineAssistService', () => {
     expect(call.prompt).toContain('<document_markdown>');
     expect(call.prompt).toContain('<!-- INLINE_ASSIST_CURSOR -->');
     expect(call.prompt).not.toContain('<before_cursor>');
-  });
-
-  it('builds an illustration planning prompt for selected text', async () => {
-    mockGenerateText.mockResolvedValue({
-      text: '### 想想怎么画\n\n适合画: 是',
-    } as never);
-
-    const { service } = makeService();
-
-    await service.assist({
-      beforeText: '前文',
-      mode: 'illustration_plan',
-      selectedText: 'Agent 通过工具调用改变外部状态。',
-    });
-
-    const call = mockGenerateText.mock.calls[0]?.[0] as {
-      prompt?: string;
-      system?: string;
-    };
-
-    expect(call.system).toContain('图解构思助手');
-    expect(call.prompt).toContain(
-      '推荐图型: 流程 / 架构 / 因果 / 对比 / 分类 / 无',
-    );
-    expect(call.prompt).toContain('请只输出上述 Markdown');
-    expect(call.prompt).not.toContain(
-      '请只输出用于替换 selected_text 的 Markdown 正文。',
-    );
-  });
-
-  it('requires selected text for illustration planning', async () => {
-    const { service } = makeService();
-
-    await expect(
-      service.assist({ beforeText: '上下文', mode: 'illustration_plan' }),
-    ).rejects.toBeInstanceOf(BadRequestException);
-    expect(mockGenerateText).not.toHaveBeenCalled();
   });
 
   it('rejects requests without usable context', async () => {

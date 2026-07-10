@@ -10,6 +10,10 @@ import type { PlateElementProps } from 'platejs/react';
 
 import { PlateElement, useReadOnly } from 'platejs/react';
 
+import {
+  dateClassName,
+  dateLayoutClassName,
+} from '@/components/shared/document-static/document-node-styles';
 import { Calendar } from '@/components/ui/calendar';
 import {
   Popover,
@@ -25,9 +29,7 @@ export function DateElement(props: PlateElementProps<TDateElement>) {
 
   const trigger = (
     <span
-      className={cn(
-        'w-fit cursor-pointer rounded-sm bg-muted px-1 text-muted-foreground'
-      )}
+      className={cn(dateLayoutClassName, 'cursor-pointer', dateClassName)}
       contentEditable={false}
       draggable
     >

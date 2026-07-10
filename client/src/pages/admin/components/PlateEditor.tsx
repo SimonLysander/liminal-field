@@ -117,8 +117,20 @@ function joinMarkdownParts(parts: string[]): string {
  * 防悬空引用。
  */
 export interface EditorBridgeHandle {
+  captureViewState: (scrollContainer?: HTMLElement | null) => EditorViewStateSnapshot | null;
   getChildren: () => Descendant[];
   getEditor: () => unknown;
+  restoreViewState: (
+    snapshot: EditorViewStateSnapshot | null | undefined,
+    scrollContainer?: HTMLElement | null,
+  ) => boolean;
+}
+
+export interface EditorViewStateSnapshot {
+  dispose: () => void;
+  scrollLeft: number;
+  scrollTop: number;
+  selectionRef: InlineAssistRangeRef | null;
 }
 
 function EditorChildrenBridge({
@@ -127,12 +139,59 @@ function EditorChildrenBridge({
   bridgeRef: React.MutableRefObject<EditorBridgeHandle | null>;
 }) {
   const editor = useEditorRef();
+  const selection = useEditorSelector((e) => e.selection as TRange | null, []);
+  const lastSelectionRef = useRef<InlineAssistRangeRef | null>(null);
+
+  useEffect(() => {
+    if (!selection) return;
+    lastSelectionRef.current?.unref();
+    lastSelectionRef.current = editor.api.rangeRef(selection, {
+      affinity: isSamePoint(selection.anchor, selection.focus) ? 'forward' : 'outward',
+    });
+  }, [editor, selection]);
+
   useEffect(() => {
     bridgeRef.current = {
+      captureViewState: (scrollContainer) => {
+        const range = (editor.selection as TRange | null) ?? lastSelectionRef.current?.current;
+        const selectionRef = range
+          ? editor.api.rangeRef(range, {
+              affinity: isSamePoint(range.anchor, range.focus) ? 'forward' : 'outward',
+            })
+          : null;
+        return {
+          dispose: () => selectionRef?.unref(),
+          scrollLeft: scrollContainer?.scrollLeft ?? 0,
+          scrollTop: scrollContainer?.scrollTop ?? 0,
+          selectionRef,
+        };
+      },
       getChildren: () => editor.children as Descendant[],
       getEditor: () => editor,
+      restoreViewState: (snapshot, scrollContainer) => {
+        if (!snapshot) return false;
+        const range = snapshot.selectionRef?.current ?? lastSelectionRef.current?.current;
+        if (range) {
+          editor.tf.focus();
+          editor.tf.select(range);
+        }
+        const restoreScroll = () => {
+          if (!scrollContainer) return;
+          scrollContainer.scrollLeft = snapshot.scrollLeft;
+          scrollContainer.scrollTop = snapshot.scrollTop;
+        };
+        restoreScroll();
+        window.requestAnimationFrame(() => {
+          restoreScroll();
+          window.setTimeout(restoreScroll, 0);
+          window.setTimeout(restoreScroll, 80);
+        });
+        return !!range || !!scrollContainer;
+      },
     };
     return () => {
+      lastSelectionRef.current?.unref();
+      lastSelectionRef.current = null;
       bridgeRef.current = null;
     };
   }, [editor, bridgeRef]);
@@ -467,7 +526,6 @@ export function PlateMarkdownEditor({
     const shouldInsertAfterSelection =
       currentState.status === 'menu' &&
       currentState.variant === 'selection' &&
-      action === 'illustration-plan' &&
       !!replacementRange;
 
     const serializeFragmentMarkdown = (range: TRange): string => {
@@ -558,7 +616,6 @@ export function PlateMarkdownEditor({
       let suggestionText = '';
       await streamInlineAssist(
         {
-          mode: action === 'illustration-plan' ? 'illustration_plan' : 'continue',
           documentMarkdown,
           instruction: customInstruction?.trim() || getInlineAssistInstruction(action),
           selectedText,
@@ -697,7 +754,12 @@ export function PlateMarkdownEditor({
 
   const acceptInlineAssist = useCallback(() => {
     const current = inlineAssistStateRef.current;
-    if (current.status !== 'preview' && current.status !== 'suggestion') return;
+    if (
+      current.status !== 'preview' &&
+      current.status !== 'suggestion'
+    ) {
+      return;
+    }
     try {
       if (current.status === 'suggestion') {
         acceptSuggestion(editor, current.description);
@@ -717,13 +779,23 @@ export function PlateMarkdownEditor({
 
   const retryInlineAssist = useCallback(() => {
     const current = inlineAssistStateRef.current;
-    if (current.status !== 'preview' && current.status !== 'suggestion' && current.status !== 'error') return;
+    if (
+      current.status !== 'preview' &&
+      current.status !== 'suggestion' &&
+      current.status !== 'error'
+    ) {
+      return;
+    }
     const action =
-      current.status === 'suggestion' || current.status === 'preview' || current.status === 'error'
+      current.status === 'suggestion' ||
+      current.status === 'preview' ||
+      current.status === 'error'
         ? current.action
         : undefined;
     const instruction =
-      current.status === 'suggestion' || current.status === 'preview' || current.status === 'error'
+      current.status === 'suggestion' ||
+      current.status === 'preview' ||
+      current.status === 'error'
         ? current.instruction
         : undefined;
     if (current.status === 'suggestion') {

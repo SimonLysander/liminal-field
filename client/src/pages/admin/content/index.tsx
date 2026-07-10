@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-// 编辑页跳转统一用 window.location.href（Plate inputRules 在 SPA 导航后不生效）
+// 编辑页是独立工作区，整页跳转避免把内容管理页的临时状态带入编辑器。
 import { smoothBounce } from '@/lib/motion';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ContentVersionView } from '../components/ContentVersionView';

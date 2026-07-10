@@ -737,11 +737,6 @@ export function useAdminWorkspace(options: { scope: 'notes' | 'anthology' } = { 
 
     /* 内容工作区 */
     updateSummary,
-    /** 同步清空预览内容，立即卸载 PlateReadOnly。导航到编辑页前调用。 */
-    clearContent: useCallback(() => {
-      setFormalContent(EMPTY_FORMAL_CONTENT);
-      setPreview(null);
-    }, []),
     workspaceMode,
     formalContent,
     draftState,

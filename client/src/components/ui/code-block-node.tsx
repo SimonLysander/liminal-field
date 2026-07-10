@@ -3,7 +3,7 @@
 import * as React from 'react';
 
 import { formatCodeBlock, isLangSupported } from '@platejs/code-block';
-import { BracesIcon, Check, CheckIcon, CopyIcon } from 'lucide-react';
+import { BracesIcon, Check } from 'lucide-react';
 import { type TCodeBlockElement, type TCodeSyntaxLeaf, NodeApi } from 'platejs';
 import {
   type PlateElementProps,
@@ -13,6 +13,15 @@ import {
 } from 'platejs/react';
 import { useEditorRef, useElement, useReadOnly } from 'platejs/react';
 
+import {
+  codeBlockClassName,
+  codeBlockCodeClassName,
+  codeBlockPreClassName,
+  codeBlockPreStyle,
+  codeLineClassName,
+} from '@/components/shared/document-static/document-node-styles';
+import { CodeCopyButton } from '@/components/shared/CodeCopyButton';
+import { codeLanguages, getCodeLanguageLabel } from '@/components/shared/code-languages';
 import { Button } from '@/components/ui/button';
 import {
   Command,
@@ -35,7 +44,7 @@ export function CodeBlockElement(props: PlateElementProps<TCodeBlockElement>) {
 
   return (
     <PlateElement {...props}>
-      <div className="my-4 rounded-lg bg-muted">
+      <div className={codeBlockClassName}>
         {/* 工具栏独立行，避免与代码第一行重叠 */}
         <div
           className="flex items-center justify-end gap-0.5 border-b px-2 py-1"
@@ -56,7 +65,9 @@ export function CodeBlockElement(props: PlateElementProps<TCodeBlockElement>) {
 
           <CodeBlockCombobox />
 
-          <CopyButton
+          <CodeCopyButton
+            copyAriaLabel="复制"
+            copyTitle="复制全部代码"
             size="icon"
             variant="ghost"
             className="size-6 gap-1 text-muted-foreground text-xs"
@@ -68,8 +79,8 @@ export function CodeBlockElement(props: PlateElementProps<TCodeBlockElement>) {
           />
         </div>
 
-        <pre className="overflow-x-auto px-4 pb-4 pt-1 font-mono leading-relaxed [tab-size:2] print:break-inside-avoid" style={{ fontSize: 'var(--text-sm)' }}>
-          <code className="block">{props.children}</code>
+        <pre className={codeBlockPreClassName} style={codeBlockPreStyle}>
+          <code className={codeBlockCodeClassName}>{props.children}</code>
         </pre>
       </div>
     </PlateElement>
@@ -86,7 +97,7 @@ function CodeBlockCombobox() {
 
   const items = React.useMemo(
     () =>
-      languages.filter(
+      codeLanguages.filter(
         (language) =>
           !searchValue ||
           language.label.toLowerCase().includes(searchValue.toLowerCase())
@@ -96,7 +107,7 @@ function CodeBlockCombobox() {
 
   if (readOnly) {
     // read-only 模式只显示语言标签，样式与编辑器的 Button 对齐
-    const label = languages.find((l) => l.value === value)?.label ?? (value !== 'plaintext' ? value : '');
+    const label = getCodeLanguageLabel(value);
     return label ? (
       <span className="flex h-6 select-none items-center gap-1 px-2 text-muted-foreground text-xs">{label}</span>
     ) : null;
@@ -112,7 +123,7 @@ function CodeBlockCombobox() {
           aria-expanded={open}
           role="combobox"
         >
-          {languages.find((language) => language.value === value)?.label ??
+          {codeLanguages.find((language) => language.value === value)?.label ??
             'Plain Text'}
         </Button>
       </PopoverTrigger>
@@ -161,58 +172,8 @@ function CodeBlockCombobox() {
   );
 }
 
-function CopyButton({
-  value,
-  ...props
-}: { value: (() => string) | string } & Omit<
-  React.ComponentProps<typeof Button>,
-  'value'
->) {
-  const [hasCopied, setHasCopied] = React.useState(false);
-
-  // 1.5s 后回到 Copy；只在 hasCopied=true 时 schedule，避免初次 mount 也跑一遍。
-  React.useEffect(() => {
-    if (!hasCopied) return;
-    const t = window.setTimeout(() => setHasCopied(false), 1500);
-    return () => window.clearTimeout(t);
-  }, [hasCopied]);
-
-  return (
-    <Button
-      aria-label={hasCopied ? '已复制' : '复制'}
-      title={hasCopied ? '已复制' : '复制全部代码'}
-      onClick={() => {
-        void navigator.clipboard.writeText(
-          typeof value === 'function' ? value() : value,
-        );
-        setHasCopied(true);
-      }}
-      {...props}
-    >
-      {/* Copy / Check 图标重叠同一格 + opacity 渐变，按钮宽度不变。
-       *  之前试过加 "已复制" 文案 + 滑入动画 —— 文案撑宽按钮把语言选择器
-       *  挤重叠。撤回，反馈靠图标切换 + title tooltip 表达。 */}
-      <span className="relative inline-flex items-center">
-        <CopyIcon
-          className={cn(
-            '!size-3 transition-opacity duration-150',
-            hasCopied ? 'opacity-0' : 'opacity-100',
-          )}
-        />
-        <CheckIcon
-          className={cn(
-            '!size-3 absolute left-0 top-0 transition-opacity duration-150',
-            hasCopied ? 'opacity-100' : 'opacity-0',
-          )}
-          style={{ color: 'var(--accent)' }}
-        />
-      </span>
-    </Button>
-  );
-}
-
 export function CodeLineElement(props: PlateElementProps) {
-  return <PlateElement className="min-h-[1.5em]" {...props} />;
+  return <PlateElement className={codeLineClassName} {...props} />;
 }
 
 export function CodeSyntaxLeaf(props: PlateLeafProps<TCodeSyntaxLeaf>) {
@@ -220,22 +181,3 @@ export function CodeSyntaxLeaf(props: PlateLeafProps<TCodeSyntaxLeaf>) {
 
   return <PlateLeaf className={tokenClassName} {...props} />;
 }
-
-const languages: { label: string; value: string }[] = [
-  { label: 'Plain Text', value: 'plaintext' },
-  { label: 'HTML', value: 'html' },
-  { label: 'CSS', value: 'css' },
-  { label: 'JavaScript', value: 'javascript' },
-  { label: 'TypeScript', value: 'typescript' },
-  { label: 'Java', value: 'java' },
-  { label: 'Python', value: 'python' },
-  { label: 'Go', value: 'go' },
-  { label: 'Rust', value: 'rust' },
-  { label: 'Shell', value: 'bash' },
-  { label: 'C', value: 'c' },
-  { label: 'C++', value: 'cpp' },
-  { label: 'SQL', value: 'sql' },
-  { label: 'JSON', value: 'json' },
-  { label: 'YAML', value: 'yaml' },
-  { label: 'Markdown', value: 'markdown' },
-];

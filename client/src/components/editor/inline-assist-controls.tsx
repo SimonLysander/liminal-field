@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { TResolvedSuggestion } from '@platejs/suggestion';
 import type { Descendant, TRange } from 'platejs';
 import { useEditorRef, useEditorSelector } from 'platejs/react';
@@ -9,15 +9,18 @@ import {
   ListMinusIcon,
   PauseIcon,
   PenLineIcon,
-  PencilRulerIcon,
   XIcon,
 } from 'lucide-react';
 
 import type { InlineAssistAction } from '@/components/editor/inline-assist-events';
-import { readNodeText } from '@/components/editor/inline-assist-utils';
+import {
+  fitInlineAssistRectToViewport,
+  readNodeText,
+} from '@/components/editor/inline-assist-utils';
 
 export type InlineAssistControlsRect = {
   left: number;
+  maxHeight: number;
   maxWidth: number;
   top: number;
 };
@@ -95,6 +98,7 @@ export function InlineAssistControls({
   onRetry: () => void;
 }) {
   const editor = useEditorRef();
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
   const [rect, setRect] = useState<InlineAssistControlsRect | null>(null);
   const [instruction, setInstruction] = useState('');
   const previewSignature = useEditorSelector((e) => {
@@ -169,6 +173,7 @@ export function InlineAssistControls({
 
     setRect({
       left,
+      maxHeight: Math.max(160, window.innerHeight - 24),
       maxWidth: preferredWidth,
       top: anchorRect.bottom + 6,
     });
@@ -179,6 +184,25 @@ export function InlineAssistControls({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     updateRect();
   }, [previewSignature, state.status, updateRect]);
+
+  useLayoutEffect(() => {
+    if (state.status === 'idle' || !rect || !surfaceRef.current) return;
+    const fitted = fitInlineAssistRectToViewport(
+      rect.top,
+      surfaceRef.current.offsetHeight,
+      window.innerHeight,
+    );
+    if (fitted.top === rect.top && fitted.maxHeight === rect.maxHeight) return;
+    setRect((current) =>
+      current
+        ? {
+            ...current,
+            maxHeight: fitted.maxHeight,
+            top: fitted.top,
+          }
+        : current,
+    );
+  }, [rect, state.status]);
 
   useEffect(() => {
     if (state.status !== 'streaming' || !state.anchorRect) {
@@ -204,13 +228,16 @@ export function InlineAssistControls({
 
   return (
     <div
-      className="fixed z-[var(--z-dropdown)] overflow-hidden rounded-md border shadow-md"
+      ref={surfaceRef}
+      className="fixed z-[var(--z-dropdown)] flex overflow-hidden rounded-md border shadow-md"
       contentEditable={false}
       style={{
         background: 'var(--paper)',
         borderColor: 'var(--separator)',
         color: 'var(--ink)',
+        flexDirection: 'column',
         left: rect.left,
+        maxHeight: rect.maxHeight,
         maxWidth: rect.maxWidth,
         minWidth: Math.min(360, rect.maxWidth),
         top: rect.top,
@@ -218,7 +245,7 @@ export function InlineAssistControls({
       }}
     >
       <div
-        className="flex h-9 items-center px-3 text-sm"
+        className="flex h-9 shrink-0 items-center px-3 text-sm"
         style={{
           borderBottom: '0.5px solid var(--separator)',
           color: 'var(--ink-ghost)',
@@ -283,7 +310,9 @@ export function InlineAssistControls({
           </span>
         )}
       </div>
-      <div className="p-1">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto p-1"
+      >
         {state.status === 'menu' && (
           <>
             {instruction.trim() && (
@@ -312,11 +341,6 @@ export function InlineAssistControls({
                   icon={<CheckIcon />}
                   label="修订"
                   onSelect={() => onRun('revise')}
-                />
-                <InlineAssistMenuItem
-                  icon={<PencilRulerIcon />}
-                  label="想想怎么画"
-                  onSelect={() => onRun('illustration-plan')}
                 />
               </>
             )}

@@ -520,20 +520,6 @@ html { font-size: 16px; }
   color: var(--ink);
 }
 
-/* Aurora add-to-chat 引用回指：hover/click 左侧 chip 时临时高亮编辑区原文。
-   使用 CSS Custom Highlight API，不改 Plate 节点树、不污染 markdown。 */
-::highlight(chat-selection) {
-  background: color-mix(in srgb, var(--accent) 28%, transparent);
-  color: var(--ink);
-}
-
-/* Aurora proposal review:中间内容区审查时高亮模型建议对应的原文范围。
-   只使用浏览器 highlight overlay，不写入 Plate 节点树。 */
-::highlight(ai-edit-proposal-target) {
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-  color: var(--ink);
-}
-
 body {
   font-family: var(--font-sans);
   background: var(--paper);

@@ -242,11 +242,7 @@ export default function GalleryAdmin() {
     navigate(`/admin/gallery/${post.id}/edit`);
   };
 
-  /**
-   * 跳转编辑页：先卸载预览区（清理 PlateReadOnly 实例），再导航。
-   * PlateReadOnly 的全局状态会干扰编辑器的 Plate 实例，导致 inputRules 失效。
-   * 通过先置空 detail 触发 React 卸载 PlateReadOnly，下一帧再 navigate。
-   */
+  /** 编辑页是独立工作区，整页跳转避免保留画廊详情的临时状态。 */
   const navigateToEdit = useCallback((id: string) => {
     window.location.href = `/admin/gallery/${id}/edit`;
   }, []);
@@ -509,4 +505,3 @@ function InfoRow({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-

@@ -30,12 +30,12 @@ import { DesktopOnlyNotice } from '@/components/shared/DesktopOnlyNotice';
 
 import Sidebar from './components/global/Sidebar';
 import BottomTabBar from './components/global/BottomTabBar';
-import AnthologyPage from './pages/anthology';
-import GalleryPage from './pages/gallery';
-import HomePage from './pages/home';
-import NotePage from './pages/note';
-import NotFoundPage from './pages/not-found';
 
+const HomePage = lazy(() => import('./pages/home'));
+const NotePage = lazy(() => import('./pages/note'));
+const AnthologyPage = lazy(() => import('./pages/anthology'));
+const GalleryPage = lazy(() => import('./pages/gallery'));
+const NotFoundPage = lazy(() => import('./pages/not-found'));
 const AdminShell = lazy(() => import('./pages/admin'));
 const ContentAdmin = lazy(() => import('./pages/admin/content'));
 const GalleryAdmin = lazy(() => import('./pages/admin/gallery'));
@@ -168,18 +168,20 @@ function MainLayout() {
             exit="exit"
             transition={{ duration: 0.4, ease: smoothBounce }}
           >
-            <Routes location={location}>
-              <Route path="/home" element={<HomePage />} />
-              <Route path="/note" element={<NotePage />} />
-              <Route path="/anthology" element={<AnthologyPage />} />
-              <Route path="/gallery" element={<GalleryPage />} />
-              {/* 智能小应用 · 自动信息收集 — 公开端「简报」。
-                  路由顺序：/:topicId/:reportId 必须在 /:topicId 之后，React Router 优先最先匹配。 */}
-              <Route path="/digest" element={<DigestPublicPage />} />
-              <Route path="/digest/:topicId" element={<DigestTopicPage />} />
-              <Route path="/digest/:topicId/:reportId" element={<DigestReportPage />} />
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
+            <Suspense fallback={<LoadingState variant="full" />}>
+              <Routes location={location}>
+                <Route path="/home" element={<HomePage />} />
+                <Route path="/note" element={<NotePage />} />
+                <Route path="/anthology" element={<AnthologyPage />} />
+                <Route path="/gallery" element={<GalleryPage />} />
+                {/* 智能小应用 · 自动信息收集 — 公开端「简报」。
+                    路由顺序：/:topicId/:reportId 必须在 /:topicId 之后，React Router 优先最先匹配。 */}
+                <Route path="/digest" element={<DigestPublicPage />} />
+                <Route path="/digest/:topicId" element={<DigestTopicPage />} />
+                <Route path="/digest/:topicId/:reportId" element={<DigestReportPage />} />
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </Suspense>
           </motion.div>
         </AnimatePresence>
       </main>

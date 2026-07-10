@@ -1,6 +1,6 @@
 // 共享的 Plate 节点转换工具
 
-import type { TElement } from 'platejs';
+import type { Descendant, TElement, TText } from 'platejs';
 
 /**
  * deserializeMd 会把 code_block 的所有行合并成单个 code_line，
@@ -9,13 +9,13 @@ import type { TElement } from 'platejs';
 export function fixCodeBlockLines(nodes: TElement[]): TElement[] {
   return nodes.map((node) => {
     if (node.type !== 'code_block') return node;
-    const fixedChildren: TElement[] = [];
+    const fixedChildren: Descendant[] = [];
     for (const child of node.children as TElement[]) {
       if (child.type !== 'code_line') {
         fixedChildren.push(child);
         continue;
       }
-      const text = (child.children as { text: string }[]).map((c) => c.text).join('');
+      const text = (child.children as TText[]).map((textNode) => textNode.text).join('');
       for (const line of text.split('\n')) {
         fixedChildren.push({ type: 'code_line', children: [{ text: line }] } as TElement);
       }

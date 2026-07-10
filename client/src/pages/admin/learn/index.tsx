@@ -64,7 +64,11 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { CommitForm } from '../components/CommitForm';
-import { PlateMarkdownEditor } from '../components/PlateEditor';
+import {
+  PlateMarkdownEditor,
+  type EditorBridgeHandle,
+  type EditorViewStateSnapshot,
+} from '../components/PlateEditor';
 import { createNotesDraftAdapter, type NotesDraftState } from '../lib/notes-draft-adapter';
 import { useDraftEditor, type DraftEditorController } from '../lib/use-draft-editor';
 import { findClosestCitationAnchor, normalizeAidraftCitationLinks } from './aidraft-citations';
@@ -674,20 +678,65 @@ function NodeScreen({
   const [createChapterOpen, setCreateChapterOpen] = useState(false);
   const [creatingChapter, setCreatingChapter] = useState(false);
   const aiPaneRef = useRef<HTMLDivElement>(null);
+  const rewritePaneRef = useRef<HTMLDivElement>(null);
+  const rewriteEditorBridgeRef = useRef<EditorBridgeHandle | null>(null);
+  const rewriteViewStateRef = useRef<EditorViewStateSnapshot | null>(null);
+  const wasAuroraOpenRef = useRef(false);
+
+  const captureRewriteViewState = useCallback(() => {
+    rewriteViewStateRef.current?.dispose();
+    rewriteViewStateRef.current =
+      rewriteEditorBridgeRef.current?.captureViewState(rewritePaneRef.current) ?? null;
+  }, []);
+
+  const restoreRewriteViewState = useCallback(() => {
+    const snapshot = rewriteViewStateRef.current;
+    if (!snapshot) return;
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        rewriteEditorBridgeRef.current?.restoreViewState(snapshot, rewritePaneRef.current);
+      });
+    });
+  }, []);
+
+  const openAurora = useCallback(() => {
+    captureRewriteViewState();
+    setAuroraOpen(true);
+  }, [captureRewriteViewState]);
 
   useEffect(() => {
     const timers: number[] = [];
     if (auroraOpen) {
+      captureRewriteViewState();
+      wasAuroraOpenRef.current = true;
       queueMicrotask(() => setRewriteVisible(false));
       timers.push(window.setTimeout(() => setSlid(true), FADE_MS));
       timers.push(window.setTimeout(() => setAuroraVisible(true), FADE_MS + SLIDE_MS));
     } else {
+      const shouldRestoreFocus = wasAuroraOpenRef.current;
       queueMicrotask(() => setAuroraVisible(false));
-      timers.push(window.setTimeout(() => setSlid(false), FADE_MS));
-      timers.push(window.setTimeout(() => setRewriteVisible(true), FADE_MS + SLIDE_MS));
+      timers.push(
+        window.setTimeout(() => {
+          setSlid(false);
+        }, FADE_MS),
+      );
+      timers.push(
+        window.setTimeout(() => {
+          wasAuroraOpenRef.current = false;
+          setRewriteVisible(true);
+          if (shouldRestoreFocus) restoreRewriteViewState();
+        }, FADE_MS + SLIDE_MS),
+      );
     }
     return () => timers.forEach((t) => window.clearTimeout(t));
-  }, [auroraOpen]);
+  }, [auroraOpen, captureRewriteViewState, restoreRewriteViewState]);
+
+  useEffect(() => {
+    return () => {
+      rewriteViewStateRef.current?.dispose();
+      rewriteViewStateRef.current = null;
+    };
+  }, []);
 
   // 刷左栏产出:总章重读规划、叶子重读 AI 初稿(只在变化时更新内容,避免闪)。
   const refreshLeft = useCallback(() => {
@@ -783,7 +832,7 @@ function NodeScreen({
   const addSelectionToAurora = () => {
     if (!pending) return;
     setSelections((prev2) => [...prev2, createChatMessageAttachment({ text: pending.text })]);
-    setAuroraOpen(true);
+    openAurora();
     setPending(null);
     window.getSelection()?.removeAllRanges();
   };
@@ -939,7 +988,7 @@ function NodeScreen({
             editor={editor}
             online={online}
             auroraOpen={auroraOpen}
-            onOpenAurora={() => setAuroraOpen(true)}
+            onOpenAurora={openAurora}
           />
         </div>
       </header>
@@ -964,7 +1013,7 @@ function NodeScreen({
               <PlanProduct
                 plan={plan}
                 title={title}
-                onPlanWithAurora={() => setAuroraOpen(true)}
+                onPlanWithAurora={openAurora}
               />
             ) : aiDraft === null ? (
               <div className="flex h-full items-center justify-center">
@@ -1020,7 +1069,7 @@ function NodeScreen({
                   </p>
                 </div>
                 <button
-                  onClick={() => setAuroraOpen(true)}
+                  onClick={openAurora}
                   className="flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-sm font-medium outline-none transition-colors"
                   style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}
                 >
@@ -1041,6 +1090,7 @@ function NodeScreen({
           }}
         >
           <div
+            ref={rewritePaneRef}
             className="h-full overflow-y-auto"
             style={{ opacity: rewriteVisible ? 1 : 0, transition: `opacity ${FADE_MS}ms ease` }}
           >
@@ -1092,6 +1142,7 @@ function NodeScreen({
                     initialMarkdown={editor.state.bodyMarkdown}
                     headingNumbering="note"
                     onChange={(md, isUserEdit) => editor.setBody(md, isUserEdit)}
+                    editorRefSync={rewriteEditorBridgeRef}
                   />
                 </DraftAssetProvider>
               )}
@@ -1173,6 +1224,8 @@ function NodeScreen({
                     // 否则后端 approve 判 sessionKey 不符 → forbidden → 不落库(此前的 bug)。
                     sessionKey={chat.sessionKey}
                     preview={meta}
+                    status={chat.writeApprovalStatuses[callId]}
+                    onStatusChange={chat.setWriteApprovalStatus}
                     onApproved={refreshLeft}
                   />
                 );

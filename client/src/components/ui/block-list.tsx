@@ -15,6 +15,14 @@ import {
   useReadOnly,
 } from 'platejs/react';
 
+import {
+  listClassName,
+  todoListCheckboxClassName,
+  todoListCheckboxWrapperClassName,
+  todoListCheckedClassName,
+  todoListContentClassName,
+  todoListItemClassName,
+} from '@/components/shared/document-static/document-node-styles';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 
@@ -43,7 +51,7 @@ function List(props: PlateElementProps) {
 
   return (
     <List
-      className="relative m-0 p-0"
+      className={listClassName}
       style={{ listStyleType }}
       start={listStart}
     >
@@ -60,14 +68,14 @@ function TodoLi(props: PlateElementProps) {
   const checked = props.element.checked as boolean;
 
   return (
-    <li className={cn('flex list-none items-start gap-2', checked && 'text-muted-foreground line-through')}>
-      <span className="mt-1 shrink-0" contentEditable={false}>
+    <li className={cn(todoListItemClassName, checked && todoListCheckedClassName)}>
+      <span className={todoListCheckboxWrapperClassName} contentEditable={false}>
         <Checkbox
-          className={cn('size-4', readOnly && 'pointer-events-none')}
+          className={cn(todoListCheckboxClassName, readOnly && 'pointer-events-none')}
           {...checkboxProps}
         />
       </span>
-      <span className="flex-1">{props.children}</span>
+      <span className={todoListContentClassName}>{props.children}</span>
     </li>
   );
 }

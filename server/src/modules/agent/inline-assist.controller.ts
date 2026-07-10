@@ -1,3 +1,6 @@
+import { Readable } from 'node:stream';
+import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
+
 import { Body, Controller, Post, Res } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { RawResponse } from '../../common/raw-response.decorator';
@@ -17,6 +20,20 @@ export class InlineAssistController {
   @Post('stream')
   async assistStream(@Body() dto: InlineAssistDto, @Res() reply: FastifyReply) {
     const response = await this.inlineAssistService.assistStream(dto);
-    return reply.send(response);
+
+    response.headers.forEach((value, name) => {
+      reply.header(name, value);
+    });
+    reply.code(response.status);
+
+    // AI SDK returns a Web Response. Fastify accepts Node streams, not the
+    // Response object itself; forwarding it directly causes an immediate 500.
+    return reply.send(
+      response.body
+        ? Readable.fromWeb(
+            response.body as unknown as NodeReadableStream<Uint8Array>,
+          )
+        : undefined,
+    );
   }
 }

@@ -60,13 +60,38 @@ export function getInlineAssistInstruction(action: InlineAssistAction): string {
       return '压缩选中内容或当前段落,保留关键信息,表达更简洁。';
     case 'revise':
       return '修订选中内容或光标附近内容,修正问题并让表达更准确自然。';
-    case 'illustration-plan':
-      return '判断选中文本是否适合画图,并给出可编辑的画法构思。';
     case 'custom':
     case 'continue':
     default:
       return '从光标处自然续写一小段。';
   }
+}
+
+export type InlineAssistViewportRect = {
+  top: number;
+  maxHeight: number;
+};
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+export function fitInlineAssistRectToViewport(
+  top: number,
+  surfaceHeight: number,
+  viewportHeight: number,
+  margin = 12,
+): InlineAssistViewportRect {
+  const maxHeight = Math.max(160, viewportHeight - margin * 2);
+  const visibleSurfaceHeight = Math.min(surfaceHeight, maxHeight);
+  return {
+    maxHeight,
+    top: clampNumber(
+      top,
+      margin,
+      Math.max(margin, viewportHeight - margin - visibleSurfaceHeight),
+    ),
+  };
 }
 
 export function toResolvedSuggestionDescription(

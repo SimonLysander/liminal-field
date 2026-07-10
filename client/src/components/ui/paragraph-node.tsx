@@ -4,11 +4,11 @@ import type { PlateElementProps } from 'platejs/react';
 
 import { PlateElement } from 'platejs/react';
 
-import { cn } from '@/lib/utils';
+import { paragraphClassName } from '@/components/shared/document-static/document-node-styles';
 
 export function ParagraphElement(props: PlateElementProps) {
   return (
-    <PlateElement {...props} className={cn('m-0 px-0 py-1')}>
+    <PlateElement {...props} className={paragraphClassName}>
       {props.children}
     </PlateElement>
   );

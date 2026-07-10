@@ -72,10 +72,7 @@ import { ExternalCacheRepository } from '../../external-cache/external-cache.rep
 import { createWriteLearnPlanTool } from '../tools/write-learn-plan.tool';
 import {
   createWriteDraftTool,
-  validateCitationAudit,
-  validateCitations,
-  type CitationAudit,
-  type DraftSource,
+  validateDraftWriteInput,
 } from '../tools/write-draft.tool';
 import { extractSections } from '../tools/markdown.utils';
 import { createReadContentTool } from '../tools/read-node-content.tool';
@@ -101,22 +98,13 @@ function requireChangeSummary(args: Record<string, unknown>): string | null {
 }
 
 /**
- * write_draft 门禁前置校验:先卡 changeSummary,再卡引用一致性与 citationAudit。
- * 任一不过就 invalid,让模型带着具体错因重调——出处不靠 prompt 自觉,靠门禁兜底。
+ * write_draft 门禁前置校验:先卡 changeSummary，再复用实际落库的参数校验。
+ * 局部重写和整篇覆盖走同一个约束，避免审批卡能通过、提交时才发现参数不合法。
  */
 function validateDraftWrite(args: Record<string, unknown>): string | null {
   const csErr = requireChangeSummary(args);
   if (csErr) return csErr;
-  const md = typeof args['markdown'] === 'string' ? args['markdown'] : '';
-  const sources = Array.isArray(args['sources'])
-    ? (args['sources'] as DraftSource[])
-    : [];
-  const citationErr = validateCitations(md, sources);
-  if (citationErr) return citationErr;
-  return validateCitationAudit(
-    args['citationAudit'] as CitationAudit | undefined,
-    sources,
-  );
+  return validateDraftWriteInput(args);
 }
 
 export interface EntryContext {
@@ -426,10 +414,29 @@ export class ToolAssembler {
                 targetContentItemId: entryContext.learningNoteId,
                 validate: validateDraftWrite, // 缺改动摘要 / 引用悬空都退回让模型补
                 buildPreview: (args) => {
+                  const operation = args['operation'] ?? 'replace_document';
                   const md = (args['markdown'] as string) ?? '';
+                  const sectionPath = Array.isArray(args['sectionPath'])
+                    ? (args['sectionPath'] as string[])
+                    : [];
+                  const sectionMarkdown =
+                    (args['sectionMarkdown'] as string) ?? '';
                   const srcCount = Array.isArray(args['sources'])
                     ? args['sources'].length
                     : 0;
+                  if (operation === 'replace_section') {
+                    const sectionLabel = sectionPath.join(' > ');
+                    return {
+                      summary: (args['changeSummary'] as string) || undefined,
+                      items: [
+                        {
+                          label: sectionLabel,
+                          snippet: sectionMarkdown.slice(0, 120) || undefined,
+                        },
+                      ],
+                      stats: `初稿 · 小节重写 · ${srcCount} 源`,
+                    };
+                  }
                   return {
                     summary: (args['changeSummary'] as string) || undefined,
                     items: extractSections(md, 40), // 小标题 + 各节开头约 40 字

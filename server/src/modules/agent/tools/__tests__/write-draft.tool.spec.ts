@@ -11,6 +11,7 @@ import {
   validateCitations,
   validateCitationAudit,
   composeAiDraftBody,
+  restoreAiDraftMarkdown,
 } from '../write-draft.tool';
 import type { EditorDraftRepository } from '../../../workspace/editor-draft.repository';
 
@@ -25,8 +26,11 @@ const parse = (raw: string) => JSON.parse(raw);
 
 function makeRepo(
   saveReturn: unknown = { _id: 'aidraft:note_001' },
-): jest.Mocked<Pick<EditorDraftRepository, 'saveAiDraft'>> {
+): jest.Mocked<
+  Pick<EditorDraftRepository, 'findAiDraftByContentItemId' | 'saveAiDraft'>
+> {
   return {
+    findAiDraftByContentItemId: jest.fn().mockResolvedValue(null),
     saveAiDraft: jest.fn().mockResolvedValue(saveReturn),
   };
 }
@@ -133,6 +137,60 @@ describe('write-draft.tool', () => {
     expect(result.summary).toContain('citationAudit');
     expect(repo.saveAiDraft).not.toHaveBeenCalled();
   });
+
+  it('局部重写 → 只更新指定小节，保留原有标题、相邻小节与初稿标题', async () => {
+    const repo = makeRepo();
+    repo.findAiDraftByContentItemId.mockResolvedValue({
+      bodyMarkdown: MARKDOWN,
+      title: '原初稿标题',
+    } as never);
+    const t = createWriteDraftTool(repo as never, NOTE_ID);
+
+    const result = parse(
+      await run(t, {
+        operation: 'replace_section',
+        sectionPath: ['光从哪里来', '自然光'],
+        sectionMarkdown: '自然光的方向和色温会随时间变化。',
+        changeSummary: '重写自然光小节，补充方向与色温的关系。',
+        sources: [],
+      }),
+    );
+
+    expect(result.meta.status).toBe('ok');
+    expect(result.summary).toContain('自然光');
+    expect(repo.saveAiDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bodyMarkdown:
+          expect.stringContaining('自然光的方向和色温会随时间变化。'),
+        title: '原初稿标题',
+      }),
+    );
+    const { bodyMarkdown } = (repo.saveAiDraft as jest.Mock).mock
+      .calls[0][0] as {
+      bodyMarkdown: string;
+    };
+    expect(bodyMarkdown).toContain('## 人工光');
+    expect(bodyMarkdown).toContain('灯具提供可控的稳定光源');
+  });
+
+  it('局部重写没有既有 AI 初稿 → 返回错误且不落库', async () => {
+    const repo = makeRepo();
+    const t = createWriteDraftTool(repo as never, NOTE_ID);
+
+    const result = parse(
+      await run(t, {
+        operation: 'replace_section',
+        sectionPath: ['光从哪里来', '自然光'],
+        sectionMarkdown: '新内容。',
+        changeSummary: '重写自然光小节。',
+        sources: [],
+      }),
+    );
+
+    expect(result.meta.status).toBe('error');
+    expect(result.summary).toContain('没有可重写的 AI 初稿');
+    expect(repo.saveAiDraft).not.toHaveBeenCalled();
+  });
 });
 
 describe('validateCitations', () => {
@@ -215,5 +273,17 @@ describe('composeAiDraftBody', () => {
       '[1](https://a#cit-1 "A"),[2](https://b#cit-2 "B"),[3](https://c#cit-3 "C")',
     );
     expect(body).toContain('## 来源');
+  });
+
+  it('局部重写前还原系统生成的引用和来源区', () => {
+    const sources = [{ title: 'A', url: 'https://a' }];
+    const stored = composeAiDraftBody(
+      '# 标题\n\n## 小节\n\n已查证断言[@#CIT 1]。',
+      sources,
+    );
+
+    expect(restoreAiDraftMarkdown(stored, sources)).toBe(
+      '# 标题\n\n## 小节\n\n已查证断言[@#CIT 1]。',
+    );
   });
 });
