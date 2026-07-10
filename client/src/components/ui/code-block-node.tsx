@@ -21,6 +21,7 @@ import {
   codeLineClassName,
 } from '@/components/shared/document-static/document-node-styles';
 import { CodeCopyButton } from '@/components/shared/CodeCopyButton';
+import { codeLanguages, getCodeLanguageLabel } from '@/components/shared/code-languages';
 import { Button } from '@/components/ui/button';
 import {
   Command,
@@ -96,7 +97,7 @@ function CodeBlockCombobox() {
 
   const items = React.useMemo(
     () =>
-      languages.filter(
+      codeLanguages.filter(
         (language) =>
           !searchValue ||
           language.label.toLowerCase().includes(searchValue.toLowerCase())
@@ -106,7 +107,7 @@ function CodeBlockCombobox() {
 
   if (readOnly) {
     // read-only 模式只显示语言标签，样式与编辑器的 Button 对齐
-    const label = languages.find((l) => l.value === value)?.label ?? (value !== 'plaintext' ? value : '');
+    const label = getCodeLanguageLabel(value);
     return label ? (
       <span className="flex h-6 select-none items-center gap-1 px-2 text-muted-foreground text-xs">{label}</span>
     ) : null;
@@ -122,7 +123,7 @@ function CodeBlockCombobox() {
           aria-expanded={open}
           role="combobox"
         >
-          {languages.find((language) => language.value === value)?.label ??
+          {codeLanguages.find((language) => language.value === value)?.label ??
             'Plain Text'}
         </Button>
       </PopoverTrigger>
@@ -180,22 +181,3 @@ export function CodeSyntaxLeaf(props: PlateLeafProps<TCodeSyntaxLeaf>) {
 
   return <PlateLeaf className={tokenClassName} {...props} />;
 }
-
-const languages: { label: string; value: string }[] = [
-  { label: 'Plain Text', value: 'plaintext' },
-  { label: 'HTML', value: 'html' },
-  { label: 'CSS', value: 'css' },
-  { label: 'JavaScript', value: 'javascript' },
-  { label: 'TypeScript', value: 'typescript' },
-  { label: 'Java', value: 'java' },
-  { label: 'Python', value: 'python' },
-  { label: 'Go', value: 'go' },
-  { label: 'Rust', value: 'rust' },
-  { label: 'Shell', value: 'bash' },
-  { label: 'C', value: 'c' },
-  { label: 'C++', value: 'cpp' },
-  { label: 'SQL', value: 'sql' },
-  { label: 'JSON', value: 'json' },
-  { label: 'YAML', value: 'yaml' },
-  { label: 'Markdown', value: 'markdown' },
-];

@@ -223,6 +223,7 @@ describe('StaticDocumentKit', () => {
       'overflow-x-auto',
     );
     expect(document.querySelector('.hljs-keyword')).not.toBeNull();
+    expect(screen.getByText('TypeScript')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'first image' })).toHaveAttribute('src', '/assets/first.jpg');
     expect(screen.getByRole('link', { name: /notes\.pdf/ })).toHaveAttribute('href', '/assets/notes.pdf');
     expect(screen.getByText('first caption')).toBeInTheDocument();
