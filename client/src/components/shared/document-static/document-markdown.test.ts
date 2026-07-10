@@ -1,18 +1,25 @@
 // @vitest-environment node
 
-import { MarkdownPlugin } from '@platejs/markdown';
-import { createSlateEditor, type SlateEditor, type TElement } from 'platejs';
-import { H1Plugin } from '@platejs/basic-nodes/react';
-import { CodeBlockPlugin, CodeLinePlugin } from '@platejs/code-block/react';
-import { LinkPlugin } from '@platejs/link/react';
-import { ListPlugin } from '@platejs/list/react';
+import { BaseH1Plugin as H1Plugin } from '@platejs/basic-nodes';
 import {
-  TableCellHeaderPlugin,
-  TableCellPlugin,
-  TablePlugin,
-  TableRowPlugin,
-} from '@platejs/table/react';
-import { ParagraphPlugin } from 'platejs/react';
+  BaseCodeBlockPlugin as CodeBlockPlugin,
+  BaseCodeLinePlugin as CodeLinePlugin,
+} from '@platejs/code-block';
+import { BaseLinkPlugin as LinkPlugin } from '@platejs/link';
+import { BaseListPlugin as ListPlugin } from '@platejs/list';
+import { MarkdownPlugin } from '@platejs/markdown';
+import {
+  BaseTableCellHeaderPlugin as TableCellHeaderPlugin,
+  BaseTableCellPlugin as TableCellPlugin,
+  BaseTablePlugin as TablePlugin,
+  BaseTableRowPlugin as TableRowPlugin,
+} from '@platejs/table';
+import {
+  BaseParagraphPlugin as ParagraphPlugin,
+  createSlateEditor,
+  type SlateEditor,
+  type TElement,
+} from 'platejs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
