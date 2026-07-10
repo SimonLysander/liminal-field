@@ -67,21 +67,20 @@ const STATIC_VALUE = [
     ],
   },
   {
-    type: 'p',
+    type: 'static_list',
     listStyleType: 'disc',
-    children: [{ text: 'unordered item' }],
+    children: [{ type: 'static_list_item', children: [{ text: 'unordered item' }] }],
   },
   {
-    type: 'p',
+    type: 'static_list',
     listStyleType: 'decimal',
     listStart: 3,
-    children: [{ text: 'ordered item' }],
+    children: [{ type: 'static_list_item', children: [{ text: 'ordered item' }] }],
   },
   {
-    type: 'p',
+    type: 'static_list',
     listStyleType: 'todo',
-    checked: true,
-    children: [{ text: 'task item' }],
+    children: [{ type: 'static_list_item', checked: true, children: [{ text: 'task item' }] }],
   },
   {
     type: 'table',
@@ -118,7 +117,7 @@ const STATIC_VALUE = [
   },
   {
     type: 'img',
-    url: '/assets/second.jpg',
+    url: '/assets/first.jpg',
     alt: 'second image',
     caption: [{ text: 'second caption' }],
     children: [{ text: '' }],
@@ -140,10 +139,22 @@ function renderStaticDocument(value = STATIC_VALUE) {
 }
 
 const CONTIGUOUS_LIST_VALUE = [
-  { type: 'p', listStyleType: 'disc', children: [{ text: 'first bullet' }] },
-  { type: 'p', listStyleType: 'disc', children: [{ text: 'second bullet' }] },
-  { type: 'p', listStyleType: 'decimal', children: [{ text: 'first ordered' }] },
-  { type: 'p', listStyleType: 'decimal', children: [{ text: 'second ordered' }] },
+  {
+    type: 'static_list',
+    listStyleType: 'disc',
+    children: [
+      { type: 'static_list_item', children: [{ text: 'first bullet' }] },
+      { type: 'static_list_item', children: [{ text: 'second bullet' }] },
+    ],
+  },
+  {
+    type: 'static_list',
+    listStyleType: 'decimal',
+    children: [
+      { type: 'static_list_item', children: [{ text: 'first ordered' }] },
+      { type: 'static_list_item', children: [{ text: 'second ordered' }] },
+    ],
+  },
 ] as unknown as Value;
 
 afterEach(() => {
@@ -153,11 +164,13 @@ afterEach(() => {
 });
 
 describe('StaticDocumentKit', () => {
-  it('renders single and consecutive list items without nested duplicate lists', () => {
+  it('renders each contiguous list run in one semantic list container', () => {
     const { container } = renderStaticDocument(CONTIGUOUS_LIST_VALUE);
 
-    expect(container.querySelectorAll('ul')).toHaveLength(2);
-    expect(container.querySelectorAll('ol')).toHaveLength(2);
+    expect(container.querySelectorAll('ul')).toHaveLength(1);
+    expect(container.querySelectorAll('ol')).toHaveLength(1);
+    expect(container.querySelectorAll('ul > li')).toHaveLength(2);
+    expect(container.querySelectorAll('ol > li')).toHaveLength(2);
     expect(container.querySelector('ul ul, ul ol, ol ul, ol ol')).toBeNull();
   });
 
@@ -211,7 +224,7 @@ describe('StaticDocumentKit', () => {
     expect(await screen.findByRole('dialog')).toHaveAttribute('data-lightbox-index', '1');
     expect(screen.getByRole('dialog')).toHaveAttribute(
       'data-lightbox-urls',
-      '/assets/first.jpg,/assets/second.jpg',
+      '/assets/first.jpg,/assets/first.jpg',
     );
   });
 });

@@ -9,19 +9,21 @@ const LazyImageLightbox = React.lazy(() =>
 );
 
 type ImageSource = {
+  path: number[];
   url: string;
 };
 
-function collectImageSources(nodes: TElement[]): ImageSource[] {
+function collectImageSources(nodes: TElement[], parentPath: number[] = []): ImageSource[] {
   const images: ImageSource[] = [];
 
-  for (const node of nodes) {
+  for (const [index, node] of nodes.entries()) {
+    const path = [...parentPath, index];
     if (node.type === 'img' && typeof node.url === 'string' && node.url.length > 0) {
-      images.push({ url: node.url });
+      images.push({ path, url: node.url });
     }
 
     if (Array.isArray(node.children)) {
-      images.push(...collectImageSources(node.children as TElement[]));
+      images.push(...collectImageSources(node.children as TElement[], path));
     }
   }
 
@@ -31,24 +33,26 @@ function collectImageSources(nodes: TElement[]): ImageSource[] {
 export function StaticMediaPreview({
   alt,
   className,
-  element,
+  imagePath,
+  url,
   value,
 }: {
   alt: string;
   className: string;
-  element: TElement;
+  imagePath: number[];
+  url: string;
   value: TElement[];
 }) {
   const [open, setOpen] = React.useState(false);
   const images = React.useMemo(() => collectImageSources(value), [value]);
-  const initialIndex = images.findIndex((image) => image.url === element.url);
-
-  if (typeof element.url !== 'string' || element.url.length === 0) return null;
+  const initialIndex = images.findIndex(
+    (image) => image.path.length === imagePath.length && image.path.every((value, index) => value === imagePath[index]),
+  );
 
   return (
     <>
       <button aria-label={`预览 ${alt}`} onClick={() => setOpen(true)} type="button">
-        <img alt={alt} className={className} src={element.url} />
+        <img alt={alt} className={className} src={url} />
       </button>
       {open && initialIndex >= 0 && (
         <React.Suspense fallback={null}>

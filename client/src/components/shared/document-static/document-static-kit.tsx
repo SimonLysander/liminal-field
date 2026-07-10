@@ -30,7 +30,6 @@ import {
 } from '@platejs/code-block';
 import { BaseDatePlugin } from '@platejs/date';
 import { BaseLinkPlugin } from '@platejs/link';
-import { BaseListPlugin } from '@platejs/list';
 import { BaseEquationPlugin, BaseInlineEquationPlugin } from '@platejs/math';
 import { BaseCaptionPlugin } from '@platejs/caption';
 import { BaseFilePlugin, BaseImagePlugin } from '@platejs/media';
@@ -41,7 +40,7 @@ import {
   BaseTableRowPlugin,
 } from '@platejs/table';
 import { common, createLowlight } from 'lowlight';
-import { BaseParagraphPlugin } from 'platejs';
+import { BaseParagraphPlugin, createSlatePlugin } from 'platejs';
 
 import {
   StaticBlockquoteElement,
@@ -63,7 +62,8 @@ import {
   StaticItalicLeaf,
   StaticKbdLeaf,
   StaticLinkElement,
-  StaticListBelowNodes,
+  StaticListElement,
+  StaticListItemElement,
   StaticParagraphElement,
   StaticStrikethroughLeaf,
   StaticSubscriptLeaf,
@@ -80,6 +80,16 @@ import {
 } from './document-static-code';
 
 const lowlight = createLowlight(common);
+
+const StaticListPlugin = createSlatePlugin({
+  key: 'static_list',
+  node: { isElement: true },
+}).withComponent(StaticListElement);
+
+const StaticListItemPlugin = createSlatePlugin({
+  key: 'static_list_item',
+  node: { isElement: true },
+}).withComponent(StaticListItemElement);
 
 export const StaticDocumentKit = [
   BaseParagraphPlugin.withComponent(StaticParagraphElement),
@@ -105,7 +115,8 @@ export const StaticDocumentKit = [
   BaseFontSizePlugin.withComponent(StaticFontSizeLeaf),
   BaseFontFamilyPlugin.withComponent(StaticFontFamilyLeaf),
   BaseLinkPlugin.withComponent(StaticLinkElement),
-  BaseListPlugin.configure({ render: { belowNodes: StaticListBelowNodes } }),
+  StaticListPlugin,
+  StaticListItemPlugin,
   BaseTablePlugin.withComponent(StaticTableElement),
   BaseTableRowPlugin.withComponent(StaticTableRowElement),
   BaseTableCellPlugin.withComponent(StaticTableCellElement),

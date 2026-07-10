@@ -136,6 +136,96 @@ describe('document Markdown parsing contract', () => {
     ]);
   });
 
+  it('converts consecutive indented list paragraphs into static list semantics', () => {
+    const nodes = normalizeDocumentNodes([
+      {
+        type: 'p',
+        indent: 1,
+        listStyleType: 'disc',
+        children: [{ text: 'Parent item', bold: true }],
+      },
+      {
+        type: 'p',
+        indent: 2,
+        listStyleType: 'disc',
+        children: [{ text: 'Nested item' }],
+      },
+      {
+        type: 'p',
+        indent: 1,
+        listStyleType: 'disc',
+        children: [{ text: 'Second parent item' }],
+      },
+      {
+        type: 'p',
+        indent: 1,
+        listStart: 3,
+        listStyleType: 'decimal',
+        children: [{ text: 'Ordered item' }],
+      },
+      { type: 'p', children: [{ text: 'Separating paragraph' }] },
+      {
+        type: 'p',
+        indent: 1,
+        checked: true,
+        listStyleType: 'todo',
+        children: [{ text: 'Task item' }],
+      },
+    ] as TElement[]);
+
+    expect(nodes).toEqual([
+      {
+        type: 'static_list',
+        listStyleType: 'disc',
+        children: [
+          {
+            type: 'static_list_item',
+            children: [
+              { text: 'Parent item', bold: true },
+              {
+                type: 'static_list',
+                listStyleType: 'disc',
+                children: [
+                  {
+                    type: 'static_list_item',
+                    children: [{ text: 'Nested item' }],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            type: 'static_list_item',
+            children: [{ text: 'Second parent item' }],
+          },
+        ],
+      },
+      {
+        type: 'static_list',
+        listStart: 3,
+        listStyleType: 'decimal',
+        children: [
+          {
+            type: 'static_list_item',
+            children: [{ text: 'Ordered item' }],
+          },
+        ],
+      },
+      { type: 'p', children: [{ text: 'Separating paragraph' }] },
+      {
+        type: 'static_list',
+        listStyleType: 'todo',
+        children: [
+          {
+            type: 'static_list_item',
+            checked: true,
+            children: [{ text: 'Task item' }],
+          },
+        ],
+      },
+    ]);
+  });
+
   it('preserves literal date placeholder text while restoring real date tags', () => {
     const literalPlaceholder = '%%DATE:2025-01-01%%';
     const nodes = deserializeDocumentMarkdown(
@@ -215,6 +305,33 @@ describe('document Markdown parsing contract', () => {
       { type: 'code_line', children: [{ text: 'const first = 1;' }] },
       { type: 'code_line', children: [{ text: 'const second = 2;' }] },
     ]);
+
+    expect(nodes).toEqual(
+      expect.arrayContaining([
+        {
+          type: 'static_list',
+          listStyleType: 'disc',
+          children: [
+            {
+              type: 'static_list_item',
+              children: [
+                { text: 'Parent item' },
+                {
+                  type: 'static_list',
+                  listStyleType: 'disc',
+                  children: [
+                    {
+                      type: 'static_list_item',
+                      children: [{ text: 'Nested item' }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ]),
+    );
   });
 
   it('returns an empty value for empty Markdown', () => {

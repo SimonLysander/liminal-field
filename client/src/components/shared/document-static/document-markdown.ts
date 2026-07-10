@@ -10,6 +10,11 @@ type DocumentNode = {
   [key: string]: unknown;
 };
 
+type StaticListContext = {
+  indent: number;
+  list: DocumentNode;
+};
+
 const DATE_TAG_RE = /<date\s+value="([^"]+)"\s*\/>/g;
 const DATE_MARKER_START = '\uE000';
 const DATE_MARKER_END = '\uE001';
@@ -90,9 +95,125 @@ function restoreDatePlaceholders(nodes: DocumentNode[]): DocumentNode[] {
   });
 }
 
+function isListParagraph(node: DocumentNode): boolean {
+  return node.type === 'p' && typeof node.listStyleType === 'string';
+}
+
+function getListIndent(node: DocumentNode): number {
+  const indent = node.indent;
+
+  return typeof indent === 'number' && Number.isFinite(indent) && indent > 0
+    ? Math.floor(indent)
+    : 1;
+}
+
+function createStaticList(node: DocumentNode): DocumentNode {
+  const list: DocumentNode = {
+    type: 'static_list',
+    listStyleType: node.listStyleType,
+    children: [],
+  };
+
+  if (typeof node.listStart === 'number') list.listStart = node.listStart;
+
+  return list;
+}
+
+function createStaticListItem(node: DocumentNode): DocumentNode {
+  const item: DocumentNode = {
+    type: 'static_list_item',
+    children: node.children ?? [{ text: '' }],
+  };
+
+  if (node.listStyleType === 'todo') item.checked = node.checked === true;
+
+  return item;
+}
+
+function appendStaticList(
+  list: DocumentNode,
+  parent: StaticListContext | undefined,
+  roots: DocumentNode[],
+): void {
+  if (!parent) {
+    roots.push(list);
+    return;
+  }
+
+  const parentItems = parent.list.children ?? [];
+  const parentItem = parentItems.at(-1);
+
+  if (!parentItem) {
+    roots.push(list);
+    return;
+  }
+
+  parentItem.children ??= [];
+  parentItem.children.push(list);
+}
+
+function normalizeListRun(nodes: DocumentNode[]): DocumentNode[] {
+  const roots: DocumentNode[] = [];
+  const stack: StaticListContext[] = [];
+
+  for (const node of nodes) {
+    const indent = getListIndent(node);
+    const listStyleType = node.listStyleType;
+
+    while (stack.length > 0 && indent < stack.at(-1)!.indent) stack.pop();
+
+    let current = stack.at(-1);
+    if (current?.indent === indent && current.list.listStyleType !== listStyleType) {
+      stack.pop();
+      current = stack.at(-1);
+    }
+
+    if (!current || current.indent !== indent || current.list.listStyleType !== listStyleType) {
+      const list = createStaticList(node);
+      appendStaticList(list, current, roots);
+      current = { indent, list };
+      stack.push(current);
+    }
+
+    current.list.children!.push(createStaticListItem(node));
+  }
+
+  return roots;
+}
+
+/**
+ * Markdown deserializes indent-based list paragraphs. Static rendering needs
+ * real list containers, so this transient conversion keeps Markdown as the
+ * stored format while producing semantic list nodes for the reader only.
+ */
+function normalizeStaticLists(nodes: DocumentNode[]): DocumentNode[] {
+  const normalized = nodes.map((node) =>
+    node.children ? { ...node, children: normalizeStaticLists(node.children) } : node,
+  );
+  const result: DocumentNode[] = [];
+
+  for (let index = 0; index < normalized.length; ) {
+    const node = normalized[index];
+    if (!isListParagraph(node)) {
+      result.push(node);
+      index += 1;
+      continue;
+    }
+
+    const run: DocumentNode[] = [];
+    while (index < normalized.length && isListParagraph(normalized[index])) {
+      run.push(normalized[index]);
+      index += 1;
+    }
+    result.push(...normalizeListRun(run));
+  }
+
+  return result;
+}
+
 export function normalizeDocumentNodes(nodes: TElement[]): TElement[] {
   const restored = restoreDatePlaceholders(nodes as DocumentNode[]) as TElement[];
-  return fixCodeBlockLines(restored);
+  return fixCodeBlockLines(normalizeStaticLists(restored as DocumentNode[]) as TElement[]);
 }
 
 export function deserializeDocumentMarkdown(

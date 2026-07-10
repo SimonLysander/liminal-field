@@ -6,10 +6,17 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 type CodeCopyButtonProps = {
+  copyAriaLabel?: string;
+  copyTitle?: string;
   value: (() => string) | string;
-} & Omit<React.ComponentProps<typeof Button>, 'value'>;
+} & Omit<React.ComponentProps<typeof Button>, 'aria-label' | 'title' | 'value'>;
 
-export function CodeCopyButton({ value, ...props }: CodeCopyButtonProps) {
+export function CodeCopyButton({
+  copyAriaLabel = '复制全部代码',
+  copyTitle = copyAriaLabel,
+  value,
+  ...props
+}: CodeCopyButtonProps) {
   const [hasCopied, setHasCopied] = React.useState(false);
 
   React.useEffect(() => {
@@ -22,8 +29,8 @@ export function CodeCopyButton({ value, ...props }: CodeCopyButtonProps) {
 
   return (
     <Button
-      aria-label={hasCopied ? '已复制' : '复制全部代码'}
-      title={hasCopied ? '已复制' : '复制全部代码'}
+      aria-label={hasCopied ? '已复制' : copyAriaLabel}
+      title={hasCopied ? '已复制' : copyTitle}
       onClick={() => {
         void navigator.clipboard.writeText(typeof value === 'function' ? value() : value);
         setHasCopied(true);

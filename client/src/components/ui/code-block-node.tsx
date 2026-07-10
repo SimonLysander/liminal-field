@@ -3,7 +3,7 @@
 import * as React from 'react';
 
 import { formatCodeBlock, isLangSupported } from '@platejs/code-block';
-import { BracesIcon, Check, CheckIcon, CopyIcon } from 'lucide-react';
+import { BracesIcon, Check } from 'lucide-react';
 import { type TCodeBlockElement, type TCodeSyntaxLeaf, NodeApi } from 'platejs';
 import {
   type PlateElementProps,
@@ -20,6 +20,7 @@ import {
   codeBlockPreStyle,
   codeLineClassName,
 } from '@/components/shared/document-static/document-node-styles';
+import { CodeCopyButton } from '@/components/shared/CodeCopyButton';
 import { Button } from '@/components/ui/button';
 import {
   Command,
@@ -63,7 +64,9 @@ export function CodeBlockElement(props: PlateElementProps<TCodeBlockElement>) {
 
           <CodeBlockCombobox />
 
-          <CopyButton
+          <CodeCopyButton
+            copyAriaLabel="复制"
+            copyTitle="复制全部代码"
             size="icon"
             variant="ghost"
             className="size-6 gap-1 text-muted-foreground text-xs"
@@ -165,56 +168,6 @@ function CodeBlockCombobox() {
         </Command>
       </PopoverContent>
     </Popover>
-  );
-}
-
-function CopyButton({
-  value,
-  ...props
-}: { value: (() => string) | string } & Omit<
-  React.ComponentProps<typeof Button>,
-  'value'
->) {
-  const [hasCopied, setHasCopied] = React.useState(false);
-
-  // 1.5s 后回到 Copy；只在 hasCopied=true 时 schedule，避免初次 mount 也跑一遍。
-  React.useEffect(() => {
-    if (!hasCopied) return;
-    const t = window.setTimeout(() => setHasCopied(false), 1500);
-    return () => window.clearTimeout(t);
-  }, [hasCopied]);
-
-  return (
-    <Button
-      aria-label={hasCopied ? '已复制' : '复制'}
-      title={hasCopied ? '已复制' : '复制全部代码'}
-      onClick={() => {
-        void navigator.clipboard.writeText(
-          typeof value === 'function' ? value() : value,
-        );
-        setHasCopied(true);
-      }}
-      {...props}
-    >
-      {/* Copy / Check 图标重叠同一格 + opacity 渐变，按钮宽度不变。
-       *  之前试过加 "已复制" 文案 + 滑入动画 —— 文案撑宽按钮把语言选择器
-       *  挤重叠。撤回，反馈靠图标切换 + title tooltip 表达。 */}
-      <span className="relative inline-flex items-center">
-        <CopyIcon
-          className={cn(
-            '!size-3 transition-opacity duration-150',
-            hasCopied ? 'opacity-0' : 'opacity-100',
-          )}
-        />
-        <CheckIcon
-          className={cn(
-            '!size-3 absolute left-0 top-0 transition-opacity duration-150',
-            hasCopied ? 'opacity-100' : 'opacity-0',
-          )}
-          style={{ color: 'var(--accent)' }}
-        />
-      </span>
-    </Button>
   );
 }
 

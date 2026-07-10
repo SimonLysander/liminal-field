@@ -15,7 +15,7 @@ import type {
   TTableElement,
 } from 'platejs';
 import { NodeApi } from 'platejs';
-import type { SlateElementProps, SlateLeafProps, SlateRenderElementProps } from 'platejs/static';
+import type { SlateElementProps, SlateLeafProps } from 'platejs/static';
 import { SlateElement, SlateLeaf } from 'platejs/static';
 
 import {
@@ -88,40 +88,44 @@ export function StaticParagraphElement(props: SlateElementProps) {
   return <SlateElement {...props} className={paragraphClassName} />;
 }
 
-/**
- * BaseListPlugin is retained for Markdown parsing and list normalization, but
- * its default wrapper would add a second list around a static paragraph.
- * This renderer keeps the editor's per-item list structure without nesting it.
- */
-export function StaticListBelowNodes(props: SlateRenderElementProps) {
+export function StaticListElement(props: SlateElementProps) {
   const element = props.element as StaticElement;
   const listStyleType = typeof element.listStyleType === 'string' ? element.listStyleType : undefined;
+  const List = isOrderedList(element) ? 'ol' : 'ul';
 
-  if (!listStyleType) return;
+  return (
+    <SlateElement
+      {...props}
+      as={List}
+      className={listClassName}
+      attributes={{
+        ...props.attributes,
+        start: List === 'ol' ? (element.listStart as number | undefined) : undefined,
+      }}
+      style={{ listStyleType }}
+    />
+  );
+}
 
-  return function StaticListWrapper({ children }: SlateRenderElementProps) {
-    const List = isOrderedList(element) ? 'ol' : 'ul';
-    const checked = element.checked === true;
+export function StaticListItemElement(props: SlateElementProps) {
+  const element = props.element as StaticElement;
+  const isTodo = typeof element.checked === 'boolean';
+  const checked = element.checked === true;
 
-    return (
-      <List
-        className={listClassName}
-        start={List === 'ol' ? (element.listStart as number | undefined) : undefined}
-        style={{ listStyleType }}
-      >
-        {listStyleType === 'todo' ? (
-          <li className={`${todoListItemClassName} ${checked ? todoListCheckedClassName : ''}`}>
-            <span className={todoListCheckboxWrapperClassName}>
-              <input checked={checked} className={todoListCheckboxClassName} readOnly type="checkbox" />
-            </span>
-            <span className={todoListContentClassName}>{children}</span>
-          </li>
-        ) : (
-          <li>{children}</li>
-        )}
-      </List>
-    );
-  };
+  if (!isTodo) return <SlateElement {...props} as="li" />;
+
+  return (
+    <SlateElement
+      {...props}
+      as="li"
+      className={`${todoListItemClassName} ${checked ? todoListCheckedClassName : ''}`}
+    >
+      <span className={todoListCheckboxWrapperClassName}>
+        <input checked={checked} className={todoListCheckboxClassName} readOnly type="checkbox" />
+      </span>
+      <span className={todoListContentClassName}>{props.children}</span>
+    </SlateElement>
+  );
 }
 
 export function StaticHeadingElement({
@@ -229,7 +233,8 @@ export function StaticImageElement(props: SlateElementProps<TImageElement>) {
           <StaticMediaPreview
             alt={alt}
             className={`${mediaImageLayoutClassName} ${mediaImageClassName}`}
-            element={element}
+            imagePath={props.path}
+            url={element.url}
             value={props.editor.children as TElement[]}
           />
         ) : (
