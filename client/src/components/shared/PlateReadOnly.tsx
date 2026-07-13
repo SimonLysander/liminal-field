@@ -23,6 +23,7 @@ import { motion } from 'motion/react';
 import { deserializeDocumentMarkdown } from './document-static/document-markdown';
 import { StaticDocumentKit } from './document-static/document-static-kit';
 import {
+  applyHeadingNumbering,
   getHeadingNumberingClass,
   type HeadingNumberingInput,
 } from './heading-numbering';
@@ -90,12 +91,13 @@ export default function PlateReadOnly({
     if (!ready) return;
     const container = containerRef.current;
     if (!container) return;
+    applyHeadingNumbering(container, headingNumbering);
     const headings = container.querySelectorAll('h1, h2, h3');
     headings.forEach((el, i) => {
       el.setAttribute('data-heading-id', `heading-${i}`);
     });
     onHeadingsMarkedRef.current?.();
-  }, [ready, processedMarkdown]);
+  }, [headingNumbering, ready, processedMarkdown]);
 
   if (!ready || isPending) {
     return <ReadOnlySkeleton />;

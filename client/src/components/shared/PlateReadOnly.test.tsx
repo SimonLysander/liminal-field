@@ -22,21 +22,34 @@ describe('PlateReadOnly', () => {
     const { container } = render(
       <PlateReadOnly
         headingNumbering="note"
-        markdown={'# First heading\n\n## Second heading\n\nVisible body'}
+        markdown={'# First heading\n\n## Second heading\n\n## Third heading\n\n# Fourth heading\n\n## Fifth heading\n\nVisible body'}
         onHeadingsMarked={onHeadingsMarked}
       />,
     );
 
-    const firstHeading = await screen.findByRole('heading', { name: 'First heading' });
+    const firstHeading = await screen.findByRole(
+      'heading',
+      { name: 'First heading' },
+      { timeout: 3000 },
+    );
 
     await waitFor(() => {
       expect(onHeadingsMarked).toHaveBeenCalledTimes(1);
     });
 
     expect(firstHeading).toHaveAttribute('data-heading-id', 'heading-0');
+    expect(firstHeading).toHaveAttribute('data-heading-number', '一、');
     expect(screen.getByRole('heading', { name: 'Second heading' })).toHaveAttribute(
       'data-heading-id',
       'heading-1',
+    );
+    expect(screen.getByRole('heading', { name: 'Second heading' })).toHaveAttribute(
+      'data-heading-number',
+      '1.1',
+    );
+    expect(screen.getByRole('heading', { name: 'Fifth heading' })).toHaveAttribute(
+      'data-heading-number',
+      '2.1',
     );
     expect(container.firstElementChild).toHaveClass('heading-numbering-note');
     expect(container.querySelector('[contenteditable]')).toBeNull();
