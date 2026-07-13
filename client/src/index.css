@@ -609,22 +609,10 @@ body:not(.gallery-immersive)::after {
   font-family: var(--font-mono);
 }
 
-/* 标题层级编号 — 纯视觉 counter,不写入 Markdown/剪贴板数据。 */
-.heading-numbering-note [data-slate-editor] {
-  counter-reset: editor-h1 editor-h2;
-}
+/* 标题层级编号 — 纯视觉属性,不写入 Markdown/剪贴板数据。 */
 
-.heading-numbering-note [data-slate-editor] h1 {
-  counter-increment: editor-h1;
-  counter-reset: editor-h2;
-}
-
-.heading-numbering-note [data-slate-editor] h2 {
-  counter-increment: editor-h2;
-}
-
-.heading-numbering-note [data-slate-editor] h1::before,
-.heading-numbering-note [data-slate-editor] h2::before {
+.heading-numbering-note [data-slate-editor] h1[data-heading-number]::before,
+.heading-numbering-note [data-slate-editor] h2[data-heading-number]::before {
   display: inline-block;
   margin-right: 0.28em;
   color: inherit;
@@ -633,12 +621,12 @@ body:not(.gallery-immersive)::after {
   opacity: 0.92;
 }
 
-.heading-numbering-note [data-slate-editor] h1::before {
-  content: counter(editor-h1, cjk-ideographic) "、";
+.heading-numbering-note [data-slate-editor] h1[data-heading-number]::before {
+  content: attr(data-heading-number);
 }
 
-.heading-numbering-note [data-slate-editor] h2::before {
-  content: counter(editor-h1) "." counter(editor-h2);
+.heading-numbering-note [data-slate-editor] h2[data-heading-number]::before {
+  content: attr(data-heading-number);
 }
 
 .heading-numbering-anthology [data-slate-editor] {

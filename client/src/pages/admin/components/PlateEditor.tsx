@@ -48,6 +48,7 @@ import { FloatingToolbar } from '@/components/ui/floating-toolbar';
 import { FloatingToolbarButtons } from '@/components/ui/floating-toolbar-buttons';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
+  applyHeadingNumbering,
   getHeadingNumberingClass,
   type HeadingNumberingInput,
 } from '@/components/shared/heading-numbering';
@@ -438,6 +439,8 @@ export function PlateMarkdownEditor({
   const [toolbarSuppressed, setToolbarSuppressed] = useState(false);
   const [inlineAssistState, setInlineAssistState] = useState<InlineAssistState>({ status: 'idle' });
   const [inlineAssistMenuSession, setInlineAssistMenuSession] = useState(0);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
+  const headingNumberFrameRef = useRef<number | null>(null);
   const toolbarSuppressTimerRef = useRef<number | null>(null);
   const inlineAssistAbortRef = useRef<AbortController | null>(null);
   const inlineAssistStateRef = useRef<InlineAssistState>(inlineAssistState);
@@ -450,6 +453,15 @@ export function PlateMarkdownEditor({
     () => toEditorAssetUrls(initialMarkdown || '', contentItemId),
     [contentItemId, initialMarkdown],
   );
+
+  const scheduleHeadingNumbering = useCallback(() => {
+    if (headingNumberFrameRef.current !== null) return;
+    headingNumberFrameRef.current = window.requestAnimationFrame(() => {
+      headingNumberFrameRef.current = null;
+      const container = editorContainerRef.current;
+      if (container) applyHeadingNumbering(container, headingNumbering);
+    });
+  }, [headingNumbering]);
 
   const editor = usePlateEditor(
     {
@@ -471,6 +483,7 @@ export function PlateMarkdownEditor({
 
   const handleChange = useCallback(() => {
     if (!editor) return;
+    scheduleHeadingNumbering();
     if (inlineAssistStateRef.current.status !== 'idle') return;
     if (hasInlineAssistPreview(editor.children as Descendant[])) return;
     if (hasTransientEditorNode(editor.children as Descendant[])) return;
@@ -503,7 +516,19 @@ export function PlateMarkdownEditor({
     } catch {
       /* Serialize can fail during rapid edits — skip, next change will catch up */
     }
-  }, [contentItemId, editor, onChange]);
+  }, [contentItemId, editor, onChange, scheduleHeadingNumbering]);
+
+  useEffect(() => {
+    scheduleHeadingNumbering();
+  }, [scheduleHeadingNumbering]);
+
+  useEffect(() => {
+    return () => {
+      if (headingNumberFrameRef.current !== null) {
+        window.cancelAnimationFrame(headingNumberFrameRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     inlineAssistStateRef.current = inlineAssistState;
@@ -914,6 +939,7 @@ export function PlateMarkdownEditor({
           onProposalUiChange={onProposalUiChange}
         >
           <EditorContainer
+            ref={editorContainerRef}
             className={`prose-draft-editor-surface ${getHeadingNumberingClass(headingNumbering)}`}
             onPointerDownCapture={() => setToolbarSuppressed(false)}
             style={isInlineAssistActive ? { pointerEvents: 'none' } : undefined}
