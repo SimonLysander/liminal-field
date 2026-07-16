@@ -163,6 +163,16 @@ const groups: SlashGroup[] = [
         label: '日期',
         value: KEYS.date,
       },
+    ].map((item) => ({
+      ...item,
+      onSelect: (editor: PlateEditor, value: string) => {
+        insertInlineElement(editor, value);
+      },
+    })),
+  },
+  {
+    group: '公式',
+    items: [
       {
         icon: <RadicalIcon />,
         keywords: ['math', 'latex', '公式', '数学'],
