@@ -61,7 +61,15 @@ import {
   Sun,
   X,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type ReactNode,
+} from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { CommitForm } from '../components/CommitForm';
 import {
@@ -71,7 +79,12 @@ import {
 } from '../components/PlateEditor';
 import { createNotesDraftAdapter, type NotesDraftState } from '../lib/notes-draft-adapter';
 import { useDraftEditor, type DraftEditorController } from '../lib/use-draft-editor';
-import { findClosestCitationAnchor, normalizeAidraftCitationLinks } from './aidraft-citations';
+import {
+  cloneWithoutCitationAnchors,
+  findClosestCitationAnchor,
+  normalizeAidraftCitationLinks,
+  removeAidraftCitationMarkers,
+} from './aidraft-citations';
 import { CreateLearningChapterDialog } from './CreateLearningChapterDialog';
 import { LearningDraftTitleInput } from './LearningDraftTitleInput';
 import {
@@ -829,6 +842,24 @@ function NodeScreen({
     return () => pane.removeEventListener('click', handleCitationClick);
   }, [studied, aiDraft]);
 
+  const handleAiDraftCopy = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
+    const selection = window.getSelection();
+    const pane = aiPaneRef.current;
+    if (!selection || selection.rangeCount === 0 || !pane) return;
+
+    const range = selection.getRangeAt(0);
+    if (!pane.contains(range.startContainer) || !pane.contains(range.endContainer)) return;
+
+    const selected = range.cloneContents();
+    if (!selected.querySelector('a[href*="#cit-"]')) return;
+
+    const wrapper = document.createElement('div');
+    wrapper.append(cloneWithoutCitationAnchors(selected));
+    event.preventDefault();
+    event.clipboardData.setData('text/plain', wrapper.innerText || wrapper.textContent || '');
+    event.clipboardData.setData('text/html', wrapper.innerHTML);
+  }, []);
+
   const addSelectionToAurora = () => {
     if (!pending) return;
     setSelections((prev2) => [...prev2, createChatMessageAttachment({ text: pending.text })]);
@@ -1006,6 +1037,7 @@ function NodeScreen({
           }}
           onPointerUp={!isTopic && studied ? scheduleDraftSelectionPopover : undefined}
           onKeyUp={!isTopic && studied ? scheduleDraftSelectionPopover : undefined}
+          onCopy={!isTopic && studied ? handleAiDraftCopy : undefined}
           onBlurCapture={() => setPending(null)}
         >
           <div className="h-full overflow-y-auto">
@@ -1035,7 +1067,7 @@ function NodeScreen({
                   </div>
                   <CopyPageButton
                     page={{
-                      bodyMarkdown: displayAiDraft,
+                      bodyMarkdown: removeAidraftCitationMarkers(displayAiDraft),
                       metadata: [
                         { key: 'scope', label: '范围', value: 'learning' },
                         { key: 'topic', label: '主题', value: data.topicTitle },

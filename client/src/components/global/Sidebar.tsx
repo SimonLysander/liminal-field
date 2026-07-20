@@ -17,9 +17,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useSearchHotkey } from '@/hooks/use-search-hotkey';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Sun, Moon } from 'lucide-react';
 import { Logo } from '@/components/Logo';
 import { SearchPanel } from '@/components/global/SearchPanel';
 import { useTheme } from '@/hooks/use-theme';
@@ -28,7 +27,9 @@ import type { StructureNode } from '@/services/structure';
 import { anthologyApi } from '@/services/workspace';
 import type { AnthologyPublicListItem, AnthologyPublicDetail } from '@/services/workspace';
 import { FileText, Search, ChevronLeft } from 'lucide-react';
-import { type Space, spaces, labels, NavIcons, spaceToPath, pathToSpace } from './nav-spaces';
+import { type Space, spaces, labels, spaceToPath, pathToSpace } from './nav-spaces';
+import { AnimateIconsNavIcon } from './AnimateIconsNavIcon';
+import { ThemeToggleIcon } from './ThemeToggleIcon';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import { LoadingState } from '@/components/LoadingState';
 
@@ -36,6 +37,10 @@ import { LoadingState } from '@/components/LoadingState';
 
 /* Space / spaces / labels / NavIcons / spaceToPath / pathToSpace
  * 均从 nav-spaces 共享模块导入（Sidebar 与 BottomTabBar 单一来源）。 */
+
+function NavigationIcon({ space, isHovered }: { space: Space; isHovered: boolean }) {
+  return <AnimateIconsNavIcon space={space} size={16} duration={1.2} isHovered={isHovered} />;
+}
 
 function getAmbientPhrase() {
   const h = new Date().getHours();
@@ -157,6 +162,7 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const active = pathToSpace(location.pathname);
   const { theme, setTheme } = useTheme();
+  const reducedMotion = useReducedMotion() ?? false;
 
   /* ── 全局搜索 ⌘K ────────────────────────────────── */
   const { searchOpen, setSearchOpen } = useSearchHotkey();
@@ -165,6 +171,7 @@ export default function Sidebar() {
    *   at   = ancestor topic,当前钻入的文件夹节点 id(用于推 currentParentId)
    *   node = 当前选中/打开的内容节点 id(叶子文档或主题正文) */
   const [searchParams, setSearchParams] = useSearchParams();
+  const [hoveredSpace, setHoveredSpace] = useState<Space | null>(null);
   const activeTopicId = searchParams.get('at');
   const activeNoteId = searchParams.get('node');
 
@@ -315,37 +322,41 @@ export default function Sidebar() {
 
       {/* Main navigation — 始终显示所有 tab */}
       <nav className="flex flex-col gap-0.5 px-2">
-        {spaces.map((space) => (
-          <div
-            key={space}
-            className="nav-item relative flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors duration-150"
-            onClick={() => handleNavigate(space)}
-          >
-            {space === active && (
-              <motion.span
-                className="absolute inset-0 rounded-lg"
-                style={{ background: 'var(--shelf)' }}
-                layoutId="nav-active"
-                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-              />
-            )}
-            <span
-              className="relative z-[1] flex items-center transition-colors duration-200"
-              style={{ color: space === active ? 'var(--accent)' : 'var(--ink-faded)' }}
+        {spaces.map((space) => {
+          return (
+            <div
+              key={space}
+              className="nav-item relative flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors duration-150"
+              onClick={() => handleNavigate(space)}
+              onMouseEnter={() => setHoveredSpace(space)}
+              onMouseLeave={() => setHoveredSpace((current) => (current === space ? null : current))}
             >
-              {(() => { const Icon = NavIcons[space]; return <Icon size={16} strokeWidth={1.5} />; })()}
-            </span>
-            <span
-              className="relative z-[1] text-base transition-colors duration-200"
-              style={{
-                color: space === active ? 'var(--ink)' : 'var(--ink-faded)',
-                fontWeight: space === active ? 500 : 400,
-              }}
-            >
-              {labels[space]}
-            </span>
-          </div>
-        ))}
+              {space === active && (
+                <motion.span
+                  className="absolute inset-0 rounded-lg"
+                  style={{ background: 'var(--shelf)' }}
+                  layoutId="nav-active"
+                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                />
+              )}
+              <span
+                className="relative z-[1] flex items-center transition-colors duration-200"
+                style={{ color: space === active ? 'var(--accent)' : 'var(--ink-faded)' }}
+              >
+                <NavigationIcon space={space} isHovered={hoveredSpace === space} />
+              </span>
+              <span
+                className="relative z-[1] text-base transition-colors duration-200"
+                style={{
+                  color: space === active ? 'var(--ink)' : 'var(--ink-faded)',
+                  fontWeight: space === active ? 500 : 400,
+                }}
+              >
+                {labels[space]}
+              </span>
+            </div>
+          );
+        })}
       </nav>
 
       {/* Sub-nav: Notes — tree drill-down, fetches per level */}
@@ -650,8 +661,7 @@ export default function Sidebar() {
           aria-label="切换主题"
           title="切换主题"
         >
-          <Sun size={13} strokeWidth={1.5} className="theme-icon-light" />
-          <Moon size={13} strokeWidth={1.5} className="theme-icon-dark" />
+          <ThemeToggleIcon theme={theme} reducedMotion={reducedMotion} />
         </button>
       </div>
     </aside>

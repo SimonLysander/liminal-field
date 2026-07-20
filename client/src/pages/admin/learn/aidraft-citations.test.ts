@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  cloneWithoutCitationAnchors,
   findClosestCitationAnchor,
   normalizeAidraftCitationLinks,
+  removeAidraftCitationMarkers,
 } from './aidraft-citations';
 
 describe('normalizeAidraftCitationLinks', () => {
@@ -79,5 +81,50 @@ describe('findClosestCitationAnchor', () => {
 
     expect(findClosestCitationAnchor(text)).toBeNull();
     expect(findClosestCitationAnchor(anchor)).toBeNull();
+  });
+});
+
+describe('removeAidraftCitationMarkers', () => {
+  it('删除正文 citation 角标并保留来源清单', () => {
+    const md = [
+      'React 16 于 2017 发布[1](https://r.dev/16#cit-1 "React 博客")。',
+      '这个版本带来了新的渲染能力[@#CIT 2]。',
+      '',
+      '## 来源',
+      '',
+      '1. [React 博客](https://r.dev/16)',
+    ].join('\n');
+
+    const copied = removeAidraftCitationMarkers(md);
+
+    expect(copied).toContain('React 16 于 2017 发布。');
+    expect(copied).toContain('这个版本带来了新的渲染能力。');
+    expect(copied).toContain('1. [React 博客](https://r.dev/16)');
+    expect(copied).not.toContain('#cit-1');
+    expect(copied).not.toContain('@#CIT 2');
+  });
+});
+
+describe('cloneWithoutCitationAnchors', () => {
+  it('复制局部富文本时移除 citation 链接而保留其他节点', () => {
+    const source = document.createDocumentFragment();
+    const paragraph = document.createElement('p');
+    paragraph.append('一个结论');
+    const citation = document.createElement('a');
+    citation.href = 'https://a.dev#cit-1';
+    citation.textContent = '1';
+    paragraph.append(citation, '，以及一个 ');
+    const link = document.createElement('a');
+    link.href = 'https://b.dev';
+    link.textContent = '普通链接';
+    paragraph.append(link, '。');
+    source.append(paragraph);
+
+    const copy = document.createElement('div');
+    copy.append(cloneWithoutCitationAnchors(source));
+
+    expect(copy.textContent).toBe('一个结论，以及一个 普通链接。');
+    expect(copy.querySelector('a[href*="#cit-"]')).toBeNull();
+    expect(copy.querySelector('a:not([href*="#cit-"])')?.textContent).toBe('普通链接');
   });
 });
