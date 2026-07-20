@@ -17,7 +17,7 @@
  *
  * 入参 schema：
  *   goal           — 本次学习的核心目标（一句话，前端展示为规划标题）
- *   understanding  — 对主题的理解，自然段叙述（立锚 + 因果拓扑）
+ *   understanding  — 对主题的理解，自然段说明学习目标、核心依赖与篇目次序依据
  *   items[]        — 篇目提案列表（有序）
  *     .title       — 篇名
  *     .thread      — 脉络词（关键概念/因果线索）
@@ -98,7 +98,7 @@ export function createWriteLearnPlanTool(
         understanding: {
           type: 'string',
           description:
-            '对主题的理解：自然成段叙述，先立底层原理/第一性概念为锚，再顺因果推出整条认知脉络；末句自然引出篇目结构。',
+            '对主题的理解：自然成段说明学习目标、核心问题或机制，以及篇目之间的依赖和次序依据；末句自然引出篇目结构。',
         },
         items: {
           type: 'array',

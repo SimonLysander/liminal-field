@@ -22,7 +22,7 @@ export const BUILTIN_SKILLS: BuiltinSkillDef[] = [
     key: 'note-plan',
     displayName: '规划（思维模型）',
     description:
-      '按第一性原理+因果拓扑研究一个领域,拆成以篇为单位、有因果次序的笔记结构',
+      '按学习目标与知识依赖研究一个领域，拆成以篇为单位、有因果次序的笔记结构',
     whenToUse:
       '在学习笔记产品中,需要为一个领域做规划时使用——研究它、立底层原理为锚、自上而下推出该学哪些篇及其次序,产出「理解 + 笔记结构」。仅用于学习规划;普通问答、改稿不触发。',
     requiredTools: [],
@@ -32,9 +32,9 @@ export const BUILTIN_SKILLS: BuiltinSkillDef[] = [
     key: 'note-writing',
     displayName: '成稿（行文）',
     description:
-      '把规划好的一篇,按 立锚→建模→兑现 写成严谨、可读可审的教科书式学习笔记初稿',
+      '把规划好的一篇按中心问题与因果主线写成严谨、可读可审的学习笔记初稿',
     whenToUse:
-      '在学习笔记产品中,需要为某一篇生成或续写正文初稿时使用——它规定这一篇的行文逻辑(立锚→建模→兑现)与文风。仅用于学习笔记成稿;普通问答、给建议、改写他人正文不要触发。',
+      '在学习笔记产品中，需要为某一篇生成或续写正文初稿时使用——它规定如何按读者认知和因果主线组织文章、查证并标注出处。仅用于学习笔记成稿；普通问答、给建议、改写他人正文不要触发。',
     requiredTools: ['web_search', 'web_fetch', 'read_content'],
     bodyFile: 'skills/note-writing.md',
   },

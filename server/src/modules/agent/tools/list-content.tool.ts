@@ -10,7 +10,7 @@ const SCOPE_LABEL: Record<string, string> = {
 };
 
 /**
- * list_knowledge_base — 列出已发布内容目录(ls/tree:看有哪些),不含正文。
+ * list_knowledge_base — 列出最新已提交内容目录(ls/tree:看有哪些),不含正文。
  *
  * summary 给人(总数 + 类型构成,后端算好),detail 给模型(条目:标题/id/路径),
  * meta 带 byScope/hasMore。与 search(按内容 grep)互补。

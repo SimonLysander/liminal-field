@@ -128,7 +128,7 @@ export interface EntryContext {
   learningTopicId?: string;
   /**
    * 学习产品场景：当前在学的那一篇笔记节点 contentItemId。
-   * 存在时挂 write_draft（只写此节点 aidraft，防越权）和 read_content（三层读取）。
+   * 存在时挂 write_draft（只写此节点 aidraft，防越权）和 read_content（当前有效正文读取）。
    * learningTopicId || learningNoteId 任一存在都会挂 read_content（planner/writer 均可读）。
    */
   learningNoteId?: string;

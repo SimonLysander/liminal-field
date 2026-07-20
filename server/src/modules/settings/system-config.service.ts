@@ -483,14 +483,19 @@ export class SystemConfigService implements OnModuleInit {
     def: BuiltinAgentDef,
     mongo: AgentEntryConfig | undefined,
   ): AgentEntryConfig {
+    const promptFiles = [
+      ...(def.contextPromptFiles ?? []),
+      ...(def.promptFile ? [def.promptFile] : []),
+    ];
+
     return {
       key: def.key,
       name: def.name,
       description: def.description,
       enabled: mongo?.enabled ?? true,
-      systemPrompt: def.promptFile
-        ? this.promptManager.render(def.promptFile)
-        : '',
+      systemPrompt: promptFiles
+        .map((promptFile) => this.promptManager.render(promptFile))
+        .join('\n\n'),
       tools: [...def.tools],
       tier: def.tier,
       // provider 绑定与 enabled 以 Mongo 为准(UI 运行时可调);其余以文件为准
@@ -536,7 +541,7 @@ export class SystemConfigService implements OnModuleInit {
       ...SystemConfigService.GALLERY_CAPTION_TOOLS,
       // 学习产品工具集（learning-planner + learning-writer agent 共用的可选池）
       'write_learn_plan', // 规划工具（learning-planner 专用）
-      'read_content', // 三层读取（planner + writer 均用）
+      'read_content', // 当前有效正文读取（planner + writer 均用）
       'write_draft', // 写入 aidraft（learning-writer 专用）
     ];
     return Array.from(new Set(all));

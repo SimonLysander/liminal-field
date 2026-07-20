@@ -23,7 +23,7 @@
 | `tool-descriptions.ts` | 全部工具的 description | `ToolAssembler` 组装时按工具名套用 |
 | `feedback.ts` | 给模型的带外反馈文案(如 HITL 审批回灌) | `AgentService` |
 | `builtin-skills.ts` | 内置 skill 元数据 + 指向 body md | `SkillService` |
-| `builtin-agents.ts` | 内置 agent 元数据(tools/挂哪些 skill/档位)+ 指向 systemPrompt md | `SystemConfigService` |
+| `builtin-agents.ts` | 内置 agent 元数据(tools/挂哪些 skill/档位)+ 共享上下文与 systemPrompt md | `SystemConfigService` |
 
 ## MD 长文
 
@@ -36,6 +36,7 @@
 | `agents/learning-writer.md` | 学习写手 systemPrompt | 同上 | 无 |
 | `agents/gallery-caption-writer.md` | 图说写手 systemPrompt | 同上 | 无 |
 | `agents/writing-advisor.md` | 写作顾问 systemPrompt（含编辑场景的工具与约束，原 instructions/tools-guide 写作专属部分迁入此处） | 同上 | `owner_name` |
+| `agents/editorial-contract.md` | 编辑相关 agent 始终遵守的协作边界与判断标准 | `SystemConfigService` 依 `contextPromptFiles` 置于入口提示词前 | 无 |
 | `settings/digest-report-analyst.md` | 报告分析师 systemPrompt(builtin-agents 引用此路径) | 同上 | 无 |
 | `inline-assist/continue-system.md` | 普通 inline assist systemPrompt | `InlineAssistService` | 无 |
 | `digest/react-agent.md` | digest workflow react-agent 主 prompt | `ReactAgentNode` | `topic_name`, `topic_prompt`, `since_iso`, `until_iso` |
@@ -43,7 +44,6 @@
 | `digest/compose-write-section.md` | digest compose 阶段2:分主题写正文 | `ComposeNode.writeSection` | `topic_name`, `section_title`, `sources_xml` |
 | `sub-agent/researcher.md` | 通用研究助手 system prompt | `SubAgentService` | 无 |
 | `memory/profile-renderer.md` | Aurora 画像渲染器 | `MemoryViewService.callViewLLM` | `observations` |
-| `memory/owner-memory.md` | 记忆管理器(remember 调 LLM) | `MemoryAgentService.callRememberLLM` | `existing_memories`, `new_content` |
 | `memory/session-compactor.md` | 会话压缩器 | `MemoryAgentService.callCompactLLM` | `existing_memories`, `input_text` |
 | `aurora/role.md` | Aurora 人设(`<role>`,本体层,放最前) | `PromptHandler` | `owner_name` |
 | `aurora/conventions.md` | 通用约定(`<conventions>`,本体层;目前仅「用中文」) | `PromptHandler` | `owner_name` |

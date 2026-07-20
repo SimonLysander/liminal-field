@@ -33,8 +33,8 @@ function createMocks() {
   // SystemConfigService 现在需要 PromptManagerService(第四个参数)
   // 用于 getReportAnalystEntry() 从 settings/digest-report-analyst.md 渲染默认 system prompt
   const mockPromptManager = {
-    render(): string {
-      return '报告分析师默认 system prompt';
+    render(name: string): string {
+      return `prompt:${name}`;
     },
   } as never;
   const service = new SystemConfigService(
@@ -517,16 +517,24 @@ describe('SystemConfigService — 内置 agent 合成解析', () => {
 
     const lw = await service.getAgentConfig('learning-writer');
     expect(lw?.builtin).toBe(true);
-    expect(lw?.systemPrompt).toBe('报告分析师默认 system prompt'); // mock render
+    expect(lw?.systemPrompt).toBe(
+      'prompt:agents/editorial-contract.md\n\nprompt:agents/learning-writer.md',
+    );
     expect(lw?.tools).toContain('write_draft');
     expect(lw?.enabledSkillIds).toEqual(['note-writing', 'writing-review']); // 按 skill key 引用
     expect(lw?.providerId).toBe('');
 
     const planner = await service.getAgentConfig('learning-planner');
     expect(planner?.enabledSkillIds).toEqual(['note-plan', 'writing-review']);
+    expect(planner?.systemPrompt).toBe(
+      'prompt:agents/editorial-contract.md\n\nprompt:agents/learning-planner.md',
+    );
 
     const advisor = await service.getAgentConfig('writing-advisor');
     expect(advisor?.enabledSkillIds).toEqual(['writing-review']);
+    expect(advisor?.systemPrompt).toBe(
+      'prompt:agents/editorial-contract.md\n\nprompt:agents/writing-advisor.md',
+    );
   });
 
   it('getAgentConfig 内置 key + Mongo 有 provider → provider 用 Mongo、定义仍用文件', async () => {
@@ -544,7 +552,9 @@ describe('SystemConfigService — 内置 agent 合成解析', () => {
 
     const lw = await service.getAgentConfig('learning-writer');
     expect(lw?.providerId).toBe('p1'); // provider 取 Mongo
-    expect(lw?.systemPrompt).toBe('报告分析师默认 system prompt'); // 文件为准,忽略 Mongo
+    expect(lw?.systemPrompt).toBe(
+      'prompt:agents/editorial-contract.md\n\nprompt:agents/learning-writer.md',
+    ); // 文件为准,忽略 Mongo
     expect(lw?.tools).toContain('write_draft'); // 文件为准
   });
 

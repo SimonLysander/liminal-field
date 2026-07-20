@@ -1,7 +1,7 @@
 /**
  * MemoryAgentService — 记忆管理 Agent。
  *
- * 所有记忆写入的统一入口：remember / forget / compact。
+ * 历史 AgentMemory 的维护入口：forget / compact。
  *
  * 用 generateText（非 generateObject）做 LLM 调用，手动解析 JSON。
  * 原因：generateObject 要求 provider 支持 structured output / response_format，
@@ -15,14 +15,8 @@ import { SystemConfigService } from '../../settings/system-config.service';
 import { extractJSON } from '../agent.utils';
 import { AgentMemoryRepository } from './agent-memory.repository';
 import type { AgentMemory } from './agent-memory.entity';
-// 从 memory/owner-memory.md 和 memory/session-compactor.md 加载 prompt(原散落字符串 → promptManager 统一托管)
+// 从 memory/session-compactor.md 加载会话压缩提示词。
 import { PromptManagerService } from '../../../infrastructure/prompt/prompt-manager.service';
-
-interface RememberResult {
-  action: 'create' | 'update';
-  title: string;
-  content: string;
-}
 
 /**
  * compaction LLM 产物(新架构)。
@@ -46,32 +40,6 @@ export class MemoryAgentService {
     // PromptManagerService 是 @Global() 注入,无需 module import
     private readonly promptManager: PromptManagerService,
   ) {}
-
-  async remember(content: string, tier?: string): Promise<string> {
-    const existingMemories = await this.memoryRepo.findAll();
-
-    try {
-      const result = await this.callRememberLLM(
-        content,
-        existingMemories,
-        tier,
-      );
-
-      // remember 只写 user 记忆(所有者画像):project 类型已废弃,session 记忆由 compaction 内部维护。
-      await this.memoryRepo.upsert({
-        type: 'user',
-        title: result.title,
-        content: result.content,
-      });
-
-      const verb = result.action === 'update' ? '合并到' : '新建';
-      return `已记住：${verb} ${result.title}`;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Remember 失败: ${msg}`);
-      return `记忆保存失败：${msg}`;
-    }
-  }
 
   async forget(
     description: string,
@@ -219,25 +187,6 @@ export class MemoryAgentService {
     return memories
       .map((m) => `[${m.type}] ${m.title}: ${m.content.slice(0, 100)}`)
       .join('\n');
-  }
-
-  private async callRememberLLM(
-    newContent: string,
-    existingMemories: AgentMemory[],
-    tier?: string,
-  ): Promise<RememberResult> {
-    const model = await this.getModel(tier);
-    const { text } = await generateText({
-      model,
-      // 记忆只存所有者画像(user):背景/偏好/习惯/写作风格等跨会话长期有效的信息。
-      // project 类型已废弃,不再让模型区分类型。
-      // 从 memory/owner-memory.md 加载记忆管理器 prompt(原散落字符串 → promptManager 统一托管)
-      prompt: this.promptManager.render('memory/owner-memory.md', {
-        existing_memories: this.formatExistingMemories(existingMemories),
-        new_content: newContent,
-      }),
-    });
-    return extractJSON<RememberResult>(text);
   }
 
   private async callCompactLLM(

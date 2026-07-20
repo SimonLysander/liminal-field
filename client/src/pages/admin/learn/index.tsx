@@ -782,7 +782,6 @@ function NodeScreen({
       const contentItemId = await data.createChapter(chapterTitle);
       if (contentItemId) {
         setCreateChapterOpen(false);
-        onNavigate(contentItemId);
       }
     } finally {
       setCreatingChapter(false);

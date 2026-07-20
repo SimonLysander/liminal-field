@@ -192,7 +192,7 @@ class EntryContextDto {
 
   /**
    * 学习产品场景：当前在学的那一篇笔记节点 contentItemId。
-   * 传入时挂 write_draft（learning-writer 写 aidraft）和 read_content（三层内容读取）。
+   * 传入时挂 write_draft（learning-writer 写 aidraft）和 read_content（当前有效正文读取）。
    */
   @IsString()
   @IsOptional()

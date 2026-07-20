@@ -16,8 +16,13 @@ export interface BuiltinAgentDef {
   /** 启用的 skill,按 key 引用内置 skill(SkillService 文件优先解析)。 */
   enabledSkillKeys: string[];
   tier: string;
-  /** systemPrompt 文件,相对 prompts/;省略则 systemPrompt 为空(如写作顾问靠 Aurora 角色定义)。 */
+  /** systemPrompt 文件，相对 prompts/；省略则 systemPrompt 为空。 */
   promptFile?: string;
+  /**
+   * 始终置于入口提示词之前的共享上下文。适合所有轮次都必须遵守的协作契约；
+   * 不使用 skill，避免模型遗漏 load_skill 后才看见关键边界。
+   */
+  contextPromptFiles?: string[];
 }
 
 export const BUILTIN_AGENTS: BuiltinAgentDef[] = [
@@ -42,6 +47,7 @@ export const BUILTIN_AGENTS: BuiltinAgentDef[] = [
     ],
     enabledSkillKeys: ['writing-review'],
     tier: 'standard',
+    contextPromptFiles: ['agents/editorial-contract.md'],
     promptFile: 'agents/writing-advisor.md',
   },
   {
@@ -65,7 +71,7 @@ export const BUILTIN_AGENTS: BuiltinAgentDef[] = [
   {
     key: 'learning-planner',
     name: '学习规划师',
-    description: '按第一性原理研究领域,规划「理解 + 篇目结构」',
+    description: '按知识依赖与学习目标研究领域，规划「理解 + 篇目结构」',
     tools: [
       'write_learn_plan',
       'read_content',
@@ -76,12 +82,13 @@ export const BUILTIN_AGENTS: BuiltinAgentDef[] = [
     ],
     enabledSkillKeys: ['note-plan', 'writing-review'],
     tier: 'standard',
+    contextPromptFiles: ['agents/editorial-contract.md'],
     promptFile: 'agents/learning-planner.md',
   },
   {
     key: 'learning-writer',
     name: '学习写手',
-    description: '逐篇研究领域，按行文逻辑（立锚→建模→兑现）起草初稿',
+    description: '逐篇研究领域，按因果主线起草可对照重写的学习初稿',
     tools: [
       'read_content',
       'write_draft',
@@ -91,6 +98,7 @@ export const BUILTIN_AGENTS: BuiltinAgentDef[] = [
     ],
     enabledSkillKeys: ['note-writing', 'writing-review'],
     tier: 'standard',
+    contextPromptFiles: ['agents/editorial-contract.md'],
     promptFile: 'agents/learning-writer.md',
   },
 ];

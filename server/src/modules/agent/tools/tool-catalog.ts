@@ -34,10 +34,10 @@ export interface ToolMeta {
 }
 
 export const TOOL_CATALOG: Record<string, ToolMeta> = {
-  // ── 知识库(已发布内容)── 全局可用
+  // ── 知识库(最新已提交内容)── 全局可用
   search_knowledge_base: {
     displayName: '搜知识库',
-    summary: '按关键词在已发布内容里检索',
+    summary: '按关键词在已提交内容里检索',
     detail: '关键词模糊匹配标题 + 正文,返回命中的 contentItem 摘要列表。',
     params: [
       {
@@ -64,9 +64,9 @@ export const TOOL_CATALOG: Record<string, ToolMeta> = {
 
   list_knowledge_base: {
     displayName: '列知识库',
-    summary: '列出已发布内容目录(分页)',
+    summary: '列出已提交内容目录(分页)',
     detail:
-      '不带条件返回所有已发布内容,支持 scope 限定和 offset / limit 翻页,跟 search_knowledge_base 互补(那个按内容找,这个按目录列)。',
+      '不带条件返回所有最新已提交内容，支持 scope 限定和 offset / limit 翻页，跟 search_knowledge_base 互补（那个按内容找，这个按目录列）。',
     params: [
       {
         name: 'scope',
@@ -91,10 +91,10 @@ export const TOOL_CATALOG: Record<string, ToolMeta> = {
   },
 
   read_document_content: {
-    displayName: '读已发布文档',
-    summary: '按 ID 读已发布文档正文(分段)',
+    displayName: '读已提交文档',
+    summary: '按 ID 读已提交文档正文(分段)',
     detail:
-      '只读已发布的成稿;当前正在编辑的草稿走 get_current_draft。一次最多读 6000 字,超长用 nextOffset 续读。',
+      '只读最新已提交正文；当前正在编辑的草稿走 get_current_draft。一次最多读 6000 字，超长用 nextOffset 续读。',
     params: [
       {
         name: 'contentItemId',
@@ -496,9 +496,9 @@ export const TOOL_CATALOG: Record<string, ToolMeta> = {
 
   read_content: {
     displayName: '读节点内容',
-    summary: '读节点真实内容：已提交正文 + 用户草稿',
+    summary: '读节点当前有效正文',
     detail:
-      '学习产品专用（planner 和 writer 均可调）：按存在与否拼出两段独立返回——① 已发布/已提交正文 ② 用户未提交草稿。哪段有返哪段，都没有则返回"该节点暂无内容"。不返回 Aurora 自己的 AI 初稿（那是产出不是源材料）。只读不写。',
+      '学习产品专用（planner 和 writer 均可调）：用户正在编辑的草稿优先，即使草稿为空也不会回退到旧正文；只有不存在草稿时才返回最新已提交正文。两者不会同时返回。都没有则返回"该节点暂无内容"。不返回 Aurora 自己的 AI 初稿（那是产出不是源材料）。只读不写。',
     params: [
       {
         name: 'contentItemId',
@@ -508,7 +508,7 @@ export const TOOL_CATALOG: Record<string, ToolMeta> = {
       },
     ],
     returns:
-      '两段用 --- 分隔的内容（各段有明确标签）；都空 → {status:ok, sections:0}',
+      '单份当前有效正文，meta.source=draft|committed；都空 → {status:ok, source:none}',
   },
 
   write_learn_plan: {
@@ -527,7 +527,8 @@ export const TOOL_CATALOG: Record<string, ToolMeta> = {
         name: 'understanding',
         type: 'string',
         required: true,
-        description: '对主题的理解：自然段叙述，先立锚再顺因果推出整条脉络',
+        description:
+          '对主题的理解：自然段说明学习目标、核心依赖与篇目次序的依据',
       },
       {
         name: 'items',
