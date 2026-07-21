@@ -74,6 +74,13 @@
 
 \# 代码变更检查
 
+## 测试目录规范
+
+- `server/src/` 与 `client/src/` 内的测试按就近原则放在被测源码同级的 `__tests__/`。
+- 服务端 Jest 测试统一使用 `*.spec.ts`，客户端 Vitest 测试使用 `*.test.ts` / `*.test.tsx`。
+- 不在源码目录直接放置测试文件，也不混用 `test/`、`__test/` 等目录名。
+- `server/test/` 仅用于跨模块集成测试和 E2E 测试。
+
 每次修改代码后、提交前，必须运行：
 
 1. **Server 类型检查**: `cd server && npx tsc --noEmit -p tsconfig.json` — ⚠️ SWC 构建(`nest build`)和 ts-jest 都**不查类型**，类型错误只能靠这条独立 tsc 抓出来（曾因此潜藏 80 个隐藏类型错误，含 `publishedAt` 从未持久化的真 bug、`ContentSnapshot` 漏 import）

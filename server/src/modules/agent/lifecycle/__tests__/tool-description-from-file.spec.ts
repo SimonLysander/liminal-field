@@ -92,4 +92,58 @@ describe('工具 description 集中表 — assemble 覆盖', () => {
     expect(tools.write_draft.description).toBe(TOOL_DESCRIPTIONS.write_draft);
     expect(tools.write_draft.description).not.toContain('描述见');
   });
+
+  it('缺少 sessionKey 时不装配任何写工具，不能绕过审批直写', () => {
+    const nulls = Array.from({ length: 16 }, () => null);
+    const Assembler = ToolAssembler as unknown as new (
+      ...args: unknown[]
+    ) => ToolAssembler;
+    const assembler = new Assembler(...nulls);
+
+    const tools = assembler.assemble({
+      learningTopicId: 'topic-1',
+      learningNoteId: 'note-1',
+      agentInstanceKey: 'agent-1',
+    });
+
+    expect(tools).not.toHaveProperty('write_learn_plan');
+    expect(tools).not.toHaveProperty('write_draft');
+    expect(tools).not.toHaveProperty('write_tasks');
+    expect(tools).not.toHaveProperty('remember');
+  });
+
+  it('write_learn_plan 门禁拒绝不完整的新规划，不进入审批队列', async () => {
+    const nulls = Array.from({ length: 16 }, () => null);
+    const Assembler = ToolAssembler as unknown as new (
+      ...args: unknown[]
+    ) => ToolAssembler;
+    const assembler = new Assembler(...nulls);
+    const tools = assembler.assemble({
+      learningTopicId: 'topic-1',
+      sessionKey: 'session-1',
+    }) as Record<
+      string,
+      {
+        execute: (
+          input: Record<string, unknown>,
+          options: { toolCallId: string },
+        ) => Promise<string>;
+      }
+    >;
+
+    const result = JSON.parse(
+      await tools.write_learn_plan.execute(
+        {
+          goal: '学习目标',
+          understanding: '只有一段。',
+          items: [],
+          conclusion: '',
+          changeSummary: '按基础依赖组织规划。',
+        },
+        { toolCallId: 'call-1' },
+      ),
+    ) as { meta: { status: string } };
+
+    expect(result.meta.status).toBe('invalid');
+  });
 });

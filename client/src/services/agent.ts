@@ -7,7 +7,25 @@ export interface SessionTask {
 }
 
 /** HITL 写入审批在服务端持久化的展示状态。 */
-export type WriteApprovalStatus = 'pending' | 'approved' | 'rejected' | 'expired';
+export type WriteApprovalStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'superseded'
+  | 'expired';
+export type WriteCommitStatus =
+  | 'ok'
+  | 'not_found'
+  | 'forbidden'
+  | 'expired'
+  | 'in_progress'
+  | 'superseded'
+  | 'already_resolved';
+export interface WriteCommitResult {
+  status: WriteCommitStatus;
+  /** already_resolved 时的服务端真实终态。 */
+  resolution?: 'approved' | 'rejected';
+}
 
 /**
  * 后端分页响应结构（U5 聚合分页 endpoint）。
@@ -29,7 +47,7 @@ export interface SessionData {
   summary: string;
   tasks: SessionTask[];
   lastActiveAt: string | null;
-  /** toolCallId → 审批状态；历史 TTL 已过期的卡片显式标为 expired。 */
+  /** toolCallId → 审批状态；未在期限内处理的历史卡片显式标为 expired。 */
   writeApprovalStatuses: Record<string, WriteApprovalStatus>;
 }
 
@@ -125,8 +143,8 @@ export function listObservations(): Promise<ObservationsResponse> {
 export function approveWrite(
   toolCallId: string,
   sessionKey: string,
-): Promise<{ status: string }> {
-  return request<{ status: string }>(
+): Promise<WriteCommitResult> {
+  return request<WriteCommitResult>(
     `/agent/writes/${encodeURIComponent(toolCallId)}/approve`,
     { method: 'POST', body: JSON.stringify({ sessionKey }) },
   );
@@ -136,8 +154,8 @@ export function approveWrite(
 export function rejectWrite(
   toolCallId: string,
   sessionKey: string,
-): Promise<{ status: string }> {
-  return request<{ status: string }>(
+): Promise<WriteCommitResult> {
+  return request<WriteCommitResult>(
     `/agent/writes/${encodeURIComponent(toolCallId)}/reject`,
     { method: 'POST', body: JSON.stringify({ sessionKey }) },
   );

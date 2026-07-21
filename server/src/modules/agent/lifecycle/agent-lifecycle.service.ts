@@ -29,7 +29,7 @@ import { SystemConfigService } from '../../settings/system-config.service';
 import { AgentMemoryRepository } from '../memory/agent-memory.repository';
 import { AgentSessionRepository } from '../session/agent-session.repository';
 import { PendingWriteRepository } from '../approval/pending-write.repository';
-import type { PendingWriteStatus } from '../approval/pending-write.entity';
+import type { PendingWriteDisplayStatus } from '../approval/pending-write.entity';
 import { AnthologyViewService } from '../../workspace/anthology-view.service';
 import { MemoryViewService } from '../memory/memory-view.service';
 import { AgentMemoryObservationRepository } from '../memory/agent-memory-observation.repository';
@@ -41,7 +41,7 @@ import type { AgentChatDto } from '../dto/agent-chat.dto';
 /** 跨段聚合分页默认每页条数 */
 const SESSION_PAGE_LIMIT = 50;
 
-type WriteApprovalDisplayStatus = PendingWriteStatus | 'expired';
+type WriteApprovalDisplayStatus = PendingWriteDisplayStatus | 'expired';
 
 /** 从持久化 UI 消息中找出曾要求人工审批的工具调用。 */
 function collectPendingWriteToolCallIds(
@@ -147,26 +147,31 @@ export class AgentLifecycle {
     summary: string;
     tasks: Array<Record<string, unknown>>;
     lastActiveAt: Date | null;
-    /** toolCallId → pending/approved/rejected；TTL 清理过的历史卡片为 expired。 */
+    /** toolCallId → 审批状态；未在期限内裁决、已清理的历史卡片为 expired。 */
     writeApprovalStatuses: Record<string, WriteApprovalDisplayStatus>;
   }> {
     const memoryKey = agentInstanceKey ?? sessionKey;
     // 并行加载：全量消息（分页用）+ session 记忆（脉络/tasks）+ 最新段（lastActiveAt）
-    const [allMessages, sessionMem, latestSeg, persistedWriteStatuses] =
-      await Promise.all([
-        this.sessionRepo.getAllMessages(sessionKey),
-        this.memoryRepo.findSession(memoryKey),
-        this.sessionRepo.findLatestSeg(sessionKey),
-        this.pendingWriteRepo.findStatusesBySessionKey(sessionKey),
-      ]);
+    const [allMessages, sessionMem, latestSeg] = await Promise.all([
+      this.sessionRepo.getAllMessages(sessionKey),
+      this.memoryRepo.findSession(memoryKey),
+      this.sessionRepo.findLatestSeg(sessionKey),
+    ]);
 
     // 内存分页：before 是绝对 index（全量数组下标），纯函数 sliceSessionPage 算切片
     const page = sliceSessionPage(allMessages, before, limit);
+    const pageWriteIds = collectPendingWriteToolCallIds(page.messages);
+    // 只查当前返回页面里的卡片；前端翻页时合并状态，查询成本不随会话年龄增长。
+    const persistedWriteStatuses =
+      await this.pendingWriteRepo.findStatusesBySessionKey(
+        sessionKey,
+        pageWriteIds,
+      );
     const writeApprovalStatuses: Record<string, WriteApprovalDisplayStatus> = {
       ...persistedWriteStatuses,
     };
-    for (const toolCallId of collectPendingWriteToolCallIds(allMessages)) {
-      // 记录已被 TTL 删除时不能重新给出可操作按钮，否则点击只会得到 not_found。
+    for (const toolCallId of pageWriteIds) {
+      // 未裁决记录被 TTL 删除后不能重新给出操作按钮，否则点击只会得到 not_found。
       writeApprovalStatuses[toolCallId] ??= 'expired';
     }
 
@@ -460,10 +465,17 @@ export class AgentLifecycle {
   }
 
   /**
-   * 删除会话钩子：清空对话历史。
+   * 删除会话钩子：清空对话历史及其审批载荷。两条删除都幂等，
+   * 任一失败可通过重试同一接口收敛，不需要跨集合事务。
    */
   async onSessionDelete(sessionKey: string): Promise<void> {
-    await this.session.delete(sessionKey);
+    const [, deletedApprovals] = await Promise.all([
+      this.session.delete(sessionKey),
+      this.pendingWriteRepo.deleteBySessionKey(sessionKey),
+    ]);
+    this.logger.log(
+      `会话删除完成 sessionKey=${sessionKey} approvalRecords=${deletedApprovals}`,
+    );
   }
 
   /**

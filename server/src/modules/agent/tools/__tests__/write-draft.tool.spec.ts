@@ -55,7 +55,9 @@ describe('write-draft.tool', () => {
     const repo = makeRepo();
     const t = createWriteDraftTool(repo as never, NOTE_ID);
 
-    const result = parse(await run(t, { markdown: MARKDOWN }));
+    const result = parse(
+      await run(t, { markdown: MARKDOWN, changeSummary: '生成完整初稿。' }),
+    );
 
     expect(result.meta.status).toBe('ok');
     expect(result.meta.charCount).toBe(MARKDOWN.length);
@@ -82,7 +84,9 @@ describe('write-draft.tool', () => {
     };
     const t = createWriteDraftTool(repo as never, NOTE_ID);
 
-    const result = parse(await run(t, { markdown: MARKDOWN }));
+    const result = parse(
+      await run(t, { markdown: MARKDOWN, changeSummary: '生成完整初稿。' }),
+    );
 
     expect(result.meta.status).toBe('error');
     expect(result.summary).toContain('MongoDB timeout');
@@ -97,6 +101,7 @@ describe('write-draft.tool', () => {
     const result = parse(
       await run(t, {
         markdown: md,
+        changeSummary: '生成带来源的初稿。',
         sources,
         citationAudit: {
           conceptsAndDefinitions: [
@@ -120,9 +125,23 @@ describe('write-draft.tool', () => {
     const md = '# 标题\n\n某断言[@#CIT 2]。';
     const sources = [{ title: 'A', url: 'https://a.dev' }];
 
-    const result = parse(await run(t, { markdown: md, sources }));
+    const result = parse(
+      await run(t, {
+        markdown: md,
+        changeSummary: '生成带来源的初稿。',
+        sources,
+      }),
+    );
     expect(result.meta.status).toBe('error');
     expect(repo.saveAiDraft).not.toHaveBeenCalled();
+  });
+
+  it('拒绝非 HTTP(S) 来源 URL，避免危险协议进入阅读页', () => {
+    expect(
+      validateCitations('# 标题\n\n断言[@#CIT 1]。', [
+        { title: '伪造来源', url: 'javascript:alert(1)' },
+      ]),
+    ).toContain('必须使用 http 或 https');
   });
 
   it('带 sources 但缺 citationAudit → status=error，不落库', async () => {
@@ -131,10 +150,49 @@ describe('write-draft.tool', () => {
     const md = '# 标题\n\nf-number 是焦距与有效孔径直径之比[@#CIT 1]。';
     const sources = [{ title: 'Optics', url: 'https://example.dev/f-number' }];
 
-    const result = parse(await run(t, { markdown: md, sources }));
+    const result = parse(
+      await run(t, {
+        markdown: md,
+        changeSummary: '生成带来源的初稿。',
+        sources,
+      }),
+    );
 
     expect(result.meta.status).toBe('error');
     expect(result.summary).toContain('citationAudit');
+    expect(repo.saveAiDraft).not.toHaveBeenCalled();
+  });
+
+  it('带 sources 和 citationAudit 但正文没有引用角标 → status=error', async () => {
+    const repo = makeRepo();
+    const t = createWriteDraftTool(repo as never, NOTE_ID);
+
+    const result = parse(
+      await run(t, {
+        markdown: '# 标题\n\nReact 16 于 2017 年发布。',
+        changeSummary: '生成带来源的初稿。',
+        sources: [{ title: 'React 博客', url: 'https://r.dev/16' }],
+        citationAudit: {
+          attributionAndEvolution: [
+            { claim: 'React 16 发布年份', sourceIndexes: [1] },
+          ],
+        },
+      }),
+    );
+
+    expect(result.meta.status).toBe('error');
+    expect(result.summary).toContain('引用角标');
+    expect(repo.saveAiDraft).not.toHaveBeenCalled();
+  });
+
+  it('缺少 changeSummary → status=error，不落库', async () => {
+    const repo = makeRepo();
+    const t = createWriteDraftTool(repo as never, NOTE_ID);
+
+    const result = parse(await run(t, { markdown: MARKDOWN }));
+
+    expect(result.meta.status).toBe('error');
+    expect(result.summary).toContain('changeSummary');
     expect(repo.saveAiDraft).not.toHaveBeenCalled();
   });
 
@@ -171,6 +229,45 @@ describe('write-draft.tool', () => {
     };
     expect(bodyMarkdown).toContain('## 人工光');
     expect(bodyMarkdown).toContain('灯具提供可控的稳定光源');
+  });
+
+  it('局部重写可在保留原来源顺序时追加新来源', async () => {
+    const repo = makeRepo();
+    const existingSources = [{ title: '自然光资料', url: 'https://a.dev' }];
+    repo.findAiDraftByContentItemId.mockResolvedValue({
+      bodyMarkdown: composeAiDraftBody(
+        '# 光从哪里来\n\n## 自然光\n\n太阳光会随时间变化[@#CIT 1]。\n\n## 人工光\n\n旧内容。',
+        existingSources,
+      ),
+      title: '光从哪里来',
+    } as never);
+    const t = createWriteDraftTool(repo as never, NOTE_ID);
+
+    const result = parse(
+      await run(t, {
+        operation: 'replace_section',
+        sectionPath: ['光从哪里来', '人工光'],
+        sectionMarkdown: '闪光灯可以提供稳定光源[@#CIT 2]。',
+        changeSummary: '重写人工光小节并新增一条来源。',
+        sources: [
+          ...existingSources,
+          { title: '人工光资料', url: 'https://b.dev' },
+        ],
+        citationAudit: {
+          conceptsAndDefinitions: [
+            { claim: '闪光灯提供稳定光源', sourceIndexes: [2] },
+          ],
+        },
+      }),
+    );
+
+    expect(result.meta.status).toBe('ok');
+    const { bodyMarkdown } = (repo.saveAiDraft as jest.Mock).mock
+      .calls[0][0] as { bodyMarkdown: string };
+    expect(bodyMarkdown).toContain('[1](https://a.dev#cit-1');
+    expect(bodyMarkdown).toContain('[2](https://b.dev#cit-2');
+    expect(bodyMarkdown).toContain('1. [自然光资料](https://a.dev)');
+    expect(bodyMarkdown).toContain('2. [人工光资料](https://b.dev)');
   });
 
   it('局部重写没有既有 AI 初稿 → 返回错误且不落库', async () => {
@@ -285,5 +382,42 @@ describe('composeAiDraftBody', () => {
     expect(restoreAiDraftMarkdown(stored, sources)).toBe(
       '# 标题\n\n## 小节\n\n已查证断言[@#CIT 1]。',
     );
+  });
+
+  it('局部重写拒绝删除已有来源', () => {
+    const stored = composeAiDraftBody('见[@#CIT 1]、[@#CIT 2]。', [
+      { title: 'A', url: 'https://a' },
+      { title: 'B', url: 'https://b' },
+    ]);
+
+    expect(() =>
+      restoreAiDraftMarkdown(stored, [{ title: 'A', url: 'https://a' }]),
+    ).toThrow('只能保留原来源顺序并在末尾追加');
+  });
+
+  it('局部重写拒绝重排已有来源', () => {
+    const stored = composeAiDraftBody('见[@#CIT 1]、[@#CIT 2]。', [
+      { title: 'A', url: 'https://a' },
+      { title: 'B', url: 'https://b' },
+    ]);
+
+    expect(() =>
+      restoreAiDraftMarkdown(stored, [
+        { title: 'B', url: 'https://b' },
+        { title: 'A', url: 'https://a' },
+      ]),
+    ).toThrow('只能保留原来源顺序并在末尾追加');
+  });
+
+  it('局部重写拒绝替换已有来源', () => {
+    const stored = composeAiDraftBody('见[@#CIT 1]。', [
+      { title: 'A', url: 'https://a' },
+    ]);
+
+    expect(() =>
+      restoreAiDraftMarkdown(stored, [
+        { title: '另一来源', url: 'https://other' },
+      ]),
+    ).toThrow('只能保留原来源顺序并在末尾追加');
   });
 });

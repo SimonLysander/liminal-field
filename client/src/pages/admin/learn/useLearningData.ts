@@ -2,27 +2,18 @@
  * useLearningData — 学习视图的真数据层。
  *
  * 篇目 = 主题 NavigationNode 的子节点(走 structureApi,即外面 /admin/notes 那棵真树,双向同步)。
- * 规划提案 = 主题节点的 aidraft(write_learn_plan 落库的 frontmatter),解析成 goal/understanding/items。
+ * 规划提案 = 后端从主题 aidraft 解析出的结构化学习规划。
  * 每篇的"研究过没有" = 该篇 contentItemId 有没有非空 aidraft。
  *
  * 结构 CRUD(建/排序/删)直接打 structureApi;读写正文和标题走 notesApi(draft / aidraft)。
  */
 
-import { useCallback, useEffect, useState } from 'react';
-import { structureApi } from '@/services/structure';
-import { notesApi } from '@/services/workspace';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { structureApi, type StructureNode } from '@/services/structure';
+import { notesApi, type LearnPlan } from '@/services/workspace';
 import { banner } from '@/components/ui/banner-api';
+import { createLogger } from '@/lib/logger';
 
-export interface PlanItem {
-  title: string;
-  thread: string;
-  why: string;
-}
-export interface LearnPlan {
-  goal: string;
-  understanding: string;
-  items: PlanItem[];
-}
 export interface Chapter {
   navId: string; // NavigationNode._id —— 结构操作(删/排序)用
   contentItemId: string; // ContentItem._id —— 读写草稿 / Aurora 上下文 / 导航 ?node 用
@@ -32,70 +23,7 @@ export interface Chapter {
   studied: boolean; // 有非空 aidraft = 研究过
 }
 
-// ─── 解析 write_learn_plan 的 frontmatter 契约 ──────────────────────────────────
-// 后端 js-yaml dump(lineWidth:-1) 产出固定形状,标量不折行:
-//   ---
-//   goal: <...>
-//   items:
-//     - title: <...>
-//       thread: <...>
-//       why: <...>
-//   ---
-//   <understanding 散文>
-// client 无 yaml 库,按这一固定形状手解析(处理 js-yaml 的单/双引号转义),不靠正则猜整体。
-
-function unquote(v: string): string {
-  const s = v.trim();
-  if (s.length >= 2 && s.startsWith("'") && s.endsWith("'")) {
-    return s.slice(1, -1).replace(/''/g, "'");
-  }
-  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
-    return s.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-  }
-  return s;
-}
-
-export function parseLearnPlan(body: string | null | undefined): LearnPlan | null {
-  if (!body) return null;
-  const m = /^---\n([\s\S]*?)\n---\n?/.exec(body);
-  if (!m) return null;
-  const understanding = body.slice(m[0].length).replace(/^\n+/, '');
-  let goal = '';
-  const items: PlanItem[] = [];
-  let cur: PlanItem | null = null;
-  let inItems = false;
-  for (const raw of m[1].split('\n')) {
-    const goalM = /^goal:\s*(.*)$/.exec(raw);
-    if (goalM) {
-      goal = unquote(goalM[1]);
-      inItems = false;
-      continue;
-    }
-    if (/^items:\s*$/.test(raw)) {
-      inItems = true;
-      continue;
-    }
-    if (!inItems) continue;
-    const t = /^\s*-\s*title:\s*(.*)$/.exec(raw);
-    if (t) {
-      if (cur) items.push(cur);
-      cur = { title: unquote(t[1]), thread: '', why: '' };
-      continue;
-    }
-    const th = /^\s+thread:\s*(.*)$/.exec(raw);
-    if (th && cur) {
-      cur.thread = unquote(th[1]);
-      continue;
-    }
-    const w = /^\s+why:\s*(.*)$/.exec(raw);
-    if (w && cur) {
-      cur.why = unquote(w[1]);
-      continue;
-    }
-  }
-  if (cur) items.push(cur);
-  return { goal, understanding, items };
-}
+const logger = createLogger('learn-plan');
 
 // ─── hook ───────────────────────────────────────────────────────────────────────
 
@@ -107,6 +35,7 @@ export interface LearningData {
   allChapters: Chapter[];
   chapters: Chapter[];
   plan: LearnPlan | null;
+  planError: string | null;
   reload: () => Promise<void>;
   createChapter: (title: string) => Promise<string | null>; // 返回新篇的 contentItemId,供创建后进入编辑
   removeChapter: (navId: string) => Promise<void>;
@@ -123,14 +52,44 @@ export function useLearningData(topicNavId: string): LearningData {
   const [allChapters, setAllChapters] = useState<Chapter[]>([]);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [plan, setPlan] = useState<LearnPlan | null>(null);
+  const [planError, setPlanError] = useState<string | null>(null);
+  const loadRequestIdRef = useRef(0);
+  const planRequestIdRef = useRef(0);
+
+  const loadPlan = useCallback(async (contentItemId: string | null) => {
+    const requestId = ++planRequestIdRef.current;
+    setPlanError(null);
+    if (!contentItemId) {
+      setPlan(null);
+      return;
+    }
+    try {
+      const nextPlan = await notesApi.getLearnPlan(contentItemId);
+      if (requestId === planRequestIdRef.current) setPlan(nextPlan);
+    } catch (cause) {
+      if (requestId !== planRequestIdRef.current) return;
+      const message = cause instanceof Error ? cause.message : '加载学习规划失败';
+      setPlanError(message);
+      logger.error('load_plan_failed', {
+        contentItemId,
+        errorType: cause instanceof Error ? cause.name : 'Unknown',
+      });
+    }
+  }, []);
 
   const load = useCallback(async () => {
+    const requestId = ++loadRequestIdRef.current;
+    // 主题切换/整体重载时立即使之前的独立规划刷新失效。
+    planRequestIdRef.current += 1;
     if (!topicNavId) {
       setError('缺少主题节点');
+      setLoading(false);
       return;
     }
     try {
       setError(null);
+      setPlan(null);
+      setPlanError(null);
       // visibility:'all' —— 管理端学习视图要看到未发布的新建篇目(默认 public 会把它们滤掉)
       const res = await structureApi.getChildren(topicNavId, {
         scope: 'notes',
@@ -147,11 +106,9 @@ export function useLearningData(topicNavId: string): LearningData {
         self = path.find((p) => p.id === topicNavId) ?? path[path.length - 1] ?? self;
       }
       const topicCid = self?.contentItemId ?? null;
-      setTopicContentItemId(topicCid);
-      setTopicTitle(self?.name ?? '学习');
 
       const kids = res.children;
-      const allNodes = await collectDescendantNodes(topicNavId);
+      const allNodes = await collectDescendantNodes(topicNavId, kids);
       // 一次批量探针判每篇是否研究过(有非空 aidraft);整批失败按"都没研究"降级,不阻塞整体。
       // 替掉原先「逐篇 getAiDraft 拉整篇正文只为一个布尔」的 N 个重复请求 + 流量浪费。
       const cids = allNodes
@@ -173,21 +130,20 @@ export function useLearningData(topicNavId: string): LearningData {
           parentId: c.parentId,
           studied: !!c.contentItemId && studiedSet.has(c.contentItemId),
         });
+      if (requestId !== loadRequestIdRef.current) return;
+      setTopicContentItemId(topicCid);
+      setTopicTitle(self?.name ?? '学习');
       setAllChapters(allNodes.map(toChapter));
       setChapters(kids.map((c) => toChapter({ ...c, depth: 0 })));
-
-      if (topicCid) {
-        const planDraft = await notesApi.getAiDraft(topicCid).catch(() => null);
-        setPlan(parseLearnPlan(planDraft?.bodyMarkdown));
-      } else {
-        setPlan(null);
-      }
+      await loadPlan(topicCid);
     } catch (e) {
-      setError(e instanceof Error ? e.message : '加载失败');
+      if (requestId === loadRequestIdRef.current) {
+        setError(e instanceof Error ? e.message : '加载失败');
+      }
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestIdRef.current) setLoading(false);
     }
-  }, [topicNavId]);
+  }, [loadPlan, topicNavId]);
 
   useEffect(() => {
     // load() 内有同步 setState,整体推迟一拍避免 set-state-in-effect 级联渲染告警
@@ -256,12 +212,11 @@ export function useLearningData(topicNavId: string): LearningData {
     );
   }, []);
 
-  // 只重读主题 aidraft + 重解析规划(轻量,供 Aurora 规划期间轮询实时刷左栏,不动篇目)
+  // 只重读结构化规划（轻量，供 Aurora 规划期间实时刷新左栏，不动篇目）。
   const refreshPlan = useCallback(async () => {
     if (!topicContentItemId) return;
-    const d = await notesApi.getAiDraft(topicContentItemId).catch(() => null);
-    setPlan(parseLearnPlan(d?.bodyMarkdown));
-  }, [topicContentItemId]);
+    await loadPlan(topicContentItemId);
+  }, [loadPlan, topicContentItemId]);
 
   return {
     loading,
@@ -271,6 +226,7 @@ export function useLearningData(topicNavId: string): LearningData {
     allChapters,
     chapters,
     plan,
+    planError,
     reload: load,
     createChapter,
     removeChapter,
@@ -288,15 +244,26 @@ type TreeNodeRef = {
   depth: number;
 };
 
-async function collectDescendantNodes(rootNodeId: string): Promise<TreeNodeRef[]> {
+async function collectDescendantNodes(
+  rootNodeId: string,
+  rootChildren?: StructureNode[],
+): Promise<TreeNodeRef[]> {
   const result: TreeNodeRef[] = [];
 
-  async function visit(parentId: string, depth: number) {
-    const res = await structureApi.getChildren(parentId, {
-      scope: 'notes',
-      visibility: 'all',
-    });
-    for (const child of res.children) {
+  async function visit(
+    parentId: string,
+    depth: number,
+    knownChildren?: StructureNode[],
+  ) {
+    const children =
+      knownChildren ??
+      (
+        await structureApi.getChildren(parentId, {
+          scope: 'notes',
+          visibility: 'all',
+        })
+      ).children;
+    for (const child of children) {
       result.push({
         id: child.id,
         name: child.name,
@@ -310,6 +277,6 @@ async function collectDescendantNodes(rootNodeId: string): Promise<TreeNodeRef[]
     }
   }
 
-  await visit(rootNodeId, 0);
+  await visit(rootNodeId, 0, rootChildren);
   return result;
 }

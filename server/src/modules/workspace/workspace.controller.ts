@@ -56,6 +56,7 @@ import {
   AnthologyPublicDetailDto,
 } from './dto/anthology-view.dto';
 import { BatchOperationDto } from './dto/batch-operation.dto';
+import type { LearnPlanDocument } from './learn-plan-document';
 
 type MultipartRequest = {
   file: () => Promise<MultipartFile | undefined>;
@@ -101,6 +102,14 @@ export class WorkspaceController {
     @Param('id') id: string,
   ): Promise<EditorDraftDto | null> {
     return this.noteViewService.getAiDraft(id);
+  }
+
+  /** 返回结构化学习规划；存储层 YAML 不越过 API 边界。 */
+  @Get('notes/items/:id/learn-plan')
+  async getNoteLearnPlan(
+    @Param('id') id: string,
+  ): Promise<LearnPlanDocument | null> {
+    return this.noteViewService.getLearnPlan(id);
   }
 
   @Get('notes/items/:id/draft')

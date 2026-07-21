@@ -19,6 +19,8 @@ import { TypegooseModule } from 'nestjs-typegoose';
 import { ContentModule } from '../content/content.module';
 import { NavigationModule } from '../navigation/navigation.module';
 import { EditorDraft } from './editor-draft.entity';
+import { WriteFenceCounter } from './write-fence-counter.entity';
+import { WriteFenceCounterRepository } from './write-fence-counter.repository';
 import { EditorDraftRepository } from './editor-draft.repository';
 import { WorkspaceService } from './workspace.service';
 import { NoteViewService } from './note-view.service';
@@ -30,7 +32,7 @@ import { WorkspaceController } from './workspace.controller';
   imports: [
     ContentModule,
     NavigationModule,
-    TypegooseModule.forFeature([EditorDraft]),
+    TypegooseModule.forFeature([EditorDraft, WriteFenceCounter]),
   ],
   controllers: [WorkspaceController],
   providers: [
@@ -39,6 +41,7 @@ import { WorkspaceController } from './workspace.controller';
     GalleryViewService,
     AnthologyViewService,
     EditorDraftRepository,
+    WriteFenceCounterRepository,
   ],
   exports: [
     WorkspaceService,
@@ -47,6 +50,7 @@ import { WorkspaceController } from './workspace.controller';
     AnthologyViewService,
     // 导出供 AgentModule.ToolAssembler 注入（write_learn_plan 工具落 aidraft）
     EditorDraftRepository,
+    WriteFenceCounterRepository,
   ],
 })
 export class WorkspaceModule {}

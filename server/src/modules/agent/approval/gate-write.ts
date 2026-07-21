@@ -11,7 +11,7 @@
  * 设计要点：
  * - 保留 realTool 的 description + inputSchema，AI SDK 仍能校验入参并展示工具描述
  * - execute 被替换为门禁逻辑；args 由 AI SDK 经 inputSchema 校验后传入，结构有保证
- * - 没有 sessionKey 时上游应退回直接用 realTool，避免「无法审批却又不写」的死局
+ * - 没有 sessionKey 时上游不得装配写工具，避免绕过审批直接写入
  */
 import { Logger } from '@nestjs/common';
 import { PendingWriteRepository } from './pending-write.repository';
@@ -84,7 +84,7 @@ export function gateWrite(
       }
     }
 
-    // ② 暂存到 pending_writes（TTL 24h 自动清理，不审批则自动过期）。
+    // ② 暂存到 pending_writes（未裁决记录 24h 自动过期，裁决结论长期保留）。
     //    buildPreview/stash 失败(如 Mongo 故障)不透传异常——带上下文 log 后回 error tool result,
     //    否则流层吞掉、服务端无痕(CLAUDE.md「catch 必 log / 关键写入失败带上下文」)。
     try {

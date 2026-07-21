@@ -464,7 +464,10 @@ export function useAdvisorChat({
         ...(data.messages as unknown as UIMessage[]),
         ...prev,
       ]);
-      setWriteApprovalStatuses(data.writeApprovalStatuses);
+      setWriteApprovalStatuses((previous) => ({
+        ...previous,
+        ...data.writeApprovalStatuses,
+      }));
       // 更新懒加载游标：指向更早一页的起点
       firstIndexRef.current = data.firstIndex;
       setHasMore(data.hasMore);
@@ -530,11 +533,31 @@ export function useAdvisorChat({
   const cycleTier = useCallback(() => setTier((t) => TIER_NEXT[t]), []);
 
   const setWriteApprovalStatus = useCallback(
-    (toolCallId: string, writeApprovalStatus: Extract<WriteApprovalStatus, 'approved' | 'rejected'>) => {
+    (
+      toolCallId: string,
+      writeApprovalStatus: Exclude<WriteApprovalStatus, 'pending'>,
+    ) => {
       setWriteApprovalStatuses((previous) => ({
         ...previous,
         [toolCallId]: writeApprovalStatus,
       }));
+    },
+    [],
+  );
+
+  const refreshWriteApprovalStatus = useCallback(
+    async (toolCallId: string): Promise<WriteApprovalStatus | undefined> => {
+      const data = await loadSession(sessionKeyRef.current, {
+        agentInstanceKey: agentInstanceKeyRef.current,
+      });
+      const refreshed = data.writeApprovalStatuses[toolCallId];
+      if (refreshed) {
+        setWriteApprovalStatuses((previous) => ({
+          ...previous,
+          [toolCallId]: refreshed,
+        }));
+      }
+      return refreshed;
     },
     [],
   );
@@ -554,6 +577,7 @@ export function useAdvisorChat({
     loadMore,
     writeApprovalStatuses,
     setWriteApprovalStatus,
+    refreshWriteApprovalStatus,
     tasks,
     planTitle,
     // v3 改稿

@@ -13,7 +13,11 @@
  *
  * 从原 EditorModule（editor.service.ts）迁移而来。
  */
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { join, parse, extname } from 'path';
 import { ContentService } from '../content/content.service';
@@ -32,6 +36,10 @@ import { EditorDraft } from './editor-draft.entity';
 import { EditorDraftRepository } from './editor-draft.repository';
 import { NavigationRepository } from '../navigation/navigation.repository';
 import { ContentSaveAction } from '../content/dto/save-content.dto';
+import {
+  parseLearnPlanDocument,
+  type LearnPlanDocument,
+} from './learn-plan-document';
 
 /**
  * 给 notes bodyMarkdown 加上 frontmatter（只有 title 字段）。
@@ -105,6 +113,8 @@ export interface UploadAssetInput {
 
 @Injectable()
 export class NoteViewService {
+  private readonly logger = new Logger(NoteViewService.name);
+
   constructor(
     private readonly contentService: ContentService,
     private readonly contentRepoService: ContentRepoService,
@@ -262,6 +272,30 @@ export class NoteViewService {
       return null;
     }
     return this.toDraftDto(draft);
+  }
+
+  /**
+   * 读取结构化学习规划。YAML 是服务端持久化细节，前端只接收稳定 DTO。
+   * 损坏数据返回 500 而非 null，避免界面把数据错误误判为“尚无规划”。
+   */
+  async getLearnPlan(id: string): Promise<LearnPlanDocument | null> {
+    await this.contentService.assertContentItemExists(id);
+    const draft =
+      await this.editorDraftRepository.findAiDraftByContentItemId(id);
+    if (!draft) {
+      return null;
+    }
+
+    try {
+      return parseLearnPlanDocument(draft.bodyMarkdown);
+    } catch (error) {
+      const stack = error instanceof Error ? error.stack : String(error);
+      this.logger.error(
+        `学习规划解析失败 contentItemId=${id} bodyLength=${draft.bodyMarkdown.length}`,
+        stack,
+      );
+      throw new InternalServerErrorException('学习规划数据格式无效');
+    }
   }
 
   /**

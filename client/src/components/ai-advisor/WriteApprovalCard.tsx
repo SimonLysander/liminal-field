@@ -10,7 +10,12 @@
  */
 
 import { useState } from 'react';
-import { approveWrite, rejectWrite, type WriteApprovalStatus } from '@/services/agent';
+import {
+  approveWrite,
+  rejectWrite,
+  type WriteApprovalStatus,
+  type WriteCommitResult,
+} from '@/services/agent';
 import { banner } from '@/components/ui/banner-api';
 
 interface PreviewItem {
@@ -28,13 +33,15 @@ export interface WriteApprovalCardProps {
   /** 裁决成功后同步更新父级状态，避免等待下次加载才刷新卡片。 */
   onStatusChange?: (
     toolCallId: string,
-    status: Extract<WriteApprovalStatus, 'approved' | 'rejected'>,
+    status: Exclude<WriteApprovalStatus, 'pending'>,
   ) => void;
+  /** committing 竞态时重读服务端状态，避免卡片长期停在可重复操作状态。 */
+  onStatusRefresh?: (toolCallId: string) => Promise<WriteApprovalStatus | undefined>;
   /** 允许后回调(如刷新左栏产出) */
   onApproved?: () => void;
 }
 
-type LocalResolvedState = 'approved' | 'rejected' | 'already' | null;
+type LocalResolvedState = Exclude<WriteApprovalStatus, 'pending'> | null;
 
 export function WriteApprovalCard({
   toolCallId,
@@ -42,6 +49,7 @@ export function WriteApprovalCard({
   preview,
   status,
   onStatusChange,
+  onStatusRefresh,
   onApproved,
 }: WriteApprovalCardProps) {
   const [resolved, setResolved] = useState<LocalResolvedState>(null);
@@ -57,21 +65,48 @@ export function WriteApprovalCard({
   const ordered = preview.ordered === true;
   const stats = typeof preview.stats === 'string' ? preview.stats : '';
 
-  // 必须看后端返回的 status:只有 'ok' 才是真落库。否则(sessionKey 不符 forbidden /
-  // not_found)绝不能 markResolved + 显示成功——那会让用户以为审批生效、实则没落库(踩过的坑)。
+  const applyTerminalStatus = (
+    result: WriteCommitResult,
+    requestedStatus: 'approved' | 'rejected',
+  ): boolean => {
+    const terminalStatus =
+      result.status === 'ok'
+        ? requestedStatus
+        : result.status === 'already_resolved'
+          ? result.resolution
+          : result.status === 'superseded' || result.status === 'expired'
+            ? result.status
+            : undefined;
+    if (!terminalStatus) return false;
+
+    setResolved(terminalStatus);
+    onStatusChange?.(toolCallId, terminalStatus);
+    if (terminalStatus === 'approved') onApproved?.();
+    if (terminalStatus === 'superseded') {
+      banner.info('这项修改已被更新的内容取代');
+    }
+    return true;
+  };
+
+  const refreshInProgressStatus = async () => {
+    if (!onStatusRefresh) return;
+    await new Promise((resolve) => window.setTimeout(resolve, 800));
+    const refreshed = await onStatusRefresh(toolCallId);
+    if (refreshed && refreshed !== 'pending') setResolved(refreshed);
+  };
+
+  // 必须看后端返回的 status，非终态结果绝不显示为已落库。
   const handleApprove = async () => {
     if (loading || !canResolve) return;
     setLoading(true);
     try {
-      const { status } = await approveWrite(toolCallId, sessionKey);
-      if (status === 'ok') {
-        setResolved('approved');
-        onStatusChange?.(toolCallId, 'approved');
-        onApproved?.();
-      } else if (status === 'already_resolved') {
-        setResolved('already');
+      const result = await approveWrite(toolCallId, sessionKey);
+      if (applyTerminalStatus(result, 'approved')) return;
+      if (result.status === 'in_progress') {
+        banner.info('审批正在处理');
+        await refreshInProgressStatus();
       } else {
-        banner.error(`审批未生效(${status}),未落库,请刷新后重试`);
+        banner.error(`审批未生效(${result.status})，请重试`);
       }
     } catch (err) {
       banner.error(err instanceof Error ? err.message : '审批失败，请重试');
@@ -84,14 +119,13 @@ export function WriteApprovalCard({
     if (loading || !canResolve) return;
     setLoading(true);
     try {
-      const { status } = await rejectWrite(toolCallId, sessionKey);
-      if (status === 'ok') {
-        setResolved('rejected');
-        onStatusChange?.(toolCallId, 'rejected');
-      } else if (status === 'already_resolved') {
-        setResolved('already');
+      const result = await rejectWrite(toolCallId, sessionKey);
+      if (applyTerminalStatus(result, 'rejected')) return;
+      if (result.status === 'in_progress') {
+        banner.info('审批正在处理');
+        await refreshInProgressStatus();
       } else {
-        banner.error(`拒绝未生效(${status}),请刷新后重试`);
+        banner.error(`拒绝未生效(${result.status})，请重试`);
       }
     } catch (err) {
       banner.error(err instanceof Error ? err.message : '拒绝失败，请重试');
@@ -105,9 +139,9 @@ export function WriteApprovalCard({
       ? '已写入 ✓'
       : effectiveStatus === 'rejected'
         ? '已拒绝'
-        : effectiveStatus === 'already'
-          ? '已处理'
-          : effectiveStatus === 'expired'
+        : effectiveStatus === 'superseded'
+          ? '已被更新内容取代'
+        : effectiveStatus === 'expired'
             ? '审批已过期'
             : '';
 

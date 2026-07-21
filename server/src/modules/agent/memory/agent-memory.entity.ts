@@ -66,6 +66,10 @@ export class AgentMemory {
   @prop({ type: () => [Object], default: [] })
   tasks!: Array<Record<string, unknown>>;
 
+  /** write_tasks 审批条件写排序键；防止过期提交覆盖较新的任务计划。 */
+  @prop({ type: () => String })
+  tasksApprovalFence?: string;
+
   @prop({ required: true, type: () => Date })
   createdAt!: Date;
 

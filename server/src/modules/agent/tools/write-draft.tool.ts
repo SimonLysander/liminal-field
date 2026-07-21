@@ -13,6 +13,7 @@
  */
 import { tool, jsonSchema } from 'ai';
 import type { EditorDraftRepository } from '../../workspace/editor-draft.repository';
+import { ApprovalSupersededError } from '../approval/approval-superseded.error';
 import { replaceDraftSection } from './draft-section';
 import { toolResult } from './tool-result';
 
@@ -134,6 +135,18 @@ export function validateCitations(
     if (!s || !s.title?.trim() || !s.url?.trim()) {
       return `sources 第 ${i + 1} 条缺 title 或 url:每条来源都要有真实标题与可访问 URL。修正后重新调用。`;
     }
+    try {
+      const url = new URL(s.url);
+      if (
+        (url.protocol !== 'http:' && url.protocol !== 'https:') ||
+        url.username ||
+        url.password
+      ) {
+        return `sources 第 ${i + 1} 条 URL 必须使用 http 或 https，且不能包含账号凭据。`;
+      }
+    } catch {
+      return `sources 第 ${i + 1} 条 URL 格式无效，必须提供完整的 http 或 https 地址。`;
+    }
   }
   return null;
 }
@@ -211,6 +224,12 @@ function operationOf(input: DraftWriteInput): DraftWriteOperation | null {
  * 用它把已有 aidraft 中的渲染引用还原成 CIT 标记，不能缺失。
  */
 export function validateDraftWriteInput(input: DraftWriteInput): string | null {
+  const changeSummary =
+    typeof input.changeSummary === 'string' ? input.changeSummary.trim() : '';
+  if (!changeSummary) {
+    return '缺少 changeSummary:必须用一句话说明这次写入做了什么或相比现有内容改了什么。';
+  }
+
   const operation = operationOf(input);
   if (!operation) {
     return 'operation 只能是 replace_document 或 replace_section。';
@@ -222,6 +241,9 @@ export function validateDraftWriteInput(input: DraftWriteInput): string | null {
       return '缺少 markdown:整篇重写必须提供完整 Markdown 正文。';
     const citationErr = validateCitations(markdown, input.sources);
     if (citationErr) return citationErr;
+    if ((input.sources?.length ?? 0) > 0 && !citationMarkers(markdown)) {
+      return '正文提供了 sources，却没有任何 [@#CIT N] 引用角标；请把来源标在其支撑的具体句子后。';
+    }
     return validateCitationAudit(input.citationAudit, input.sources);
   }
 
@@ -277,27 +299,32 @@ export function restoreAiDraftMarkdown(
   bodyMarkdown: string,
   sources: DraftSource[],
 ): string {
-  if (sources.length === 0) {
-    if (
-      /\]\([^\s)]+#cit-\d+(?:\s+"[^"]*")?\)/.test(bodyMarkdown) ||
-      /(?:^|\n)## 来源\s*$/m.test(bodyMarkdown)
-    ) {
-      throw new Error(
-        '当前 AI 初稿含来源；局部重写时必须传入完整 sources 数组。',
-      );
+  const hasGeneratedSources =
+    /\]\([^\s)]+#cit-\d+(?:\s+"[^"]*")?\)/.test(bodyMarkdown) ||
+    /(?:^|\n)## 来源\s*$/m.test(bodyMarkdown);
+  let existingSourceCount = 0;
+  let appendix = '';
+
+  // 本次 sources 表示写入后的完整来源表；旧稿来源只能保持原顺序并在末尾追加。
+  // 从最长前缀向下匹配，可恢复旧角标，同时拒绝删除、替换或重排已有来源。
+  for (let count = sources.length; count >= 1; count -= 1) {
+    const candidate = `\n\n${sourceAppendix(sources.slice(0, count))}`;
+    if (bodyMarkdown.endsWith(candidate)) {
+      existingSourceCount = count;
+      appendix = candidate;
+      break;
     }
-    return bodyMarkdown;
   }
 
-  const appendix = `\n\n${sourceAppendix(sources)}`;
-  if (!bodyMarkdown.endsWith(appendix)) {
+  if (existingSourceCount === 0) {
+    if (!hasGeneratedSources) return bodyMarkdown;
     throw new Error(
-      '当前 AI 初稿的来源表与本次 sources 不一致，无法安全局部重写。',
+      '当前 AI 初稿的来源表不是本次 sources 的有序前缀；局部重写只能保留原来源顺序并在末尾追加新来源。',
     );
   }
 
   let restored = bodyMarkdown.slice(0, -appendix.length);
-  sources.forEach((source, index) => {
+  sources.slice(0, existingSourceCount).forEach((source, index) => {
     const link = renderedCitationLink(source, index);
     restored = restored.split(link).join(`[@#CIT ${index + 1}]`);
   });
@@ -336,11 +363,12 @@ export function composeAiDraftBody(
 export async function commitDraftWrite(
   editorDraftRepo: Pick<
     EditorDraftRepository,
-    'findAiDraftByContentItemId' | 'saveAiDraft'
+    'findAiDraftByContentItemId' | 'saveAiDraft' | 'saveAiDraftFenced'
   >,
   noteContentItemId: string,
   input: DraftWriteInput,
   savedAt = new Date(),
+  approvalFence?: string,
 ): Promise<DraftWriteResult> {
   const validationError = validateDraftWriteInput(input);
   if (validationError) throw new Error(validationError);
@@ -371,6 +399,11 @@ export async function commitDraftWrite(
     });
     const citationError = validateCitations(replaced.markdown, sources);
     if (citationError) throw new Error(citationError);
+    if (sources.length > 0 && !citationMarkers(replaced.markdown)) {
+      throw new Error(
+        '完整初稿提供了 sources，却没有任何 [@#CIT N] 引用角标；请把来源标在其支撑的具体句子后。',
+      );
+    }
     markdown = replaced.markdown;
     sectionLabel = replaced.sectionLabel;
     title = existingDraft.title?.trim() || extractTitle(markdown);
@@ -378,14 +411,27 @@ export async function commitDraftWrite(
 
   const bodyMarkdown = composeAiDraftBody(markdown, sources);
   const summary = extractSummary(markdown);
-  await editorDraftRepo.saveAiDraft({
+  const draftInput = {
     contentItemId: noteContentItemId,
     bodyMarkdown,
     title,
     summary,
     changeNote: 'learn-draft',
     savedAt,
-  });
+  };
+  if (approvalFence == null) {
+    await editorDraftRepo.saveAiDraft(draftInput);
+  } else {
+    const written = await editorDraftRepo.saveAiDraftFenced(
+      draftInput,
+      approvalFence,
+    );
+    if (!written) {
+      throw new ApprovalSupersededError(
+        'write_draft 提交版本已过期，已拒绝覆盖较新的初稿。',
+      );
+    }
+  }
 
   return {
     bodyMarkdown,
@@ -451,12 +497,12 @@ export function createWriteDraftTool(
         changeSummary: {
           type: 'string',
           description:
-            '一句话说明这次写入做了什么、相比现有初稿改了什么（供用户审批时一眼看懂意图）。直接陈述，不加「本次/说明」之类前缀。',
+            '使用一句教科书式严谨、准确的书面语说明写入内容及其相对现有初稿的变化，供用户审批时明确理解修改意图。概念边界应清楚，术语应与正文一致；直接陈述，不加「本次/说明」之类前缀。',
         },
         sources: {
           type: 'array',
           description:
-            '本篇引用的外部来源，按正文里 [@#CIT 1][@#CIT 2]… 的出现顺序排列；每条须是真经 web_search/web_fetch 取到过的内容。无可证伪事实可不给。',
+            '本篇引用的完整外部来源表，序号对应正文的 [@#CIT N]；局部重写须保持已有来源的内容、顺序和序号，只在末尾追加新来源。每条均须来自 web_search/web_fetch 实际获取的内容。无可证伪事实可不给。',
           items: {
             type: 'object',
             properties: {

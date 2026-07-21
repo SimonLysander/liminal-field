@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { ReturnModelType } from '@typegoose/typegoose';
 import { getModelToken } from 'nestjs-typegoose';
+import { isMongoDuplicateKeyError } from '../../../common/mongo-errors';
 import {
   AgentMemoryObservation,
   AgentMemoryCurrentView,
@@ -57,6 +58,52 @@ export class AgentMemoryObservationRepository {
       `appendMany: 写入 ${created.length} 条 observations(topics=${[...new Set(items.map((i) => i.topic))].join(',')})`,
     );
     return created;
+  }
+
+  /**
+   * 审批提交专用的幂等追加。进程在“写入完成、审批落状态”之间退出时，
+   * 下一次重放会命中同一组 idempotencyKey，而不会重复写入史书事件。
+   */
+  async appendManyIdempotent(
+    writeId: string,
+    items: Array<{
+      observedAt?: Date;
+      topic: ObservationTopic;
+      observation: string;
+      context?: string;
+      sessionKey?: string;
+    }>,
+  ): Promise<void> {
+    if (items.length === 0) return;
+    const now = new Date();
+    for (const [index, item] of items.entries()) {
+      const idempotencyKey = `${writeId}:${index}`;
+      try {
+        await this.observationModel.updateOne(
+          { idempotencyKey },
+          {
+            $setOnInsert: {
+              observedAt: item.observedAt ?? now,
+              topic: item.topic,
+              observation: item.observation,
+              context: item.context,
+              sessionKey: item.sessionKey,
+              idempotencyKey,
+            },
+          },
+          { upsert: true },
+        );
+      } catch (error) {
+        if (!isMongoDuplicateKeyError(error)) throw error;
+
+        // 并发 upsert 的唯一键冲突表示另一执行者已写入；重查确认后按幂等成功处理。
+        const exists = await this.observationModel.exists({ idempotencyKey });
+        if (!exists) throw error;
+      }
+    }
+    this.logger.debug(
+      `appendManyIdempotent: writeId=${writeId} observations=${items.length}`,
+    );
   }
 
   /** 取最近 N 条(派生 prompt + observer 喂"已观察过的"防重复都用) */

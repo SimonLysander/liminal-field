@@ -64,7 +64,7 @@ function escapeAttr(s: string): string {
 }
 
 /**
- * 一组 findings 序列化为 write 阶段的 {{sources_xml}} —— 结构化 XML。
+ * 一组 findings 序列化为 write 阶段的结构化 XML。
  * 每条 <source>:引用源信息(cit/title/from/date/url) + reason(挑它的理由) → 属性;
  * 正文 = fulltext(web_fetch 一手原文),缺失时退回 snippet(RSS 背景)。
  * write 基于 <source> 正文写报告,引用就近标 [@#CIT cit]。
@@ -121,7 +121,6 @@ export class ComposeNode {
       `[compose] 开始 taskId=${task._id} findings=${task.findings.length}`,
     );
 
-    const topicName = String(task.topicId); // 调用方可传更好的名字，此处最小化依赖
     const aiConfig = await this.systemConfigService.getAiConfig('standard');
     const provider = createOpenAICompatible({
       name: 'digest-compose',
@@ -131,7 +130,7 @@ export class ComposeNode {
     const model = provider.chatModel(aiConfig.model);
 
     // ── 阶段 1: Plan —— 只用 title+reason 分主题 + 定 headline/deck(输入/输出都小,稳)
-    const plan = await this.plan(model, task, topicName);
+    const plan = await this.plan(model, task);
     this.logger.log(
       `[compose] plan 完成 taskId=${task._id} topics=${plan.topics.length} headline="${plan.headline}"`,
     );
@@ -160,12 +159,7 @@ export class ComposeNode {
           .filter((f): f is Finding => !!f);
         if (findings.length === 0) return null; // plan 给了空/无效引用号
         try {
-          const md = await this.writeSection(
-            model,
-            topicName,
-            topic.title,
-            findings,
-          );
+          const md = await this.writeSection(model, topic.title, findings);
           return { title: topic.title, md: md.trim() };
         } catch (err) {
           this.logger.error(
@@ -207,18 +201,13 @@ export class ComposeNode {
   }
 
   /** 阶段 1:分主题 + 定 headline/deck。只喂 title+reason,输出小 JSON。 */
-  private async plan(
-    model: LanguageModel,
-    task: DigestTask,
-    topicName: string,
-  ): Promise<Plan> {
-    const prompt = this.promptManager.render('digest/compose-plan.md', {
-      topic_name: topicName,
-      findings_list: buildPlanInput(task.findings),
-    });
+  private async plan(model: LanguageModel, task: DigestTask): Promise<Plan> {
+    const system = this.promptManager.render('digest/compose-plan.md');
+    const prompt = `<findings>\n${buildPlanInput(task.findings)}\n</findings>`;
     // 8192:deepseek-v4-pro 带 reasoning,小预算(2048)会被思考过程吃光导致 content 为空(textLen=0)。
     const { text, finishReason } = await generateText({
       model,
+      system,
       prompt,
       maxOutputTokens: 8192,
     });
@@ -248,21 +237,15 @@ export class ComposeNode {
   /** 阶段 2:写一个主题小节。只喂该组原文,输出裸 markdown(从 ### 篇名 开始,不含 ## 主题)。 */
   private async writeSection(
     model: LanguageModel,
-    topicName: string,
     sectionTitle: string,
     findings: Finding[],
   ): Promise<string> {
-    const prompt = this.promptManager.render(
-      'digest/compose-write-section.md',
-      {
-        topic_name: topicName,
-        section_title: sectionTitle,
-        sources_xml: buildSourcesXml(findings),
-      },
-    );
+    const system = this.promptManager.render('digest/compose-write-section.md');
+    const prompt = `<section title="${escapeAttr(sectionTitle)}">\n${buildSourcesXml(findings)}\n</section>`;
     // 8192:同 plan,给 reasoning 留足空间,避免思考吃光预算后正文为空
     const { text, finishReason } = await generateText({
       model,
+      system,
       prompt,
       maxOutputTokens: 8192,
     });

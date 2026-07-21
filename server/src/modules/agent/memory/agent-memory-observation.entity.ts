@@ -41,6 +41,8 @@ export const OBSERVATION_TOPICS: ObservationTopic[] = [
 @index({ observedAt: -1 })
 // topic + observedAt 复合索引(按 topic 筛选 + 时间排序的常见组合)
 @index({ topic: 1, observedAt: -1 })
+// HITL 审批重放使用；普通观察不带此字段，sparse 保持 append-only 既有行为。
+@index({ idempotencyKey: 1 }, { unique: true, sparse: true })
 @modelOptions({
   schemaOptions: {
     collection: 'agent_memory_observations',
@@ -82,6 +84,10 @@ export class AgentMemoryObservation {
   /** 触发观察的 chat session(可空,用于审计/溯源) */
   @prop({ trim: true, maxlength: 200 })
   sessionKey?: string;
+
+  /** 审批写入的幂等键（toolCallId:index）；只用于安全重放，不参与业务展示。 */
+  @prop({ type: () => String, trim: true })
+  idempotencyKey?: string;
 }
 
 /**

@@ -89,6 +89,19 @@ const equationOptions = {
   trust: false,
 };
 
+function safeStaticLinkHref(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const href = value.trim();
+  if (!href) return null;
+  if (/^(?:#|\/[^/]|\.\.?\/)/.test(href)) return href;
+  try {
+    const url = new URL(href);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? href : null;
+  } catch {
+    return null;
+  }
+}
+
 export function StaticParagraphElement(props: SlateElementProps) {
   return <SlateElement {...props} className={paragraphClassName} />;
 }
@@ -156,12 +169,16 @@ export function StaticHrElement(props: SlateElementProps) {
 }
 
 export function StaticLinkElement(props: SlateElementProps<TLinkElement>) {
+  const href = safeStaticLinkHref(props.element.url);
+  if (!href) {
+    return <SlateElement {...props} as="span" className={linkClassName} />;
+  }
   return (
     <SlateElement
       {...props}
       as="a"
       className={linkClassName}
-      attributes={{ ...props.attributes, href: props.element.url, rel: 'noopener noreferrer', target: '_blank' }}
+      attributes={{ ...props.attributes, href, rel: 'noopener noreferrer', target: '_blank' }}
     />
   );
 }
@@ -263,14 +280,15 @@ export function StaticFileElement(props: SlateElementProps<TFileElement>) {
   const element = props.element as TFileElement & StaticElement & { name?: string };
   const name = element.name ?? element.url ?? '文件';
   const caption = getCaptionText(element);
+  const href = safeStaticLinkHref(element.url);
 
   return (
     <SlateElement {...props} className={mediaFileElementClassName}>
-      {typeof element.url === 'string' && element.url.length > 0 ? (
+      {href ? (
         <a
           className={mediaFileLinkClassName}
           download={name}
-          href={element.url}
+          href={href}
           rel="noopener noreferrer"
           target="_blank"
         >

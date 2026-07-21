@@ -6,7 +6,7 @@
 /** 一条已裁决的写操作(HITL 审批回灌用)。 */
 export interface ResolvedWrite {
   toolName: string;
-  status: string; // 'approved' | 'rejected'
+  status: string; // 'approved' | 'rejected' | 'superseded'
 }
 
 /**
@@ -17,8 +17,12 @@ export interface ResolvedWrite {
 export function approvalResultsFeedback(resolved: ResolvedWrite[]): string {
   const lines = resolved.map((r) => {
     const verb =
-      r.status === 'approved' ? '已获用户批准并写入' : '被用户拒绝,未写入';
+      r.status === 'approved'
+        ? '已获用户批准并写入'
+        : r.status === 'superseded'
+          ? '已被后续版本取代,未写入'
+          : '被用户拒绝,未写入';
     return `- ${r.toolName}:${verb}`;
   });
-  return `\n\n<approval_results>\n你之前提议的写操作,用户已裁决:\n${lines.join('\n')}\n据此继续:被批准的视为已落库,无需重复提议;被拒绝的不要假装写了,可问清原因或换思路。\n</approval_results>`;
+  return `\n\n<approval_results>\n你之前提议的写操作,用户已裁决:\n${lines.join('\n')}\n据此继续:被批准的视为已落库,无需重复提议;未写入的不要假装写了,可按当前内容继续。\n</approval_results>`;
 }

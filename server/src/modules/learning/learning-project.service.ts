@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { isMongoDuplicateKeyError } from '../../common/mongo-errors';
 import { NavigationRepository } from '../navigation/navigation.repository';
 import { NavigationNodeService } from '../navigation/navigation.service';
 import { EditorDraftRepository } from '../workspace/editor-draft.repository';
@@ -113,7 +114,7 @@ export class LearningProjectService {
         scopeNodeIds: scopedNodeIds,
       });
     } catch (err) {
-      if (isDuplicateKeyError(err)) {
+      if (isMongoDuplicateKeyError(err)) {
         throw new BadRequestException('当前节点已与一个学习项目范围重叠');
       }
       throw err;
@@ -161,13 +162,4 @@ export class LearningProjectService {
 
 function uniqueStrings(values: Array<string | undefined>): string[] {
   return [...new Set(values.filter((value): value is string => !!value))];
-}
-
-function isDuplicateKeyError(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'code' in err &&
-    (err as { code?: unknown }).code === 11000
-  );
 }

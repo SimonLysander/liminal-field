@@ -513,22 +513,23 @@ export const TOOL_CATALOG: Record<string, ToolMeta> = {
 
   write_learn_plan: {
     displayName: '写规划',
-    summary: '把学习规划「目标+理解+脉络」落 aidraft（YAML frontmatter 格式）',
+    summary:
+      '把学习规划「概要+开篇+脉络+收束」落 aidraft（YAML frontmatter 格式）',
     detail:
-      '学习产品专用：learning-planner agent 完成领域研究后调用，把 goal（学习目标）、understanding（理解段）和 items（有序篇目脉络）序列化为 YAML frontmatter + 散文正文写入主题 aidraft。只落库，绝不建节点——建篇是用户的事。仅在学习规划场景挂载。',
+      '学习产品专用：learning-planner agent 完成领域研究后调用，把 goal（概要）、understanding（三段开篇）、items（有序篇目脉络）和 conclusion（收束）写入主题 aidraft。只落库，绝不建节点——建篇是用户的事。仅在学习规划场景挂载。',
     params: [
       {
         name: 'goal',
         type: 'string',
         required: true,
-        description: '本次学习的核心目标（一句话，前端展示为规划标题）',
+        description: '顶部概要：概括学习主题与最终要建立的理解或能力',
       },
       {
         name: 'understanding',
         type: 'string',
         required: true,
         description:
-          '对主题的理解：自然段说明学习目标、核心依赖与篇目次序的依据',
+          'AI 总篇三段开篇：主题界定、作者目标、期望建立的理解或能力及组织主线',
       },
       {
         name: 'items',
@@ -552,7 +553,21 @@ export const TOOL_CATALOG: Record<string, ToolMeta> = {
         name: 'items[].why',
         type: 'string',
         required: true,
-        description: '为何写这一章：一句话讲清学习意图',
+        description:
+          '为何写这一章：讲清它在学习主线中的作用、前后依赖与学习意图',
+      },
+      {
+        name: 'conclusion',
+        type: 'string',
+        required: true,
+        description: '节点线后的自然收束：综合学习路径并回扣目标，不复述篇名',
+      },
+      {
+        name: 'changeSummary',
+        type: 'string',
+        required: true,
+        description:
+          '审批摘要：首次生成时说明组织方式，重做时说明相对已有规划的调整及原因',
       },
     ],
     returns: '写入成功 → {status:ok, itemsCount:N}',

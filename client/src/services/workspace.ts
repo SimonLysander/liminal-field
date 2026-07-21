@@ -108,6 +108,20 @@ export interface EditorDraft {
   savedBy?: string;
 }
 
+export interface LearnPlanItem {
+  title: string;
+  thread: string;
+  why: string;
+}
+
+/** 学习规划 API DTO；持久化编码由服务端负责，客户端只渲染此结构。 */
+export interface LearnPlan {
+  goal: string;
+  understanding: string;
+  items: LearnPlanItem[];
+  conclusion: string;
+}
+
 export interface UploadedAsset {
   url: string;
   fileName: string;
@@ -406,6 +420,10 @@ export const notesApi = {
    */
   getAiDraft: (id: string) =>
     request<EditorDraft | null>(`/spaces/notes/items/${id}/aidraft`),
+
+  /** 读取主题的结构化学习规划；无规划时返回 null。 */
+  getLearnPlan: (id: string) =>
+    request<LearnPlan | null>(`/spaces/notes/items/${id}/learn-plan`),
 
   /**
    * 批量探针:传一组 contentItemId,返回其中「有非空 AI 初稿」的子集。

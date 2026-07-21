@@ -37,11 +37,12 @@
 | `agents/gallery-caption-writer.md` | 图说写手 systemPrompt | 同上 | 无 |
 | `agents/writing-advisor.md` | 写作顾问 systemPrompt（含编辑场景的工具与约束，原 instructions/tools-guide 写作专属部分迁入此处） | 同上 | `owner_name` |
 | `agents/editorial-contract.md` | 编辑相关 agent 始终遵守的协作边界与判断标准 | `SystemConfigService` 依 `contextPromptFiles` 置于入口提示词前 | 无 |
+| `agents/user-facing-prose-contract.md` | 指定 agent 直接展示文本的专业书面语硬约束 | `SystemConfigService` 依 `contextPromptFiles` 置于入口提示词前 | 无 |
 | `settings/digest-report-analyst.md` | 报告分析师 systemPrompt(builtin-agents 引用此路径) | 同上 | 无 |
 | `inline-assist/continue-system.md` | 普通 inline assist systemPrompt | `InlineAssistService` | 无 |
 | `digest/react-agent.md` | digest workflow react-agent 主 prompt | `ReactAgentNode` | `topic_name`, `topic_prompt`, `since_iso`, `until_iso` |
-| `digest/compose-plan.md` | digest compose 阶段1:分主题+定刊头 | `ComposeNode.plan` | `topic_name`, `findings_list` |
-| `digest/compose-write-section.md` | digest compose 阶段2:分主题写正文 | `ComposeNode.writeSection` | `topic_name`, `section_title`, `sources_xml` |
+| `digest/compose-plan.md` | digest compose 阶段1:分主题+定刊头的稳定 system prompt | `ComposeNode.plan` | 无；资料清单单独作为 user prompt |
+| `digest/compose-write-section.md` | digest compose 阶段2:分主题写正文的稳定 system prompt | `ComposeNode.writeSection` | 无；主题标题与来源正文单独作为 user prompt |
 | `sub-agent/researcher.md` | 通用研究助手 system prompt | `SubAgentService` | 无 |
 | `memory/profile-renderer.md` | Aurora 画像渲染器 | `MemoryViewService.callViewLLM` | `observations` |
 | `memory/session-compactor.md` | 会话压缩器 | `MemoryAgentService.callCompactLLM` | `existing_memories`, `input_text` |

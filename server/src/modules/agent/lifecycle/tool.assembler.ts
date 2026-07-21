@@ -69,7 +69,10 @@ import { ProcessedFeedItemRepository } from '../../digest/processed-feed-item.re
 import { DigestTaskRepository } from '../../digest/digest-task.repository';
 import { ExternalCacheRepository } from '../../external-cache/external-cache.repository';
 // 学习产品：write_learn_plan / write_draft / read_content 工具
-import { createWriteLearnPlanTool } from '../tools/write-learn-plan.tool';
+import {
+  createWriteLearnPlanTool,
+  validateLearnPlanInput,
+} from '../tools/write-learn-plan.tool';
 import {
   createWriteDraftTool,
   validateDraftWriteInput,
@@ -84,27 +87,15 @@ import { validateObservations } from '../tools/remember.tool';
 import type { ObservationTopic } from '../memory/agent-memory-observation.entity';
 
 /**
- * 门禁写工具的 changeSummary 写前校验:DeepSeek 等 provider 不遵守 schema 的 required,
- * 会直接略过可选/必填字段。这里硬校验——缺了就 invalid 让模型带着它重调,不依赖 prompt。
- */
-function requireChangeSummary(args: Record<string, unknown>): string | null {
-  const cs =
-    typeof args['changeSummary'] === 'string'
-      ? args['changeSummary'].trim()
-      : '';
-  return cs
-    ? null
-    : '缺少 changeSummary:必须用一句话说明这次写入做了什么 / 相比现有改了什么(直接陈述,不要「本次/说明」之类前缀)。请带上 changeSummary 重新调用本工具。';
-}
-
-/**
- * write_draft 门禁前置校验:先卡 changeSummary，再复用实际落库的参数校验。
- * 局部重写和整篇覆盖走同一个约束，避免审批卡能通过、提交时才发现参数不合法。
+ * 门禁与实际落库复用同一参数校验，避免审批卡通过后才发现参数不合法。
  */
 function validateDraftWrite(args: Record<string, unknown>): string | null {
-  const csErr = requireChangeSummary(args);
-  if (csErr) return csErr;
   return validateDraftWriteInput(args);
+}
+
+/** 新规划进入审批前同时校验审批摘要与正文结构，避免批准后才落入不完整数据。 */
+function validateLearnPlanWrite(args: Record<string, unknown>): string | null {
+  return validateLearnPlanInput(args);
 }
 
 export interface EntryContext {
@@ -200,9 +191,8 @@ export class ToolAssembler {
     // 联网读 URL:auto provider 总会返回;装配层无脑挂工具。
     const webFetchProvider = createWebFetchProviderFromEnv();
 
-    // HITL 门禁：有 sessionKey 才把写工具包成门禁层（暂存 pending_writes → 用户确认 → commit）；
-    // 无 sessionKey 时退回直接用真 tool，避免「无法审批却又不写」的死局。
-    // realTool 一律先构造一次两分支共用，sessionKey / pendingWriteRepo 在此统一注入。
+    // HITL 门禁：写工具必须绑定 sessionKey。缺少会话时不装配写工具，绝不降级为直写。
+    // realTool 只在有会话时进入门禁层，sessionKey / pendingWriteRepo 在此统一注入。
     const gateIfSession = (
       realTool: unknown,
       opts: Omit<GateWriteOptions, 'sessionKey' | 'pendingWriteRepo'>,
@@ -213,9 +203,9 @@ export class ToolAssembler {
             sessionKey: entryContext.sessionKey,
             pendingWriteRepo: this.pendingWriteRepo,
           })
-        : realTool;
+        : undefined;
 
-    const rawTools = {
+    const candidateTools = {
       // 知识库搜索（grep：按内容找）：全局可用
       search_knowledge_base: createSearchKnowledgeBaseTool(this.contentService),
       // 知识库目录（ls/tree：列出有哪些内容）：与 search 互补
@@ -378,7 +368,7 @@ export class ToolAssembler {
               {
                 toolName: 'write_learn_plan',
                 targetContentItemId: entryContext.learningTopicId,
-                validate: requireChangeSummary, // 没传改动摘要就退回让模型补
+                validate: validateLearnPlanWrite,
                 buildPreview: (args) => {
                   const items =
                     (args['items'] as Array<{
@@ -458,6 +448,11 @@ export class ToolAssembler {
           }
         : {}),
     };
+
+    // 候选表中的 undefined 表示当前上下文不具备工具运行前提（写工具缺 sessionKey）。
+    const rawTools = Object.fromEntries(
+      Object.entries(candidateTools).filter(([, value]) => value != null),
+    );
 
     // 按白名单过滤工具:语义区分三种情况——
     //   allowedTools = undefined → 未配置,挂全部工具(默认行为)

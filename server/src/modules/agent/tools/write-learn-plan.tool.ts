@@ -16,14 +16,15 @@
  *    模型调此工具后只落库，由用户决定是否采纳脉络、手动建篇。
  *
  * 入参 schema：
- *   goal           — 本次学习的核心目标（一句话，前端展示为规划标题）
- *   understanding  — 对主题的理解，自然段说明学习目标、核心依赖与篇目次序依据
+ *   goal           — 本次学习的概要（前端展示为规划摘要）
+ *   understanding  — 可供作者对照重写的 AI 总篇三段开篇
  *   items[]        — 篇目提案列表（有序）
  *     .title       — 篇名
  *     .thread      — 脉络词（关键概念/因果线索）
  *     .why         — 为何写这一章（学习意图）
+ *   conclusion     — 节点线后的收束段，不复述篇目
  *
- * BodyMarkdown 契约格式（前端按此解析，务必稳定）：
+ * BodyMarkdown 契约格式（仅作为服务端持久化协议）：
  *
  * ---
  * goal: <goal>
@@ -32,47 +33,77 @@
  *     thread: <thread>
  *     why: <why>
  *   - ...
+ * conclusion: <conclusion markdown>
  * ---
  * <understanding 散文 markdown>
  */
 import { tool, jsonSchema } from 'ai';
-import { dump } from 'js-yaml';
 import type { EditorDraftRepository } from '../../workspace/editor-draft.repository';
+import {
+  serializeLearnPlanDocument,
+  type LearnPlanItem,
+} from '../../workspace/learn-plan-document';
 import { toolResult } from './tool-result';
 
-export interface PlanItem {
-  title: string;
-  thread: string;
-  why: string;
-}
+export type PlanItem = LearnPlanItem;
 
 /**
- * 将 goal + items + understanding 序列化为 YAML frontmatter + 散文正文。
- *
- * 契约格式（前端解析此格式，切勿改动结构）：
- *   ---
- *   goal: <goal>
- *   items:
- *     - title: <title>
- *       thread: <thread>
- *       why: <why>
- *   ---
- *   <understanding 散文>
- *
- * 用 js-yaml dump 序列化，避免手拼 YAML 的转义风险。
+ * write_learn_plan 的运行时契约校验。
+ * 部分模型供应商会忽略 JSON Schema 的 required，因此直写与审批门禁必须共用这层校验。
  */
-export function serializeToDraftMarkdown(
-  goal: string,
-  understanding: string,
-  items: PlanItem[],
-): string {
-  const frontmatterData = {
-    goal,
-    items: items.map(({ title, thread, why }) => ({ title, thread, why })),
-  };
-  // lineWidth: -1 禁止自动折行，保持字符串完整（防止长标题/长 why 被截断）
-  const yaml = dump(frontmatterData, { lineWidth: -1 }).trimEnd();
-  return `---\n${yaml}\n---\n\n${understanding}`;
+export function validateLearnPlanInput(
+  args: Record<string, unknown>,
+  options: { allowMissingConclusion?: boolean } = {},
+): string | null {
+  const changeSummary =
+    typeof args['changeSummary'] === 'string'
+      ? args['changeSummary'].trim()
+      : '';
+  if (!changeSummary) {
+    return 'changeSummary 不能为空，请说明这次规划如何组织或调整。';
+  }
+
+  const goal = typeof args['goal'] === 'string' ? args['goal'].trim() : '';
+  if (!goal) return 'goal 不能为空，请提供学习规划的概要。';
+
+  const understanding =
+    typeof args['understanding'] === 'string'
+      ? args['understanding'].trim()
+      : '';
+  if (!understanding) return 'understanding 不能为空，请提供三段开篇。';
+  const paragraphs = understanding
+    .split(/\r?\n\s*\r?\n+/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+  if (paragraphs.length !== 3) {
+    return `understanding 必须恰好包含三个非空自然段，当前为 ${paragraphs.length} 段。请调整后重新调用。`;
+  }
+
+  if (!Array.isArray(args['items'])) {
+    return 'items 必须是有序篇目数组。';
+  }
+  if (args['items'].length === 0) {
+    return 'items 不能为空，请至少提供一个篇目。';
+  }
+  for (const [index, item] of args['items'].entries()) {
+    if (item == null || typeof item !== 'object' || Array.isArray(item)) {
+      return `items[${index}] 必须是篇目对象。`;
+    }
+    const record = item as Record<string, unknown>;
+    for (const field of ['title', 'thread', 'why'] as const) {
+      if (typeof record[field] !== 'string' || !record[field].trim()) {
+        return `items[${index}].${field} 不能为空。`;
+      }
+    }
+  }
+
+  const conclusion =
+    typeof args['conclusion'] === 'string' ? args['conclusion'].trim() : '';
+  if (!conclusion && !options.allowMissingConclusion) {
+    return 'conclusion 不能为空，请提供节点线后的自然收束。';
+  }
+
+  return null;
 }
 
 export function createWriteLearnPlanTool(
@@ -86,6 +117,7 @@ export function createWriteLearnPlanTool(
       goal: string;
       understanding: string;
       items: PlanItem[];
+      conclusion: string;
       changeSummary: string;
     }>({
       type: 'object',
@@ -93,15 +125,16 @@ export function createWriteLearnPlanTool(
         goal: {
           type: 'string',
           description:
-            '本次学习的核心目标（一句话，前端展示为规划标题，如「理解 React 渲染机制，能独立排查性能问题」）',
+            '顶部概要：简明概括学习主题与最终要建立的理解或能力，不罗列篇目',
         },
         understanding: {
           type: 'string',
           description:
-            '对主题的理解：自然成段说明学习目标、核心问题或机制，以及篇目之间的依赖和次序依据；末句自然引出篇目结构。',
+            'AI 总篇开篇，恰好三个自然段，不加标题或列表：第一段界定主题及范围；第二段说明它与作者目标的关系；第三段说明希望建立的理解或能力，并自然引出组织下方篇目的主线。不逐项复述篇目。',
         },
         items: {
           type: 'array',
+          minItems: 1,
           description: '有序篇目提案列表（顺序即学习顺序）',
           items: {
             type: 'object',
@@ -118,37 +151,51 @@ export function createWriteLearnPlanTool(
               why: {
                 type: 'string',
                 description:
-                  '为何写这一章：一句话讲清这篇在整条因果链中的学习意图',
+                  '说明这一篇在整条学习主线中的作用、与前后篇目的依赖，以及作者将在此建立的理解',
               },
             },
             required: ['title', 'thread', 'why'],
           },
         },
+        conclusion: {
+          type: 'string',
+          description:
+            '节点线后的总篇收束：综合整条学习路径并回扣作者的学习目的。写成自然文章结尾，不逐项复述篇目或再次列出标题。',
+        },
         changeSummary: {
           type: 'string',
           description:
-            '一句话说明这次规划相比现有改了什么（重排/增删/调整哪几篇等，供用户审批时一眼看懂）。直接陈述,不加「本次/说明」之类前缀。',
+            '供审批卡展示的简短摘要，采用教科书式严谨、准确的书面语。首次生成时说明总篇与篇目如何组织；重做已有规划时说明重排、增删或调整了什么及原因。概念边界应清楚，术语应与规划一致；直接陈述，不加「本次/说明」之类前缀。',
         },
       },
-      required: ['goal', 'understanding', 'items', 'changeSummary'],
+      required: [
+        'goal',
+        'understanding',
+        'items',
+        'conclusion',
+        'changeSummary',
+      ],
     }),
-    // changeSummary 是审批用元信息,不参与落库(gate 暂存进 preview),execute 只用 goal/understanding/items。
-    execute: async ({
-      goal,
-      understanding,
-      items,
-    }: {
+    // changeSummary 是审批用元信息，不参与落库；其余字段组成左栏完整规划稿。
+    execute: async (input: {
       goal: string;
       understanding: string;
       items: PlanItem[];
+      conclusion: string;
       changeSummary?: string;
     }) => {
+      const validationError = validateLearnPlanInput(input);
+      if (validationError) {
+        return toolResult(validationError, undefined, { status: 'invalid' });
+      }
+      const { goal, understanding, items, conclusion } = input;
       try {
-        const bodyMarkdown = serializeToDraftMarkdown(
+        const bodyMarkdown = serializeLearnPlanDocument({
           goal,
           understanding,
           items,
-        );
+          conclusion,
+        });
 
         // understanding 首句作为草稿摘要（截断到 100 字）
         const summary =

@@ -18,7 +18,10 @@ import {
 } from '@nestjs/common';
 import type { ReturnModelType } from '@typegoose/typegoose';
 import { getModelToken } from 'nestjs-typegoose';
+import { buildDirectWriteFence } from '../../common/approval-fence';
+import { isMongoDuplicateKeyError } from '../../common/mongo-errors';
 import { EditorDraft } from './editor-draft.entity';
+import { WriteFenceCounterRepository } from './write-fence-counter.repository';
 
 export interface SaveEditorDraftInput {
   contentItemId: string;
@@ -53,6 +56,7 @@ export class EditorDraftRepository {
   constructor(
     @Inject(getModelToken(EditorDraft.name))
     private readonly editorDraftModel: ReturnModelType<typeof EditorDraft>,
+    private readonly writeFenceCounterRepo: WriteFenceCounterRepository,
   ) {}
 
   private buildDraftId(contentItemId: string): string {
@@ -219,25 +223,12 @@ export class EditorDraftRepository {
    * fileName 固定 null，与 notes/gallery 草稿结构对齐，不引入条目层级。
    */
   async saveAiDraft(input: SaveAiDraftInput): Promise<EditorDraft> {
-    const draft = await this.editorDraftModel.findByIdAndUpdate(
-      this.buildAiDraftId(input.contentItemId),
-      {
-        $set: {
-          contentItemId: input.contentItemId,
-          bodyMarkdown: input.bodyMarkdown,
-          title: input.title,
-          summary: input.summary,
-          changeNote: input.changeNote,
-          savedAt: input.savedAt,
-          savedBy: input.savedBy,
-          fileName: null,
-        },
-      },
-      {
-        returnDocument: 'after',
-        upsert: true,
-        setDefaultsOnInsert: true,
-      },
+    const targetSequence = await this.writeFenceCounterRepo.next(
+      `draft:${input.contentItemId}`,
+    );
+    const draft = await this.upsertAiDraftFenced(
+      input,
+      buildDirectWriteFence(targetSequence),
     );
 
     if (!draft) {
@@ -247,6 +238,60 @@ export class EditorDraftRepository {
     }
 
     return draft;
+  }
+
+  /**
+   * 审批提交专用条件写。只有更高的单调版本可以覆盖 AI 初稿，过期执行者返回 false。
+   */
+  async saveAiDraftFenced(
+    input: SaveAiDraftInput,
+    approvalFence: string,
+  ): Promise<boolean> {
+    return (await this.upsertAiDraftFenced(input, approvalFence)) != null;
+  }
+
+  private async upsertAiDraftFenced(
+    input: SaveAiDraftInput,
+    approvalFence: string,
+  ): Promise<EditorDraft | null> {
+    try {
+      const draft = await this.editorDraftModel.findOneAndUpdate(
+        {
+          _id: this.buildAiDraftId(input.contentItemId),
+          $or: [
+            { approvalFence: { $lt: approvalFence } },
+            { approvalFence: { $exists: false } },
+            // 兼容本次改造早期写入的 ISO 时间戳 fence；新序号格式发布后首次写自动接管。
+            { approvalFence: /^\d{4}-/ },
+          ],
+        },
+        {
+          $set: {
+            contentItemId: input.contentItemId,
+            bodyMarkdown: input.bodyMarkdown,
+            title: input.title,
+            summary: input.summary,
+            changeNote: input.changeNote,
+            savedAt: input.savedAt,
+            savedBy: input.savedBy,
+            fileName: null,
+            approvalFence,
+          },
+        },
+        {
+          returnDocument: 'after',
+          upsert: true,
+          setDefaultsOnInsert: true,
+        },
+      );
+      return draft;
+    } catch (error) {
+      // 高版本已插入时，过期版本的 upsert 会命中 _id 唯一键；这是 fencing 拒绝，不是存储故障。
+      if (isMongoDuplicateKeyError(error)) {
+        return null;
+      }
+      throw error;
+    }
   }
 
   /** 删除 AI 初稿（学习节点删除时清理，或手动重置）。 */

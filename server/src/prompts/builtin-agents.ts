@@ -47,7 +47,10 @@ export const BUILTIN_AGENTS: BuiltinAgentDef[] = [
     ],
     enabledSkillKeys: ['writing-review'],
     tier: 'standard',
-    contextPromptFiles: ['agents/editorial-contract.md'],
+    contextPromptFiles: [
+      'agents/editorial-contract.md',
+      'agents/user-facing-prose-contract.md',
+    ],
     promptFile: 'agents/writing-advisor.md',
   },
   {
@@ -66,12 +69,13 @@ export const BUILTIN_AGENTS: BuiltinAgentDef[] = [
     tools: ['browse', 'web_search', 'web_fetch'],
     enabledSkillKeys: [],
     tier: 'standard',
+    contextPromptFiles: ['agents/user-facing-prose-contract.md'],
     promptFile: 'settings/digest-report-analyst.md',
   },
   {
     key: 'learning-planner',
     name: '学习规划师',
-    description: '按知识依赖与学习目标研究领域，规划「理解 + 篇目结构」',
+    description: '按知识依赖与学习目标研究领域，生成可对照重写的完整总篇规划稿',
     tools: [
       'write_learn_plan',
       'read_content',
@@ -82,7 +86,10 @@ export const BUILTIN_AGENTS: BuiltinAgentDef[] = [
     ],
     enabledSkillKeys: ['note-plan', 'writing-review'],
     tier: 'standard',
-    contextPromptFiles: ['agents/editorial-contract.md'],
+    contextPromptFiles: [
+      'agents/editorial-contract.md',
+      'agents/user-facing-prose-contract.md',
+    ],
     promptFile: 'agents/learning-planner.md',
   },
   {
@@ -98,7 +105,10 @@ export const BUILTIN_AGENTS: BuiltinAgentDef[] = [
     ],
     enabledSkillKeys: ['note-writing', 'writing-review'],
     tier: 'standard',
-    contextPromptFiles: ['agents/editorial-contract.md'],
+    contextPromptFiles: [
+      'agents/editorial-contract.md',
+      'agents/user-facing-prose-contract.md',
+    ],
     promptFile: 'agents/learning-writer.md',
   },
 ];

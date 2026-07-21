@@ -35,7 +35,8 @@
 
 ## 提示词落点
 
-- `aurora/conventions.md`：对话、建议、审稿以及由生命周期 agent 生成的初稿、规划和审批摘要的共享硬约束。
+- `agents/user-facing-prose-contract.md`：对话、建议、审稿以及由指定 agent 生成的初稿、规划和审批摘要的共享硬约束，通过 `contextPromptFiles` 精确挂载；图说 agent 不挂载。
+- `digest/compose-*.md`：稳定编辑规则进入 `system`，外部标题、理由与原文仅作为 `prompt` 数据输入，避免资料文字覆盖规则。
 - `skills/note-writing.md`、`skills/note-plan.md`：分别强化初稿和规划的教科书式严谨标准。
 - `digest/compose-plan.md`、`digest/compose-write-section.md`：强化简报的事实编辑标准，并清理可能诱导口语输出的提示词措辞与示例。
 - `inline-assist/continue-system.md`：在保持正文体裁的同时执行规范书面语下限。
@@ -46,4 +47,3 @@
 
 - 增加提示词契约测试，确认四类出口都包含对应规范，且行内续写不再无条件复制口语语气。
 - 执行服务端与客户端类型检查、lint、单元测试和生产构建。
-

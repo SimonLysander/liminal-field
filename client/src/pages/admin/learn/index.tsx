@@ -3,7 +3,7 @@
  *
  * 锁定的「对照重写双栏」:左 = AI 那份(只读) | 右 = 我的(可编辑) + 点 ✦ 聚焦态(三拍动效)。
  * 双栏骨架/宽度/三拍一律不动。两件事各占一边、互不侵犯:
- *   - 左栏 = Aurora 的:总章→规划产出(理解+脉络提案,只读参考);篇→AI 初稿(aidraft)。
+ *   - 左栏 = Aurora 的:总章→规划参照稿(概要+开篇+脉络+收束);篇→AI 初稿(aidraft)。
  *   - 右栏 = 我的:顶部嵌【我的篇目】目录(= 外面那棵真 NavigationNode 树,双向同步),下接我的正文重写(draft)。
  *
  * 数据全走真后端(useLearningData):篇目=structureApi 真树、初稿/草稿=notesApi、规划提案=主题 aidraft 解析。
@@ -87,233 +87,15 @@ import {
 } from './aidraft-citations';
 import { CreateLearningChapterDialog } from './CreateLearningChapterDialog';
 import { LearningDraftTitleInput } from './LearningDraftTitleInput';
+import { PlanProduct } from './LearnPlanProduct';
 import {
   useLearningData,
   type Chapter,
   type LearningData,
-  type LearnPlan,
 } from './useLearningData';
 
 const FADE_MS = 300;
 const SLIDE_MS = 650;
-
-// ─── 小件 ─────────────────────────────────────────────────────────────────────
-
-/** **粗体** → <strong> 的极简 prose。 */
-function Prose({ text }: { text: string }) {
-  return (
-    <>
-      {text.split('\n\n').map((para, pi) => (
-        <p key={pi} className="mb-3.5" style={{ color: 'var(--ink)' }}>
-          {para.split(/(\*\*[^*]+\*\*)/g).map((seg, si) =>
-            seg.startsWith('**') ? (
-              <strong key={si} style={{ fontWeight: 600 }}>
-                {seg.slice(2, -2)}
-              </strong>
-            ) : (
-              <span key={si}>{seg}</span>
-            ),
-          )}
-        </p>
-      ))}
-    </>
-  );
-}
-
-function learnPlanToMarkdown(plan: LearnPlan): string {
-  const sections: string[] = [];
-  if (plan.goal) sections.push(`目标: ${plan.goal}`);
-  if (plan.understanding.trim()) sections.push(plan.understanding.trim());
-  if (plan.items.length > 0) {
-    sections.push(
-      [
-        '## 脉络提案',
-        ...plan.items.map((item, index) =>
-          [
-            `${index + 1}. ${item.title}`,
-            item.thread ? `   - 线索: ${item.thread}` : '',
-            item.why ? `   - 理由: ${item.why}` : '',
-          ]
-            .filter(Boolean)
-            .join('\n'),
-        ),
-      ].join('\n'),
-    );
-  }
-  return sections.join('\n\n');
-}
-
-// ─── 左栏:Aurora 的规划提案(只读;没有则引导去规划)─────────────────────────────
-
-function PlanProduct({
-  plan,
-  title,
-  onPlanWithAurora,
-}: {
-  plan: LearnPlan | null;
-  title: string;
-  onPlanWithAurora: () => void;
-}) {
-  if (!plan) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
-        <Circle size={20} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)' }} />
-        <div className="space-y-1.5">
-          <p
-            className="text-md font-light"
-            style={{ color: 'var(--ink-ghost)', fontFamily: 'var(--font-serif)' }}
-          >
-            还没有规划
-          </p>
-          <p className="text-sm" style={{ color: 'var(--ink-faded)' }}>
-            让 Aurora 研究这个领域、立锚推演,产出「理解 + 脉络」给你参照。
-          </p>
-        </div>
-        <button
-          onClick={onPlanWithAurora}
-          className="flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-sm font-medium outline-none transition-colors"
-          style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}
-        >
-          <Sparkles size={14} strokeWidth={1.8} /> 让 Aurora 规划
-        </button>
-      </div>
-    );
-  }
-  return (
-    <div className="mx-auto w-full max-w-[38rem] px-8 pb-20 pt-6">
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h2
-            className="text-2xl font-semibold leading-snug"
-            style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
-          >
-            {title}
-          </h2>
-          <p className="mt-1 text-xs" style={{ color: 'var(--ink-ghost)' }}>
-            Aurora 的学习规划
-          </p>
-        </div>
-        <CopyPageButton
-          page={{
-            bodyMarkdown: learnPlanToMarkdown(plan),
-            metadata: [
-              { key: 'scope', label: '范围', value: 'learning' },
-              { key: 'goal', label: '目标', value: plan.goal },
-              { key: 'item_count', label: '条目数', value: plan.items.length },
-            ],
-            source: 'learning_plan',
-            title: `${title} · 学习规划`,
-          }}
-        />
-      </div>
-      {/* 目标 */}
-      {plan.goal && (
-        <div
-          className="mb-5 flex items-baseline gap-2.5 pb-4"
-          style={{ borderBottom: '1px solid var(--separator)' }}
-        >
-          <span
-            className="shrink-0 text-2xs uppercase"
-            style={{ color: 'var(--ink-faded)', letterSpacing: '0.06em' }}
-          >
-            这次学
-          </span>
-          <span
-            className="text-md"
-            style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
-          >
-            {plan.goal}
-          </span>
-        </div>
-      )}
-
-      {/* 理解(自然段:Aurora 向我解释思路) */}
-      <div className="mb-2 flex items-center gap-2 text-xs" style={{ color: 'var(--ink-faded)' }}>
-        <span
-          className="inline-block h-1.5 w-1.5 rounded-full"
-          style={{ background: 'var(--accent)', boxShadow: '0 0 0 3px var(--accent-soft)' }}
-        />
-        <span>
-          <b style={{ color: 'var(--ink)' }}>Aurora 的理解</b> · 研究后
-        </span>
-      </div>
-      <div
-        className="text-md"
-        style={{ fontFamily: 'var(--font-serif)', lineHeight: 'var(--leading-reading, 1.75)' }}
-      >
-        <Prose text={plan.understanding} />
-      </div>
-
-      {/* 脉络(只读参考;建篇在右边自己来) */}
-      {plan.items.length > 0 && (
-        <>
-          <div className="mb-1 mt-7">
-            <span
-              className="text-2xs uppercase"
-              style={{ color: 'var(--ink-faded)', letterSpacing: '0.06em' }}
-            >
-              脉络 · 提案
-            </span>
-          </div>
-          <div className="relative">
-            <span
-              className="absolute left-[60px] top-[18px] bottom-6 w-px"
-              style={{ background: 'var(--separator)' }}
-            />
-            {plan.items.map((p, i) => {
-              const prevThread = i > 0 ? plan.items[i - 1].thread : undefined;
-              const showThread = p.thread !== prevThread;
-              return (
-                <div
-                  key={i}
-                  className="grid w-full items-start py-2.5"
-                  style={{ gridTemplateColumns: '48px 24px 1fr' }}
-                >
-                  <div
-                    className="flex justify-end pr-2 pt-[3px] text-2xs"
-                    style={{
-                      color: showThread ? 'var(--ink-faded)' : 'transparent',
-                      letterSpacing: '0.04em',
-                    }}
-                  >
-                    {p.thread}
-                  </div>
-                  <div className="relative flex justify-center pt-[7px]">
-                    <span
-                      className="h-2 w-2 rounded-full"
-                      style={{ background: 'var(--accent)', boxShadow: '0 0 0 4px var(--paper)' }}
-                    />
-                  </div>
-                  <div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="tabular-nums text-xs" style={{ color: 'var(--ink-ghost)' }}>
-                        {i + 1}
-                      </span>
-                      <span
-                        className="text-md"
-                        style={{ color: 'var(--ink)', fontFamily: 'var(--font-serif)' }}
-                      >
-                        {p.title}
-                      </span>
-                    </div>
-                    {p.why && (
-                      <p
-                        className="mt-0.5 text-xs"
-                        style={{ color: 'var(--ink-faded)', lineHeight: 1.65 }}
-                      >
-                        {p.why}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
 
 // ─── 右栏顶部:嵌入式「我的篇目」目录(可折叠 + dnd 拖排序)= 真树 ───────────────────
 
@@ -621,7 +403,7 @@ function NodeScreen({
   // 工作上下文(实时拼、无正文)→ 后端原样投影进 <current_context>。
   // 约定:凡出现的节点一律写成「标题(ID:contentItemId)」,ID 随标题走——agent 读/引用该节点
   // (read_content)直接用这个 ID,不会再把「第几篇」的序号当 ID(此前 read_content("1") 读空即此)。
-  const planGoal = data.plan?.goal ? `(目标:${data.plan.goal})` : '';
+  const planOverview = data.plan?.goal ? `(概要:${data.plan.goal})` : '';
   const ref = (t: string, id: string | null) => `《${t}》(ID:${id ?? '—'})`;
   const chapterLines = learningNodes
     .map(
@@ -631,8 +413,8 @@ function NodeScreen({
     .join('\n');
   const learningContextStr =
     (isTopic
-      ? `在规划 ${ref(data.topicTitle, currentCid)}${planGoal}。`
-      : `在写 ${ref(title, currentCid)},所属 ${ref(data.topicTitle, data.topicContentItemId)}${planGoal}。`) +
+      ? `在规划 ${ref(data.topicTitle, currentCid)}${planOverview}。`
+      : `在写 ${ref(title, currentCid)},所属 ${ref(data.topicTitle, data.topicContentItemId)}${planOverview}。`) +
     '\n' +
     (learningNodes.length
       ? `《${data.topicTitle}》的学习节点(共 ${learningNodes.length},含所有后代):\n${chapterLines}`
@@ -1044,6 +826,8 @@ function NodeScreen({
               <PlanProduct
                 plan={plan}
                 title={title}
+                error={data.planError}
+                onRetry={() => void data.refreshPlan()}
                 onPlanWithAurora={openAurora}
               />
             ) : aiDraft === null ? (
@@ -1257,6 +1041,7 @@ function NodeScreen({
                     preview={meta}
                     status={chat.writeApprovalStatuses[callId]}
                     onStatusChange={chat.setWriteApprovalStatus}
+                    onStatusRefresh={chat.refreshWriteApprovalStatus}
                     onApproved={refreshLeft}
                   />
                 );

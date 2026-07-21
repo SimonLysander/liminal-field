@@ -2,7 +2,10 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { ReturnModelType } from '@typegoose/typegoose';
 import { Types } from 'mongoose';
 import { getModelToken } from 'nestjs-typegoose';
+import { buildDirectWriteFence } from '../../../common/approval-fence';
+import { isMongoDuplicateKeyError } from '../../../common/mongo-errors';
 import { AgentMemory, type AgentMemoryType } from './agent-memory.entity';
+import { WriteFenceCounterRepository } from '../../workspace/write-fence-counter.repository';
 
 /**
  * AgentMemoryRepository — 记忆的 CRUD 操作层。
@@ -15,6 +18,7 @@ export class AgentMemoryRepository {
   constructor(
     @Inject(getModelToken(AgentMemory.name))
     private readonly memoryModel: ReturnModelType<typeof AgentMemory>,
+    private readonly writeFenceCounterRepo: WriteFenceCounterRepository,
   ) {}
 
   /** 按 title 查找单条记忆 */
@@ -110,22 +114,29 @@ export class AgentMemoryRepository {
    */
   async upsertSession(agentKey: string, content: string): Promise<void> {
     const now = new Date();
-    await this.memoryModel.updateOne(
-      { type: 'session', agentKey },
-      {
-        $set: { content, updatedAt: now },
-        $setOnInsert: {
-          _id: new Types.ObjectId(),
-          type: 'session',
-          agentKey,
-          // title 固定占位：满足全局 unique 约束，session 唯一性语义在 agentKey
-          title: `session:${agentKey}`,
-          tasks: [],
-          createdAt: now,
-        },
+    const filter = { type: 'session' as const, agentKey };
+    const update = {
+      $set: { content, updatedAt: now },
+      $setOnInsert: {
+        _id: new Types.ObjectId(),
+        type: 'session' as const,
+        agentKey,
+        // title 固定占位：满足全局 unique 约束，session 唯一性语义在 agentKey
+        title: `session:${agentKey}`,
+        tasks: [],
+        createdAt: now,
       },
-      { upsert: true },
-    );
+    };
+    try {
+      await this.memoryModel.updateOne(filter, update, { upsert: true });
+    } catch (error) {
+      if (!isMongoDuplicateKeyError(error)) throw error;
+      // 与首次任务写并发插入时，按业务键重试普通更新；其他唯一键冲突继续暴露。
+      const retried = await this.memoryModel.updateOne(filter, {
+        $set: update.$set,
+      });
+      if (retried.matchedCount !== 1) throw error;
+    }
   }
 
   /** 按 agentKey 查找 session 记忆，不存在时返回 null */
@@ -141,22 +152,75 @@ export class AgentMemoryRepository {
     agentKey: string,
     tasks: Array<Record<string, unknown>>,
   ): Promise<void> {
+    const targetSequence = await this.writeFenceCounterRepo.next(
+      `tasks:${agentKey}`,
+    );
+    const written = await this.setTasksFenced(
+      agentKey,
+      tasks,
+      buildDirectWriteFence(targetSequence),
+    );
+    if (!written) {
+      throw new Error(`setTasks 已被更新的任务计划取代 agentKey=${agentKey}`);
+    }
+  }
+
+  /** 审批提交专用条件写；只有更高版本可以覆盖任务计划。 */
+  async setTasksFenced(
+    agentKey: string,
+    tasks: Array<Record<string, unknown>>,
+    approvalFence: string,
+  ): Promise<boolean> {
     const now = new Date();
-    await this.memoryModel.updateOne(
-      { type: 'session', agentKey },
-      {
-        $set: { tasks, updatedAt: now },
-        $setOnInsert: {
-          _id: new Types.ObjectId(),
+    try {
+      const result = await this.memoryModel.updateOne(
+        {
           type: 'session',
           agentKey,
-          title: `session:${agentKey}`,
-          content: '',
-          createdAt: now,
+          $or: [
+            { tasksApprovalFence: { $lt: approvalFence } },
+            { tasksApprovalFence: { $exists: false } },
+            { tasksApprovalFence: /^\d{4}-/ },
+          ],
         },
-      },
-      { upsert: true },
-    );
+        {
+          $set: { tasks, tasksApprovalFence: approvalFence, updatedAt: now },
+          $setOnInsert: {
+            _id: new Types.ObjectId(),
+            type: 'session',
+            agentKey,
+            title: `session:${agentKey}`,
+            content: '',
+            createdAt: now,
+          },
+        },
+        { upsert: true },
+      );
+      return result.modifiedCount === 1 || result.upsertedCount === 1;
+    } catch (error) {
+      if (!isMongoDuplicateKeyError(error)) throw error;
+      // 与 upsertSession/其他审批并发插入时，先按 fence 条件重试更新。
+      const retried = await this.memoryModel.updateOne(
+        {
+          type: 'session',
+          agentKey,
+          $or: [
+            { tasksApprovalFence: { $lt: approvalFence } },
+            { tasksApprovalFence: { $exists: false } },
+            { tasksApprovalFence: /^\d{4}-/ },
+          ],
+        },
+        { $set: { tasks, tasksApprovalFence: approvalFence, updatedAt: now } },
+      );
+      if (retried.modifiedCount === 1) return true;
+      // 只有同一 agentKey 已存在且 fence 不低于当前值才是过期；其他唯一索引冲突必须暴露。
+      const competingSession = await this.memoryModel.findOne({
+        type: 'session',
+        agentKey,
+      });
+      if (competingSession) return false;
+      throw error;
+    }
   }
 
   /** 读取某草稿的写作计划；session 不存在时返回空数组 */

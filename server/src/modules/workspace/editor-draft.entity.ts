@@ -44,6 +44,10 @@ export class EditorDraft {
   @prop({ trim: true })
   savedBy?: string;
 
+  /** AI 初稿的条件写排序键；防止较旧审批覆盖后续直接写入。 */
+  @prop({ type: () => String })
+  approvalFence?: string;
+
   /**
    * 关联的文件名（仅 anthology 条目草稿使用）。
    * null 表示主文档草稿（notes/gallery），"entries/eXXX.md" 表示条目草稿。
