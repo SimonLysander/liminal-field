@@ -30,9 +30,10 @@ import { useChat } from '@ai-sdk/react';
 import type { Descendant } from 'platejs';
 import { deserializeMd } from '@platejs/markdown';
 import {
+  getWriteApproval,
   loadSession,
   type SessionTask,
-  type WriteApprovalStatus,
+  type WriteApproval,
 } from '@/services/agent';
 import { computeDocDiff } from '@/pages/admin/lib/compute-doc-diff';
 import { readResolved, markResolved } from '@/pages/admin/lib/resolved-store';
@@ -168,8 +169,8 @@ export function useAdvisorChat({
   const [tier, setTier] = useState<Tier>('standard');
   const [sessionReady, setSessionReady] = useState(false);
   // 审批状态以后端为真源：跨设备、刷新和历史分页都一致。
-  const [writeApprovalStatuses, setWriteApprovalStatuses] = useState<
-    Record<string, WriteApprovalStatus>
+  const [writeApprovals, setWriteApprovals] = useState<
+    Record<string, WriteApproval>
   >({});
 
   // 懒加载状态：hasMore 控制是否显示"加载更多"触发区，isLoadingMore 防重复请求
@@ -423,13 +424,13 @@ export function useAdvisorChat({
       if (cancelled) return;
       setSessionReady(false);
       setMessages([]);
-      setWriteApprovalStatuses({});
+      setWriteApprovals({});
     });
     loadSession(sessionKey, { agentInstanceKey })
       .then((data) => {
         if (cancelled) return;
         setMessages(data.messages as unknown as UIMessage[]);
-        setWriteApprovalStatuses(data.writeApprovalStatuses);
+        setWriteApprovals(data.writeApprovals);
         // 初始化懒加载游标（绝对 index，用于下次 before 参数）
         firstIndexRef.current = data.firstIndex;
         setHasMore(data.hasMore);
@@ -464,9 +465,9 @@ export function useAdvisorChat({
         ...(data.messages as unknown as UIMessage[]),
         ...prev,
       ]);
-      setWriteApprovalStatuses((previous) => ({
+      setWriteApprovals((previous) => ({
         ...previous,
-        ...data.writeApprovalStatuses,
+        ...data.writeApprovals,
       }));
       // 更新懒加载游标：指向更早一页的起点
       firstIndexRef.current = data.firstIndex;
@@ -532,32 +533,26 @@ export function useAdvisorChat({
 
   const cycleTier = useCallback(() => setTier((t) => TIER_NEXT[t]), []);
 
-  const setWriteApprovalStatus = useCallback(
+  const setWriteApproval = useCallback(
     (
       toolCallId: string,
-      writeApprovalStatus: Exclude<WriteApprovalStatus, 'pending'>,
+      writeApproval: WriteApproval,
     ) => {
-      setWriteApprovalStatuses((previous) => ({
+      setWriteApprovals((previous) => ({
         ...previous,
-        [toolCallId]: writeApprovalStatus,
+        [toolCallId]: writeApproval,
       }));
     },
     [],
   );
 
-  const refreshWriteApprovalStatus = useCallback(
-    async (toolCallId: string): Promise<WriteApprovalStatus | undefined> => {
-      const data = await loadSession(sessionKeyRef.current, {
-        agentInstanceKey: agentInstanceKeyRef.current,
-      });
-      const refreshed = data.writeApprovalStatuses[toolCallId];
-      if (refreshed) {
-        setWriteApprovalStatuses((previous) => ({
-          ...previous,
-          [toolCallId]: refreshed,
-        }));
-      }
-      return refreshed;
+  const refreshWriteApproval = useCallback(
+    async (toolCallId: string): Promise<WriteApproval | undefined> => {
+      const refreshed = await getWriteApproval(
+        toolCallId,
+        sessionKeyRef.current,
+      );
+      return refreshed ?? undefined;
     },
     [],
   );
@@ -575,9 +570,9 @@ export function useAdvisorChat({
     hasMore,
     isLoadingMore,
     loadMore,
-    writeApprovalStatuses,
-    setWriteApprovalStatus,
-    refreshWriteApprovalStatus,
+    writeApprovals,
+    setWriteApproval,
+    refreshWriteApproval,
     tasks,
     planTitle,
     // v3 改稿

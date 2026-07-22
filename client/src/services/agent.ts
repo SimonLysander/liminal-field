@@ -13,6 +13,14 @@ export type WriteApprovalStatus =
   | 'rejected'
   | 'superseded'
   | 'expired';
+export type WriteApproval =
+  | { status: 'pending'; resolvedAt: null }
+  | { status: 'expired'; resolvedAt: null }
+  | {
+      status: 'approved' | 'rejected' | 'superseded';
+      /** 该审批记录进入终态并成功落库的服务端时间。 */
+      resolvedAt: string;
+    };
 export type WriteCommitStatus =
   | 'ok'
   | 'not_found'
@@ -21,11 +29,19 @@ export type WriteCommitStatus =
   | 'in_progress'
   | 'superseded'
   | 'already_resolved';
-export interface WriteCommitResult {
-  status: WriteCommitStatus;
-  /** already_resolved 时的服务端真实终态。 */
-  resolution?: 'approved' | 'rejected';
-}
+export type WriteCommitResult =
+  | { status: 'ok' | 'superseded'; resolvedAt: string }
+  | {
+      status: 'already_resolved';
+      resolution: 'approved' | 'rejected';
+      resolvedAt: string;
+    }
+  | {
+      status: Exclude<
+        WriteCommitStatus,
+        'ok' | 'superseded' | 'already_resolved'
+      >;
+    };
 
 /**
  * 后端分页响应结构（U5 聚合分页 endpoint）。
@@ -47,8 +63,8 @@ export interface SessionData {
   summary: string;
   tasks: SessionTask[];
   lastActiveAt: string | null;
-  /** toolCallId → 审批状态；未在期限内处理的历史卡片显式标为 expired。 */
-  writeApprovalStatuses: Record<string, WriteApprovalStatus>;
+  /** toolCallId → 审批状态与裁决时间；跨设备时以后端为真源。 */
+  writeApprovals: Record<string, WriteApproval>;
 }
 
 export interface BusinessSessionSummary {
@@ -157,6 +173,17 @@ export function rejectWrite(
 ): Promise<WriteCommitResult> {
   return request<WriteCommitResult>(
     `/agent/writes/${encodeURIComponent(toolCallId)}/reject`,
+    { method: 'POST', body: JSON.stringify({ sessionKey }) },
+  );
+}
+
+/** 精确读取一张审批卡的权威状态；用于并发设备慢提交后的有限轮询。 */
+export function getWriteApproval(
+  toolCallId: string,
+  sessionKey: string,
+): Promise<WriteApproval | null> {
+  return request<WriteApproval | null>(
+    `/agent/writes/${encodeURIComponent(toolCallId)}/status`,
     { method: 'POST', body: JSON.stringify({ sessionKey }) },
   );
 }

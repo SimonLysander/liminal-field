@@ -1039,9 +1039,9 @@ function NodeScreen({
                     // 否则后端 approve 判 sessionKey 不符 → forbidden → 不落库(此前的 bug)。
                     sessionKey={chat.sessionKey}
                     preview={meta}
-                    status={chat.writeApprovalStatuses[callId]}
-                    onStatusChange={chat.setWriteApprovalStatus}
-                    onStatusRefresh={chat.refreshWriteApprovalStatus}
+                    approval={chat.writeApprovals[callId]}
+                    onStatusChange={chat.setWriteApproval}
+                    onStatusRefresh={chat.refreshWriteApproval}
                     onApproved={refreshLeft}
                   />
                 );

@@ -1,19 +1,20 @@
 import { PendingWriteRepository } from '../pending-write.repository';
 import { PENDING_WRITE_TTL_MS } from '../pending-write.entity';
 
-describe('PendingWriteRepository.findStatusesBySessionKey', () => {
-  it("returns only a session's persisted approval statuses, keyed by tool call id", async () => {
+describe('PendingWriteRepository.findApprovalsBySessionKey', () => {
+  it("returns only a session's persisted approval status and resolution time", async () => {
+    const resolvedAt = new Date('2026-07-21T01:02:03.000Z');
     const rows = [
-      { _id: 'call-pending', status: 'pending' },
+      { _id: 'call-pending', status: 'pending', resolvedAt: null },
       {
         _id: 'call-expired',
         status: 'pending',
         expiresAt: new Date('2026-07-20T00:00:00.000Z'),
       },
       { _id: 'call-committing', status: 'committing' },
-      { _id: 'call-approved', status: 'approved' },
-      { _id: 'call-rejected', status: 'rejected' },
-      { _id: 'call-superseded', status: 'superseded' },
+      { _id: 'call-approved', status: 'approved', resolvedAt },
+      { _id: 'call-rejected', status: 'rejected', resolvedAt },
+      { _id: 'call-superseded', status: 'superseded', resolvedAt },
     ];
     const lean = jest.fn().mockResolvedValue(rows);
     const model = {
@@ -22,7 +23,7 @@ describe('PendingWriteRepository.findStatusesBySessionKey', () => {
     const repository = new PendingWriteRepository(model as never, {} as never);
 
     await expect(
-      repository.findStatusesBySessionKey(
+      repository.findApprovalsBySessionKey(
         'learn-ci:chat:1',
         [
           'call-pending',
@@ -35,12 +36,12 @@ describe('PendingWriteRepository.findStatusesBySessionKey', () => {
         new Date('2026-07-21T00:00:00.000Z'),
       ),
     ).resolves.toEqual({
-      'call-pending': 'pending',
-      'call-expired': 'expired',
-      'call-committing': 'pending',
-      'call-approved': 'approved',
-      'call-rejected': 'rejected',
-      'call-superseded': 'superseded',
+      'call-pending': { status: 'pending', resolvedAt: null },
+      'call-expired': { status: 'expired', resolvedAt: null },
+      'call-committing': { status: 'pending', resolvedAt: null },
+      'call-approved': { status: 'approved', resolvedAt },
+      'call-rejected': { status: 'rejected', resolvedAt },
+      'call-superseded': { status: 'superseded', resolvedAt },
     });
     expect(model.find).toHaveBeenCalledWith(
       {
@@ -56,7 +57,7 @@ describe('PendingWriteRepository.findStatusesBySessionKey', () => {
           ],
         },
       },
-      { _id: 1, status: 1, expiresAt: 1 },
+      { _id: 1, status: 1, expiresAt: 1, resolvedAt: 1 },
     );
     expect(lean).toHaveBeenCalledTimes(1);
   });

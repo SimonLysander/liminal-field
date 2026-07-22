@@ -6,7 +6,8 @@ import { WriteFenceCounterRepository } from '../../workspace/write-fence-counter
 import {
   PendingWrite,
   PENDING_WRITE_TTL_MS,
-  type PendingWriteApiStatus,
+  type PendingWriteApproval,
+  toPendingWriteApproval,
 } from './pending-write.entity';
 
 export interface StashPendingWriteInput {
@@ -97,32 +98,21 @@ export class PendingWriteRepository {
    * 会话加载时批量取审批状态，避免历史消息中的每张卡各发一次请求。
    * 未在期限内裁决、已被 TTL 清理的记录不在这里伪造状态，由生命周期层结合消息历史标为 expired。
    */
-  async findStatusesBySessionKey(
+  async findApprovalsBySessionKey(
     sessionKey: string,
     toolCallIds: string[],
     now = new Date(),
-  ): Promise<Record<string, PendingWriteApiStatus>> {
+  ): Promise<Record<string, PendingWriteApproval>> {
     if (toolCallIds.length === 0) return {};
     const writes = await this.model
       .find(
         { sessionKey, _id: { $in: toolCallIds } },
-        { _id: 1, status: 1, expiresAt: 1 },
+        { _id: 1, status: 1, expiresAt: 1, resolvedAt: 1 },
       )
       .lean();
     return Object.fromEntries(
       writes.map((write) => {
-        const unresolved =
-          write.status === 'pending' || write.status === 'committing';
-        const expired =
-          unresolved &&
-          write.expiresAt instanceof Date &&
-          write.expiresAt.getTime() <= now.getTime();
-        const status: PendingWriteApiStatus = expired
-          ? 'expired'
-          : write.status === 'committing'
-            ? 'pending'
-            : write.status;
-        return [write._id, status];
+        return [write._id, toPendingWriteApproval(write, now)];
       }),
     );
   }

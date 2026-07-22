@@ -29,7 +29,7 @@ import { SystemConfigService } from '../../settings/system-config.service';
 import { AgentMemoryRepository } from '../memory/agent-memory.repository';
 import { AgentSessionRepository } from '../session/agent-session.repository';
 import { PendingWriteRepository } from '../approval/pending-write.repository';
-import type { PendingWriteDisplayStatus } from '../approval/pending-write.entity';
+import type { PendingWriteApproval } from '../approval/pending-write.entity';
 import { AnthologyViewService } from '../../workspace/anthology-view.service';
 import { MemoryViewService } from '../memory/memory-view.service';
 import { AgentMemoryObservationRepository } from '../memory/agent-memory-observation.repository';
@@ -40,8 +40,6 @@ import type { AgentChatDto } from '../dto/agent-chat.dto';
 
 /** 跨段聚合分页默认每页条数 */
 const SESSION_PAGE_LIMIT = 50;
-
-type WriteApprovalDisplayStatus = PendingWriteDisplayStatus | 'expired';
 
 /** 从持久化 UI 消息中找出曾要求人工审批的工具调用。 */
 function collectPendingWriteToolCallIds(
@@ -147,8 +145,10 @@ export class AgentLifecycle {
     summary: string;
     tasks: Array<Record<string, unknown>>;
     lastActiveAt: Date | null;
-    /** toolCallId → 审批状态；未在期限内裁决、已清理的历史卡片为 expired。 */
-    writeApprovalStatuses: Record<string, WriteApprovalDisplayStatus>;
+    /** toolCallId → 审批状态与裁决时间；Mongo 是跨设备展示的唯一真源。 */
+    writeApprovals: Record<string, PendingWriteApproval>;
+    /** @deprecated 兼容发布前已打开的旧前端，稳定一版后删除。 */
+    writeApprovalStatuses: Record<string, PendingWriteApproval['status']>;
   }> {
     const memoryKey = agentInstanceKey ?? sessionKey;
     // 并行加载：全量消息（分页用）+ session 记忆（脉络/tasks）+ 最新段（lastActiveAt）
@@ -162,17 +162,17 @@ export class AgentLifecycle {
     const page = sliceSessionPage(allMessages, before, limit);
     const pageWriteIds = collectPendingWriteToolCallIds(page.messages);
     // 只查当前返回页面里的卡片；前端翻页时合并状态，查询成本不随会话年龄增长。
-    const persistedWriteStatuses =
-      await this.pendingWriteRepo.findStatusesBySessionKey(
+    const persistedWriteApprovals =
+      await this.pendingWriteRepo.findApprovalsBySessionKey(
         sessionKey,
         pageWriteIds,
       );
-    const writeApprovalStatuses: Record<string, WriteApprovalDisplayStatus> = {
-      ...persistedWriteStatuses,
+    const writeApprovals: Record<string, PendingWriteApproval> = {
+      ...persistedWriteApprovals,
     };
     for (const toolCallId of pageWriteIds) {
       // 未裁决记录被 TTL 删除后不能重新给出操作按钮，否则点击只会得到 not_found。
-      writeApprovalStatuses[toolCallId] ??= 'expired';
+      writeApprovals[toolCallId] ??= { status: 'expired', resolvedAt: null };
     }
 
     return {
@@ -184,7 +184,13 @@ export class AgentLifecycle {
       summary: sessionMem?.content ?? '',
       tasks: (sessionMem?.tasks as Array<Record<string, unknown>>) ?? [],
       lastActiveAt: latestSeg?.lastActiveAt ?? null,
-      writeApprovalStatuses,
+      writeApprovals,
+      writeApprovalStatuses: Object.fromEntries(
+        Object.entries(writeApprovals).map(([toolCallId, approval]) => [
+          toolCallId,
+          approval.status,
+        ]),
+      ),
     };
   }
 

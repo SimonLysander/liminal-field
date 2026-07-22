@@ -2,13 +2,16 @@ import { AgentLifecycle } from '../agent-lifecycle.service';
 
 function createLifecycle(
   messages: Record<string, unknown>[],
-  persistedStatuses: Record<
+  persistedApprovals: Record<
     string,
-    'pending' | 'approved' | 'rejected' | 'superseded'
+    {
+      status: 'pending' | 'approved' | 'rejected' | 'superseded';
+      resolvedAt: Date | null;
+    }
   >,
 ) {
   const pendingWriteRepo = {
-    findStatusesBySessionKey: jest.fn().mockResolvedValue(persistedStatuses),
+    findApprovalsBySessionKey: jest.fn().mockResolvedValue(persistedApprovals),
   };
   const lifecycle = new AgentLifecycle(
     {} as never,
@@ -50,16 +53,28 @@ describe('AgentLifecycle.onSessionLoad', () => {
           ],
         },
       ],
-      { 'still-persisted': 'approved' },
+      {
+        'still-persisted': {
+          status: 'approved',
+          resolvedAt: new Date('2026-07-21T01:02:03.000Z'),
+        },
+      },
     );
 
     const result = await lifecycle.onSessionLoad('learn-ci:chat:1');
 
+    expect(result.writeApprovals).toEqual({
+      'still-persisted': {
+        status: 'approved',
+        resolvedAt: new Date('2026-07-21T01:02:03.000Z'),
+      },
+      'ttl-cleared': { status: 'expired', resolvedAt: null },
+    });
     expect(result.writeApprovalStatuses).toEqual({
       'still-persisted': 'approved',
       'ttl-cleared': 'expired',
     });
-    expect(pendingWriteRepo.findStatusesBySessionKey).toHaveBeenCalledWith(
+    expect(pendingWriteRepo.findApprovalsBySessionKey).toHaveBeenCalledWith(
       'learn-ci:chat:1',
       ['still-persisted', 'ttl-cleared'],
     );

@@ -210,4 +210,14 @@ export class AgentController {
   ) {
     return this.commitService.reject(toolCallId, dto.sessionKey);
   }
+
+  /** 按 callId 精确读取审批状态，避免旧分页卡片依赖会话最新页刷新。 */
+  @HttpCode(HttpStatus.OK)
+  @Post('agent/writes/:toolCallId/status')
+  async getWriteApproval(
+    @Param('toolCallId') toolCallId: string,
+    @Body() dto: WriteApprovalDto,
+  ) {
+    return this.commitService.getApproval(toolCallId, dto.sessionKey);
+  }
 }

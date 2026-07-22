@@ -23,7 +23,30 @@ export type PendingWriteDisplayStatus = Exclude<
   PendingWriteStatus,
   'committing'
 >;
-export type PendingWriteApiStatus = PendingWriteDisplayStatus | 'expired';
+export type PendingWriteApproval =
+  | { status: 'pending' | 'expired'; resolvedAt: null }
+  | {
+      status: Exclude<PendingWriteDisplayStatus, 'pending'>;
+      /** 该审批记录进入终态并成功落库的服务端时间。 */
+      resolvedAt: Date;
+    };
+
+/** 将 Mongo 状态机映射为前端展示契约，并拒绝缺少裁决时间的损坏终态。 */
+export function toPendingWriteApproval(
+  write: Pick<PendingWrite, 'status' | 'expiresAt' | 'resolvedAt'>,
+  now: Date,
+): PendingWriteApproval {
+  if (write.status === 'pending' || write.status === 'committing') {
+    const expired =
+      write.expiresAt instanceof Date &&
+      write.expiresAt.getTime() <= now.getTime();
+    return { status: expired ? 'expired' : 'pending', resolvedAt: null };
+  }
+  if (!(write.resolvedAt instanceof Date)) {
+    throw new Error(`审批终态缺少 resolvedAt status=${write.status}`);
+  }
+  return { status: write.status, resolvedAt: write.resolvedAt };
+}
 
 @index({ sessionKey: 1, status: 1 })
 @index({ expiresAt: 1 }, { expireAfterSeconds: 0 })

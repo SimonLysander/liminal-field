@@ -15,6 +15,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { buildApprovalFence } from '../../../common/approval-fence';
 import { PendingWriteRepository } from './pending-write.repository';
+import {
+  toPendingWriteApproval,
+  type PendingWrite,
+  type PendingWriteApproval,
+} from './pending-write.entity';
 import { EditorDraftRepository } from '../../workspace/editor-draft.repository';
 import { AgentMemoryRepository } from '../memory/agent-memory.repository';
 import { AgentMemoryObservationRepository } from '../memory/agent-memory-observation.repository';
@@ -41,11 +46,17 @@ export type CommitStatus =
   | 'superseded'
   | 'already_resolved';
 
-export interface CommitResult {
-  status: CommitStatus;
-  /** already_resolved 时返回 Mongo 中的真实终态，供其他设备精确同步。 */
-  resolution?: 'approved' | 'rejected';
-}
+export type CommitResult =
+  | { status: 'ok' | 'superseded'; resolvedAt: Date }
+  | {
+      status: 'already_resolved';
+      /** Mongo 中的真实终态，供其他设备精确同步。 */
+      resolution: 'approved' | 'rejected';
+      resolvedAt: Date;
+    }
+  | {
+      status: Exclude<CommitStatus, 'ok' | 'superseded' | 'already_resolved'>;
+    };
 
 const APPROVAL_LEASE_MS = 30_000;
 
@@ -60,6 +71,30 @@ function isExpiredPending(
   );
 }
 
+function existingResolution(
+  write: Pick<PendingWrite, 'status' | 'expiresAt' | 'resolvedAt'>,
+): CommitResult | null {
+  if (
+    write.status !== 'approved' &&
+    write.status !== 'rejected' &&
+    write.status !== 'superseded'
+  ) {
+    return null;
+  }
+  const approval = toPendingWriteApproval(write, new Date());
+  if (approval.status === 'superseded') {
+    return { status: 'superseded', resolvedAt: approval.resolvedAt };
+  }
+  if (approval.status === 'approved' || approval.status === 'rejected') {
+    return {
+      status: 'already_resolved',
+      resolution: approval.status,
+      resolvedAt: approval.resolvedAt,
+    };
+  }
+  return null;
+}
+
 @Injectable()
 export class PendingWriteCommitService {
   private readonly logger = new Logger(PendingWriteCommitService.name);
@@ -70,6 +105,16 @@ export class PendingWriteCommitService {
     private readonly memoryRepo: AgentMemoryRepository,
     private readonly observationRepo: AgentMemoryObservationRepository,
   ) {}
+
+  /** 精确读取单张审批卡，供跨设备慢提交按 callId 收敛到权威终态。 */
+  async getApproval(
+    toolCallId: string,
+    sessionKey: string,
+  ): Promise<PendingWriteApproval | null> {
+    const write = await this.pendingWriteRepo.findById(toolCallId);
+    if (!write || write.sessionKey !== sessionKey) return null;
+    return toPendingWriteApproval(write, new Date());
+  }
 
   async approve(toolCallId: string, sessionKey: string): Promise<CommitResult> {
     const pending = await this.pendingWriteRepo.findById(toolCallId);
@@ -99,20 +144,17 @@ export class PendingWriteCommitService {
       this.logger.warn(
         `approve: 接管过期提交租约 toolCallId=${toolCallId} toolName=${pending.toolName}`,
       );
-    } else if (pending.status === 'superseded') {
-      return { status: 'superseded' };
-    } else if (pending.status === 'approved' || pending.status === 'rejected') {
-      return { status: 'already_resolved', resolution: pending.status };
+    } else {
+      const resolved = existingResolution(pending);
+      if (resolved) return resolved;
     }
     if (!pending.payload) {
       // 终态裁决会主动清除大字段；初次读取与并发裁决之间可能发生状态翻转。
       // 在报数据损坏前重读一次，避免把正常的跨设备审批竞态误判为异常。
       const latest = await this.pendingWriteRepo.findById(toolCallId);
-      if (latest?.status === 'superseded') {
-        return { status: 'superseded' };
-      }
-      if (latest?.status === 'approved' || latest?.status === 'rejected') {
-        return { status: 'already_resolved', resolution: latest.status };
+      if (latest) {
+        const resolved = existingResolution(latest);
+        if (resolved) return resolved;
       }
       if (latest && isExpiredPending(latest, now)) {
         return { status: 'expired' };
@@ -133,11 +175,9 @@ export class PendingWriteCommitService {
         `approve: 未取得提交权 toolCallId=${toolCallId} toolName=${pending.toolName}`,
       );
       const latest = await this.pendingWriteRepo.findById(toolCallId);
-      if (latest?.status === 'superseded') {
-        return { status: 'superseded' };
-      }
-      if (latest?.status === 'approved' || latest?.status === 'rejected') {
-        return { status: 'already_resolved', resolution: latest.status };
+      if (latest) {
+        const resolved = existingResolution(latest);
+        if (resolved) return resolved;
       }
       if (latest && isExpiredPending(latest, now)) {
         return { status: 'expired' };
@@ -267,22 +307,25 @@ export class PendingWriteCommitService {
           );
       }
 
+      const completedAt = new Date();
       const completed = await this.pendingWriteRepo.completeApproval(
         toolCallId,
         commitToken,
-        new Date(),
+        completedAt,
       );
       if (!completed) {
         throw new Error(
           `approve: 副作用完成但审批状态落库失败 toolCallId=${toolCallId}`,
         );
       }
+      return { status: 'ok', resolvedAt: completedAt };
     } catch (err) {
       if (err instanceof ApprovalSupersededError) {
+        const resolvedAt = new Date();
         const completed = await this.pendingWriteRepo.completeSuperseded(
           toolCallId,
           commitToken,
-          new Date(),
+          resolvedAt,
         );
         if (!completed) {
           throw new Error(
@@ -292,7 +335,7 @@ export class PendingWriteCommitService {
         this.logger.warn(
           `approve: 已被后续写入取代 toolCallId=${toolCallId} toolName=${toolName}`,
         );
-        return { status: 'superseded' };
+        return { status: 'superseded', resolvedAt };
       }
       const stack = err instanceof Error ? err.stack : String(err);
       let reopened = false;
@@ -312,8 +355,6 @@ export class PendingWriteCommitService {
       );
       throw err;
     }
-
-    return { status: 'ok' };
   }
 
   async reject(toolCallId: string, sessionKey: string): Promise<CommitResult> {
@@ -328,15 +369,11 @@ export class PendingWriteCommitService {
       );
       return { status: 'forbidden' };
     }
-    if (pending.status === 'superseded') {
-      return { status: 'superseded' };
-    }
+    const existing = existingResolution(pending);
+    if (existing) return existing;
     const now = new Date();
     if (isExpiredPending(pending, now)) {
       return { status: 'expired' };
-    }
-    if (pending.status === 'approved' || pending.status === 'rejected') {
-      return { status: 'already_resolved', resolution: pending.status };
     }
     if (pending.status === 'committing') {
       return { status: 'in_progress' };
@@ -345,11 +382,9 @@ export class PendingWriteCommitService {
     const resolved = await this.pendingWriteRepo.reject(toolCallId, now);
     if (!resolved) {
       const latest = await this.pendingWriteRepo.findById(toolCallId);
-      if (latest?.status === 'superseded') {
-        return { status: 'superseded' };
-      }
-      if (latest?.status === 'approved' || latest?.status === 'rejected') {
-        return { status: 'already_resolved', resolution: latest.status };
+      if (latest) {
+        const existing = existingResolution(latest);
+        if (existing) return existing;
       }
       if (latest && isExpiredPending(latest, now)) {
         return { status: 'expired' };
@@ -361,6 +396,6 @@ export class PendingWriteCommitService {
       `reject: toolCallId=${toolCallId} toolName=${pending.toolName} sessionKey=${sessionKey}`,
     );
 
-    return { status: 'ok' };
+    return { status: 'ok', resolvedAt: now };
   }
 }

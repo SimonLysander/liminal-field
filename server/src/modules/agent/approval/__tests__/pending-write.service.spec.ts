@@ -87,6 +87,7 @@ describe('PendingWriteCommitService.approve', () => {
 
   it('claim 竞态失败后发现已完成 → already_resolved', async () => {
     const { svc, pendingRepo } = mocks();
+    const resolvedAt = new Date('2026-07-21T01:02:03.000Z');
     pendingRepo.findById
       .mockResolvedValueOnce({
         sessionKey: 's',
@@ -95,28 +96,31 @@ describe('PendingWriteCommitService.approve', () => {
         payload: { markdown: '# T\nbody', changeSummary: '生成初稿。' },
         targetContentItemId: 'ci',
       })
-      .mockResolvedValueOnce({ status: 'approved' });
+      .mockResolvedValueOnce({ status: 'approved', resolvedAt });
     pendingRepo.claimApproval.mockResolvedValue(null);
 
     await expect(svc.approve('tc', 's')).resolves.toEqual({
       status: 'already_resolved',
       resolution: 'approved',
+      resolvedAt,
     });
   });
 
   it('claim 竞态失败后发现已被取代 → superseded', async () => {
     const { svc, pendingRepo } = mocks();
+    const resolvedAt = new Date('2026-07-21T01:02:03.000Z');
     pendingRepo.findById
       .mockResolvedValueOnce({
         sessionKey: 's',
         status: 'pending',
         toolName: 'write_draft',
       })
-      .mockResolvedValueOnce({ status: 'superseded' });
+      .mockResolvedValueOnce({ status: 'superseded', resolvedAt });
     pendingRepo.claimApproval.mockResolvedValue(null);
 
     await expect(svc.approve('tc', 's')).resolves.toEqual({
       status: 'superseded',
+      resolvedAt,
     });
   });
 
@@ -138,29 +142,35 @@ describe('PendingWriteCommitService.approve', () => {
 
   it('已被取代的审批再次允许时透传 superseded 终态', async () => {
     const { svc, pendingRepo } = mocks();
+    const resolvedAt = new Date('2026-07-21T01:02:03.000Z');
     pendingRepo.findById.mockResolvedValue({
       sessionKey: 's',
       status: 'superseded',
       toolName: 'write_draft',
+      resolvedAt,
     });
 
     await expect(svc.approve('tc', 's')).resolves.toEqual({
       status: 'superseded',
+      resolvedAt,
     });
     expect(pendingRepo.claimApproval).not.toHaveBeenCalled();
   });
 
   it('其他设备已完成审批时返回真实终态', async () => {
     const { svc, pendingRepo } = mocks();
+    const resolvedAt = new Date('2026-07-21T01:02:03.000Z');
     pendingRepo.findById.mockResolvedValue({
       sessionKey: 's',
       status: 'approved',
       toolName: 'write_draft',
+      resolvedAt,
     });
 
     await expect(svc.approve('tc', 's')).resolves.toEqual({
       status: 'already_resolved',
       resolution: 'approved',
+      resolvedAt,
     });
     expect(pendingRepo.claimApproval).not.toHaveBeenCalled();
   });
@@ -176,13 +186,16 @@ describe('PendingWriteCommitService.approve', () => {
     });
     pendingRepo.reopenStaleApproval.mockResolvedValue(true);
 
-    await expect(svc.approve('tc', 's')).resolves.toEqual({ status: 'ok' });
+    const result = await svc.approve('tc', 's');
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') throw new Error('expected ok');
+    expect(result.resolvedAt).toBeInstanceOf(Date);
     expect(pendingRepo.claimApproval).toHaveBeenCalled();
     expect(editorRepo.saveAiDraftFenced).toHaveBeenCalledTimes(1);
     expect(pendingRepo.completeApproval).toHaveBeenCalledWith(
       'tc',
       expect.any(String),
-      expect.any(Date),
+      result.resolvedAt,
     );
   });
 
@@ -194,7 +207,10 @@ describe('PendingWriteCommitService.approve', () => {
       payload: { markdown: '# T\nbody', changeSummary: '生成完整初稿。' },
       targetContentItemId: 'ci',
     });
-    expect(await svc.approve('tc', 's')).toEqual({ status: 'ok' });
+    expect(await svc.approve('tc', 's')).toMatchObject({
+      status: 'ok',
+      resolvedAt: expect.any(Date),
+    });
     expect(editorRepo.saveAiDraftFenced).toHaveBeenCalledTimes(1);
     expect(editorRepo.saveAiDraftFenced.mock.calls[0][0]).toMatchObject({
       contentItemId: 'ci',
@@ -216,8 +232,9 @@ describe('PendingWriteCommitService.approve', () => {
     });
     editorRepo.saveAiDraftFenced.mockResolvedValue(false);
 
-    await expect(svc.approve('tc', 's')).resolves.toEqual({
+    await expect(svc.approve('tc', 's')).resolves.toMatchObject({
       status: 'superseded',
+      resolvedAt: expect.any(Date),
     });
     expect(pendingRepo.completeSuperseded).toHaveBeenCalledWith(
       'tc',
@@ -246,7 +263,10 @@ describe('PendingWriteCommitService.approve', () => {
       targetContentItemId: 'ci',
     });
 
-    expect(await svc.approve('tc', 's')).toEqual({ status: 'ok' });
+    expect(await svc.approve('tc', 's')).toMatchObject({
+      status: 'ok',
+      resolvedAt: expect.any(Date),
+    });
     expect(editorRepo.saveAiDraftFenced.mock.calls[0][0]).toMatchObject({
       bodyMarkdown: '# 标题\n\n## 目标\n\n新内容。\n\n## 保留\n\n相邻内容。',
       title: '原标题',
@@ -292,7 +312,10 @@ describe('PendingWriteCommitService.approve', () => {
       targetContentItemId: 'ct',
     });
 
-    await expect(svc.approve('tc', 's')).resolves.toEqual({ status: 'ok' });
+    await expect(svc.approve('tc', 's')).resolves.toMatchObject({
+      status: 'ok',
+      resolvedAt: expect.any(Date),
+    });
     expect(editorRepo.saveAiDraftFenced.mock.calls[0][0]).toMatchObject({
       contentItemId: 'ct',
       title: '旧版规划',
@@ -398,7 +421,11 @@ describe('PendingWriteCommitService.reject', () => {
       sessionKey: 's',
       toolName: 'write_draft',
     });
-    expect(await svc.reject('tc', 's')).toEqual({ status: 'ok' });
+    const result = await svc.reject('tc', 's');
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') throw new Error('expected ok');
+    expect(result.resolvedAt).toBeInstanceOf(Date);
+    expect(pendingRepo.reject).toHaveBeenCalledWith('tc', result.resolvedAt);
     expect(editorRepo.saveAiDraft).not.toHaveBeenCalled();
     expect(editorRepo.saveAiDraftFenced).not.toHaveBeenCalled();
     expect(memoryRepo.setTasks).not.toHaveBeenCalled();
@@ -408,31 +435,64 @@ describe('PendingWriteCommitService.reject', () => {
 
   it('已被取代的审批再次拒绝时透传 superseded 终态', async () => {
     const { svc, pendingRepo } = mocks();
+    const resolvedAt = new Date('2026-07-21T01:02:03.000Z');
     pendingRepo.findById.mockResolvedValue({
       sessionKey: 's',
       status: 'superseded',
       toolName: 'write_draft',
+      resolvedAt,
     });
 
     await expect(svc.reject('tc', 's')).resolves.toEqual({
       status: 'superseded',
+      resolvedAt,
     });
     expect(pendingRepo.reject).not.toHaveBeenCalled();
   });
 
   it('reject 竞态失败后发现已被取代 → superseded', async () => {
     const { svc, pendingRepo } = mocks();
+    const resolvedAt = new Date('2026-07-21T01:02:03.000Z');
     pendingRepo.findById
       .mockResolvedValueOnce({
         sessionKey: 's',
         status: 'pending',
         toolName: 'write_draft',
       })
-      .mockResolvedValueOnce({ status: 'superseded' });
+      .mockResolvedValueOnce({ status: 'superseded', resolvedAt });
     pendingRepo.reject.mockResolvedValue(false);
 
     await expect(svc.reject('tc', 's')).resolves.toEqual({
       status: 'superseded',
+      resolvedAt,
     });
+  });
+});
+
+describe('PendingWriteCommitService.getApproval', () => {
+  it('按 toolCallId 返回同一会话的权威终态与裁决时间', async () => {
+    const { svc, pendingRepo } = mocks();
+    const resolvedAt = new Date('2026-07-21T01:02:03.000Z');
+    pendingRepo.findById.mockResolvedValue({
+      sessionKey: 's',
+      status: 'approved',
+      resolvedAt,
+    });
+
+    await expect(svc.getApproval('tc', 's')).resolves.toEqual({
+      status: 'approved',
+      resolvedAt,
+    });
+  });
+
+  it('不向其他会话暴露审批状态', async () => {
+    const { svc, pendingRepo } = mocks();
+    pendingRepo.findById.mockResolvedValue({
+      sessionKey: 'other',
+      status: 'approved',
+      resolvedAt: new Date(),
+    });
+
+    await expect(svc.getApproval('tc', 's')).resolves.toBeNull();
   });
 });
