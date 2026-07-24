@@ -29,6 +29,7 @@ import type { UIMessage } from 'ai';
 import { useChat } from '@ai-sdk/react';
 import type { Descendant } from 'platejs';
 import { deserializeMd } from '@platejs/markdown';
+import { preprocessMarkdownForPlate } from '@/components/shared/markdown-preprocess';
 import {
   getWriteApproval,
   loadSession,
@@ -375,7 +376,10 @@ export function useAdvisorChat({
         try {
           const oldChildren = getEditorChildren();
           const editor = getEditor();
-          const newChildren = deserializeMd(editor as never, input.newMarkdown) as Descendant[];
+          const newChildren = deserializeMd(
+            editor as never,
+            preprocessMarkdownForPlate(input.newMarkdown),
+          ) as Descendant[];
           const hunks = computeDocDiff(oldChildren, newChildren);
           // hunks 为空(editor 已等于 newMarkdown):自动标 resolved + 跳过
           if (hunks.length === 0) {
