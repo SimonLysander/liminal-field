@@ -1,3 +1,7 @@
+import type { Nodes } from 'mdast';
+import remarkParse from 'remark-parse';
+import { unified } from 'unified';
+
 interface AidraftSourceRef {
   title: string;
   url: string;
@@ -6,8 +10,9 @@ interface AidraftSourceRef {
 const SOURCE_HEADING = '\n## 来源\n';
 const SOURCE_LINE_RE = /^(\d+)\.\s+\[([^\]]+)\]\(([^)]+)\)\s*$/gm;
 const INLINE_NUMERIC_LINK_RE = /\[(\d+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
-const INLINE_CITATION_LINK_RE = /\[\d+\]\([^)]*#cit-\d+(?:\s+"[^"]*")?\)/g;
-const RAW_CITATION_MARKER_RE = /\[@#CIT\s+\d+\]/gi;
+const RAW_CITATION_MARKER_RE =
+  /\[@#CIT\s+\d+(?:\s*(?:,\s*\d+|-\s*\d+))*\]/gi;
+const markdownParser = unified().use(remarkParse);
 
 function stripCitationFragment(url: string): string {
   return url.replace(/#cit-\d+$/, '');
@@ -34,9 +39,50 @@ export function findClosestCitationAnchor(target: EventTarget | null): HTMLAncho
  * 同时兼容已渲染为链接的新版正文与历史草稿中的原始 [@#CIT N] 标记。
  */
 export function removeAidraftCitationMarkers(markdown: string): string {
-  return markdown
-    .replace(INLINE_CITATION_LINK_RE, '')
-    .replace(RAW_CITATION_MARKER_RE, '');
+  const ranges: Array<{ start: number; end: number }> = [];
+  const collectCitationRanges = (node: Nodes) => {
+    if (
+      node.type === 'link' &&
+      node.url.includes('#cit-') &&
+      node.position?.start.offset !== undefined &&
+      node.position.end.offset !== undefined
+    ) {
+      ranges.push({
+        start: node.position.start.offset,
+        end: node.position.end.offset,
+      });
+      return;
+    }
+    if ('children' in node) {
+      node.children.forEach(collectCitationRanges);
+    }
+  };
+
+  collectCitationRanges(markdownParser.parse(markdown));
+  const mergedRanges = ranges
+    .sort((a, b) => a.start - b.start)
+    .reduce<Array<{ start: number; end: number }>>((merged, range) => {
+      const previous = merged.at(-1);
+      if (
+        previous &&
+        /^[ \t]*[,，、][ \t]*$/.test(
+          markdown.slice(previous.end, range.start),
+        )
+      ) {
+        previous.end = range.end;
+      } else {
+        merged.push({ ...range });
+      }
+      return merged;
+    }, []);
+  const withoutLinks = mergedRanges
+    .sort((a, b) => b.start - a.start)
+    .reduce(
+      (value, range) =>
+        `${value.slice(0, range.start)}${value.slice(range.end)}`,
+      markdown,
+    );
+  return withoutLinks.replace(RAW_CITATION_MARKER_RE, '');
 }
 
 /**
