@@ -427,6 +427,10 @@ function NodeScreen({
     [aiDraft],
   );
   const displayAiDraft = normalizedAiDraft ?? '';
+  const copyableAiDraft = useMemo(
+    () => removeAidraftCitationMarkers(displayAiDraft),
+    [displayAiDraft],
+  );
   const online = useOnlineStatus();
 
   // 右栏「我的重写」复用编辑草稿页同一套控制器:无草稿先回退已发布正文、首次真编辑才懒建草稿、
@@ -850,7 +854,7 @@ function NodeScreen({
                   </div>
                   <CopyPageButton
                     page={{
-                      bodyMarkdown: removeAidraftCitationMarkers(displayAiDraft),
+                      bodyMarkdown: copyableAiDraft,
                       metadata: [
                         { key: 'scope', label: '范围', value: 'learning' },
                         { key: 'topic', label: '主题', value: data.topicTitle },

@@ -103,6 +103,37 @@ describe('removeAidraftCitationMarkers', () => {
     expect(copied).not.toContain('#cit-1');
     expect(copied).not.toContain('@#CIT 2');
   });
+
+  it('来源 URL 含成对括号时仍删除正文 citation 角标', () => {
+    const md = [
+      '一个结论[1](https://en.wikipedia.org/wiki/Foo_(bar)#cit-1 "Foo")。',
+      '',
+      '## 来源',
+      '',
+      '1. [Foo](https://en.wikipedia.org/wiki/Foo_(bar))',
+    ].join('\n');
+
+    expect(removeAidraftCitationMarkers(md)).toBe(
+      [
+        '一个结论。',
+        '',
+        '## 来源',
+        '',
+        '1. [Foo](https://en.wikipedia.org/wiki/Foo_(bar))',
+      ].join('\n'),
+    );
+  });
+
+  it('删除同一句中的多个 citation 角标与未展开的范围标记', () => {
+    const md = [
+      '多个来源共同支持结论[1](https://a.dev#cit-1 "A"),[3](https://c.dev#cit-3 "C")。',
+      '历史内容仍可能保留范围标记[@#CIT 1,3-5]。',
+    ].join('\n');
+
+    expect(removeAidraftCitationMarkers(md)).toBe(
+      ['多个来源共同支持结论。', '历史内容仍可能保留范围标记。'].join('\n'),
+    );
+  });
 });
 
 describe('cloneWithoutCitationAnchors', () => {
