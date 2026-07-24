@@ -7,7 +7,7 @@ import {
 } from '@platejs/code-block';
 import { BaseLinkPlugin as LinkPlugin } from '@platejs/link';
 import { BaseListPlugin as ListPlugin } from '@platejs/list';
-import { MarkdownPlugin } from '@platejs/markdown';
+import { MarkdownPlugin, remarkMdx } from '@platejs/markdown';
 import {
   BaseTableCellHeaderPlugin as TableCellHeaderPlugin,
   BaseTableCellPlugin as TableCellPlugin,
@@ -78,7 +78,7 @@ function createMarkdownEditor(): SlateEditor {
       TableCellPlugin,
       TableCellHeaderPlugin,
       MarkdownPlugin.configure({
-        options: { remarkPlugins: [remarkGfm, remarkMath] },
+        options: { remarkPlugins: [remarkGfm, remarkMath, remarkMdx] },
       }),
     ],
   });
@@ -107,6 +107,38 @@ describe('document Markdown parsing contract', () => {
     expect(preprocessed).not.toContain('<date');
     expect(preprocessed).not.toContain('%%DATE:');
     expect(preprocessed).toMatch(/^Before .+ after$/);
+  });
+
+  it('deserializes legacy one-line display math as a block equation', () => {
+    const nodes = deserializeDocumentMarkdown(
+      createMarkdownEditor(),
+      '$$x + y$$',
+    );
+
+    expect(nodes).toEqual([
+      {
+        type: 'equation',
+        texExpression: 'x + y',
+        children: [{ text: '' }],
+      },
+    ]);
+  });
+
+  it('keeps rich-text tags and literal prose braces consistent with the editor', () => {
+    const nodes = deserializeDocumentMarkdown(
+      createMarkdownEditor(),
+      '<mark>重点</mark>与集合 {a, b}。',
+    );
+
+    expect(nodes).toEqual([
+      {
+        type: 'p',
+        children: [
+          { text: '重点', highlight: true },
+          { text: '与集合 {a, b}。' },
+        ],
+      },
+    ]);
   });
 
   it('restores date placeholders and keeps each code line separate', () => {

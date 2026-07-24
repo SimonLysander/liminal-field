@@ -41,6 +41,7 @@ import { useProposalKeyboardNav } from '@/pages/admin/lib/use-proposal-keyboard-
 // ProposalToolbar 不再由 ProposalBridge 渲染;现在由 ProseDraftEditor 在中间栏顶栏渲染
 import { ProposalControlsContext } from '@/components/editor/proposal-controls-context';
 
+import { preprocessMarkdownForPlate } from '@/components/shared/markdown-preprocess';
 import { fixCodeBlockLines } from '@/components/shared/plate-transforms';
 import { EditorKit } from '@/components/editor/editor-kit';
 import { Editor, EditorContainer } from '@/components/ui/editor';
@@ -469,7 +470,10 @@ export function PlateMarkdownEditor({
       plugins: EditorKit,
       value: (editor) => {
         try {
-          const nodes = deserializeMd(editor, editorMarkdown);
+          const nodes = deserializeMd(
+            editor,
+            preprocessMarkdownForPlate(editorMarkdown),
+          );
           return fixCodeBlockLines(nodes);
         } catch (err) {
           console.error('[PlateEditor] Markdown 反序列化失败:', err);

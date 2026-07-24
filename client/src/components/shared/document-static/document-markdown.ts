@@ -1,6 +1,7 @@
 import { deserializeMd } from '@platejs/markdown';
 import type { SlateEditor, TElement, Value } from 'platejs';
 
+import { preprocessMarkdownForPlate } from '@/components/shared/markdown-preprocess';
 import { fixCodeBlockLines } from '@/components/shared/plate-transforms';
 import { createLogger } from '@/lib/logger';
 
@@ -23,7 +24,7 @@ const logger = createLogger('document-markdown');
 
 export function preprocessDocumentMarkdown(markdown: string): string {
   // 先双写原文中的私有起始符，保证只有本次替换产生的单起始符能被还原为 date。
-  return markdown
+  return preprocessMarkdownForPlate(markdown)
     .replaceAll(DATE_MARKER_START, `${DATE_MARKER_START}${DATE_MARKER_START}`)
     .replace(DATE_TAG_RE, (_, date: string) => {
       return `${DATE_MARKER_PREFIX}${encodeURIComponent(date)}${DATE_MARKER_END}`;

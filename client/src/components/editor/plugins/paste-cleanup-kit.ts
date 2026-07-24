@@ -18,6 +18,7 @@ import { deserializeMd } from '@platejs/markdown';
 import { common, createLowlight } from 'lowlight';
 import { createPlatePlugin } from 'platejs/react';
 
+import { preprocessMarkdownForPlate } from '@/components/shared/markdown-preprocess';
 import { htmlToCleanMarkdown } from '@/lib/paste-cleanup';
 
 export const LIMINAL_FRAGMENT_MIME = 'application/x-liminal-field-fragment';
@@ -166,7 +167,10 @@ export const PasteCleanupPlugin = createPlatePlugin({
           const lang = extractCodeLang(html) || detectCodeLang(preText);
           const fenced = '```' + lang + '\n' + preText + '\n```';
           try {
-            const nodes = deserializeMd(editor, fenced);
+            const nodes = deserializeMd(
+              editor,
+              preprocessMarkdownForPlate(fenced),
+            );
             if (nodes?.length) {
               event.preventDefault();
               editor.tf.insertFragment(nodes);
@@ -184,7 +188,10 @@ export const PasteCleanupPlugin = createPlatePlugin({
       if (!markdown) return;
 
       try {
-        const nodes = deserializeMd(editor, markdown);
+        const nodes = deserializeMd(
+          editor,
+          preprocessMarkdownForPlate(markdown),
+        );
         if (!nodes || nodes.length === 0) return;
         event.preventDefault();
         editor.tf.insertFragment(nodes);
