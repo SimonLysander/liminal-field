@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   cloneWithoutCitationAnchors,
   findClosestCitationAnchor,
   normalizeAidraftCitationLinks,
+  registerAidraftCopyHandler,
   removeAidraftCitationMarkers,
 } from '../aidraft-citations';
 
@@ -157,5 +158,89 @@ describe('cloneWithoutCitationAnchors', () => {
     expect(copy.textContent).toBe('一个结论，以及一个 普通链接。');
     expect(copy.querySelector('a[href*="#cit-"]')).toBeNull();
     expect(copy.querySelector('a:not([href*="#cit-"])')?.textContent).toBe('普通链接');
+  });
+
+  it('同时移除 Plate 为 citation 链接生成的零字号占位节点', () => {
+    const source = document.createDocumentFragment();
+    const paragraph = document.createElement('p');
+    paragraph.append('结论 ');
+
+    const leadingSpacer = document.createElement('span');
+    leadingSpacer.contentEditable = 'false';
+    leadingSpacer.style.fontSize = '0px';
+    leadingSpacer.style.lineHeight = '0';
+    leadingSpacer.textContent = '\u00a0';
+
+    const citation = document.createElement('a');
+    citation.href = 'https://a.dev#cit-1';
+    citation.textContent = '1';
+
+    const middleSpacer = leadingSpacer.cloneNode(true);
+    const secondCitation = citation.cloneNode(true) as HTMLAnchorElement;
+    secondCitation.href = 'https://b.dev#cit-2';
+    secondCitation.textContent = '2';
+    const trailingSpacer = leadingSpacer.cloneNode(true);
+    paragraph.append(
+      leadingSpacer,
+      citation,
+      middleSpacer,
+      secondCitation,
+      trailingSpacer,
+      '。',
+    );
+    source.append(paragraph);
+
+    const copy = document.createElement('div');
+    copy.append(cloneWithoutCitationAnchors(source));
+
+    expect(copy.textContent).toBe('结论。');
+    expect(copy.querySelector('[contenteditable="false"]')).toBeNull();
+  });
+});
+
+describe('registerAidraftCopyHandler', () => {
+  it('从 document 捕获 BODY 发出的复制事件并阻止默认复制', () => {
+    const pane = document.createElement('div');
+    const paragraph = document.createElement('p');
+    paragraph.innerHTML =
+      '结论<span contenteditable="false" style="font-size: 0px; line-height: 0">&nbsp;</span>' +
+      '<a href="https://a.dev#cit-1">1</a>' +
+      '<span contenteditable="false" style="font-size: 0px; line-height: 0">&nbsp;</span>。';
+    pane.append(paragraph);
+    document.body.append(pane);
+
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    const clipboard = new Map<string, string>();
+    const copyEvent = new Event('copy', {
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(copyEvent, 'clipboardData', {
+      value: {
+        setData: (type: string, value: string) => {
+          clipboard.set(type, value);
+        },
+      },
+    });
+    const defaultCopy = vi.fn();
+    document.body.addEventListener('copy', defaultCopy);
+    const unregister = registerAidraftCopyHandler(() => pane);
+
+    document.body.dispatchEvent(copyEvent);
+
+    expect(copyEvent.defaultPrevented).toBe(true);
+    expect(defaultCopy).not.toHaveBeenCalled();
+    expect(clipboard.get('text/plain')).toBe('结论。');
+    expect(clipboard.get('text/html')).not.toContain('#cit-1');
+
+    unregister();
+    document.body.removeEventListener('copy', defaultCopy);
+    selection?.removeAllRanges();
+    pane.remove();
   });
 });

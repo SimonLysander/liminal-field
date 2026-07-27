@@ -67,7 +67,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ClipboardEvent,
   type ReactNode,
 } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -80,9 +79,9 @@ import {
 import { createNotesDraftAdapter, type NotesDraftState } from '../lib/notes-draft-adapter';
 import { useDraftEditor, type DraftEditorController } from '../lib/use-draft-editor';
 import {
-  cloneWithoutCitationAnchors,
   findClosestCitationAnchor,
   normalizeAidraftCitationLinks,
+  registerAidraftCopyHandler,
   removeAidraftCitationMarkers,
 } from './aidraft-citations';
 import { CreateLearningChapterDialog } from './CreateLearningChapterDialog';
@@ -627,23 +626,10 @@ function NodeScreen({
     return () => pane.removeEventListener('click', handleCitationClick);
   }, [studied, aiDraft]);
 
-  const handleAiDraftCopy = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
-    const selection = window.getSelection();
-    const pane = aiPaneRef.current;
-    if (!selection || selection.rangeCount === 0 || !pane) return;
-
-    const range = selection.getRangeAt(0);
-    if (!pane.contains(range.startContainer) || !pane.contains(range.endContainer)) return;
-
-    const selected = range.cloneContents();
-    if (!selected.querySelector('a[href*="#cit-"]')) return;
-
-    const wrapper = document.createElement('div');
-    wrapper.append(cloneWithoutCitationAnchors(selected));
-    event.preventDefault();
-    event.clipboardData.setData('text/plain', wrapper.innerText || wrapper.textContent || '');
-    event.clipboardData.setData('text/html', wrapper.innerHTML);
-  }, []);
+  useEffect(() => {
+    if (isTopic || !studied) return;
+    return registerAidraftCopyHandler(() => aiPaneRef.current);
+  }, [isTopic, studied]);
 
   const addSelectionToAurora = () => {
     if (!pending) return;
@@ -822,7 +808,6 @@ function NodeScreen({
           }}
           onPointerUp={!isTopic && studied ? scheduleDraftSelectionPopover : undefined}
           onKeyUp={!isTopic && studied ? scheduleDraftSelectionPopover : undefined}
-          onCopy={!isTopic && studied ? handleAiDraftCopy : undefined}
           onBlurCapture={() => setPending(null)}
         >
           <div className="h-full overflow-y-auto">
