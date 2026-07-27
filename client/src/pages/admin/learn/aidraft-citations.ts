@@ -23,6 +23,7 @@ const PLATE_VOID_ELEMENT_SELECTOR =
   '[data-slate-node="element"][data-slate-void="true"]';
 const TEX_ANNOTATION_SELECTOR = 'annotation[encoding="application/x-tex"]';
 const markdownParser = unified().use(remarkParse);
+type TextRange = { start: number; end: number };
 
 function stripCitationFragment(url: string): string {
   return url.replace(/#cit-\d+$/, '');
@@ -49,7 +50,7 @@ export function findClosestCitationAnchor(target: EventTarget | null): HTMLAncho
  * 同时兼容已渲染为链接的新版正文与历史草稿中的原始 [@#CIT N] 标记。
  */
 export function removeAidraftCitationMarkers(markdown: string): string {
-  const ranges: Array<{ start: number; end: number }> = [];
+  const ranges: TextRange[] = [];
   const collectCitationRanges = (node: Nodes) => {
     if (
       node.type === 'link' &&
@@ -69,13 +70,18 @@ export function removeAidraftCitationMarkers(markdown: string): string {
   };
 
   collectCitationRanges(markdownParser.parse(markdown));
+  for (const match of markdown.matchAll(RAW_CITATION_MARKER_RE)) {
+    if (match.index === undefined) continue;
+    ranges.push({ start: match.index, end: match.index + match[0].length });
+  }
+
   const mergedRanges = ranges
     .sort((a, b) => a.start - b.start)
-    .reduce<Array<{ start: number; end: number }>>((merged, range) => {
+    .reduce<TextRange[]>((merged, range) => {
       const previous = merged.at(-1);
       if (
         previous &&
-        /^[ \t]*[,，、][ \t]*$/.test(
+        /^[ \t]*(?:[,，、][ \t]*)?$/.test(
           markdown.slice(previous.end, range.start),
         )
       ) {
@@ -84,7 +90,38 @@ export function removeAidraftCitationMarkers(markdown: string): string {
         merged.push({ ...range });
       }
       return merged;
-    }, []);
+    }, [])
+    .map((range) => {
+      let whitespaceStart = range.start;
+      let whitespaceEnd = range.end;
+      while (
+        whitespaceStart > 0 &&
+        /[ \t\u00a0]/.test(markdown[whitespaceStart - 1])
+      ) {
+        whitespaceStart -= 1;
+      }
+      while (
+        whitespaceEnd < markdown.length &&
+        /[ \t\u00a0]/.test(markdown[whitespaceEnd])
+      ) {
+        whitespaceEnd += 1;
+      }
+
+      const next = markdown[whitespaceEnd];
+      if (
+        next === undefined ||
+        /[\r\n，。！？；：、,.!?;:]/.test(next)
+      ) {
+        return { start: whitespaceStart, end: whitespaceEnd };
+      }
+
+      // 引用夹在两个词语之间时，保留左侧已有空格、删除右侧空格，
+      // 使删除后的文本仍有且只有一个词间分隔。
+      if (whitespaceStart < range.start && whitespaceEnd > range.end) {
+        return { start: range.start, end: whitespaceEnd };
+      }
+      return range;
+    });
   const withoutLinks = mergedRanges
     .sort((a, b) => b.start - a.start)
     .reduce(
@@ -92,7 +129,7 @@ export function removeAidraftCitationMarkers(markdown: string): string {
         `${value.slice(0, range.start)}${value.slice(range.end)}`,
       markdown,
     );
-  return withoutLinks.replace(RAW_CITATION_MARKER_RE, '');
+  return withoutLinks;
 }
 
 /**
