@@ -12,6 +12,10 @@ const SOURCE_LINE_RE = /^(\d+)\.\s+\[([^\]]+)\]\(([^)]+)\)\s*$/gm;
 const INLINE_NUMERIC_LINK_RE = /\[(\d+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 const RAW_CITATION_MARKER_RE =
   /\[@#CIT\s+\d+(?:\s*(?:,\s*\d+|-\s*\d+))*\]/gi;
+const CITATION_ANCHOR_SELECTOR = 'a[href*="#cit-"]';
+const PLATE_VOID_ELEMENT_SELECTOR =
+  '[data-slate-node="element"][data-slate-void="true"]';
+const TEX_ANNOTATION_SELECTOR = 'annotation[encoding="application/x-tex"]';
 const markdownParser = unified().use(remarkParse);
 
 function stripCitationFragment(url: string): string {
@@ -86,12 +90,32 @@ export function removeAidraftCitationMarkers(markdown: string): string {
 }
 
 /**
- * 浏览器局部复制会从 DOM 读取 selection。复制片段必须克隆后再删角标，
- * 不能修改正在阅读的初稿 DOM，也不能移除普通外链。
+ * 浏览器局部复制会从 DOM 读取 selection。复制片段必须克隆后再清理 citation
+ * 与公式渲染节点，不能修改正在阅读的初稿 DOM，也不能移除普通外链。
  */
-export function cloneWithoutCitationAnchors(content: DocumentFragment): DocumentFragment {
+export function cloneCleanAidraftSelection(content: DocumentFragment): DocumentFragment {
   const copy = content.cloneNode(true) as DocumentFragment;
-  copy.querySelectorAll('a[href*="#cit-"]').forEach((anchor) => {
+
+  // KaTeX 的 htmlAndMathml 输出同时包含 MathML、可视 HTML 和 Slate spacer。直接
+  // 复制会让 Plate 的 HTML paste 把同一公式解析多次。按 KaTeX copy-tex 的做法
+  // 读取唯一 TeX annotation，但以 Plate 节点属性区分行内/块级公式。
+  copy
+    .querySelectorAll<HTMLElement>(PLATE_VOID_ELEMENT_SELECTOR)
+    .forEach((element) => {
+      const annotation = element.querySelector(TEX_ANNOTATION_SELECTOR);
+      if (!annotation?.textContent) return;
+
+      const isInline = element.dataset.slateInline === 'true';
+      // 块公式使用 pre 保留 $$ 分隔符的换行；普通 div 会被 Turndown 折叠成
+      // "$$ expression $$"，继而被 Markdown 解析器误判为行内公式。
+      const replacement = document.createElement(isInline ? 'span' : 'pre');
+      replacement.textContent = isInline
+        ? `$${annotation.textContent}$`
+        : `$$\n${annotation.textContent}\n$$`;
+      element.replaceWith(replacement);
+    });
+
+  copy.querySelectorAll(CITATION_ANCHOR_SELECTOR).forEach((anchor) => {
     const siblings = [anchor.previousSibling, anchor.nextSibling];
     anchor.remove();
     siblings.forEach((sibling) => {
@@ -159,10 +183,14 @@ export function copyAidraftSelection(
   }
 
   const selected = range.cloneContents();
-  if (!selected.querySelector('a[href*="#cit-"]')) return false;
+  const hasCitation = selected.querySelector(CITATION_ANCHOR_SELECTOR);
+  const hasEquation = selected.querySelector(
+    `${PLATE_VOID_ELEMENT_SELECTOR} ${TEX_ANNOTATION_SELECTOR}`,
+  );
+  if (!hasCitation && !hasEquation) return false;
 
   const wrapper = document.createElement('div');
-  wrapper.append(cloneWithoutCitationAnchors(selected));
+  wrapper.append(cloneCleanAidraftSelection(selected));
   event.preventDefault();
   event.stopPropagation();
   clipboardData.setData(
