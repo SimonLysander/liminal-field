@@ -91,8 +91,88 @@ export function removeAidraftCitationMarkers(markdown: string): string {
  */
 export function cloneWithoutCitationAnchors(content: DocumentFragment): DocumentFragment {
   const copy = content.cloneNode(true) as DocumentFragment;
-  copy.querySelectorAll('a[href*="#cit-"]').forEach((anchor) => anchor.remove());
+  const affectedParents = new Set<Element>();
+  copy.querySelectorAll('a[href*="#cit-"]').forEach((anchor) => {
+    if (anchor.parentElement) affectedParents.add(anchor.parentElement);
+    const siblings = [anchor.previousSibling, anchor.nextSibling];
+    anchor.remove();
+    siblings.forEach((sibling) => {
+      if (
+        sibling instanceof HTMLSpanElement &&
+        sibling.contentEditable === 'false' &&
+        sibling.style.fontSize === '0px' &&
+        sibling.textContent === '\u00a0'
+      ) {
+        sibling.remove();
+      }
+    });
+  });
+  affectedParents.forEach((parent) => {
+    parent.normalize();
+    parent.childNodes.forEach((child) => {
+      if (child.nodeType === Node.TEXT_NODE && child.textContent) {
+        child.textContent = child.textContent.replace(
+          /[ \t\u00a0]+(?=[，。！？；：、])/g,
+          '',
+        );
+      }
+    });
+  });
   return copy;
+}
+
+interface AidraftClipboardEvent {
+  clipboardData: Pick<DataTransfer, 'setData'> | null;
+  preventDefault: () => void;
+  stopPropagation: () => void;
+}
+
+/**
+ * 写入清理后的 AI 初稿选区，并终止浏览器或编辑器的默认复制。
+ */
+export function copyAidraftSelection(
+  event: AidraftClipboardEvent,
+  pane: HTMLElement | null,
+  selection: Selection | null = window.getSelection(),
+): boolean {
+  const clipboardData = event.clipboardData;
+  if (!clipboardData || !selection || selection.rangeCount === 0 || !pane) {
+    return false;
+  }
+
+  const range = selection.getRangeAt(0);
+  if (!pane.contains(range.startContainer) || !pane.contains(range.endContainer)) {
+    return false;
+  }
+
+  const selected = range.cloneContents();
+  if (!selected.querySelector('a[href*="#cit-"]')) return false;
+
+  const wrapper = document.createElement('div');
+  wrapper.append(cloneWithoutCitationAnchors(selected));
+  event.preventDefault();
+  event.stopPropagation();
+  clipboardData.setData(
+    'text/plain',
+    wrapper.innerText || wrapper.textContent || '',
+  );
+  clipboardData.setData('text/html', wrapper.innerHTML);
+  return true;
+}
+
+/**
+ * 只读 Slate 的选区不会获得焦点，copy 事件通常以 BODY 为 target，无法由
+ * AI 栏自身监听。使用 document 捕获监听，再由 Selection 边界限定作用范围。
+ */
+export function registerAidraftCopyHandler(
+  getPane: () => HTMLElement | null,
+  target: Document = document,
+): () => void {
+  const handleCopy = (event: ClipboardEvent) => {
+    copyAidraftSelection(event, getPane());
+  };
+  target.addEventListener('copy', handleCopy, true);
+  return () => target.removeEventListener('copy', handleCopy, true);
 }
 
 /**
