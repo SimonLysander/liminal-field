@@ -163,7 +163,13 @@ describe('cloneWithoutCitationAnchors', () => {
   it('同时移除 Plate 为 citation 链接生成的零字号占位节点', () => {
     const source = document.createDocumentFragment();
     const paragraph = document.createElement('p');
-    paragraph.append('结论 ');
+
+    const textLeaf = document.createElement('span');
+    textLeaf.dataset.slateNode = 'text';
+    const textString = document.createElement('span');
+    textString.dataset.slateString = 'true';
+    textString.textContent = '结论 ';
+    textLeaf.append(textString);
 
     const leadingSpacer = document.createElement('span');
     leadingSpacer.contentEditable = 'false';
@@ -180,13 +186,20 @@ describe('cloneWithoutCitationAnchors', () => {
     secondCitation.href = 'https://b.dev#cit-2';
     secondCitation.textContent = '2';
     const trailingSpacer = leadingSpacer.cloneNode(true);
+    const punctuationLeaf = document.createElement('span');
+    punctuationLeaf.dataset.slateNode = 'text';
+    const punctuationString = document.createElement('span');
+    punctuationString.dataset.slateString = 'true';
+    punctuationString.textContent = '。';
+    punctuationLeaf.append(punctuationString);
     paragraph.append(
+      textLeaf,
       leadingSpacer,
       citation,
       middleSpacer,
       secondCitation,
       trailingSpacer,
-      '。',
+      punctuationLeaf,
     );
     source.append(paragraph);
 

@@ -91,9 +91,7 @@ export function removeAidraftCitationMarkers(markdown: string): string {
  */
 export function cloneWithoutCitationAnchors(content: DocumentFragment): DocumentFragment {
   const copy = content.cloneNode(true) as DocumentFragment;
-  const affectedParents = new Set<Element>();
   copy.querySelectorAll('a[href*="#cit-"]').forEach((anchor) => {
-    if (anchor.parentElement) affectedParents.add(anchor.parentElement);
     const siblings = [anchor.previousSibling, anchor.nextSibling];
     anchor.remove();
     siblings.forEach((sibling) => {
@@ -107,16 +105,31 @@ export function cloneWithoutCitationAnchors(content: DocumentFragment): Document
       }
     });
   });
-  affectedParents.forEach((parent) => {
-    parent.normalize();
-    parent.childNodes.forEach((child) => {
-      if (child.nodeType === Node.TEXT_NODE && child.textContent) {
-        child.textContent = child.textContent.replace(
-          /[ \t\u00a0]+(?=[，。！？；：、])/g,
-          '',
-        );
+
+  // Plate 把正文字符包在多层 data-slate-* span 中。角标移除后，标点与其前方
+  // 空格可能分属不同文本节点，因此需要按 DOM 文本顺序处理，而不能只看直接子节点。
+  copy.normalize();
+  const textNodes: Text[] = [];
+  const collectTextNodes = (node: Node) => {
+    node.childNodes.forEach((child) => {
+      if (child.nodeType === Node.TEXT_NODE) {
+        textNodes.push(child as Text);
+      } else {
+        collectTextNodes(child);
       }
     });
+  };
+  collectTextNodes(copy);
+  textNodes.forEach((node, index) => {
+    node.data = node.data.replace(/[ \t\u00a0]+(?=[，。！？；：、])/g, '');
+    if (!/^[，。！？；：、]/.test(node.data)) return;
+
+    for (let previousIndex = index - 1; previousIndex >= 0; previousIndex -= 1) {
+      const previous = textNodes[previousIndex];
+      if (!previous.data) continue;
+      previous.data = previous.data.replace(/[ \t\u00a0]+$/, '');
+      break;
+    }
   });
   return copy;
 }
