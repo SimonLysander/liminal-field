@@ -122,6 +122,7 @@ export interface EditorBridgeHandle {
   captureViewState: (scrollContainer?: HTMLElement | null) => EditorViewStateSnapshot | null;
   getChildren: () => Descendant[];
   getEditor: () => unknown;
+  getFragmentForDomRange: (domRange: Range) => Descendant[] | null;
   restoreViewState: (
     snapshot: EditorViewStateSnapshot | null | undefined,
     scrollContainer?: HTMLElement | null,
@@ -170,6 +171,15 @@ function EditorChildrenBridge({
       },
       getChildren: () => editor.children as Descendant[],
       getEditor: () => editor,
+      getFragmentForDomRange: (domRange) => {
+        const slateRange = editor.api.toSlateRange(domRange, {
+          exactMatch: false,
+          suppressThrow: true,
+        });
+        return slateRange
+          ? (editor.api.fragment(slateRange) as Descendant[])
+          : null;
+      },
       restoreViewState: (snapshot, scrollContainer) => {
         if (!snapshot) return false;
         const range = snapshot.selectionRef?.current ?? lastSelectionRef.current?.current;

@@ -476,6 +476,7 @@ function NodeScreen({
   const [createChapterOpen, setCreateChapterOpen] = useState(false);
   const [creatingChapter, setCreatingChapter] = useState(false);
   const aiPaneRef = useRef<HTMLDivElement>(null);
+  const aiDraftEditorBridgeRef = useRef<EditorBridgeHandle | null>(null);
   const rewritePaneRef = useRef<HTMLDivElement>(null);
   const rewriteEditorBridgeRef = useRef<EditorBridgeHandle | null>(null);
   const rewriteViewStateRef = useRef<EditorViewStateSnapshot | null>(null);
@@ -628,7 +629,11 @@ function NodeScreen({
 
   useEffect(() => {
     if (isTopic || !studied) return;
-    return registerAidraftCopyHandler(() => aiPaneRef.current);
+    return registerAidraftCopyHandler(
+      () => aiPaneRef.current,
+      (range) =>
+        aiDraftEditorBridgeRef.current?.getFragmentForDomRange(range) ?? null,
+    );
   }, [isTopic, studied]);
 
   const addSelectionToAurora = () => {
@@ -855,6 +860,7 @@ function NodeScreen({
                     initialMarkdown={displayAiDraft}
                     headingNumbering="note"
                     readOnly
+                    editorRefSync={aiDraftEditorBridgeRef}
                   />
                 </DraftAssetProvider>
               </div>

@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import {
+  decodeInternalFragment,
+  LIMINAL_FRAGMENT_MIME,
+} from '@/components/editor/plugins/paste-cleanup-kit';
 import { htmlToCleanMarkdown } from '@/lib/paste-cleanup';
 import {
   cloneCleanAidraftSelection,
@@ -7,6 +11,7 @@ import {
   normalizeAidraftCitationLinks,
   registerAidraftCopyHandler,
   removeAidraftCitationMarkers,
+  stripAidraftCitationNodes,
 } from '../aidraft-citations';
 
 function createPlateEquation(tex: string, inline = true): HTMLElement {
@@ -27,6 +32,46 @@ function createPlateEquation(tex: string, inline = true): HTMLElement {
     '<span data-slate-spacer="true"><span data-slate-zero-width="z">\uFEFF</span></span>',
   ].join('');
   return equation;
+}
+
+function createStructuredFragmentWithCitation() {
+  return [
+    {
+      children: [
+        { text: '将止损设在入场价之外 ' },
+        {
+          children: [{ text: '' }],
+          texExpression: 'k \\times \\text{ATR}',
+          type: 'inline_equation',
+        },
+        { text: ' ' },
+        {
+          children: [{ text: '1' }],
+          type: 'a',
+          url: 'https://a.dev#cit-1',
+        },
+        { text: '。' },
+      ],
+      type: 'p',
+    },
+  ];
+}
+
+function createCleanStructuredFragment() {
+  return [
+    {
+      children: [
+        { text: '将止损设在入场价之外 ' },
+        {
+          children: [{ text: '' }],
+          texExpression: 'k \\times \\text{ATR}',
+          type: 'inline_equation',
+        },
+        { text: '。' },
+      ],
+      type: 'p',
+    },
+  ];
 }
 
 describe('normalizeAidraftCitationLinks', () => {
@@ -263,7 +308,87 @@ describe('cloneCleanAidraftSelection', () => {
   });
 });
 
+describe('stripAidraftCitationNodes', () => {
+  it('只删除 citation 节点并原样保留复杂公式节点', () => {
+    expect(
+      stripAidraftCitationNodes(createStructuredFragmentWithCitation()),
+    ).toEqual(createCleanStructuredFragment());
+  });
+
+  it('保留普通链接及标题、列表等块级结构', () => {
+    const fragment = [
+      { children: [{ text: '标题' }], type: 'h2' },
+      {
+        children: [
+          {
+            children: [{ text: '普通链接' }],
+            type: 'a',
+            url: 'https://a.dev',
+          },
+        ],
+        type: 'p',
+      },
+    ];
+
+    expect(stripAidraftCitationNodes(fragment)).toEqual(fragment);
+  });
+
+  it('只复制 citation 时仍返回合法的空段落', () => {
+    const fragment = [
+      {
+        children: [
+          {
+            children: [{ text: '1' }],
+            type: 'a',
+            url: 'https://a.dev#cit-1',
+          },
+        ],
+        type: 'p',
+      },
+    ];
+
+    expect(stripAidraftCitationNodes(fragment)).toEqual([
+      { children: [{ text: '' }], type: 'p' },
+    ]);
+  });
+});
+
 describe('registerAidraftCopyHandler', () => {
+  it('优先写入去除 citation 后的 Plate 内部片段', () => {
+    const pane = document.createElement('div');
+    const paragraph = document.createElement('p');
+    paragraph.textContent = '将止损设在入场价之外。';
+    pane.append(paragraph);
+
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    const clipboard = new Map<string, string>();
+    const handled = copyAidraftSelection(
+      {
+        clipboardData: {
+          setData: (type: string, value: string) => {
+            clipboard.set(type, value);
+          },
+        },
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      },
+      pane,
+      selection,
+      createStructuredFragmentWithCitation,
+    );
+
+    expect(handled).toBe(true);
+    expect(
+      decodeInternalFragment(clipboard.get(LIMINAL_FRAGMENT_MIME) ?? ''),
+    ).toEqual(createCleanStructuredFragment());
+    selection?.removeAllRanges();
+  });
+
   it('公式选区即使不含 citation 也使用清理后的剪贴板内容', () => {
     const pane = document.createElement('div');
     const paragraph = document.createElement('p');

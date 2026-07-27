@@ -1,6 +1,12 @@
 import type { Nodes } from 'mdast';
+import type { Descendant } from 'platejs';
 import remarkParse from 'remark-parse';
 import { unified } from 'unified';
+
+import {
+  encodeInternalFragment,
+  LIMINAL_FRAGMENT_MIME,
+} from '@/components/editor/plugins/paste-cleanup-kit';
 
 interface AidraftSourceRef {
   title: string;
@@ -164,13 +170,118 @@ interface AidraftClipboardEvent {
   stopPropagation: () => void;
 }
 
+type FragmentNode = Descendant & Record<string, unknown>;
+type AidraftFragmentProvider = (range: Range) => Descendant[] | null;
+
+function isCitationNode(node: FragmentNode): boolean {
+  return (
+    node.type === 'a' &&
+    typeof node.url === 'string' &&
+    node.url.includes('#cit-')
+  );
+}
+
+function isCitationSeparator(node: FragmentNode): boolean {
+  return typeof node.text === 'string' && /^[\s,，、]*$/.test(node.text);
+}
+
+function trimLastText(nodes: FragmentNode[]): boolean {
+  for (let index = nodes.length - 1; index >= 0; index -= 1) {
+    const node = nodes[index];
+    if (typeof node.text === 'string') {
+      const trimmed = node.text.replace(/[ \t\u00a0]+$/, '');
+      if (trimmed === node.text) continue;
+      node.text = trimmed;
+      if (trimmed.length === 0) nodes.splice(index, 1);
+      return true;
+    }
+    if (Array.isArray(node.children)) {
+      if (trimLastText(node.children as FragmentNode[])) return true;
+    }
+  }
+  return false;
+}
+
+function firstNonEmptyText(node: FragmentNode): string | null {
+  if (typeof node.text === 'string') return node.text || null;
+  if (!Array.isArray(node.children)) return null;
+  for (const child of node.children) {
+    const childNode = child as FragmentNode;
+    const text = firstNonEmptyText(childNode);
+    if (text) return text;
+  }
+  return null;
+}
+
+function startsWithPunctuation(node: FragmentNode): boolean {
+  const text = firstNonEmptyText(node);
+  return !!text && /^[，。！？；：、]/.test(text);
+}
+
+function sanitizeFragmentChildren(children: Descendant[]): FragmentNode[] {
+  const result: FragmentNode[] = [];
+  let citationRemoved = false;
+
+  children.forEach((rawChild, index) => {
+    const child = rawChild as FragmentNode;
+    if (isCitationNode(child)) {
+      citationRemoved = true;
+      return;
+    }
+
+    const next = children[index + 1] as FragmentNode | undefined;
+    if (
+      citationRemoved &&
+      isCitationSeparator(child) &&
+      next &&
+      isCitationNode(next)
+    ) {
+      return;
+    }
+
+    const sanitizedChildren = Array.isArray(child.children)
+      ? sanitizeFragmentChildren(child.children as Descendant[])
+      : null;
+    const sanitized = sanitizedChildren
+      ? ({
+          ...child,
+          // Slate 元素必须至少保留一个文本叶；例如只复制一个 citation 时，
+          // 清理后的段落仍需是合法片段，才能被 insertFragment 接受。
+          children:
+            sanitizedChildren.length > 0 ? sanitizedChildren : [{ text: '' }],
+        } as FragmentNode)
+      : ({ ...child } as FragmentNode);
+
+    if (citationRemoved && startsWithPunctuation(sanitized)) {
+      trimLastText(result);
+    }
+    result.push(sanitized);
+    citationRemoved = false;
+  });
+
+  if (citationRemoved) trimLastText(result);
+  return result;
+}
+
 /**
- * 写入清理后的 AI 初稿选区，并终止浏览器或编辑器的默认复制。
+ * AI 初稿的内部复制必须保留 Plate 节点类型和属性。这里只删除 citation 链接节点，
+ * 不序列化公式或其他富文本节点，避免 HTML/Markdown 往返损坏结构。
+ */
+export function stripAidraftCitationNodes(
+  fragment: Descendant[],
+): Descendant[] {
+  return sanitizeFragmentChildren(fragment) as Descendant[];
+}
+
+/**
+ * 写入清理后的 AI 初稿选区，并终止浏览器或编辑器的默认复制。应用内粘贴使用
+ * Plate 结构化片段；HTML / 纯文本只作为粘贴到外部应用时的兼容格式。
  */
 export function copyAidraftSelection(
   event: AidraftClipboardEvent,
   pane: HTMLElement | null,
   selection: Selection | null = window.getSelection(),
+  getFragment?: AidraftFragmentProvider,
 ): boolean {
   const clipboardData = event.clipboardData;
   if (!clipboardData || !selection || selection.rangeCount === 0 || !pane) {
@@ -187,12 +298,19 @@ export function copyAidraftSelection(
   const hasEquation = selected.querySelector(
     `${PLATE_VOID_ELEMENT_SELECTOR} ${TEX_ANNOTATION_SELECTOR}`,
   );
-  if (!hasCitation && !hasEquation) return false;
+  const fragment = getFragment?.(range);
+  if (!fragment?.length && !hasCitation && !hasEquation) return false;
 
   const wrapper = document.createElement('div');
   wrapper.append(cloneCleanAidraftSelection(selected));
   event.preventDefault();
   event.stopPropagation();
+  if (fragment?.length) {
+    clipboardData.setData(
+      LIMINAL_FRAGMENT_MIME,
+      encodeInternalFragment(stripAidraftCitationNodes(fragment)),
+    );
+  }
   clipboardData.setData(
     'text/plain',
     wrapper.innerText || wrapper.textContent || '',
@@ -207,10 +325,11 @@ export function copyAidraftSelection(
  */
 export function registerAidraftCopyHandler(
   getPane: () => HTMLElement | null,
+  getFragment?: AidraftFragmentProvider,
   target: Document = document,
 ): () => void {
   const handleCopy = (event: ClipboardEvent) => {
-    copyAidraftSelection(event, getPane());
+    copyAidraftSelection(event, getPane(), window.getSelection(), getFragment);
   };
   target.addEventListener('copy', handleCopy, true);
   return () => target.removeEventListener('copy', handleCopy, true);
