@@ -1,11 +1,33 @@
 import { describe, expect, it, vi } from 'vitest';
+import { htmlToCleanMarkdown } from '@/lib/paste-cleanup';
 import {
-  cloneWithoutCitationAnchors,
+  cloneCleanAidraftSelection,
+  copyAidraftSelection,
   findClosestCitationAnchor,
   normalizeAidraftCitationLinks,
   registerAidraftCopyHandler,
   removeAidraftCitationMarkers,
 } from '../aidraft-citations';
+
+function createPlateEquation(tex: string, inline = true): HTMLElement {
+  const equation = document.createElement(inline ? 'span' : 'div');
+  equation.className = inline ? 'slate-inline_equation' : 'slate-equation';
+  equation.dataset.slateNode = 'element';
+  if (inline) equation.dataset.slateInline = 'true';
+  equation.dataset.slateVoid = 'true';
+  equation.innerHTML = [
+    '<span contenteditable="false">',
+    '<span class="katex-display"><span class="katex">',
+    '<span class="katex-mathml"><math><semantics>',
+    `<annotation encoding="application/x-tex">${tex}</annotation>`,
+    '</semantics></math></span>',
+    `<span class="katex-html" aria-hidden="true">${tex}</span>`,
+    '</span></span>',
+    '</span>',
+    '<span data-slate-spacer="true"><span data-slate-zero-width="z">\uFEFF</span></span>',
+  ].join('');
+  return equation;
+}
 
 describe('normalizeAidraftCitationLinks', () => {
   it('把旧式正文数字链接补成 citation 链接', () => {
@@ -137,7 +159,7 @@ describe('removeAidraftCitationMarkers', () => {
   });
 });
 
-describe('cloneWithoutCitationAnchors', () => {
+describe('cloneCleanAidraftSelection', () => {
   it('复制局部富文本时移除 citation 链接而保留其他节点', () => {
     const source = document.createDocumentFragment();
     const paragraph = document.createElement('p');
@@ -153,7 +175,7 @@ describe('cloneWithoutCitationAnchors', () => {
     source.append(paragraph);
 
     const copy = document.createElement('div');
-    copy.append(cloneWithoutCitationAnchors(source));
+    copy.append(cloneCleanAidraftSelection(source));
 
     expect(copy.textContent).toBe('一个结论，以及一个 普通链接。');
     expect(copy.querySelector('a[href*="#cit-"]')).toBeNull();
@@ -204,14 +226,77 @@ describe('cloneWithoutCitationAnchors', () => {
     source.append(paragraph);
 
     const copy = document.createElement('div');
-    copy.append(cloneWithoutCitationAnchors(source));
+    copy.append(cloneCleanAidraftSelection(source));
 
     expect(copy.textContent).toBe('结论。');
     expect(copy.querySelector('[contenteditable="false"]')).toBeNull();
   });
+
+  it('把 Plate 的 KaTeX 渲染节点还原为唯一的行内 TeX 表达', () => {
+    const source = document.createDocumentFragment();
+    const paragraph = document.createElement('p');
+    paragraph.append('Wilder 推荐 ', createPlateEquation('N=14'), ' ');
+    const citation = document.createElement('a');
+    citation.href = 'https://a.dev#cit-1';
+    citation.textContent = '1';
+    paragraph.append(citation, '。');
+    source.append(paragraph);
+
+    const copy = document.createElement('div');
+    copy.append(cloneCleanAidraftSelection(source));
+
+    expect(copy.textContent).toBe('Wilder 推荐 $N=14$。');
+    expect(copy.querySelector('.katex')).toBeNull();
+    expect(htmlToCleanMarkdown(copy.innerHTML)).toBe('Wilder 推荐 $N=14$。');
+  });
+
+  it('把 Plate 的块级公式还原为单一的 display TeX 表达', () => {
+    const source = document.createDocumentFragment();
+    source.append(createPlateEquation('x^2 + y^2 = z^2', false));
+
+    const copy = document.createElement('div');
+    copy.append(cloneCleanAidraftSelection(source));
+
+    expect(copy.textContent).toBe('$$\nx^2 + y^2 = z^2\n$$');
+    expect(copy.querySelector('.katex')).toBeNull();
+    expect(htmlToCleanMarkdown(copy.innerHTML)).toBe('$$\nx^2 + y^2 = z^2\n$$');
+  });
 });
 
 describe('registerAidraftCopyHandler', () => {
+  it('公式选区即使不含 citation 也使用清理后的剪贴板内容', () => {
+    const pane = document.createElement('div');
+    const paragraph = document.createElement('p');
+    paragraph.append('Wilder 推荐 ', createPlateEquation('N=14'), '。');
+    pane.append(paragraph);
+
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    const clipboard = new Map<string, string>();
+    const handled = copyAidraftSelection(
+      {
+        clipboardData: {
+          setData: (type: string, value: string) => {
+            clipboard.set(type, value);
+          },
+        },
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      },
+      pane,
+      selection,
+    );
+
+    expect(handled).toBe(true);
+    expect(clipboard.get('text/plain')).toBe('Wilder 推荐 $N=14$。');
+    expect(clipboard.get('text/html')).not.toContain('katex');
+    selection?.removeAllRanges();
+  });
+
   it('从 document 捕获 BODY 发出的复制事件并阻止默认复制', () => {
     const pane = document.createElement('div');
     const paragraph = document.createElement('p');
