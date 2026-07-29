@@ -12,26 +12,25 @@
  * 但找不到配对的 tool message → 抛 AI_MissingToolResultsError，整轮死锁。
  * 用户看到「出错了：Tool result is missing for tool call call_xxx」，会话无法继续。
  *
- * 修复策略（不删原文 + 给模型留上下文）：
+ * 修复策略（不修改存储原文）：
  * 把半截部件的 state 改成 output-error 并补一段 errorText，告诉模型「上次这个工具被中止了」。
  * 这样：
  *   1. 协议合法 —— tool_call 配对了 tool_result（errorText 作为 result.output）
- *   2. 模型有上下文 —— 看到「中止了」会自然 acknowledge 而不是再傻乎乎重发
- *   3. 不丢部件 —— toolCallId / input 都保留，便于排查
+ *   2. 后续上下文裁剪可以统一识别并删除这类无效调用
+ *   3. 数据库中的 toolCallId / input 不受影响，仍可供界面展示与排查
  *
  * 应用位置：streamText 调用前给 convertToModelMessages 的输入消毒（agent.service.ts）。
  *
  * 为什么不用 AI SDK 内建的 { ignoreIncompleteToolCalls: true }：
- * 那个选项是把半截部件「整个过滤掉」，会让原本只有 tool_call 的 assistant 消息变成空内容，
- * 某些 provider（OpenAI 协议变体）对空 assistant.content 不友好；而且模型完全失去了
- * 「我刚才试过这个工具」的上下文，下一轮可能重蹈覆辙。补 output-error 更稳。
+ * 那个选项会在协议转换内部直接过滤部件，无法与项目统一的上下文清理和测试口径协作。
+ * 这里先显式补齐，再由 pruneFailedToolTurns 删除整个无效轮次。
  */
 
 /** 半截状态：input 阶段中断（无 output / errorText），convertToModelMessages 会只生成 tool_call。 */
 const INCOMPLETE_TOOL_STATES = new Set(['input-streaming', 'input-available']);
 
 /** 给模型看的 errorText —— 中文，简短，明确归因（用户主动中止 vs 系统报错）。 */
-const ABORT_ERROR_TEXT =
+export const ABORT_ERROR_TEXT =
   '工具调用被用户中止（暂停按钮按下），未执行也无返回结果。';
 
 /**

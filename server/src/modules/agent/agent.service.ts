@@ -15,10 +15,15 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import {
   convertToModelMessages,
   createIdGenerator,
+  InvalidToolInputError,
   stepCountIs,
   streamText,
 } from 'ai';
-import { consecutiveInvalidToolCallsIs } from './agent.utils';
+import {
+  consecutiveInvalidToolCallsIs,
+  readToolResultRecord,
+  readToolResultStatus,
+} from './agent.utils';
 import { SystemConfigService } from '../settings/system-config.service';
 import { AgentLifecycle } from './lifecycle/agent-lifecycle.service';
 import { AgentSessionRepository } from './session/agent-session.repository';
@@ -27,6 +32,7 @@ import { approvalResultsFeedback } from '../../prompts/feedback';
 import { GalleryViewService } from '../workspace/gallery-view.service';
 import { splitForCompaction } from './context/compaction-split';
 import { sanitizeAbortedToolCalls } from './context/sanitize-aborted-tool-calls';
+import { pruneFailedToolTurns } from './context/prune-failed-tool-turns';
 import { dropContentlessMessages } from './context/drop-contentless-messages';
 import { stripNullFields } from './context/strip-null-fields';
 import type { AgentChatDto } from './dto/agent-chat.dto';
@@ -150,15 +156,15 @@ export class AgentService {
     const previous = await previousPromise;
     const combined = [...previous, incoming] as Record<string, unknown>[];
 
-    //    sanitizeAbortedToolCalls:上轮按「停止」时半截的 tool_call 会留在 DB 历史里,
-    //    如不处理 convertToModelMessages 会抛 AI_MissingToolResultsError(每个 tool_call
-    //    必须配对 tool_result)。先消毒成 output-error 占位,让协议合法 + 给模型留「上次中止了」上下文。
+    //    sanitizeAbortedToolCalls:先给上轮中止留下的半截 tool_call 补齐协议；
+    //    pruneFailedToolTurns:再从本次模型上下文中删除参数错误/中止调用，避免模型模仿
+    //    旧的空参数或坏 JSON。原始消息仍保存在 DB，前端展示与排障不受影响。
     //    stripNullFields:剔除 DB 存量消息里的显式 null 字段(metadata/providerMetadata…),
     //    否则 convertToModelMessages 的 UIMessage schema(.optional 拒 null)会拒,导致多轮 turn2 崩。
     //    dropContentlessMessages:丢弃空 assistant 毒消息(parts:[] / 仅 reasoning)。
     //    splitForCompaction:与 compaction 同一套 token 切分,保证"喂的最近原文"口径一致。
     const recent = dropContentlessMessages(
-      sanitizeAbortedToolCalls(stripNullFields(combined)),
+      pruneFailedToolTurns(sanitizeAbortedToolCalls(stripNullFields(combined))),
     );
     const { toKeep } = splitForCompaction(recent, {
       window: aiConfig.contextWindow,
@@ -256,12 +262,60 @@ export class AgentService {
           }
         : undefined,
       experimental_telemetry: { isEnabled: true },
-      onStepFinish: ({ stepNumber, toolCalls, usage }) => {
+      onStepFinish: ({
+        stepNumber,
+        toolCalls,
+        toolResults,
+        content,
+        usage,
+      }) => {
         // 通过 lifecycle 发射工具调用事件，解耦日志记录逻辑
         if (toolCalls.length > 0) {
           this.lifecycle.emitAfterToolUse(
             stepNumber,
             toolCalls.map((t) => ({ toolName: t.toolName })),
+          );
+        }
+        for (const part of content) {
+          if (part.type !== 'tool-error') continue;
+          const input = part.input;
+          const inputKeys =
+            input != null && typeof input === 'object' && !Array.isArray(input)
+              ? Object.keys(input)
+              : [];
+          const context = `Step ${stepNumber}: tool=${part.toolName} toolCallId=${part.toolCallId} inputKeys=${inputKeys.join(',') || '-'}`;
+          if (InvalidToolInputError.isInstance(part.error)) {
+            const cause = part.error.cause;
+            const reason =
+              cause instanceof Error
+                ? `${cause.name}: ${cause.message}`.slice(0, 240)
+                : typeof cause === 'string'
+                  ? cause.slice(0, 240)
+                  : '输入不符合工具参数 Schema';
+            this.logger.warn(`${context} 工具参数解析失败 reason=${reason}`);
+          } else {
+            this.logger.error(
+              `${context} 工具执行失败`,
+              part.error instanceof Error
+                ? part.error.stack
+                : String(part.error),
+            );
+          }
+        }
+        for (const toolResult of toolResults) {
+          if (readToolResultStatus(toolResult.output) !== 'invalid') continue;
+          const result = readToolResultRecord(toolResult.output);
+          const summary =
+            typeof result?.['summary'] === 'string'
+              ? result['summary'].slice(0, 160)
+              : '参数未通过领域校验';
+          const input = toolResult.input;
+          const inputKeys =
+            input != null && typeof input === 'object' && !Array.isArray(input)
+              ? Object.keys(input)
+              : [];
+          this.logger.warn(
+            `Step ${stepNumber}: 工具参数无效 tool=${toolResult.toolName} toolCallId=${toolResult.toolCallId} inputKeys=${inputKeys.join(',') || '-'} reason=${summary}`,
           );
         }
         if (usage) {

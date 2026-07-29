@@ -3,22 +3,31 @@
  */
 import { InvalidToolInputError, type StopCondition, type ToolSet } from 'ai';
 
-function readToolResultStatus(output: unknown): string | undefined {
+export function readToolResultRecord(
+  output: unknown,
+  depth = 0,
+): Record<string, unknown> | undefined {
+  if (depth > 2) return undefined;
   try {
     const parsed: unknown =
       typeof output === 'string' ? JSON.parse(output) : output;
     if (parsed == null || typeof parsed !== 'object') return undefined;
     const wrapped = parsed as Record<string, unknown>;
     if (wrapped['type'] === 'text' || wrapped['type'] === 'json') {
-      return readToolResultStatus(wrapped['value']);
+      return readToolResultRecord(wrapped['value'], depth + 1);
     }
-    const meta = wrapped['meta'];
-    if (meta == null || typeof meta !== 'object') return undefined;
-    const status = (meta as Record<string, unknown>)['status'];
-    return typeof status === 'string' ? status : undefined;
+    return wrapped;
   } catch {
     return undefined;
   }
+}
+
+export function readToolResultStatus(output: unknown): string | undefined {
+  const result = readToolResultRecord(output);
+  const meta = result?.['meta'];
+  if (meta == null || typeof meta !== 'object') return undefined;
+  const status = (meta as Record<string, unknown>)['status'];
+  return typeof status === 'string' ? status : undefined;
 }
 
 function invalidToolNames(
