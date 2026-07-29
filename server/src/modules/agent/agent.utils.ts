@@ -54,7 +54,6 @@ export function makeRepairToolCall(
             execute: undefined,
           },
         },
-        toolChoice: { type: 'tool', toolName: toolCall.toolName },
         maxRetries: 1,
         messages: [
           ...messages,
