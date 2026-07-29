@@ -136,6 +136,24 @@ describe('write-draft.tool', () => {
     expect(repo.saveAiDraft).not.toHaveBeenCalled();
   });
 
+  it('不支持的 Markdown 结构 → status=error 并反馈行号，不落库', async () => {
+    const repo = makeRepo();
+    const t = createWriteDraftTool(repo as never, NOTE_ID);
+
+    const result = parse(
+      await run(t, {
+        markdown: '# 标题\n\n断言[^1]。',
+        changeSummary: '生成初稿。',
+        sources: [],
+      }),
+    );
+
+    expect(result.meta.status).toBe('error');
+    expect(result.summary).toContain('第 3 行');
+    expect(result.summary).toContain('[@#CIT N]');
+    expect(repo.saveAiDraft).not.toHaveBeenCalled();
+  });
+
   it('拒绝非 HTTP(S) 来源 URL，避免危险协议进入阅读页', () => {
     expect(
       validateCitations('# 标题\n\n断言[@#CIT 1]。', [

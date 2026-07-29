@@ -117,6 +117,25 @@ describe('normalizeAidraftCitationLinks', () => {
     expect(normalizeAidraftCitationLinks(md)).toBe(md);
   });
 
+  it('把历史脚注标记恢复为 citation 链接', () => {
+    const md = [
+      '第一处[^1]，重复引用[^1]，第二处[^2]。',
+      '',
+      '## 来源',
+      '',
+      '1. [A](https://a.dev)',
+      '2. [B](https://b.dev)',
+    ].join('\n');
+
+    expect(normalizeAidraftCitationLinks(md)).toContain(
+      '第一处[1](https://a.dev#cit-1 "A")，重复引用[1](https://a.dev#cit-1 "A")，第二处[2](https://b.dev#cit-2 "B")。',
+    );
+  });
+
+  it('历史脚注没有匹配来源时退化为可见编号', () => {
+    expect(normalizeAidraftCitationLinks('正文[^3]。')).toBe('正文[3]。');
+  });
+
   it('链接目标与来源不一致时不误改', () => {
     const md = [
       '普通编号[1](https://other.dev)。',

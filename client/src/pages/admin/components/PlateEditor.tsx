@@ -42,7 +42,10 @@ import { useProposalKeyboardNav } from '@/pages/admin/lib/use-proposal-keyboard-
 import { ProposalControlsContext } from '@/components/editor/proposal-controls-context';
 
 import { preprocessMarkdownForPlate } from '@/components/shared/markdown-preprocess';
-import { fixCodeBlockLines } from '@/components/shared/plate-transforms';
+import {
+  fixCodeBlockLines,
+  normalizeRegisteredPlateNodes,
+} from '@/components/shared/plate-transforms';
 import { EditorKit } from '@/components/editor/editor-kit';
 import { Editor, EditorContainer } from '@/components/ui/editor';
 import { FloatingToolbar } from '@/components/ui/floating-toolbar';
@@ -68,10 +71,12 @@ import {
   readNodeText,
   toResolvedSuggestionDescription,
 } from '@/components/editor/inline-assist-utils';
+import { createLogger } from '@/lib/logger';
 
 const INLINE_ASSIST_CURSOR_MARKER = '<!-- INLINE_ASSIST_CURSOR -->';
 const INLINE_ASSIST_SELECTION_START_MARKER = '<!-- INLINE_ASSIST_SELECTION_START -->';
 const INLINE_ASSIST_SELECTION_END_MARKER = '<!-- INLINE_ASSIST_SELECTION_END -->';
+const logger = createLogger('plate-editor');
 
 type EditorPoint = { offset: number; path: number[] };
 
@@ -484,9 +489,22 @@ export function PlateMarkdownEditor({
             editor,
             preprocessMarkdownForPlate(editorMarkdown),
           );
-          return fixCodeBlockLines(nodes);
+          const normalized = normalizeRegisteredPlateNodes(
+            editor,
+            fixCodeBlockLines(nodes),
+          );
+          if (normalized.unsupportedTypes.length > 0) {
+            logger.warn('unsupported_markdown_nodes_removed', {
+              markdownLength: editorMarkdown.length,
+              types: normalized.unsupportedTypes,
+            });
+          }
+          return normalized.nodes;
         } catch (err) {
-          console.error('[PlateEditor] Markdown 反序列化失败:', err);
+          logger.error('markdown_deserialize_failed', {
+            errorType: err instanceof Error ? err.name : 'Unknown',
+            markdownLength: editorMarkdown.length,
+          });
           // 反序列化失败时降级为空段落
           return [{ type: 'p', children: [{ text: '' }] }];
         }

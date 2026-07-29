@@ -16,6 +16,7 @@ import {
 } from '@platejs/table';
 import {
   BaseParagraphPlugin as ParagraphPlugin,
+  createSlatePlugin,
   createSlateEditor,
   type SlateEditor,
   type TElement,
@@ -65,14 +66,40 @@ const MARKDOWN_FIXTURE = [
 ].join('\n');
 
 function createMarkdownEditor(): SlateEditor {
+  const DatePlugin = createSlatePlugin({
+    key: 'date',
+    node: { isElement: true },
+  });
+  const EquationPlugin = createSlatePlugin({
+    key: 'equation',
+    node: { isElement: true },
+  });
+  const InlineEquationPlugin = createSlatePlugin({
+    key: 'inline_equation',
+    node: { isElement: true, isInline: true, isVoid: true },
+  });
+  const StaticListPlugin = createSlatePlugin({
+    key: 'static_list',
+    node: { isElement: true },
+  });
+  const StaticListItemPlugin = createSlatePlugin({
+    key: 'static_list_item',
+    node: { isElement: true },
+  });
+
   return createSlateEditor({
     plugins: [
       ParagraphPlugin,
       H1Plugin,
+      DatePlugin,
+      EquationPlugin,
+      InlineEquationPlugin,
       CodeBlockPlugin,
       CodeLinePlugin,
       LinkPlugin,
       ListPlugin,
+      StaticListPlugin,
+      StaticListItemPlugin,
       TablePlugin,
       TableRowPlugin,
       TableCellPlugin,

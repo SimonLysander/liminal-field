@@ -14,6 +14,7 @@
 import { tool, jsonSchema } from 'ai';
 import type { EditorDraftRepository } from '../../workspace/editor-draft.repository';
 import { ApprovalSupersededError } from '../approval/approval-superseded.error';
+import { validateDraftMarkdownContract } from './draft-markdown-contract';
 import { replaceDraftSection } from './draft-section';
 import { toolResult } from './tool-result';
 
@@ -112,7 +113,7 @@ function parseCitationNumbers(refBody: string): number[] {
 
 /**
  * 引用一致性校验（门禁 validate 与工具 execute 共用）。只拦两类硬错：
- *   1. 悬空引用——正文标了 [^N] 但 sources 不足 N 条（照搬就指向不存在的源）
+ *   1. 悬空引用——正文引用的序号超过 sources 数量（照搬就指向不存在的源）
  *   2. 来源残缺——某条 source 缺 title 或 url（无法溯源）
  * 不强制「每条 source 都被正文引用」（可能整体性引用），也不强制必须有 source
  * （纯思辨、无可证伪事实的篇允许零出处）。返回 null 表示通过。
@@ -239,6 +240,8 @@ export function validateDraftWriteInput(input: DraftWriteInput): string | null {
     const markdown = typeof input.markdown === 'string' ? input.markdown : '';
     if (!markdown.trim())
       return '缺少 markdown:整篇重写必须提供完整 Markdown 正文。';
+    const markdownErr = validateDraftMarkdownContract(markdown);
+    if (markdownErr) return markdownErr;
     const citationErr = validateCitations(markdown, input.sources);
     if (citationErr) return citationErr;
     if ((input.sources?.length ?? 0) > 0 && !citationMarkers(markdown)) {
@@ -266,6 +269,8 @@ export function validateDraftWriteInput(input: DraftWriteInput): string | null {
   if (!sectionMarkdown.trim()) {
     return '缺少 sectionMarkdown:局部重写必须提供目标标题下的新正文。';
   }
+  const markdownErr = validateDraftMarkdownContract(sectionMarkdown);
+  if (markdownErr) return markdownErr;
   if (!Array.isArray(input.sources)) {
     return '局部重写必须提供完整 sources 数组；没有来源时传 []。';
   }

@@ -2,7 +2,10 @@ import { deserializeMd } from '@platejs/markdown';
 import type { SlateEditor, TElement, Value } from 'platejs';
 
 import { preprocessMarkdownForPlate } from '@/components/shared/markdown-preprocess';
-import { fixCodeBlockLines } from '@/components/shared/plate-transforms';
+import {
+  fixCodeBlockLines,
+  normalizeRegisteredPlateNodes,
+} from '@/components/shared/plate-transforms';
 import { createLogger } from '@/lib/logger';
 
 type DocumentNode = {
@@ -223,7 +226,17 @@ export function deserializeDocumentMarkdown(
 ): Value {
   try {
     const nodes = deserializeMd(editor, preprocessDocumentMarkdown(markdown));
-    return normalizeDocumentNodes(nodes as TElement[]);
+    const normalized = normalizeRegisteredPlateNodes(
+      editor,
+      normalizeDocumentNodes(nodes as TElement[]),
+    );
+    if (normalized.unsupportedTypes.length > 0) {
+      logger.warn('unsupported_markdown_nodes_removed', {
+        markdownLength: markdown.length,
+        types: normalized.unsupportedTypes,
+      });
+    }
+    return normalized.nodes;
   } catch (error) {
     // 第三方错误的 message/stack 可能回显正文，因此只记录固定分类与长度。
     logger.error('markdown_parse_failed', {

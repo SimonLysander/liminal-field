@@ -16,6 +16,7 @@ interface AidraftSourceRef {
 const SOURCE_HEADING = '\n## 来源\n';
 const SOURCE_LINE_RE = /^(\d+)\.\s+\[([^\]]+)\]\(([^)]+)\)\s*$/gm;
 const INLINE_NUMERIC_LINK_RE = /\[(\d+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+const LEGACY_FOOTNOTE_RE = /\[\^(\d+)\](?!:)/g;
 const RAW_CITATION_MARKER_RE =
   /\[@#CIT\s+\d+(?:\s*(?:,\s*\d+|-\s*\d+))*\]/gi;
 const CITATION_ANCHOR_SELECTOR = 'a[href*="#cit-"]';
@@ -373,30 +374,34 @@ export function registerAidraftCopyHandler(
 }
 
 /**
- * 旧 aidraft 已把 [@#CIT N] 合成为普通 [N](url)。前端读取时补上 #cit-N + title,
- * 让历史 AI 初稿也能命中 citation 角标样式；只处理「来源」小节之前的正文。
+ * 前端读取历史 aidraft 时统一 citation 表示：旧数字链接补上 #cit-N + title，
+ * 遗留 [^N] 也按来源表恢复成同一链接。只处理「来源」小节之前的正文。
  */
 export function normalizeAidraftCitationLinks(markdown: string): string {
   const sourceIdx = markdown.indexOf(SOURCE_HEADING);
-  if (sourceIdx < 0) return markdown;
-
-  const body = markdown.slice(0, sourceIdx);
-  const sourceSection = markdown.slice(sourceIdx);
+  const body = sourceIdx < 0 ? markdown : markdown.slice(0, sourceIdx);
+  const sourceSection = sourceIdx < 0 ? '' : markdown.slice(sourceIdx);
   const sources = new Map<string, AidraftSourceRef>();
   for (const match of sourceSection.matchAll(SOURCE_LINE_RE)) {
     sources.set(match[1], { title: match[2], url: match[3] });
   }
-  if (sources.size === 0) return markdown;
 
-  const normalizedBody = body.replace(
-    INLINE_NUMERIC_LINK_RE,
-    (whole, n: string, href: string) => {
-      if (href.includes('#cit-')) return whole;
+  const normalizedBody = body
+    .replace(LEGACY_FOOTNOTE_RE, (_whole, n: string) => {
       const source = sources.get(n);
-      if (!source || stripCitationFragment(href) !== source.url) return whole;
+      // 无法匹配来源的历史脏数据退化为可见文本，不能交给 Plate 生成空块。
+      if (!source) return `[${n}]`;
       return `[${n}](${source.url}#cit-${n} "${escapeMarkdownTitle(source.title)}")`;
-    },
-  );
+    })
+    .replace(
+      INLINE_NUMERIC_LINK_RE,
+      (whole, n: string, href: string) => {
+        if (href.includes('#cit-')) return whole;
+        const source = sources.get(n);
+        if (!source || stripCitationFragment(href) !== source.url) return whole;
+        return `[${n}](${source.url}#cit-${n} "${escapeMarkdownTitle(source.title)}")`;
+      },
+    );
 
   return `${normalizedBody}${sourceSection}`;
 }
