@@ -81,6 +81,87 @@ describe('AgentLifecycle.onSessionLoad', () => {
   });
 });
 
+describe('AgentLifecycle.onBeforeChat', () => {
+  it('passes the current request, recent conversation and scene to sub-agent assembly', async () => {
+    const assemble = jest.fn().mockReturnValue({});
+    const getRecentMessages = jest.fn();
+    const lifecycle = new AgentLifecycle(
+      {} as never,
+      { loadCore: jest.fn().mockResolvedValue([]) } as never,
+      { buildSystemPrompt: jest.fn().mockReturnValue('system') } as never,
+      { assemble } as never,
+      {} as never,
+      {
+        getOwnerProfile: jest
+          .fn()
+          .mockResolvedValue({ name: '', birthday: '', bio: '' }),
+      } as never,
+      {
+        findSession: jest
+          .fn()
+          .mockResolvedValue({ content: '持续研究波动率', tasks: [] }),
+      } as never,
+      {
+        getRecentMessages,
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {
+        findCurrentView: jest.fn().mockResolvedValue(null),
+        findRecent: jest.fn().mockResolvedValue([]),
+      } as never,
+      { findByIds: jest.fn().mockResolvedValue([]) } as never,
+      {} as never,
+    );
+
+    await lifecycle.onBeforeChat(
+      {
+        message: {
+          role: 'user',
+          parts: [{ type: 'text', text: '检查这节有没有遗漏' }],
+        },
+        entryContext: {
+          source: 'agent-page',
+          sessionKey: 'session-1',
+          selectedText: 'ATR 的定义',
+          document: {
+            contentItemId: 'note-1',
+            title: '波动率止损',
+            bodyMarkdown: '正文',
+          },
+        },
+      },
+      {},
+      Promise.resolve([
+        {
+          role: 'user',
+          parts: [{ type: 'text', text: '先解释 ATR' }],
+        },
+        {
+          role: 'assistant',
+          parts: [{ type: 'text', text: '再看止损应用' }],
+        },
+      ]),
+    );
+
+    expect(assemble).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subAgentContext: {
+          currentUserRequest: '检查这节有没有遗漏',
+          recentConversation: '用户：先解释 ATR\n\n主智能体：再看止损应用',
+          sessionSummary: '持续研究波动率',
+          sceneContext: '入口：agent-page\n\n用户选中的内容：\nATR 的定义',
+        },
+      }),
+      undefined,
+      undefined,
+      undefined,
+    );
+    expect(getRecentMessages).not.toHaveBeenCalled();
+  });
+});
+
 describe('AgentLifecycle.onSessionDelete', () => {
   it('并行清理会话消息与持久化审批载荷', async () => {
     const session = { delete: jest.fn().mockResolvedValue(undefined) };

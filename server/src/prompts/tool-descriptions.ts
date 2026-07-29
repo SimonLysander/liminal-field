@@ -61,7 +61,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
 
   search_memories: `关键词模糊搜跨主题的所有者观察(matches observation 字段 + context 字段)。想找跟具体话题/事物相关的观察轨迹时用这条;想看某个 topic 的所有最近观察用 recall_memory。可选 topic 过滤;截断时 meta 给 hasMore + nextOffset,可用 offset 续取。`,
 
-  sub_agent: `把一个明确的任务委派给独立的子 agent。子 agent 有独立上下文和工具，完成后只返回结论，当前对话不会被中间过程干扰。适合需要搜索+读多篇+综合分析的任务。`,
+  sub_agent: `把研究焦点委派给独立的只读研究 agent。它会自动获得当前用户请求、近期对话、会话摘要和业务场景，并可检索知识库、读取当前学习内容、联网搜索及深读网页；task 用于明确本轮研究重心，不必重复全部背景。适合需要多来源检索、交叉查证或综合分析的任务。`,
 
   view_photos: `查看若干照片的画面本身(传 fileName 数组)。调用后这些照片会出现在你接下来能看到的内容里,据此写图说。只传你确实要看的,别一次全要。`,
 

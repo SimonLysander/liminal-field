@@ -96,28 +96,40 @@ export class AgentService {
     });
     const model = provider.chatModel(aiConfig.model);
 
-    // 4. BeforeChat 钩子：并行加载记忆 + 构建 systemPrompt + 组装 tools
-    //    将入口配置的 systemPrompt 和 tools 白名单一并传入
-    const { systemPrompt, tools } = await this.lifecycle.onBeforeChat(dto, {
-      aiSystemPrompt: aiConfig.aiSystemPrompt,
-      entrySystemPrompt: agentConfig?.systemPrompt,
-      allowedTools: agentConfig?.tools,
-      tier,
-      // agent skills:启用的 Skill _id 列表透传给 lifecycle,prompt 注入 <available_skills> +
-      //   tool.assembler 挂 Skill 工具(配置驱动,空列表 → 两者都不动)
-      enabledSkillIds: agentConfig?.enabledSkillIds,
-    });
-
-    // 5. 组装喂模型的"最近原文"。后端权威上下文:历史从 agent_sessions 读(按 token
-    //    有界),不再信任前端全量上传;本轮新消息走单条 dto.message。
     const incoming = dto.message as Record<string, unknown> | undefined;
     if (!incoming) {
       throw new BadRequestException('缺少 message');
     }
+    const sessionKey = dto.entryContext.sessionKey ?? '';
+    // 历史只查一次：完整有界窗口供主模型使用，末尾 8 条同时给 sub-agent 理解委派来由。
+    const previousPromise = sessionKey
+      ? this.sessionRepo.getRecentByBudget(
+          sessionKey,
+          aiConfig.contextWindow,
+          TRIGGER_RATIO,
+        )
+      : Promise.resolve([]);
 
+    // 4. BeforeChat 钩子：并行加载记忆 + 构建 systemPrompt + 组装 tools
+    //    将入口配置的 systemPrompt 和 tools 白名单一并传入
+    const { systemPrompt, tools } = await this.lifecycle.onBeforeChat(
+      dto,
+      {
+        aiSystemPrompt: aiConfig.aiSystemPrompt,
+        entrySystemPrompt: agentConfig?.systemPrompt,
+        allowedTools: agentConfig?.tools,
+        tier,
+        // agent skills:启用的 Skill _id 列表透传给 lifecycle,prompt 注入 <available_skills> +
+        //   tool.assembler 挂 Skill 工具(配置驱动,空列表 → 两者都不动)
+        enabledSkillIds: agentConfig?.enabledSkillIds,
+      },
+      previousPromise.then((messages) => messages.slice(-8)),
+    );
+
+    // 5. 组装喂模型的"最近原文"。后端权威上下文:历史从 agent_sessions 读(按 token
+    //    有界),不再信任前端全量上传;本轮新消息走单条 dto.message。
     // ratio 用 TRIGGER_RATIO:读取量 ≥ 喂模型量,保证 splitForCompaction 有料可切;
     // 更早的对话精华已在 session 记忆里(随 system prompt 注入),不重复读。
-    const sessionKey = dto.entryContext.sessionKey ?? '';
 
     // HITL 审批结果回灌:上次门禁写工具被批准/拒绝(带外 REST,模型当时不知道),
     // 这一轮把结果作为带外事实追加进 system,只回灌一次(标 notifiedToModel)。
@@ -135,13 +147,7 @@ export class AgentService {
       }
     }
 
-    const previous = sessionKey
-      ? await this.sessionRepo.getRecentByBudget(
-          sessionKey,
-          aiConfig.contextWindow,
-          TRIGGER_RATIO,
-        )
-      : [];
+    const previous = await previousPromise;
     const combined = [...previous, incoming] as Record<string, unknown>[];
 
     //    sanitizeAbortedToolCalls:上轮按「停止」时半截的 tool_call 会留在 DB 历史里,

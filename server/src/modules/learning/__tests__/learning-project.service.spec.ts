@@ -150,7 +150,7 @@ describe('LearningProjectService', () => {
     );
   });
 
-  it('startProject persists root, ancestors, and descendants as the indexed project scope', async () => {
+  it('startProject checks ancestors but persists only the subtree so sibling projects remain independent', async () => {
     const parent = node({ id: 'parent', contentItemId: 'ci_parent' });
     const root = node({
       id: 'root',
@@ -175,10 +175,16 @@ describe('LearningProjectService', () => {
 
     await service.startProject('root');
 
+    expect(projectRepo.findActiveByRootNodeIds).toHaveBeenCalledWith([
+      'parent',
+      'root',
+      'child',
+      'leaf',
+    ]);
     expect(projectRepo.createActive).toHaveBeenCalledWith({
       rootNodeId: 'root',
       rootContentItemId: 'ci_root',
-      scopeNodeIds: ['parent', 'root', 'child', 'leaf'],
+      scopeNodeIds: ['root', 'child', 'leaf'],
     });
   });
 
