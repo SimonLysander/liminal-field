@@ -105,4 +105,43 @@ describe('makeRepairToolCall', () => {
       goal: '理解波动率',
     });
   });
+
+  it('thinking provider 已返回 JSON 字符串时不重复序列化', async () => {
+    const repairedInput = JSON.stringify({
+      goal: '理解波动率',
+      changeSummary: '按因果关系组织篇目',
+    });
+    mockGenerateText.mockResolvedValue({
+      toolCalls: [
+        {
+          type: 'tool-call',
+          toolCallId: 'repair-call',
+          toolName: 'write_learn_plan',
+          input: repairedInput,
+        },
+      ],
+    } as never);
+
+    const repair = makeRepairToolCall({} as never);
+    const result = await repair({
+      toolCall: {
+        type: 'tool-call',
+        toolCallId: 'original-call',
+        toolName: 'write_learn_plan',
+        input: '{}',
+      },
+      tools: {
+        write_learn_plan: {
+          description: '学习规划',
+          inputSchema: { type: 'object' },
+        },
+      } as never,
+      error: new Error('参数不完整') as never,
+      messages: [],
+      system: 'system',
+      inputSchema: jest.fn(),
+    });
+
+    expect(result?.input).toBe(repairedInput);
+  });
 });
