@@ -33,6 +33,10 @@ describe('getHeadingNumberingClass', () => {
     expect(getNoteHeadingNumbers([2, 1, 2])).toEqual(['', '一、', '1.1']);
   });
 
+  it('treats H2 as top-level chapters when the document has no H1', () => {
+    expect(getNoteHeadingNumbers([2, 2, 2])).toEqual(['一、', '二、', '三、']);
+  });
+
   it('applies calculated numbers as display-only heading attributes', () => {
     const container = document.createElement('article');
     container.innerHTML = '<h1>First</h1><h2>One</h2><h2>Two</h2><h1>Second</h1><h2>Three</h2>';
@@ -44,5 +48,18 @@ describe('getHeadingNumberingClass', () => {
         (heading) => heading.getAttribute('data-heading-number'),
       ),
     ).toEqual(['一、', '1.1', '1.2', '二、', '2.1']);
+  });
+
+  it('applies top-level numbers to H2-only rendered documents', () => {
+    const container = document.createElement('article');
+    container.innerHTML = '<h2>First</h2><h2>Second</h2>';
+
+    applyHeadingNumbering(container, 'note');
+
+    expect(
+      Array.from(container.querySelectorAll('h2')).map(
+        (heading) => heading.getAttribute('data-heading-number'),
+      ),
+    ).toEqual(['一、', '二、']);
   });
 });

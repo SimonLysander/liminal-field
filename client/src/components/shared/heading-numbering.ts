@@ -14,6 +14,17 @@ export function getHeadingNumberingClass(
  * 在渲染后的标题顺序上计算展示编号，保证阅读器与编辑器使用同一套层级规则。
  */
 export function getNoteHeadingNumbers(levels: readonly number[]): string[] {
+  // 学习草稿的文档标题在编辑器外展示，正文会直接从 H2 开始。
+  // 此时 H2 是正文的实际顶层章节，按“一、二、三、”编号。
+  if (!levels.includes(1)) {
+    let topLevelCount = 0;
+    return levels.map((level) => {
+      if (level !== 2) return '';
+      topLevelCount += 1;
+      return `${toCjkNumeral(topLevelCount)}、`;
+    });
+  }
+
   let h1Count = 0;
   let h2Count = 0;
 
