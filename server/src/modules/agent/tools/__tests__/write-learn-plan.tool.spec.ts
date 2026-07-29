@@ -58,6 +58,25 @@ const ITEMS = [
 ];
 
 describe('write-learn-plan.tool', () => {
+  it('inputSchema 在运行期拒绝缺参，使调用进入 SDK 修复链', async () => {
+    const tool = createWriteLearnPlanTool(makeRepo() as never, TOPIC_ID) as {
+      inputSchema: {
+        validate?: (
+          value: unknown,
+        ) => PromiseLike<
+          { success: true; value: unknown } | { success: false; error: Error }
+        >;
+      };
+    };
+
+    const result = await tool.inputSchema.validate?.({});
+
+    expect(result?.success).toBe(false);
+    if (result?.success === false) {
+      expect(result.error.message).toContain('changeSummary');
+    }
+  });
+
   it.each([
     {
       label: '开篇不是三个自然段',
