@@ -89,4 +89,26 @@ describe('gateWrite', () => {
     expect(r.meta?.status).toBe('invalid');
     expect(repo.stash).not.toHaveBeenCalled();
   });
+
+  it('非对象参数 → invalid,且不进入工具级校验和预览', async () => {
+    const repo = mkRepo();
+    const validate = jest.fn();
+    const buildPreview = jest.fn();
+    const gated = gateWrite(mkRealTool(), {
+      toolName: 'write_learn_plan',
+      sessionKey: 's1',
+      pendingWriteRepo: repo,
+      validate,
+      buildPreview,
+    }) as {
+      execute: (a: unknown, o: { toolCallId: string }) => Promise<string>;
+    };
+
+    const r = parse(await gated.execute(null, { toolCallId: 'tc3' }));
+
+    expect(r.meta?.status).toBe('invalid');
+    expect(validate).not.toHaveBeenCalled();
+    expect(buildPreview).not.toHaveBeenCalled();
+    expect(repo.stash).not.toHaveBeenCalled();
+  });
 });

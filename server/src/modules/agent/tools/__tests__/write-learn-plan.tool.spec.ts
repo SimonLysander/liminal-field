@@ -58,35 +58,10 @@ const ITEMS = [
 ];
 
 describe('write-learn-plan.tool', () => {
-  it('inputSchema 在运行期拒绝缺参，使调用进入 SDK 修复链', async () => {
-    const tool = createWriteLearnPlanTool(makeRepo() as never, TOPIC_ID) as {
-      inputSchema: {
-        validate?: (
-          value: unknown,
-        ) => PromiseLike<
-          { success: true; value: unknown } | { success: false; error: Error }
-        >;
-      };
-    };
-
-    const result = await tool.inputSchema.validate?.({});
-
-    expect(result?.success).toBe(false);
-    if (result?.success === false) {
-      expect(result.error.message).toContain('changeSummary');
-    }
-  });
-
   it.each([
     {
-      label: '开篇不是三个自然段',
-      input: {
-        goal: GOAL,
-        understanding: '第一段。\n\n第二段。',
-        items: ITEMS,
-        conclusion: CONCLUSION,
-        changeSummary: '按知识依赖组织规划。',
-      },
+      label: '参数不是对象',
+      input: null,
     },
     {
       label: '缺少收束',
@@ -94,7 +69,6 @@ describe('write-learn-plan.tool', () => {
         goal: GOAL,
         understanding: UNDERSTANDING,
         items: ITEMS,
-        changeSummary: '按知识依赖组织规划。',
       },
     },
     {
@@ -103,16 +77,6 @@ describe('write-learn-plan.tool', () => {
         goal: GOAL,
         understanding: UNDERSTANDING,
         items: [],
-        conclusion: CONCLUSION,
-        changeSummary: '按知识依赖组织规划。',
-      },
-    },
-    {
-      label: '缺少审批摘要',
-      input: {
-        goal: GOAL,
-        understanding: UNDERSTANDING,
-        items: ITEMS,
         conclusion: CONCLUSION,
       },
     },
@@ -126,6 +90,23 @@ describe('write-learn-plan.tool', () => {
     expect(repo.saveAiDraft).not.toHaveBeenCalled();
   });
 
+  it('开篇段数属于写作要求，不阻断结构完整的规划写入', async () => {
+    const repo = makeRepo();
+    const tool = createWriteLearnPlanTool(repo as never, TOPIC_ID);
+
+    const result = parse(
+      await run(tool, {
+        goal: GOAL,
+        understanding: '第一段。\n\n第二段。',
+        items: ITEMS,
+        conclusion: CONCLUSION,
+      }),
+    );
+
+    expect(result.meta.status).toBe('ok');
+    expect(repo.saveAiDraft).toHaveBeenCalledTimes(1);
+  });
+
   it('正常写入 → status=ok，itemsCount 正确，saveAiDraft 携带正确参数', async () => {
     const repo = makeRepo();
     const tool = createWriteLearnPlanTool(repo as never, TOPIC_ID);
@@ -136,7 +117,6 @@ describe('write-learn-plan.tool', () => {
         understanding: UNDERSTANDING,
         items: ITEMS,
         conclusion: CONCLUSION,
-        changeSummary: '按知识依赖组织规划。',
       }),
     );
 
@@ -187,7 +167,6 @@ describe('write-learn-plan.tool', () => {
         understanding: UNDERSTANDING,
         items: ITEMS,
         conclusion: CONCLUSION,
-        changeSummary: '按知识依赖组织规划。',
       }),
     );
 

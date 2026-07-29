@@ -138,7 +138,6 @@ describe('工具 description 集中表 — assemble 覆盖', () => {
           understanding: '只有一段。',
           items: [],
           conclusion: '',
-          changeSummary: '按基础依赖组织规划。',
         },
         { toolCallId: 'call-1' },
       ),

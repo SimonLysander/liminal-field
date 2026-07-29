@@ -94,7 +94,7 @@ function validateDraftWrite(args: Record<string, unknown>): string | null {
   return validateDraftWriteInput(args);
 }
 
-/** 新规划进入审批前同时校验审批摘要与正文结构，避免批准后才落入不完整数据。 */
+/** 新规划进入审批前校验可持久化结构，避免批准后才发现数据不完整。 */
 function validateLearnPlanWrite(args: Record<string, unknown>): string | null {
   return validateLearnPlanInput(args);
 }
@@ -381,13 +381,17 @@ export class ToolAssembler {
                 targetContentItemId: entryContext.learningTopicId,
                 validate: validateLearnPlanWrite,
                 buildPreview: (args) => {
+                  const goal =
+                    typeof args['goal'] === 'string' ? args['goal'].trim() : '';
                   const items =
                     (args['items'] as Array<{
                       title?: string;
                       why?: string;
                     }>) ?? [];
                   return {
-                    summary: (args['changeSummary'] as string) || undefined,
+                    summary: goal
+                      ? `围绕“${goal.slice(0, 60)}”组织 ${items.length} 篇有序学习内容。`
+                      : `组织 ${items.length} 篇有序学习内容。`,
                     items: items.slice(0, 20).map((it) => ({
                       label: it?.title ?? '',
                       snippet: it?.why || undefined, // 篇名 + 该篇的「为何写」

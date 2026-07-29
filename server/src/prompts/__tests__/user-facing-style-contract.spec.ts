@@ -40,15 +40,10 @@ describe('面向用户的生成文本规范', () => {
     }
   });
 
-  it('初稿与规划的审批摘要说明使用规范书面语', () => {
-    for (const file of [
-      '../modules/agent/tools/write-draft.tool.ts',
-      '../modules/agent/tools/write-learn-plan.tool.ts',
-    ]) {
-      const content = prompt(file);
-      expect(content).toContain('教科书式严谨');
-      expect(content).not.toMatch(/一眼看懂|讲清这篇/);
-    }
+  it('初稿审批摘要说明使用规范书面语', () => {
+    const content = prompt('../modules/agent/tools/write-draft.tool.ts');
+    expect(content).toContain('教科书式严谨');
+    expect(content).not.toMatch(/一眼看懂|讲清这篇/);
   });
 
   it('简报采用专业事实编辑风格且提示词不含口语诱导词', () => {

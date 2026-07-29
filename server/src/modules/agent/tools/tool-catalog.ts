@@ -562,13 +562,6 @@ export const TOOL_CATALOG: Record<string, ToolMeta> = {
         required: true,
         description: '节点线后的自然收束：综合学习路径并回扣目标，不复述篇名',
       },
-      {
-        name: 'changeSummary',
-        type: 'string',
-        required: true,
-        description:
-          '审批摘要：首次生成时说明组织方式，重做时说明相对已有规划的调整及原因',
-      },
     ],
     returns: '写入成功 → {status:ok, itemsCount:N}',
   },

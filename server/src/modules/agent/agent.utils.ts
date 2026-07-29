@@ -1,133 +1,83 @@
 /**
  * agent.utils.ts — Agent 模块内共用的工具函数。
  */
-import {
-  generateText,
-  NoSuchToolError,
-  type LanguageModel,
-  type ToolCallRepairFunction,
-  type ToolSet,
-} from 'ai';
-import { Logger } from '@nestjs/common';
+import { InvalidToolInputError, type StopCondition, type ToolSet } from 'ai';
 
-const logger = new Logger('AgentUtils');
-
-function parseToolInputForRepair(input: string): unknown {
-  if (!input.trim()) return {};
+function readToolResultStatus(output: unknown): string | undefined {
   try {
-    return JSON.parse(input) as unknown;
+    const parsed: unknown =
+      typeof output === 'string' ? JSON.parse(output) : output;
+    if (parsed == null || typeof parsed !== 'object') return undefined;
+    const wrapped = parsed as Record<string, unknown>;
+    if (wrapped['type'] === 'text' || wrapped['type'] === 'json') {
+      return readToolResultStatus(wrapped['value']);
+    }
+    const meta = wrapped['meta'];
+    if (meta == null || typeof meta !== 'object') return undefined;
+    const status = (meta as Record<string, unknown>)['status'];
+    return typeof status === 'string' ? status : undefined;
   } catch {
-    // 保留无法解析的原文，让修复模型结合错误信息重建参数。
-    return input;
+    return undefined;
   }
 }
 
-function serializeRepairedToolInput(input: unknown): string {
-  const value =
-    typeof input === 'string'
-      ? (() => {
-          try {
-            return JSON.parse(input) as unknown;
-          } catch {
-            throw new Error('修复模型返回的工具参数不是有效 JSON');
-          }
-        })()
-      : input;
-
-  if (value == null || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('修复模型返回的工具参数不是 JSON 对象');
+function invalidToolNames(
+  content: ReadonlyArray<unknown>,
+): ReadonlySet<string> {
+  const names = new Set<string>();
+  for (const value of content) {
+    if (value == null || typeof value !== 'object') continue;
+    const part = value as Record<string, unknown>;
+    const toolName =
+      typeof part['toolName'] === 'string' ? part['toolName'] : undefined;
+    if (!toolName) continue;
+    if (
+      (part['type'] === 'tool-error' &&
+        InvalidToolInputError.isInstance(part['error'])) ||
+      (part['type'] === 'tool-result' &&
+        readToolResultStatus(part['output']) === 'invalid')
+    ) {
+      names.add(toolName);
+    }
   }
-  return JSON.stringify(value);
+  return names;
 }
 
 /**
- * 工具调用修复(re-ask 策略,见 docs/AI SDK experimental_repairToolCall)。
+ * 同一工具连续返回无效输入时停止 ReAct 循环。
  *
- * 现象:deepseek/通义偶尔吐出烂 JSON / 不合 schema 的工具调用,导致整轮 generateText/
- * streamText 崩(测试中见过 sub_agent「委派失败:Invalid JSON response」)。
- *
- * 修法:把"失败的工具调用 + 错误信息"回灌给同一个模型,让它重出一次正确的调用 ——
- * provider 无关(就是再走一遍普通 function calling),不依赖结构化输出特性
- * (deepseek json_schema 不稳、通义 thinking 模式不支持,都被我们排除了)。
- *
- * 工具名都错(NoSuchToolError)就不修,返回 null 让其走正常错误流程。
+ * AI SDK 已把坏 JSON 作为 tool-error 回灌给当前主模型；业务校验失败则返回
+ * ToolResult(status=invalid)。允许模型在下一步自行纠正，但不启动隐藏模型调用，
+ * 也不允许同一错误跑满整个 step budget。
  */
-export function makeRepairToolCall(
-  model: LanguageModel,
-): ToolCallRepairFunction<ToolSet> {
-  return async ({ toolCall, tools, error, messages, system }) => {
-    if (NoSuchToolError.isInstance(error)) return null;
-    try {
-      const originalTool = tools[toolCall.toolName];
-      if (!originalTool) return null;
+export function consecutiveInvalidToolCallsIs<TOOLS extends ToolSet = ToolSet>(
+  limit: number,
+): StopCondition<TOOLS> {
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw new RangeError('limit 必须是正整数');
+  }
 
-      const { toolCalls } = await generateText({
-        model,
-        system,
-        // 修复过程只暴露当前工具并禁用 execute，避免一次修复产生真实写入，
-        // 再由外层正常工具链校验并执行修复后的调用。
-        tools: {
-          [toolCall.toolName]: {
-            ...originalTool,
-            execute: undefined,
-          },
-        },
-        maxRetries: 1,
-        messages: [
-          ...messages,
-          {
-            role: 'assistant',
-            content: [
-              {
-                type: 'tool-call',
-                toolCallId: toolCall.toolCallId,
-                toolName: toolCall.toolName,
-                input: parseToolInputForRepair(toolCall.input),
-              },
-            ],
-          },
-          {
-            role: 'tool',
-            content: [
-              {
-                type: 'tool-result',
-                toolCallId: toolCall.toolCallId,
-                toolName: toolCall.toolName,
-                output: {
-                  type: 'error-text',
-                  value: String(error?.message ?? error),
-                },
-              },
-            ],
-          },
-        ],
-      });
-      const repaired = toolCalls.find(
-        (candidate) => candidate.toolName === toolCall.toolName,
-      );
-      if (!repaired) return null;
-
-      // generateText 的高层 ToolCall.input 是对象；repair 协议要求底层
-      // LanguageModelV3ToolCall.input 为 JSON 字符串。部分 thinking provider
-      // 已经返回 JSON 字符串，统一解析为对象后只序列化一次，避免双重编码。
-      const serializedInput = serializeRepairedToolInput(repaired.input);
-      return {
-        ...toolCall,
-        input: serializedInput,
-      };
-    } catch (repairError) {
-      logger.warn(
-        `工具调用修复失败 toolName=${toolCall.toolName} toolCallId=${toolCall.toolCallId}`,
-        repairError instanceof Error ? repairError.stack : String(repairError),
-      );
-      return null;
+  return ({ steps }) => {
+    if (steps.length < limit) return false;
+    let repeatedNames: ReadonlySet<string> | undefined;
+    for (const step of steps.slice(-limit).reverse()) {
+      const currentNames = invalidToolNames(step.content);
+      if (currentNames.size === 0) return false;
+      repeatedNames =
+        repeatedNames == null
+          ? currentNames
+          : new Set(
+              [...repeatedNames].filter((name) => currentNames.has(name)),
+            );
+      if (repeatedNames.size === 0) return false;
     }
+    return true;
   };
 }
 
 /**
  * 整体重试一次:fn 抛错且未被中止时,先 onRetry(重置累积状态)再重跑一次。
- * 兜底 repairToolCall 修不到的 provider 级抽风(如响应体「Invalid JSON response」)。
+ * 兜底 provider 请求级故障（如响应体无法解析）；工具参数错误由 ReAct 循环自行处理。
  */
 export async function retryOnce<T>(
   fn: () => Promise<T>,

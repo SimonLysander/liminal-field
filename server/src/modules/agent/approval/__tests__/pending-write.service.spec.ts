@@ -329,7 +329,6 @@ describe('PendingWriteCommitService.approve', () => {
       toolName: 'write_learn_plan',
       payload: {
         goal: '旧规划',
-        understanding: '旧开篇。',
         items: [{ title: '基础', thread: '起点', why: '建立基础。' }],
         changeSummary: '组织规划。',
       },

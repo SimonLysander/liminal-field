@@ -18,7 +18,7 @@ import {
   stepCountIs,
   streamText,
 } from 'ai';
-import { makeRepairToolCall } from './agent.utils';
+import { consecutiveInvalidToolCallsIs } from './agent.utils';
 import { SystemConfigService } from '../settings/system-config.service';
 import { AgentLifecycle } from './lifecycle/agent-lifecycle.service';
 import { AgentSessionRepository } from './session/agent-session.repository';
@@ -186,7 +186,7 @@ export class AgentService {
       system: systemPrompt + approvalFeedback,
       messages: modelMessages,
       tools,
-      stopWhen: stepCountIs(10),
+      stopWhen: [stepCountIs(10), consecutiveInvalidToolCallsIs(2)],
       // 流中途错误(provider 在响应头已发出后失败)结构化记录,否则只进 SSE error part、
       // 服务端无日志,违反「不静默失败」纪律,排错只能靠猜。
       onError: ({ error }: { error: unknown }) =>
@@ -255,8 +255,6 @@ export class AgentService {
             };
           }
         : undefined,
-      // 工具调用烂 JSON 时自动 re-ask 修复,不让整轮崩(provider 偶发,见 agent.utils)
-      experimental_repairToolCall: makeRepairToolCall(model),
       experimental_telemetry: { isEnabled: true },
       onStepFinish: ({ stepNumber, toolCalls, usage }) => {
         // 通过 lifecycle 发射工具调用事件，解耦日志记录逻辑

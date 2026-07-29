@@ -1,147 +1,183 @@
-import { generateText } from 'ai';
-import { makeRepairToolCall } from '../agent.utils';
+import { InvalidToolInputError } from 'ai';
+import { consecutiveInvalidToolCallsIs } from '../agent.utils';
 
-jest.mock('ai', () => {
-  const actual = jest.requireActual<typeof import('ai')>('ai');
-  return {
-    ...actual,
-    generateText: jest.fn(),
-  };
-});
+type TestPart = {
+  type: 'tool-error' | 'tool-result';
+  toolName: string;
+  output?: unknown;
+  error?: unknown;
+};
 
-const mockGenerateText = generateText as jest.MockedFunction<
-  typeof generateText
->;
-
-describe('makeRepairToolCall', () => {
-  beforeEach(() => {
-    mockGenerateText.mockReset();
+const step = (...content: TestPart[]) => ({ content });
+const invalidInput = (toolName: string) =>
+  new InvalidToolInputError({
+    toolName,
+    toolInput: '{',
+    cause: new SyntaxError('Unexpected end of JSON input'),
   });
 
-  it('把高层对象参数序列化为底层协议要求的 JSON 字符串', async () => {
-    mockGenerateText.mockResolvedValue({
-      toolCalls: [
-        {
-          type: 'tool-call',
-          toolCallId: 'repair-call',
-          toolName: 'write_learn_plan',
-          input: { goal: '理解波动率', changeSummary: '按因果关系组织篇目' },
-        },
-      ],
-    } as never);
+describe('consecutiveInvalidToolCallsIs', () => {
+  it('同一工具连续两步无效时停止，第一步仍允许模型纠正', async () => {
+    const stop = consecutiveInvalidToolCallsIs(2);
 
-    const repair = makeRepairToolCall({} as never);
-    const result = await repair({
-      toolCall: {
-        type: 'tool-call',
-        toolCallId: 'original-call',
-        toolName: 'write_learn_plan',
-        input: '{}',
-      },
-      tools: {
-        write_learn_plan: {
-          description: '学习规划',
-          inputSchema: { type: 'object' },
-          execute: jest.fn(),
-        },
-      } as never,
-      error: new Error('changeSummary 不能为空') as never,
-      messages: [],
-      system: 'system',
-      inputSchema: jest.fn(),
-    });
-
-    expect(result).toEqual({
-      type: 'tool-call',
-      toolCallId: 'original-call',
-      toolName: 'write_learn_plan',
-      input: JSON.stringify({
-        goal: '理解波动率',
-        changeSummary: '按因果关系组织篇目',
-      }),
-    });
-
-    const repairRequest = mockGenerateText.mock.calls[0]?.[0];
-    // 通义等 thinking model 不支持强制 tool_choice；只暴露目标工具即可。
-    expect(repairRequest?.toolChoice).toBeUndefined();
-    expect(
-      (
-        repairRequest?.tools?.write_learn_plan as {
-          execute?: unknown;
-        }
-      ).execute,
-    ).toBeUndefined();
-    expect(mockGenerateText).toHaveBeenCalledTimes(1);
+    await expect(
+      Promise.resolve(
+        stop({
+          steps: [
+            step({
+              type: 'tool-error',
+              toolName: 'write_learn_plan',
+              error: invalidInput('write_learn_plan'),
+            }),
+          ],
+        } as never),
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      Promise.resolve(
+        stop({
+          steps: [
+            step({
+              type: 'tool-error',
+              toolName: 'write_learn_plan',
+              error: invalidInput('write_learn_plan'),
+            }),
+            step({
+              type: 'tool-error',
+              toolName: 'write_learn_plan',
+              error: invalidInput('write_learn_plan'),
+            }),
+          ],
+        } as never),
+      ),
+    ).resolves.toBe(true);
   });
 
-  it('回灌时把合法 JSON 原参数还原成对象', async () => {
-    mockGenerateText.mockResolvedValue({ toolCalls: [] } as never);
+  it('不同工具分别失败时不视为同一错误反复调用', async () => {
+    const stop = consecutiveInvalidToolCallsIs(2);
 
-    const repair = makeRepairToolCall({} as never);
-    await repair({
-      toolCall: {
-        type: 'tool-call',
-        toolCallId: 'call-1',
-        toolName: 'write_learn_plan',
-        input: '{"goal":"理解波动率"}',
-      },
-      tools: {
-        write_learn_plan: {
-          description: '学习规划',
-          inputSchema: { type: 'object' },
-        },
-      } as never,
-      error: new Error('参数不完整') as never,
-      messages: [],
-      system: 'system',
-      inputSchema: jest.fn(),
-    });
+    await expect(
+      Promise.resolve(
+        stop({
+          steps: [
+            step({
+              type: 'tool-error',
+              toolName: 'web_fetch',
+              error: invalidInput('web_fetch'),
+            }),
+            step({
+              type: 'tool-error',
+              toolName: 'write_learn_plan',
+              error: invalidInput('write_learn_plan'),
+            }),
+          ],
+        } as never),
+      ),
+    ).resolves.toBe(false);
+  });
 
-    const repairRequest = mockGenerateText.mock.calls[0]?.[0];
-    const appendedAssistant = repairRequest?.messages?.at(-2) as {
-      content: Array<{ input: unknown }>;
+  it('工具执行期异常不计入参数无效调用', async () => {
+    const stop = consecutiveInvalidToolCallsIs(2);
+
+    await expect(
+      Promise.resolve(
+        stop({
+          steps: [
+            step({
+              type: 'tool-error',
+              toolName: 'web_fetch',
+              error: new Error('network timeout'),
+            }),
+            step({
+              type: 'tool-error',
+              toolName: 'web_fetch',
+              error: new Error('network timeout'),
+            }),
+          ],
+        } as never),
+      ),
+    ).resolves.toBe(false);
+  });
+
+  it('识别业务工具返回的 status=invalid', async () => {
+    const stop = consecutiveInvalidToolCallsIs(2);
+    const invalidResult = JSON.stringify({ meta: { status: 'invalid' } });
+
+    await expect(
+      Promise.resolve(
+        stop({
+          steps: [
+            step({
+              type: 'tool-result',
+              toolName: 'write_learn_plan',
+              output: invalidResult,
+            }),
+            step({
+              type: 'tool-result',
+              toolName: 'write_learn_plan',
+              output: invalidResult,
+            }),
+          ],
+        } as never),
+      ),
+    ).resolves.toBe(true);
+  });
+
+  it('兼容 SDK 的 text 输出包装', async () => {
+    const stop = consecutiveInvalidToolCallsIs(2);
+    const output = {
+      type: 'text',
+      value: JSON.stringify({ meta: { status: 'invalid' } }),
     };
-    expect(appendedAssistant.content[0]?.input).toEqual({
-      goal: '理解波动率',
-    });
+
+    await expect(
+      Promise.resolve(
+        stop({
+          steps: [
+            step({
+              type: 'tool-result',
+              toolName: 'write_learn_plan',
+              output,
+            }),
+            step({
+              type: 'tool-result',
+              toolName: 'write_learn_plan',
+              output,
+            }),
+          ],
+        } as never),
+      ),
+    ).resolves.toBe(true);
   });
 
-  it('thinking provider 已返回 JSON 字符串时不重复序列化', async () => {
-    const repairedInput = JSON.stringify({
-      goal: '理解波动率',
-      changeSummary: '按因果关系组织篇目',
-    });
-    mockGenerateText.mockResolvedValue({
-      toolCalls: [
-        {
-          type: 'tool-call',
-          toolCallId: 'repair-call',
-          toolName: 'write_learn_plan',
-          input: repairedInput,
-        },
-      ],
-    } as never);
+  it.each(['ok', 'pending_approval'])(
+    'status=%s 不计入无效调用',
+    async (status) => {
+      const stop = consecutiveInvalidToolCallsIs(2);
+      const output = JSON.stringify({ meta: { status } });
 
-    const repair = makeRepairToolCall({} as never);
-    const result = await repair({
-      toolCall: {
-        type: 'tool-call',
-        toolCallId: 'original-call',
-        toolName: 'write_learn_plan',
-        input: '{}',
-      },
-      tools: {
-        write_learn_plan: {
-          description: '学习规划',
-          inputSchema: { type: 'object' },
-        },
-      } as never,
-      error: new Error('参数不完整') as never,
-      messages: [],
-      system: 'system',
-      inputSchema: jest.fn(),
-    });
+      await expect(
+        Promise.resolve(
+          stop({
+            steps: [
+              step({
+                type: 'tool-result',
+                toolName: 'write_learn_plan',
+                output,
+              }),
+              step({
+                type: 'tool-result',
+                toolName: 'write_learn_plan',
+                output,
+              }),
+            ],
+          } as never),
+        ),
+      ).resolves.toBe(false);
+    },
+  );
 
-    expect(result?.input).toBe(repairedInput);
+  it('拒绝无效的连续次数配置', () => {
+    expect(() => consecutiveInvalidToolCallsIs(0)).toThrow(RangeError);
   });
 });

@@ -13,6 +13,9 @@
 
 const mockGenerateText = jest.fn().mockResolvedValue({ steps: [] });
 const mockStepCountIs = jest.fn().mockReturnValue('stopWhen');
+const mockConsecutiveInvalidToolCallsIs = jest
+  .fn()
+  .mockReturnValue('invalidToolStop');
 jest.mock('ai', () => ({
   generateText: (...args: unknown[]) => mockGenerateText(...args),
   stepCountIs: (...args: unknown[]) => mockStepCountIs(...args),
@@ -24,7 +27,8 @@ jest.mock('@ai-sdk/openai-compatible', () => ({
   })),
 }));
 jest.mock('../../../agent/agent.utils', () => ({
-  makeRepairToolCall: jest.fn(() => jest.fn()),
+  consecutiveInvalidToolCallsIs: (...args: unknown[]) =>
+    mockConsecutiveInvalidToolCallsIs(...args),
 }));
 
 import { ReactAgentNode } from '../nodes/react-agent.node';
@@ -166,11 +170,12 @@ describe('ReactAgentNode (v4)', () => {
 
     expect(mockGenerateText).toHaveBeenCalledTimes(1);
     expect(mockStepCountIs).toHaveBeenCalledWith(20);
+    expect(mockConsecutiveInvalidToolCallsIs).toHaveBeenCalledWith(2);
     const callArgs = mockGenerateText.mock.calls[0][0] as Record<
       string,
       unknown
     >;
-    expect(callArgs.stopWhen).toBe('stopWhen');
+    expect(callArgs.stopWhen).toEqual(['stopWhen', 'invalidToolStop']);
     expect(callArgs.tools).toBeDefined();
   });
 

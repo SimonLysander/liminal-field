@@ -5,7 +5,7 @@
  * 完成后 caller 从 taskRepo.findById 读 findings——本节点不返回 findings，通过 DB 传递。
  *
  * 模型解析：抄 sub-agent.service.ts 的 resolveModel 模式（SystemConfigService.getAiConfig）。
- * repair：直接用 makeRepairToolCall（agent.utils.ts），与 sub-agent 保持一致。
+ * 无效工具调用由同一 ReAct 循环接收错误并自行纠正，连续两次失败后停止。
  *
  * 订阅源列表注入策略（v4）：
  *   - 选择方案：render(react-agent.md) + 字符串拼接订阅源列表作为 system prompt 后缀。
@@ -23,7 +23,7 @@ import { SmartTopicConfigRepository } from '../../smart-topic-config.repository'
 import { InfoSourceRepository } from '../../info-source.repository';
 import { ContentRepository } from '../../../content/content.repository';
 import { SystemConfigService } from '../../../settings/system-config.service';
-import { makeRepairToolCall } from '../../../agent/agent.utils';
+import { consecutiveInvalidToolCallsIs } from '../../../agent/agent.utils';
 import { DigestTaskRepository } from '../../digest-task.repository';
 import { DigestReportRepository } from '../../digest-report.repository';
 // periodFromCron 收口到 period.util(commit 算 periodKey 也用同一份,消除重复定义)
@@ -167,8 +167,10 @@ export class ReactAgentNode {
       // DigestToolset 是具名类型，AI SDK 要求 ToolSet（带 index signature）
       tools: tools as any,
       // maxSteps 从事项配置读取，老数据 / 未配置时兜底 20
-      stopWhen: stepCountIs(stc?.maxSteps ?? 20),
-      experimental_repairToolCall: makeRepairToolCall(model),
+      stopWhen: [
+        stepCountIs(stc?.maxSteps ?? 20),
+        consecutiveInvalidToolCallsIs(2),
+      ],
       // 边跑边把每步 tool_call + result 摘要写进 DigestTask.steps，不存抓取全文
       onStepFinish: async (step: StepResult<ToolSet>) => {
         for (const tc of step.toolCalls ?? []) {

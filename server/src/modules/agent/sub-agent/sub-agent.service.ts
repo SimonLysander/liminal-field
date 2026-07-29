@@ -28,7 +28,7 @@ import { createWebSearchProviderFromEnv } from '../tools/web-search-provider';
 import { createWebFetchTool } from '../tools/web-fetch.tool';
 import { createWebFetchProviderFromEnv } from '../tools/web-fetch-provider';
 import { applyToolDescriptions } from '../tools/apply-tool-descriptions';
-import { makeRepairToolCall, retryOnce } from '../agent.utils';
+import { consecutiveInvalidToolCallsIs, retryOnce } from '../agent.utils';
 import { toolResult } from '../tools/tool-result';
 import { PromptManagerService } from '../../../infrastructure/prompt/prompt-manager.service';
 import {
@@ -140,7 +140,7 @@ export class SubAgentService {
     const timeout = setTimeout(() => abortController.abort(), 300_000);
 
     try {
-      // 外层兜底:整轮抛错且未超时,重置 step 计数后重跑一次(repair 修不到的 provider 级抽风)
+      // 外层只兜底 provider 请求级故障；工具参数错误留在当前 ReAct 循环内纠正。
       const result = await retryOnce(
         () =>
           generateText({
@@ -149,9 +149,10 @@ export class SubAgentService {
             system: this.promptManager.render('sub-agent/researcher.md'),
             prompt: buildSubAgentPrompt(task, parentContext),
             tools,
-            stopWhen: stepCountIs(maxSteps),
-            // 工具调用烂 JSON 时 re-ask 修复,不让整轮委派崩(provider 偶发)
-            experimental_repairToolCall: makeRepairToolCall(model),
+            stopWhen: [
+              stepCountIs(maxSteps),
+              consecutiveInvalidToolCallsIs<typeof tools>(2),
+            ],
             onStepFinish: (event) => {
               const { stepNumber } = event;
               stepsUsed++;

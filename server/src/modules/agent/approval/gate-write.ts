@@ -9,8 +9,9 @@
  * 不干扰 streamText 单向流。
  *
  * 设计要点：
- * - 保留 realTool 的 description + inputSchema，AI SDK 仍能校验入参并展示工具描述
- * - execute 被替换为门禁逻辑；args 由 AI SDK 经 inputSchema 校验后传入，结构有保证
+ * - 保留 realTool 的 description + inputSchema，供模型理解参数结构
+ * - 门禁自身先确认参数是对象，再执行各工具的领域校验，不依赖供应商遵守 schema
+ * - execute 被替换为门禁逻辑；只有领域校验通过的参数才会暂存
  * - 没有 sessionKey 时上游不得装配写工具，避免绕过审批直接写入
  */
 import { Logger } from '@nestjs/common';
@@ -43,7 +44,7 @@ export interface GateWriteOptions {
   pendingWriteRepo: PendingWriteRepository;
   /**
    * 写前校验（如 remember 的 observations 强校验）。
-   * 入参是工具的完整 args 对象（Record<string, unknown>）；
+   * 入参是已通过对象级防御的完整 args；
    * 返回错误文案则不暂存、直接回 invalid。
    */
   validate?: (args: Record<string, unknown>) => string | null;
@@ -69,16 +70,22 @@ export function gateWrite(
   /**
    * 门禁版 execute：
    * 第二参 { toolCallId } 由 AI SDK 在调用时注入（ToolExecutionOptions）。
-   * args 类型声明为 Record<string, unknown>：AI SDK 经 inputSchema 校验后传入，
-   * 结构由 realTool 的 inputSchema 保证，此处做宽松接收以保持 wrapper 泛用性。
+   * 不假设供应商一定遵守 inputSchema；对象级防御在所有写工具前统一执行。
    */
   const gatedExecute = async (
-    args: Record<string, unknown>,
+    args: unknown,
     { toolCallId }: { toolCallId: string },
   ): Promise<string> => {
+    if (args == null || typeof args !== 'object' || Array.isArray(args)) {
+      return toolResult('工具参数必须是对象。', undefined, {
+        status: 'invalid',
+      });
+    }
+    const recordArgs = args as Record<string, unknown>;
+
     // ① 写前校验（仅 remember 等有前置约束的工具需要，其它传 undefined 跳过）
     if (opts.validate) {
-      const err = opts.validate(args);
+      const err = opts.validate(recordArgs);
       if (err != null) {
         return toolResult(err, undefined, { status: 'invalid' });
       }
@@ -88,7 +95,7 @@ export function gateWrite(
     //    buildPreview/stash 失败(如 Mongo 故障)不透传异常——带上下文 log 后回 error tool result,
     //    否则流层吞掉、服务端无痕(CLAUDE.md「catch 必 log / 关键写入失败带上下文」)。
     try {
-      const preview = opts.buildPreview(args);
+      const preview = opts.buildPreview(recordArgs);
       // ApprovalPreview 严格类型不带 index signature,落 Mongo Mixed / 拼进 toolResult 处统一窄化为 Record
       const previewRecord = preview as Record<string, unknown>;
       await opts.pendingWriteRepo.stash({
@@ -97,7 +104,7 @@ export function gateWrite(
         toolName: opts.toolName,
         targetContentItemId: opts.targetContentItemId,
         agentKey: opts.agentKey,
-        payload: args,
+        payload: recordArgs,
         preview: previewRecord,
         now: new Date(),
       });
