@@ -22,6 +22,24 @@ function parseToolInputForRepair(input: string): unknown {
   }
 }
 
+function serializeRepairedToolInput(input: unknown): string {
+  const value =
+    typeof input === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(input) as unknown;
+          } catch {
+            throw new Error('修复模型返回的工具参数不是有效 JSON');
+          }
+        })()
+      : input;
+
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('修复模型返回的工具参数不是 JSON 对象');
+  }
+  return JSON.stringify(value);
+}
+
 /**
  * 工具调用修复(re-ask 策略,见 docs/AI SDK experimental_repairToolCall)。
  *
@@ -90,11 +108,9 @@ export function makeRepairToolCall(
       if (!repaired) return null;
 
       // generateText 的高层 ToolCall.input 是对象；repair 协议要求底层
-      // LanguageModelV3ToolCall.input 为 JSON 字符串。保留原调用标识，只替换参数。
-      const serializedInput = JSON.stringify(repaired.input);
-      if (typeof serializedInput !== 'string') {
-        throw new Error('修复后的工具参数无法序列化为 JSON');
-      }
+      // LanguageModelV3ToolCall.input 为 JSON 字符串。部分 thinking provider
+      // 已经返回 JSON 字符串，统一解析为对象后只序列化一次，避免双重编码。
+      const serializedInput = serializeRepairedToolInput(repaired.input);
       return {
         ...toolCall,
         input: serializedInput,
