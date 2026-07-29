@@ -62,10 +62,8 @@ describe('makeRepairToolCall', () => {
     });
 
     const repairRequest = mockGenerateText.mock.calls[0]?.[0];
-    expect(repairRequest?.toolChoice).toEqual({
-      type: 'tool',
-      toolName: 'write_learn_plan',
-    });
+    // 通义等 thinking model 不支持强制 tool_choice；只暴露目标工具即可。
+    expect(repairRequest?.toolChoice).toBeUndefined();
     expect(
       (
         repairRequest?.tools?.write_learn_plan as {
