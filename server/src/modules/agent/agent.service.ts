@@ -35,6 +35,7 @@ import { sanitizeAbortedToolCalls } from './context/sanitize-aborted-tool-calls'
 import { pruneFailedToolTurns } from './context/prune-failed-tool-turns';
 import { dropContentlessMessages } from './context/drop-contentless-messages';
 import { stripNullFields } from './context/strip-null-fields';
+import { repairMalformedToolInput } from './tool-call-repair';
 import type { AgentChatDto } from './dto/agent-chat.dto';
 
 /** 喂模型最近原文的 token 占比(与 compaction 同标准:超 60% 才裁,保留到 30% 额度) */
@@ -193,6 +194,18 @@ export class AgentService {
       messages: modelMessages,
       tools,
       stopWhen: [stepCountIs(10), consecutiveInvalidToolCallsIs(2)],
+      // 只修复 JSON 语法错误，不启动隐藏模型调用。SDK 会用原工具 Schema 再校验，
+      // 因此缺字段等语义错误仍会作为 tool-error 回灌给当前主模型。
+      experimental_repairToolCall: ({ toolCall, tools: availableTools }) => {
+        if (!(toolCall.toolName in availableTools))
+          return Promise.resolve(null);
+        const repairedInput = repairMalformedToolInput(toolCall.input);
+        if (!repairedInput) return Promise.resolve(null);
+        this.logger.warn(
+          `工具参数 JSON 已本地修复 tool=${toolCall.toolName} inputLength=${toolCall.input.length} repairedLength=${repairedInput.length}`,
+        );
+        return Promise.resolve({ ...toolCall, input: repairedInput });
+      },
       // 流中途错误(provider 在响应头已发出后失败)结构化记录,否则只进 SSE error part、
       // 服务端无日志,违反「不静默失败」纪律,排错只能靠猜。
       onError: ({ error }: { error: unknown }) =>
