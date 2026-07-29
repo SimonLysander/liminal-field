@@ -66,20 +66,31 @@ describe('PlateReadOnly', () => {
     expect(screen.queryByRole('heading', { name: 'First version' })).toBeNull();
   });
 
-  it('numbers H2 as top-level chapters when the document title is outside the body', async () => {
+  it('numbers H2/H3 as chapters/sections when the document title is outside the body', async () => {
     render(
       <PlateReadOnly
         headingNumbering="note"
-        markdown={'## First section\n\nBody\n\n## Second section'}
+        markdown={
+          '## First chapter\n\n### First section\n\nBody\n\n### Second section\n\n## Second chapter\n\n### Third section'
+        }
       />,
     );
 
     expect(
-      await screen.findByRole('heading', { name: 'First section' }),
+      await screen.findByRole('heading', { name: 'First chapter' }),
     ).toHaveAttribute('data-heading-number', '一、');
     expect(
+      screen.getByRole('heading', { name: 'First section' }),
+    ).toHaveAttribute('data-heading-number', '1.1');
+    expect(
       screen.getByRole('heading', { name: 'Second section' }),
+    ).toHaveAttribute('data-heading-number', '1.2');
+    expect(
+      screen.getByRole('heading', { name: 'Second chapter' }),
     ).toHaveAttribute('data-heading-number', '二、');
+    expect(
+      screen.getByRole('heading', { name: 'Third section' }),
+    ).toHaveAttribute('data-heading-number', '2.1');
   });
 
   it('keeps malformed Markdown readable without throwing', async () => {

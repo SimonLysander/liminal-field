@@ -11,34 +11,26 @@ export function getHeadingNumberingClass(
 
 /**
  * 笔记的 Markdown 标题是扁平兄弟节点，不能靠 CSS counter 在 H1 后重置 H2。
- * 在渲染后的标题顺序上计算展示编号，保证阅读器与编辑器使用同一套层级规则。
+ * 正文可能从 H1 开始，也可能因文档标题在编辑器外而从 H2 开始。
+ * 以正文实际最高层级为章、下一层为节，保证两种结构使用同一套展示规则。
  */
 export function getNoteHeadingNumbers(levels: readonly number[]): string[] {
-  // 学习草稿的文档标题在编辑器外展示，正文会直接从 H2 开始。
-  // 此时 H2 是正文的实际顶层章节，按“一、二、三、”编号。
-  if (!levels.includes(1)) {
-    let topLevelCount = 0;
-    return levels.map((level) => {
-      if (level !== 2) return '';
-      topLevelCount += 1;
-      return `${toCjkNumeral(topLevelCount)}、`;
-    });
-  }
+  const topLevel = levels.includes(1) ? 1 : levels.includes(2) ? 2 : null;
+  if (topLevel === null) return levels.map(() => '');
 
-  let h1Count = 0;
-  let h2Count = 0;
-
+  let chapterCount = 0;
+  let sectionCount = 0;
   return levels.map((level) => {
-    if (level === 1) {
-      h1Count += 1;
-      h2Count = 0;
-      return `${toCjkNumeral(h1Count)}、`;
+    if (level === topLevel) {
+      chapterCount += 1;
+      sectionCount = 0;
+      return `${toCjkNumeral(chapterCount)}、`;
     }
 
-    if (level === 2) {
-      if (h1Count === 0) return '';
-      h2Count += 1;
-      return `${h1Count}.${h2Count}`;
+    if (level === topLevel + 1) {
+      if (chapterCount === 0) return '';
+      sectionCount += 1;
+      return `${chapterCount}.${sectionCount}`;
     }
 
     return '';
@@ -50,7 +42,9 @@ export function applyHeadingNumbering(
   container: ParentNode,
   input: HeadingNumberingInput,
 ): void {
-  const headings = Array.from(container.querySelectorAll<HTMLElement>('h1, h2'));
+  const headings = Array.from(
+    container.querySelectorAll<HTMLElement>('h1, h2, h3'),
+  );
 
   for (const heading of headings) {
     heading.removeAttribute('data-heading-number');

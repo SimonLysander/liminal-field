@@ -612,21 +612,15 @@ body:not(.gallery-immersive)::after {
 /* 标题层级编号 — 纯视觉属性,不写入 Markdown/剪贴板数据。 */
 
 .heading-numbering-note [data-slate-editor] h1[data-heading-number]::before,
-.heading-numbering-note [data-slate-editor] h2[data-heading-number]::before {
+.heading-numbering-note [data-slate-editor] h2[data-heading-number]::before,
+.heading-numbering-note [data-slate-editor] h3[data-heading-number]::before {
+  content: attr(data-heading-number);
   display: inline-block;
   margin-right: 0.28em;
   color: inherit;
   font: inherit;
   letter-spacing: 0;
   opacity: 0.92;
-}
-
-.heading-numbering-note [data-slate-editor] h1[data-heading-number]::before {
-  content: attr(data-heading-number);
-}
-
-.heading-numbering-note [data-slate-editor] h2[data-heading-number]::before {
-  content: attr(data-heading-number);
 }
 
 .heading-numbering-anthology [data-slate-editor] {
