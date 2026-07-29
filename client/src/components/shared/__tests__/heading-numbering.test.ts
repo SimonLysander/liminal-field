@@ -33,8 +33,14 @@ describe('getHeadingNumberingClass', () => {
     expect(getNoteHeadingNumbers([2, 1, 2])).toEqual(['', '一、', '1.1']);
   });
 
-  it('treats H2 as top-level chapters when the document has no H1', () => {
-    expect(getNoteHeadingNumbers([2, 2, 2])).toEqual(['一、', '二、', '三、']);
+  it('shifts H2 and H3 into chapter and section numbering when the document has no H1', () => {
+    expect(getNoteHeadingNumbers([2, 3, 3, 2, 3])).toEqual([
+      '一、',
+      '1.1',
+      '1.2',
+      '二、',
+      '2.1',
+    ]);
   });
 
   it('applies calculated numbers as display-only heading attributes', () => {
@@ -50,16 +56,17 @@ describe('getHeadingNumberingClass', () => {
     ).toEqual(['一、', '1.1', '1.2', '二、', '2.1']);
   });
 
-  it('applies top-level numbers to H2-only rendered documents', () => {
+  it('applies shifted chapter and section numbers to documents starting at H2', () => {
     const container = document.createElement('article');
-    container.innerHTML = '<h2>First</h2><h2>Second</h2>';
+    container.innerHTML =
+      '<h2>First</h2><h3>One</h3><h3>Two</h3><h2>Second</h2><h3>Three</h3>';
 
     applyHeadingNumbering(container, 'note');
 
     expect(
-      Array.from(container.querySelectorAll('h2')).map(
+      Array.from(container.querySelectorAll('h2, h3')).map(
         (heading) => heading.getAttribute('data-heading-number'),
       ),
-    ).toEqual(['一、', '二、']);
+    ).toEqual(['一、', '1.1', '1.2', '二、', '2.1']);
   });
 });
