@@ -47,14 +47,29 @@ export class LearningProjectService {
       [...path].reverse().find((node) => projectByRoot.has(node.id)) ??
       currentNode;
     const project = projectByRoot.get(rootNode.id) ?? null;
+    let startBlockedReason: LearningProjectResolveDto['startBlockedReason'] =
+      null;
+
+    if (!project) {
+      // 当前节点不属于任何项目时，仍要检查下级项目；否则页面会允许点击，
+      // 最终却被 startProject 的父子互斥校验拒绝。
+      const descendantNodeIds =
+        await this.navigationRepo.findAllDescendantIds(nodeId);
+      const descendantProjects =
+        await this.projectRepo.findActiveByRootNodeIds(descendantNodeIds);
+      if (descendantProjects.length > 0) {
+        startBlockedReason = 'descendant-project';
+      }
+    }
 
     this.logger.debug(
-      `resolve learning nodeId=${nodeId} projectId=${project?.id ?? 'none'} rootNodeId=${rootNode.id}`,
+      `resolve learning nodeId=${nodeId} projectId=${project?.id ?? 'none'} rootNodeId=${rootNode.id} startBlockedReason=${startBlockedReason ?? 'none'}`,
     );
 
     return {
       project,
-      canStart: !project,
+      canStart: !project && !startBlockedReason,
+      startBlockedReason,
       rootNode,
       currentNode,
       path,

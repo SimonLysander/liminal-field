@@ -23,7 +23,10 @@ import { deleteSession } from '@/services/agent';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { banner } from '@/components/ui/banner-api';
 import { learningApi, type LearningProjectResolve } from '@/services/learning';
-import { buildStartLearningConfirmMessage } from './learning-entry';
+import {
+  buildStartLearningConfirmMessage,
+  getLearningEntryState,
+} from './learning-entry';
 
 interface ContentAdminProps {
   scope?: 'notes' | 'anthology';
@@ -140,15 +143,22 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
     }
     return () => { alive = false; };
   }, [activeNode?.id, scope]);
-  const learningExists = !!learningResolve?.project;
+  const currentLearningResolve =
+    learningResolve?.currentNode.id === activeNode?.id ? learningResolve : null;
+  const learningState = getLearningEntryState(currentLearningResolve);
 
   const enterLearning = useCallback(async () => {
     if (scope !== 'notes' || !activeNode?.id || !activeNode.contentItemId) return;
     try {
-      const resolved = learningResolve ?? await learningApi.resolve(activeNode.id);
+      const resolved =
+        currentLearningResolve ?? (await learningApi.resolve(activeNode.id));
       if (resolved.project) {
         const query = `?node=${encodeURIComponent(activeNode.contentItemId)}`;
         window.location.href = `/admin/notes/${resolved.rootNode.id}/learn${query}`;
+        return;
+      }
+      if (resolved.startBlockedReason === 'descendant-project') {
+        banner.info('下级页面已有进行中的学习，不能从当前页面重复开始');
         return;
       }
 
@@ -165,21 +175,23 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
     } catch (e) {
       banner.error(e instanceof Error ? e.message : '进入学习失败');
     }
-  }, [activeNode, confirm, learningResolve, scope]);
+  }, [activeNode, confirm, currentLearningResolve, scope]);
 
   /* 放弃学习:清掉所属 LearningProject 下 root + 所有后代的 AI 产物,
    * 保留篇目结构与我自己的草稿/正文。删除范围以后端 resolver 为准,前端只清对应会话。 */
   const handleDiscardLearning = useCallback(async () => {
-    if (!learningResolve?.project) return;
+    if (!currentLearningResolve?.project) return;
     const ok = await confirm({
       title: '放弃学习',
-      message: `将清除「${learningResolve.rootNode.name}」学习空间里由 Aurora 生成的规划和草稿。你创建的页面、自己写的草稿和正文都会保留。确认放弃？`,
+      message: `将清除「${currentLearningResolve.rootNode.name}」学习空间里由 Aurora 生成的规划和草稿。你创建的页面、自己写的草稿和正文都会保留。确认放弃？`,
       danger: true,
       confirmLabel: '放弃',
     });
     if (!ok) return;
     try {
-      const result = await learningApi.discard(learningResolve.project.id);
+      const result = await learningApi.discard(
+        currentLearningResolve.project.id,
+      );
       // 一并清掉 Aurora 对话会话(主题规划 + 各篇写作),否则再「开始学习」会挂着旧上下文。
       // 会话 key 与学习页一致:learn-{contentItemId}。best-effort,单条失败不阻塞。
       await Promise.all(
@@ -192,7 +204,7 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
     } catch (e) {
       banner.error(e instanceof Error ? e.message : '放弃失败');
     }
-  }, [confirm, learningResolve]);
+  }, [confirm, currentLearningResolve]);
 
   /* 侧栏顶部标题随 scope 切换:笔记 admin="笔记",文集 admin="文集"。 */
   const sectionTitle = scope === 'notes' ? '笔记' : '文集';
@@ -298,9 +310,15 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
                   if (editUrl) window.location.href = editUrl;
                 }}
                 onSelectVersion={workspace.previewVersion}
-                learningExists={learningExists}
-                onEnterLearning={() => void enterLearning()}
-                onDiscardLearning={() => void handleDiscardLearning()}
+                learningState={learningState}
+                onEnterLearning={
+                  scope === 'notes' ? () => void enterLearning() : undefined
+                }
+                onDiscardLearning={
+                  scope === 'notes'
+                    ? () => void handleDiscardLearning()
+                    : undefined
+                }
               />
             ) : (
               <div className="flex flex-1 items-center justify-center">

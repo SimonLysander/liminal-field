@@ -187,6 +187,28 @@ export class NavigationRepository {
     return result;
   }
 
+  async findAllDescendantIds(rootId: string): Promise<string[]> {
+    if (!Types.ObjectId.isValid(rootId)) return [];
+
+    const [tree] = await this.navigationModel.aggregate<{
+      descendants: Array<{ _id: Types.ObjectId }>;
+    }>([
+      { $match: { _id: new Types.ObjectId(rootId) } },
+      {
+        $graphLookup: {
+          from: this.navigationModel.collection.name,
+          startWith: '$_id',
+          connectFromField: '_id',
+          connectToField: 'parentId',
+          as: 'descendants',
+        },
+      },
+      { $project: { 'descendants._id': 1 } },
+    ]);
+
+    return tree?.descendants.map((node) => node._id.toString()) ?? [];
+  }
+
   async deleteById(id: string): Promise<void> {
     await this.navigationModel.findByIdAndDelete(id);
   }

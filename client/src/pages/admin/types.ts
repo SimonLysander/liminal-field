@@ -31,6 +31,12 @@ export type ModalState = {
 
 export type WorkspaceMode = 'formal' | 'draft';
 
+export type LearningEntryState =
+  | 'loading'
+  | 'available'
+  | 'active'
+  | 'blocked';
+
 export type FormalContentState = {
   id: string;
   status: ContentStatus;
