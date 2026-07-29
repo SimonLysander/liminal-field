@@ -93,15 +93,22 @@ export class LearningProjectService {
 
     const descendants =
       await this.navigationRepo.findAllDescendants(rootNodeId);
-    const scopedNodeIds = uniqueStrings([
+    const descendantNodeIds = descendants.map((node) => node._id.toString());
+
+    // 父子项目必须互斥：祖先路径用于发现已有的上级项目，后代用于发现已有的下级项目。
+    const overlapCandidateRootNodeIds = uniqueStrings([
       ...path.map((node) => node.id),
-      ...descendants.map((node) => node._id.toString()),
+      ...descendantNodeIds,
     ]);
-    const overlaps =
-      await this.projectRepo.findActiveByRootNodeIds(scopedNodeIds);
+    const overlaps = await this.projectRepo.findActiveByRootNodeIds(
+      overlapCandidateRootNodeIds,
+    );
     if (overlaps.length > 0) {
       throw new BadRequestException('当前节点已与一个学习项目范围重叠');
     }
+
+    // 持久化范围只能包含当前子树。若把祖先写入唯一多键索引，兄弟项目会因共享父节点而误判重叠。
+    const scopeNodeIds = uniqueStrings([rootNodeId, ...descendantNodeIds]);
 
     this.logger.log(
       `start learning rootNodeId=${rootNodeId} rootContentItemId=${rootNode.contentItemId}`,
@@ -111,7 +118,7 @@ export class LearningProjectService {
       return await this.projectRepo.createActive({
         rootNodeId,
         rootContentItemId: rootNode.contentItemId,
-        scopeNodeIds: scopedNodeIds,
+        scopeNodeIds,
       });
     } catch (err) {
       if (isMongoDuplicateKeyError(err)) {

@@ -37,6 +37,10 @@ import { SkillService } from '../../skill/skill.service';
 import { LearningProjectService } from '../../learning/learning-project.service';
 import { sliceSessionPage } from './session-pagination';
 import type { AgentChatDto } from '../dto/agent-chat.dto';
+import {
+  extractUiMessageText,
+  formatRecentConversation,
+} from '../sub-agent/sub-agent-context';
 
 /** 跨段聚合分页默认每页条数 */
 const SESSION_PAGE_LIMIT = 50;
@@ -213,6 +217,11 @@ export class AgentLifecycle {
       /** 本 agent 启用的 Skill _id 列表(AgentEntryConfig.enabledSkillIds 直传) */
       enabledSkillIds?: string[];
     },
+    /**
+     * 调用方已加载的最近消息。主对话与 sub-agent 共享同一次有界历史查询；
+     * 未提供时保留仓储回退，便于独立调用和测试。
+     */
+    recentMessagesPromise?: Promise<Record<string, unknown>[]>,
   ): Promise<{
     systemPrompt: string;
     tools: Record<string, any>;
@@ -222,10 +231,11 @@ export class AgentLifecycle {
       dto.entryContext.agentInstanceKey ?? dto.entryContext.sessionKey;
 
     // 2026-06-03 review F9:nice-to-have 数据用 allSettled 降级,不让单点拉失败
-    // 把整轮对话拖垮。这里六项都是非阻塞数据:
+    // 把整轮对话拖垮。这里七项都是非阻塞数据:
     //   - coreMemories / ownerProfile / sessionMem / currentView / recentObs:画像 + 脉络,
     //     缺了 prompt 仍可构建(标题降级或空字符串)
     //   - enabledSkills:缺了 <available_skills> 块不出,模型看不到不调 load_skill,优雅降级
+    //   - recentMessages:仅供 sub-agent 理解本轮委派来由,缺失时仍可按当前请求工作
     // 必备数据(document / gallery)来自 dto.entryContext,已在调用层校验,不在这里拉。
     const settled = await Promise.allSettled([
       this.memory.loadCore(),
@@ -237,6 +247,10 @@ export class AgentLifecycle {
       aiConfig.enabledSkillIds && aiConfig.enabledSkillIds.length > 0
         ? this.skillService.findByIds(aiConfig.enabledSkillIds)
         : Promise.resolve([]),
+      recentMessagesPromise ??
+        (dto.entryContext.sessionKey
+          ? this.sessionRepo.getRecentMessages(dto.entryContext.sessionKey, 8)
+          : Promise.resolve([])),
     ]);
 
     // 取值 + 失败降级 + warn 日志。值类型显式 cast 出 Promise.all 等价签名。
@@ -268,6 +282,9 @@ export class AgentLifecycle {
     const enabledSkills = pick<
       Awaited<ReturnType<typeof this.skillService.findByIds>>
     >(5, [], 'enabledSkills');
+    const recentMessages = pick<
+      Awaited<ReturnType<typeof this.sessionRepo.getRecentMessages>>
+    >(6, [], 'recentMessages');
 
     // tasks 从 session 记忆记录取(替代旧 AgentSession.tasks);content 注入对话脉络
     const tasks = (sessionMem?.tasks as Array<Record<string, unknown>>) ?? [];
@@ -326,10 +343,31 @@ export class AgentLifecycle {
         }
       : normalizedLearningEntryContext;
 
+    const sceneContext = [
+      `入口：${normalizedLearningEntryContext.source}`,
+      normalizedLearningEntryContext.learningContext,
+      normalizedLearningEntryContext.selectedText
+        ? `用户选中的内容：\n${normalizedLearningEntryContext.selectedText}`
+        : '',
+    ]
+      .filter((part) => part?.trim())
+      .join('\n\n');
+    const entryContextForTools = {
+      ...entryContextWithDigest,
+      // 文集场景使用后端补全 collectionContext 后的文档，保持主、子 agent 视图一致。
+      document,
+      subAgentContext: {
+        currentUserRequest: extractUiMessageText(dto.message),
+        recentConversation: formatRecentConversation(recentMessages),
+        sessionSummary: sessionMem?.content || undefined,
+        sceneContext,
+      },
+    };
+
     // allowedTools 为空时使用全部工具；有白名单时按白名单过滤
     // enabledSkillIds 非空时叠加挂 Skill 工具(独立于 allowedTools 白名单)
     const tools = this.tools.assemble(
-      entryContextWithDigest,
+      entryContextForTools,
       aiConfig.allowedTools,
       aiConfig.tier,
       aiConfig.enabledSkillIds,
