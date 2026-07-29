@@ -43,6 +43,7 @@ describe('LearningProjectService', () => {
 
     navigationRepo = {
       findAllDescendants: jest.fn(),
+      findAllDescendantIds: jest.fn(),
     } as unknown as jest.Mocked<NavigationRepository>;
 
     navigationService = {
@@ -73,11 +74,13 @@ describe('LearningProjectService', () => {
       child,
     ]);
     projectRepo.findActiveByRootNodeIds.mockResolvedValue([]);
+    navigationRepo.findAllDescendantIds.mockResolvedValue([]);
 
     const result = await service.resolveByNodeId('child');
 
     expect(result.project).toBeNull();
     expect(result.canStart).toBe(true);
+    expect(result.startBlockedReason).toBeNull();
     expect(result.currentNode.id).toBe('child');
     expect(result.rootNode.id).toBe('child');
   });
@@ -115,6 +118,30 @@ describe('LearningProjectService', () => {
     expect(result.project?.id).toBe('p_mid');
     expect(result.rootNode.id).toBe('mid');
     expect(result.canStart).toBe(false);
+    expect(result.startBlockedReason).toBeNull();
+    expect(navigationRepo.findAllDescendantIds).not.toHaveBeenCalled();
+  });
+
+  it('resolveByNodeId blocks starting from a parent with an active descendant project', async () => {
+    const root = node({ id: 'root', contentItemId: 'ci_root' });
+    navigationService.findStructurePathByNodeId.mockResolvedValue([root]);
+    navigationRepo.findAllDescendantIds.mockResolvedValue(['child']);
+    projectRepo.findActiveByRootNodeIds
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'p_child',
+          rootNodeId: 'child',
+          rootContentItemId: 'ci_child',
+          status: 'active',
+        },
+      ] as never);
+
+    const result = await service.resolveByNodeId('root');
+
+    expect(result.project).toBeNull();
+    expect(result.canStart).toBe(false);
+    expect(result.startBlockedReason).toBe('descendant-project');
   });
 
   it('startProject rejects roots that overlap an existing active project', async () => {

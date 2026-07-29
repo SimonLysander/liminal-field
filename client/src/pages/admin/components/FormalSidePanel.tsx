@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import { LoadingState, ContentFade } from '@/components/LoadingState';
 import { VersionTimeline } from './VersionTimeline';
-import type { DraftPresence } from '../types';
+import type { DraftPresence, LearningEntryState } from '../types';
 import type { ContentHistoryEntry } from '@/services/workspace';
 
 export function FormalSidePanel({
@@ -16,7 +16,7 @@ export function FormalSidePanel({
   activeVersionId,
   onEditDraft,
   onSelectVersion,
-  learningExists,
+  learningState,
   onEnterLearning,
   onDiscardLearning,
 }: {
@@ -30,11 +30,10 @@ export function FormalSidePanel({
   activeVersionId: string | null;
   onEditDraft: () => void;
   onSelectVersion: (versionId: string) => Promise<void>;
-  /** 该节点是否已有学习项目 —— 区分「开始学习」/「继续学习」 */
-  learningExists?: boolean;
+  learningState?: LearningEntryState;
   /** 进入学习视图(另一扇门:对照读写台)。不传 = 不显示「学习」段(如文集 scope 无此门)。 */
   onEnterLearning?: () => void;
-  /** 放弃学习:清掉主题 + 各篇 AI 产物(规划/初稿),保留篇目与我的草稿。仅 learningExists 时显示。 */
+  /** 放弃学习:清掉主题 + 各篇 AI 产物(规划/初稿),保留篇目与我的草稿。仅 active 时显示。 */
   onDiscardLearning?: () => void;
 }) {
   const tocPanelRef = useRef<HTMLDivElement>(null);
@@ -116,13 +115,21 @@ export function FormalSidePanel({
       {onEnterLearning && (
         <div className="mb-5 shrink-0">
           <SectionCaption>学习</SectionCaption>
-          {learningExists ? (
+          {learningState === 'active' ? (
             <div className="flex items-center gap-4">
               <SideLink label="继续学习 →" accent onClick={onEnterLearning} />
               {onDiscardLearning && (
                 <SideLink label="放弃学习" onClick={onDiscardLearning} />
               )}
             </div>
+          ) : learningState === 'blocked' ? (
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--ink-ghost)' }}>
+              下级页面已有进行中的学习
+            </p>
+          ) : learningState === 'loading' ? (
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--ink-ghost)' }}>
+              正在读取学习状态
+            </p>
           ) : (
             <>
               <p className="mb-3.5 text-xs leading-relaxed" style={{ color: 'var(--ink-ghost)' }}>

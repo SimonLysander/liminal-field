@@ -16,6 +16,7 @@ export interface LearningProject {
 export interface LearningProjectResolve {
   project: LearningProject | null;
   canStart: boolean;
+  startBlockedReason: 'descendant-project' | null;
   rootNode: StructureNode;
   currentNode: StructureNode;
   path: StructureNode[];
