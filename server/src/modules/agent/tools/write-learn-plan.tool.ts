@@ -47,6 +47,14 @@ import { toolResult } from './tool-result';
 
 export type PlanItem = LearnPlanItem;
 
+interface WriteLearnPlanInput extends Record<string, unknown> {
+  goal: string;
+  understanding: string;
+  items: PlanItem[];
+  conclusion: string;
+  changeSummary: string;
+}
+
 /**
  * write_learn_plan 的运行时契约校验。
  * 部分模型供应商会忽略 JSON Schema 的 required，因此直写与审批门禁必须共用这层校验。
@@ -113,77 +121,89 @@ export function createWriteLearnPlanTool(
   return tool({
     // description 单一真源在 prompts/tool-descriptions.ts，组装层(tool.assembler)统一套用。
     description: '描述见 prompts/tool-descriptions.ts',
-    inputSchema: jsonSchema<{
-      goal: string;
-      understanding: string;
-      items: PlanItem[];
-      conclusion: string;
-      changeSummary: string;
-    }>({
-      type: 'object',
-      properties: {
-        goal: {
-          type: 'string',
-          description:
-            '顶部概要：简明概括学习主题与最终要建立的理解或能力，不罗列篇目',
-        },
-        understanding: {
-          type: 'string',
-          description:
-            'AI 总篇开篇，恰好三个自然段，不加标题或列表：第一段界定主题及范围；第二段说明它与作者目标的关系；第三段说明希望建立的理解或能力，并自然引出组织下方篇目的主线。不逐项复述篇目。',
-        },
-        items: {
-          type: 'array',
-          minItems: 1,
-          description: '有序篇目提案列表（顺序即学习顺序）',
+    inputSchema: jsonSchema<WriteLearnPlanInput>(
+      {
+        type: 'object',
+        properties: {
+          goal: {
+            type: 'string',
+            description:
+              '顶部概要：简明概括学习主题与最终要建立的理解或能力，不罗列篇目',
+          },
+          understanding: {
+            type: 'string',
+            description:
+              'AI 总篇开篇，恰好三个自然段，不加标题或列表：第一段界定主题及范围；第二段说明它与作者目标的关系；第三段说明希望建立的理解或能力，并自然引出组织下方篇目的主线。不逐项复述篇目。',
+          },
           items: {
-            type: 'object',
-            properties: {
-              title: {
-                type: 'string',
-                description: '篇名（简洁，概括这一篇的核心议题）',
+            type: 'array',
+            minItems: 1,
+            description: '有序篇目提案列表（顺序即学习顺序）',
+            items: {
+              type: 'object',
+              properties: {
+                title: {
+                  type: 'string',
+                  description: '篇名（简洁，概括这一篇的核心议题）',
+                },
+                thread: {
+                  type: 'string',
+                  description:
+                    '脉络词——这一篇在整条因果链上的节点标识（如「目的」「构造」「机制」「应用」）',
+                },
+                why: {
+                  type: 'string',
+                  description:
+                    '说明这一篇在整条学习主线中的作用、与前后篇目的依赖，以及作者将在此建立的理解',
+                },
               },
-              thread: {
-                type: 'string',
-                description:
-                  '脉络词——这一篇在整条因果链上的节点标识（如「目的」「构造」「机制」「应用」）',
-              },
-              why: {
-                type: 'string',
-                description:
-                  '说明这一篇在整条学习主线中的作用、与前后篇目的依赖，以及作者将在此建立的理解',
-              },
+              required: ['title', 'thread', 'why'],
             },
-            required: ['title', 'thread', 'why'],
+          },
+          conclusion: {
+            type: 'string',
+            description:
+              '节点线后的总篇收束：综合整条学习路径并回扣作者的学习目的。写成自然文章结尾，不逐项复述篇目或再次列出标题。',
+          },
+          changeSummary: {
+            type: 'string',
+            description:
+              '供审批卡展示的简短摘要，采用教科书式严谨、准确的书面语。首次生成时说明总篇与篇目如何组织；重做已有规划时说明重排、增删或调整了什么及原因。概念边界应清楚，术语应与规划一致；直接陈述，不加「本次/说明」之类前缀。',
           },
         },
-        conclusion: {
-          type: 'string',
-          description:
-            '节点线后的总篇收束：综合整条学习路径并回扣作者的学习目的。写成自然文章结尾，不逐项复述篇目或再次列出标题。',
-        },
-        changeSummary: {
-          type: 'string',
-          description:
-            '供审批卡展示的简短摘要，采用教科书式严谨、准确的书面语。首次生成时说明总篇与篇目如何组织；重做已有规划时说明重排、增删或调整了什么及原因。概念边界应清楚，术语应与规划一致；直接陈述，不加「本次/说明」之类前缀。',
+        required: [
+          'goal',
+          'understanding',
+          'items',
+          'conclusion',
+          'changeSummary',
+        ],
+      },
+      {
+        // AI SDK 的原生 JSON Schema 只负责向模型声明结构，未提供 validate
+        // 时不会在运行期检查 required。复用业务校验，使缺参调用进入统一修复链。
+        validate: (value) => {
+          if (
+            value == null ||
+            typeof value !== 'object' ||
+            Array.isArray(value)
+          ) {
+            return {
+              success: false,
+              error: new Error('write_learn_plan 参数必须是对象。'),
+            };
+          }
+          const validationError = validateLearnPlanInput(
+            value as Record<string, unknown>,
+          );
+          return validationError
+            ? { success: false, error: new Error(validationError) }
+            : { success: true, value: value as WriteLearnPlanInput };
         },
       },
-      required: [
-        'goal',
-        'understanding',
-        'items',
-        'conclusion',
-        'changeSummary',
-      ],
-    }),
+    ),
     // changeSummary 是审批用元信息，不参与落库；其余字段组成左栏完整规划稿。
-    execute: async (input: {
-      goal: string;
-      understanding: string;
-      items: PlanItem[];
-      conclusion: string;
-      changeSummary?: string;
-    }) => {
+    execute: async (input: WriteLearnPlanInput) => {
       const validationError = validateLearnPlanInput(input);
       if (validationError) {
         return toolResult(validationError, undefined, { status: 'invalid' });

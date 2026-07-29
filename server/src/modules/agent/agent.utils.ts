@@ -8,6 +8,19 @@ import {
   type ToolCallRepairFunction,
   type ToolSet,
 } from 'ai';
+import { Logger } from '@nestjs/common';
+
+const logger = new Logger('AgentUtils');
+
+function parseToolInputForRepair(input: string): unknown {
+  if (!input.trim()) return {};
+  try {
+    return JSON.parse(input) as unknown;
+  } catch {
+    // 保留无法解析的原文，让修复模型结合错误信息重建参数。
+    return input;
+  }
+}
 
 /**
  * 工具调用修复(re-ask 策略,见 docs/AI SDK experimental_repairToolCall)。
@@ -27,10 +40,21 @@ export function makeRepairToolCall(
   return async ({ toolCall, tools, error, messages, system }) => {
     if (NoSuchToolError.isInstance(error)) return null;
     try {
+      const originalTool = tools[toolCall.toolName];
+      if (!originalTool) return null;
+
       const { toolCalls } = await generateText({
         model,
         system,
-        tools,
+        // 修复过程只暴露当前工具并禁用 execute，避免一次修复产生真实写入，
+        // 再由外层正常工具链校验并执行修复后的调用。
+        tools: {
+          [toolCall.toolName]: {
+            ...originalTool,
+            execute: undefined,
+          },
+        },
+        toolChoice: { type: 'tool', toolName: toolCall.toolName },
         maxRetries: 1,
         messages: [
           ...messages,
@@ -41,7 +65,7 @@ export function makeRepairToolCall(
                 type: 'tool-call',
                 toolCallId: toolCall.toolCallId,
                 toolName: toolCall.toolName,
-                input: toolCall.input,
+                input: parseToolInputForRepair(toolCall.input),
               },
             ],
           },
@@ -61,11 +85,26 @@ export function makeRepairToolCall(
           },
         ],
       });
-      // generateText 返回高层 ToolCall，repair 协议要底层 LanguageModelV3ToolCall 形状，
-      // 运行期字段一致(toolCallId/toolName/input)，做一次受控断言。
-      return (toolCalls.find((tc) => tc.toolName === toolCall.toolName) ??
-        null) as Awaited<ReturnType<ToolCallRepairFunction<ToolSet>>>;
-    } catch {
+      const repaired = toolCalls.find(
+        (candidate) => candidate.toolName === toolCall.toolName,
+      );
+      if (!repaired) return null;
+
+      // generateText 的高层 ToolCall.input 是对象；repair 协议要求底层
+      // LanguageModelV3ToolCall.input 为 JSON 字符串。保留原调用标识，只替换参数。
+      const serializedInput = JSON.stringify(repaired.input);
+      if (typeof serializedInput !== 'string') {
+        throw new Error('修复后的工具参数无法序列化为 JSON');
+      }
+      return {
+        ...toolCall,
+        input: serializedInput,
+      };
+    } catch (repairError) {
+      logger.warn(
+        `工具调用修复失败 toolName=${toolCall.toolName} toolCallId=${toolCall.toolCallId}`,
+        repairError instanceof Error ? repairError.stack : String(repairError),
+      );
       return null;
     }
   };
