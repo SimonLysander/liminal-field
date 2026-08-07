@@ -521,7 +521,11 @@ describe('SystemConfigService — 内置 agent 合成解析', () => {
       'prompt:agents/editorial-contract.md\n\nprompt:agents/user-facing-prose-contract.md\n\nprompt:agents/learning-writer.md',
     );
     expect(lw?.tools).toContain('write_draft');
-    expect(lw?.enabledSkillIds).toEqual(['note-writing', 'writing-review']); // 按 skill key 引用
+    expect(lw?.enabledSkillIds).toEqual([
+      'note-writing',
+      'writing-review',
+      'explanatory-diagram',
+    ]); // 按 skill key 引用
     expect(lw?.providerId).toBe('');
 
     const planner = await service.getAgentConfig('learning-planner');
@@ -531,7 +535,10 @@ describe('SystemConfigService — 内置 agent 合成解析', () => {
     );
 
     const advisor = await service.getAgentConfig('writing-advisor');
-    expect(advisor?.enabledSkillIds).toEqual(['writing-review']);
+    expect(advisor?.enabledSkillIds).toEqual([
+      'writing-review',
+      'explanatory-diagram',
+    ]);
     expect(advisor?.systemPrompt).toBe(
       'prompt:agents/editorial-contract.md\n\nprompt:agents/user-facing-prose-contract.md\n\nprompt:agents/writing-advisor.md',
     );

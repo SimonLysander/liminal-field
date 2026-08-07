@@ -166,6 +166,19 @@ describe('SkillService', () => {
       expect(s?.requiredTools).toEqual([]);
     });
 
+    it('explanatory-diagram 声明事实查证工具依赖', async () => {
+      const { service, mockRepo } = createMocks();
+      const s = await service.findByName('explanatory-diagram');
+      expect(s).toEqual(
+        expect.objectContaining({
+          builtin: true,
+          name: 'explanatory-diagram',
+          requiredTools: ['web_search', 'web_fetch'],
+        }),
+      );
+      expect(mockRepo.findByName).not.toHaveBeenCalled();
+    });
+
     it('list 含内置且排除 Mongo 同名残留', async () => {
       const { service, mockRepo } = createMocks();
       mockRepo.findAll.mockResolvedValue([
@@ -176,6 +189,7 @@ describe('SkillService', () => {
       expect(names).toContain('note-plan');
       expect(names.filter((n) => n === 'note-writing')).toHaveLength(1);
       expect(names).toContain('writing-review');
+      expect(names).toContain('explanatory-diagram');
       expect(names).toContain('critic');
     });
   });

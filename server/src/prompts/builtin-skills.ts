@@ -48,4 +48,14 @@ export const BUILTIN_SKILLS: BuiltinSkillDef[] = [
     requiredTools: [],
     bodyFile: 'skills/writing-review.md',
   },
+  {
+    key: 'explanatory-diagram',
+    displayName: '图示（解释设计）',
+    description:
+      '扫描文章的插图需求，规划多个视觉位置，并逐图指导作者在 Excalidraw 中组织结构、运行和实例信息',
+    whenToUse:
+      '当用户询问整篇文章哪里需要图、缺少哪些图、如何安排插图，或要求设计某一张解释图时使用。一般性请求先扫描当前草稿并输出多图规划；明确指向选区、章节或规划编号时再输出逐步绘制方案。不生成图片，不插入或修改正文。',
+    requiredTools: ['web_search', 'web_fetch'],
+    bodyFile: 'skills/explanatory-diagram.md',
+  },
 ];
