@@ -45,7 +45,7 @@ export const BUILTIN_AGENTS: BuiltinAgentDef[] = [
       'web_search',
       'web_fetch',
     ],
-    enabledSkillKeys: ['writing-review'],
+    enabledSkillKeys: ['writing-review', 'explanatory-diagram'],
     tier: 'standard',
     contextPromptFiles: [
       'agents/editorial-contract.md',
@@ -103,7 +103,7 @@ export const BUILTIN_AGENTS: BuiltinAgentDef[] = [
       'web_fetch',
       'sub_agent',
     ],
-    enabledSkillKeys: ['note-writing', 'writing-review'],
+    enabledSkillKeys: ['note-writing', 'writing-review', 'explanatory-diagram'],
     tier: 'standard',
     contextPromptFiles: [
       'agents/editorial-contract.md',

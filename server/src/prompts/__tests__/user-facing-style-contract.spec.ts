@@ -82,4 +82,29 @@ describe('面向用户的生成文本规范', () => {
 
     expect(content).not.toMatch(/卡在哪里|撑得住|太漂亮但/);
   });
+
+  it('图示 skill 先规划整篇候选，再按编号展开单图', () => {
+    const content = prompt('skills/explanatory-diagram.md');
+
+    expect(content).toContain('整篇插图规划');
+    expect(content).toContain('单图设计');
+    expect(content).toContain('标题路径 + 语义锚点');
+    expect(content).toContain('对象集合相同且解释问题相同');
+    expect(content).toContain('再依据每个候选的第一个语义锚点');
+    expect(content).toContain('必须继承该候选的解释任务和范围');
+    expect(content).toContain('模型自身掌握的背景知识不算已经确认');
+    expect(content).toContain('使用当前入口提供的 `web_search` 和 `web_fetch`');
+    expect(content).toContain('用户明确要求只依据正文时');
+    expect(content).toContain('不要把静态关系扩写成多个时间快照');
+    expect(content).toContain('不能据此增加启动状态、结束状态');
+    expect(content).toContain('规划模式不输出具体形状、颜色和绘制步骤');
+    expect(content).toContain('输出中不使用 `px`');
+    expect(content).toContain('是否能够回溯到当前文稿');
+    expect(content).toContain('没有对应依据的视觉元素不进入最终方案');
+    expect(content).toContain('增加“依据补充”');
+    expect(content).toContain('结构层加运行层和实例层');
+    expect(content).not.toMatch(
+      /一眼看懂|拉出来|心中有数|好东西不能同时要|确认逻辑落地/,
+    );
+  });
 });
