@@ -9,7 +9,8 @@ x-default-logging: &default-logging
 services:
   mongo:
     image: mongo:7
-    restart: unless-stopped
+    # 生产宿主机资源有限；即使 dockerd 被 OOM 重启，也必须自动恢复核心服务。
+    restart: always
     logging: *default-logging
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
@@ -30,7 +31,7 @@ services:
 
   server:
     build: ./server
-    restart: unless-stopped
+    restart: always
     logging: *default-logging
     depends_on:
       mongo:
@@ -74,7 +75,7 @@ services:
   # 阿里云 1.8G 机器：mem_limit 512m + chromium 共用进程池，需监控；若 OOM 可换 diygod/rsshub:latest。
   rsshub:
     image: diygod/rsshub:chromium-bundled
-    restart: unless-stopped
+    restart: always
     logging: *default-logging
     networks:
       - backend
@@ -87,7 +88,7 @@ services:
 
   client:
     build: ./client
-    restart: unless-stopped
+    restart: always
     logging: *default-logging
     depends_on:
       - server
@@ -98,7 +99,7 @@ services:
   # Caddy 负责 HTTPS 终结 + 自动证书，零配置
   caddy:
     image: caddy:2
-    restart: unless-stopped
+    restart: always
     logging: *default-logging
     depends_on:
       - client
