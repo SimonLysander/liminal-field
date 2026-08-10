@@ -10,7 +10,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
 
   list_knowledge_base: `列出所有者知识库内容的目录(标题、范围、文件夹路径、id;最新已提交,不论是否发布),不含正文。用于了解"库里到底有哪些内容"。要读全文用 contentItemId 调 read_document_content;要按关键词找用 search_knowledge_base。`,
 
-  load_skill: `load_skill:加载一个已注册的技能(方法论)。传 name(slug)即可,系统会把对应的方法论正文注入对话作为下一步行动指引。只在 <available_skills> 列出的 name 才可用,未列出的不要尝试。`,
+  load_skill: `load_skill:加载一个已注册的技能（方法论）。传 name（slug）即可，系统会把对应正文注入对话；加载后必须按照该方法完成当前任务，不能把它降为可选参考。只使用 <available_skills> 列出的 name。`,
 
   pick: `标记这些 item 为本任务的相关 findings。一次调用挑一批，每条带为啥挑的理由。所有挑出来的 findings 会作为 agent 工作的最终产物。`,
 
