@@ -28,9 +28,9 @@ function makeMockPromptManager(): PromptManagerService {
     'aurora/role.md':
       '<role>\n你是 Aurora。你是 {{owner_name}} 的另一个自我,是 {{owner_name}} 理想中的那个我;最懂 {{owner_name}} 的朋友。\n</role>',
     'aurora/conventions.md':
-      '<conventions>\n- 用中文,除非 {{owner_name}} 明确要求其他语言。\n</conventions>',
+      '<conventions>\n- 用中文,除非 {{owner_name}} 明确要求其他语言。\n- 需要调用工具时直接调用，不在调用前播报内部过程。\n</conventions>',
     'aurora/partials/skills-prelude.md':
-      '你有以下技能(方法论)可调用。识别到对应场景时,调 load_skill 工具传 name 获取完整方法论指引。\n',
+      '你有以下技能（方法论）可调用。识别到对应场景时，调用 `load_skill` 并传入 `name` 获取完整方法。加载后的 skill 正文是该任务的执行约束；必须据此完成任务，不能将其降为可选参考或用模型自身习惯替换其中的判断标准。\n',
     'aurora/partials/memories-prelude.md':
       '你对所有者的认知:画像是长期综合,最近观察是近期细节。远古具体细节调 recall_memory(topic) 或 search_memories(query)。\n',
     'aurora/partials/conversation-summary-prelude.md':
@@ -295,6 +295,7 @@ describe('PromptHandler.buildSystemPrompt', () => {
       expect(out).toContain('name: critic');
       expect(out).toContain('description: 挑稿子结构与逻辑问题');
       expect(out).toContain('when_to_use: 用户说"批评"/"挑毛病"/"严点说"时');
+      expect(out).toContain('skill 正文是该任务的执行约束');
       expect(out).not.toContain(skill.body);
       expect(out).not.toContain('严厉方法论 body 内容');
     });
