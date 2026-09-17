@@ -48,17 +48,18 @@ function convertMessage(
   const parts = Array.isArray(message.parts)
     ? (message.parts as Array<Record<string, unknown>>)
     : [];
-  const content: AssistantMessage['content'] = [];
+  const textContent: AssistantMessage['content'] = [];
+  const toolCalls: AssistantMessage['content'] = [];
   const results: ToolResultMessage[] = [];
 
   for (const part of parts) {
     if (part.type === 'text' && typeof part.text === 'string' && part.text) {
-      content.push({ type: 'text', text: part.text });
+      textContent.push({ type: 'text', text: part.text });
       continue;
     }
     const tool = readToolPart(part);
     if (!tool) continue;
-    content.push({
+    toolCalls.push({
       type: 'toolCall',
       id: tool.toolCallId,
       name: tool.toolName,
@@ -95,6 +96,11 @@ function convertMessage(
     }
   }
 
+  // AI SDK UIMessage 允许文本 part 出现在工具 part 之后；Responses 协议把它们
+  // 展开成独立 input item。若尾部文本夹在 function_call 与其 output 之间，
+  // DeepSeek 会把该调用判为缺失输出。历史回放统一规范为“说明文本 → 全部调用
+  // → 全部结果”，不改变可见文本与调用内容，只消除协议层的非法交错。
+  const content: AssistantMessage['content'] = [...textContent, ...toolCalls];
   if (content.length === 0) return [];
   const assistant: AssistantMessage = {
     role: 'assistant',

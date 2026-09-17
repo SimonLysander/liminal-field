@@ -69,4 +69,38 @@ describe('pipePiAgentToUi', () => {
       output: { summary: '完成' },
     });
   });
+
+  it('把没有 message_update 的模型终止错误写入 UI stream', async () => {
+    let listener: ((event: any) => void | Promise<void>) | undefined;
+    const agent = {
+      subscribe: jest.fn((value) => {
+        listener = value;
+        return jest.fn();
+      }),
+    } as never;
+    const write = jest.fn();
+
+    pipePiAgentToUi(
+      agent,
+      { write } as never,
+      {
+        error: jest.fn(),
+      } as never,
+    );
+
+    await listener?.({ type: 'turn_start' });
+    await listener?.({
+      type: 'message_end',
+      message: {
+        role: 'assistant',
+        stopReason: 'error',
+        errorMessage: 'No tool output found',
+      },
+    });
+
+    expect(write).toHaveBeenCalledWith({
+      type: 'error',
+      errorText: 'No tool output found',
+    });
+  });
 });
