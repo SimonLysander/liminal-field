@@ -19,6 +19,7 @@ import { LearningModule } from './modules/learning/learning.module';
 import { PromptManagerModule } from './infrastructure/prompt/prompt-manager.module';
 import { yamlLoader } from './config/yaml.loader';
 import { StartupDiagnosticsService } from './startup-diagnostics.service';
+import { PiAiModule } from './infrastructure/ai/pi-ai.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { StartupDiagnosticsService } from './startup-diagnostics.service';
     }),
     ScheduleModule.forRoot(),
     PromptManagerModule,
+    PiAiModule,
     OssModule,
     AuthModule,
     ContentModule,

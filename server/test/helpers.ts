@@ -42,6 +42,7 @@ import { AgentModule } from '../src/modules/agent/agent.module';
 import { ResponseWrapperInterceptor } from '../src/common/response-wrapper.interceptor';
 import { RequestLoggerInterceptor } from '../src/common/request-logger.interceptor';
 import { AllExceptionsFilter } from '../src/common/all-exceptions.filter';
+import { PiAiModule } from '../src/infrastructure/ai/pi-ai.module';
 
 /**
  * 封装单个测试套件的 MongoDB + Git + NestJS app 生命周期。
@@ -119,6 +120,8 @@ export class TestContext {
         // TypegooseModule 直接连内存 MongoDB，跳过 yaml 配置中的生产 URI
         TypegooseModule.forRoot(mongoUri),
         ScheduleModule.forRoot(),
+        // AppModule 生产环境也全局导入该模块；E2E 手动组装时需显式对齐。
+        PiAiModule,
         OssModule,
         AuthModule,
         ContentModule,

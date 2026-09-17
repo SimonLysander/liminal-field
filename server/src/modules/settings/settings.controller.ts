@@ -26,8 +26,6 @@ import {
 import { readdir, rm } from 'fs/promises';
 import { join } from 'path';
 import { nanoid } from 'nanoid';
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { generateText } from 'ai';
 import simpleGit from 'simple-git';
 import { ContentRepository } from '../content/content.repository';
 import { ContentSnapshotRepository } from '../content/content-snapshot.repository';
@@ -55,6 +53,7 @@ import {
   listToolCatalog,
   type ToolCatalogEntry,
 } from '../agent/tools/tool-catalog';
+import { PiModelRuntimeService } from '../../infrastructure/ai/pi-model-runtime.service';
 
 /**
  * AI 提供商预设（baseUrl 由后端维护，前端只传 provider id）。
@@ -94,6 +93,7 @@ export class SettingsController {
     private readonly systemConfigService: SystemConfigService,
     private readonly localResetService: LocalResetService,
     private readonly publishAllService: PublishAllService,
+    private readonly piRuntime: PiModelRuntimeService,
   ) {}
 
   // ── 全量配置（脱敏读取） ─────────────────────────────────
@@ -278,23 +278,30 @@ export class SettingsController {
       return { valid: false, message: `未知提供商: ${dto.provider}` };
     }
     try {
-      const provider = createOpenAICompatible({
-        name: dto.provider,
-        baseURL: preset.baseUrl,
-        apiKey: dto.apiKey,
-      });
-      await generateText({
-        model: provider(dto.standardModel),
-        prompt: 'Hi',
-        maxOutputTokens: 8,
-      });
+      await this.piRuntime.completeText(
+        {
+          baseUrl: preset.baseUrl,
+          apiKey: dto.apiKey,
+          model: dto.standardModel,
+          contextWindow: 32_000,
+        },
+        {
+          prompt: 'Hi',
+          maxTokens: 8,
+        },
+      );
       return { valid: true, message: '连接验证成功' };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(
         `validateAiProvider 失败 (${dto.provider}/${dto.standardModel}): ${msg}`,
       );
-      return { valid: false, message: msg };
+      return {
+        valid: false,
+        message: /404|not found/i.test(msg)
+          ? `${preset.name} 当前端点不支持 OpenAI Responses API`
+          : msg,
+      };
     }
   }
 

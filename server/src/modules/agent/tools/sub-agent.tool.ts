@@ -1,6 +1,7 @@
 import { tool, jsonSchema } from 'ai';
 import type { SubAgentService } from '../sub-agent/sub-agent.service';
 import type { SubAgentParentContext } from '../sub-agent/sub-agent-context';
+import { AI_RUNTIME_LIMITS } from '../../../infrastructure/ai/ai-runtime-limits';
 
 /**
  * sub_agent 工具：主 agent 把研究焦点交给独立的子 agent。
@@ -40,7 +41,9 @@ export function createSubAgentTool(
         },
         max_steps: {
           type: 'number',
-          description: '最大推理步数，默认 12',
+          minimum: 1,
+          maximum: AI_RUNTIME_LIMITS.subAgentMaxSteps,
+          description: `最大推理步数，默认 ${AI_RUNTIME_LIMITS.subAgentDefaultSteps}，最多 ${AI_RUNTIME_LIMITS.subAgentMaxSteps}`,
         },
       },
       required: ['task', 'title'],
@@ -51,20 +54,24 @@ export function createSubAgentTool(
         },
       ],
     }),
-    execute: async ({
-      task,
-      max_steps,
-    }: {
-      task: string;
-      title?: string;
-      max_steps?: number;
-    }) => {
+    execute: async (
+      {
+        task,
+        max_steps,
+      }: {
+        task: string;
+        title?: string;
+        max_steps?: number;
+      },
+      options,
+    ) => {
       return subAgentService.execute({
         task,
         parentContext,
         maxSteps: max_steps,
         tier,
         sessionKey,
+        signal: options.abortSignal,
       });
     },
   });

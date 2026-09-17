@@ -15,7 +15,7 @@
  */
 
 export interface WebFetchOptions {
-  /** 截断长度(字符);超出尾部省略。默认 30000 字符 */
+  /** 截断长度(字符);超出尾部省略。默认 60000 字符 */
   maxLength?: number;
 }
 
@@ -208,7 +208,7 @@ export class FirecrawlWebFetchProvider implements WebFetchProvider {
 
     const maxLength = Math.max(
       500,
-      Math.min(100_000, options.maxLength ?? DEFAULT_MAX_LENGTH),
+      Math.min(MAX_LENGTH, options.maxLength ?? DEFAULT_MAX_LENGTH),
     );
 
     const controller = new AbortController();
@@ -288,10 +288,11 @@ export class FirecrawlWebFetchProvider implements WebFetchProvider {
 // ──────────────────────────────────────────────────────────────────────────
 
 const JINA_BASE = 'https://r.jina.ai/';
-/** Jina Reader 偶尔慢(等 JS 渲染),给宽松超时;模型可在 tool 调用层面进一步控制 */
-const DEFAULT_TIMEOUT_MS = 30_000;
-/** 默认返回截断长度——避免一篇长文档把 chat ctx 塞爆 */
-const DEFAULT_MAX_LENGTH = 30_000;
+/** Jina/Firecrawl 可能等待 JS 渲染；90 秒只作为防永久挂死边界。 */
+const DEFAULT_TIMEOUT_MS = 90_000;
+/** 默认保留较完整正文；调用方仍可按页面规模提高到 300k 字符。 */
+const DEFAULT_MAX_LENGTH = 60_000;
+const MAX_LENGTH = 300_000;
 
 export class JinaReaderProvider implements WebFetchProvider {
   readonly name = 'jina-reader';
@@ -323,7 +324,7 @@ export class JinaReaderProvider implements WebFetchProvider {
 
     const maxLength = Math.max(
       500,
-      Math.min(100_000, options.maxLength ?? DEFAULT_MAX_LENGTH),
+      Math.min(MAX_LENGTH, options.maxLength ?? DEFAULT_MAX_LENGTH),
     );
 
     // Jina Reader 的 URL 形式:r.jina.ai/{完整 URL}
@@ -507,7 +508,7 @@ export class DirectFetchProvider implements WebFetchProvider {
 
     const maxLength = Math.max(
       500,
-      Math.min(100_000, options.maxLength ?? DEFAULT_MAX_LENGTH),
+      Math.min(MAX_LENGTH, options.maxLength ?? DEFAULT_MAX_LENGTH),
     );
 
     const controller = new AbortController();

@@ -58,7 +58,7 @@ export interface GateWriteOptions {
  *
  * @param realTool  原始工具对象（ai.tool() 的返回值）
  * @param opts      门禁选项
- * @returns         门禁后的工具对象，可直接传给 streamText({ tools })
+ * @returns         门禁后的工具对象，由 Pi tool adapter 转换后执行
  */
 export function gateWrite(
   // realTool 是 ai.tool() 返回的工具对象；其结构由 AI SDK 保证，

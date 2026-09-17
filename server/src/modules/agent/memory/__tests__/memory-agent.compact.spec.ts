@@ -6,23 +6,10 @@
  * - 返回 { memoriesExtracted },不再返回 summary
  * - LLM 产烂数据时降级:不抛、返回 0,不污染记忆
  *
- * 不打真 LLM——mock 掉 ai 的 generateText,直接喂构造好的 JSON 文本。
+ * 不打真 LLM——mock Pi runtime,直接喂构造好的 JSON 文本。
  */
-import { generateText } from 'ai';
 import { MemoryAgentService } from '../memory-agent.service';
-
-// mock ai 的 generateText:compact 内部用它调 LLM
-jest.mock('ai', () => ({
-  generateText: jest.fn(),
-}));
-// createOpenAICompatible 在 getModel 里被调,返回一个能 .chatModel() 的桩
-jest.mock('@ai-sdk/openai-compatible', () => ({
-  createOpenAICompatible: jest.fn(() => ({
-    chatModel: jest.fn(() => ({})),
-  })),
-}));
-
-const mockedGenerateText = generateText as unknown as jest.Mock;
+const mockedCompleteText = jest.fn();
 
 describe('MemoryAgentService.compact', () => {
   let service: MemoryAgentService;
@@ -34,7 +21,7 @@ describe('MemoryAgentService.compact', () => {
   let systemConfig: { getAiConfig: jest.Mock };
 
   beforeEach(() => {
-    mockedGenerateText.mockReset();
+    mockedCompleteText.mockReset();
     memoryRepo = {
       findByTypes: jest.fn().mockResolvedValue([]),
       upsertSession: jest.fn().mockResolvedValue(undefined),
@@ -62,11 +49,12 @@ describe('MemoryAgentService.compact', () => {
       memoryRepo as never,
       systemConfig as never,
       mockPromptManager,
+      { completeText: mockedCompleteText } as never,
     );
   });
 
   it('LLM 产 {sessionContent, userMemories}:写 session 记忆 + 每条 user 记忆', async () => {
-    mockedGenerateText.mockResolvedValue({
+    mockedCompleteText.mockResolvedValue({
       text: JSON.stringify({
         sessionContent: '用户想打磨开篇,结论是改用倒叙',
         userMemories: [
@@ -100,7 +88,7 @@ describe('MemoryAgentService.compact', () => {
   });
 
   it('userMemories 为空:只写 session 记忆,不写 user 记忆', async () => {
-    mockedGenerateText.mockResolvedValue({
+    mockedCompleteText.mockResolvedValue({
       text: JSON.stringify({ sessionContent: '只有脉络', userMemories: [] }),
     });
 
@@ -115,7 +103,7 @@ describe('MemoryAgentService.compact', () => {
   });
 
   it('LLM 产烂数据(非 JSON):降级返回 0,不抛、不写记忆', async () => {
-    mockedGenerateText.mockResolvedValue({ text: '这不是 JSON' });
+    mockedCompleteText.mockResolvedValue({ text: '这不是 JSON' });
 
     const res = await service.compact('draft-3', [], '');
 

@@ -19,13 +19,14 @@ import {
  *   - web_search 找到一个 url 后,摘要片段不够,需要深读全文
  *   - 写作需要引用某篇博客/论文/新闻的完整观点
  *
- * 不要为闲聊瞎调。一次 fetch 默认截断 30k 字符,长文模型可在 maxLength 调节。
+ * 不要为闲聊瞎调。一次 fetch 默认截断 60k 字符,长文模型可在 maxLength 调节。
  */
 
 const MAX_URL_LENGTH = 2000;
 const OK_CACHE_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 const ERROR_CACHE_TTL_MS = 10 * 60 * 1000;
 const WEB_FETCH_ERROR_SUMMARY = '页面读取失败';
+const WEB_FETCH_CACHE_VERSION = 'v2';
 const logger = new Logger('WebFetchTool');
 
 function buildWebFetchCacheKey(
@@ -39,7 +40,7 @@ function buildWebFetchCacheKey(
     key: {
       url,
       maxLength: maxLength ?? null,
-      provider: provider.cacheKey ?? provider.name,
+      provider: `${WEB_FETCH_CACHE_VERSION}:${provider.cacheKey ?? provider.name}`,
     },
   };
 }
@@ -60,7 +61,9 @@ export function createWebFetchTool(
         },
         maxLength: {
           type: 'number',
-          description: '本次最多返回多少字符,默认 30000(范围 500-100000)',
+          minimum: 500,
+          maximum: 300000,
+          description: '本次最多返回多少字符,默认 60000(范围 500-300000)',
         },
       },
       required: ['url'],

@@ -3,13 +3,9 @@
  *
  * 历史 AgentMemory 的维护入口：forget / compact。
  *
- * 用 generateText（非 generateObject）做 LLM 调用，手动解析 JSON。
- * 原因：generateObject 要求 provider 支持 structured output / response_format，
- * DeepSeek 等 OpenAI-compatible provider 不一定支持。
+ * 用 Responses 文本调用并手动解析 JSON，避免把结构化输出能力作为供应商前提。
  */
 import { Injectable, Logger } from '@nestjs/common';
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { generateText } from 'ai';
 import { SystemConfigService } from '../../settings/system-config.service';
 // extractJSON 已上移到 agent.utils(LLM JSON 提取是 agent 通用工具,digest-compose 也复用)
 import { extractJSON } from '../agent.utils';
@@ -17,6 +13,7 @@ import { AgentMemoryRepository } from './agent-memory.repository';
 import type { AgentMemory } from './agent-memory.entity';
 // 从 memory/session-compactor.md 加载会话压缩提示词。
 import { PromptManagerService } from '../../../infrastructure/prompt/prompt-manager.service';
+import { PiModelRuntimeService } from '../../../infrastructure/ai/pi-model-runtime.service';
 
 /**
  * compaction LLM 产物(新架构)。
@@ -39,6 +36,7 @@ export class MemoryAgentService {
     private readonly systemConfigService: SystemConfigService,
     // PromptManagerService 是 @Global() 注入,无需 module import
     private readonly promptManager: PromptManagerService,
+    private readonly piRuntime: PiModelRuntimeService,
   ) {}
 
   async forget(
@@ -172,16 +170,6 @@ export class MemoryAgentService {
     return parts.join('\n');
   }
 
-  private async getModel(tier: string = 'standard') {
-    const aiConfig = await this.systemConfigService.getAiConfig(tier);
-    const provider = createOpenAICompatible({
-      name: 'memory-agent',
-      baseURL: aiConfig.baseUrl,
-      apiKey: aiConfig.apiKey,
-    });
-    return provider.chatModel(aiConfig.model);
-  }
-
   private formatExistingMemories(memories: AgentMemory[]): string {
     if (memories.length === 0) return '（暂无已有记忆）';
     return memories
@@ -194,17 +182,21 @@ export class MemoryAgentService {
     existingMemories: AgentMemory[],
     tier?: string,
   ): Promise<CompactResult> {
-    const model = await this.getModel(tier);
-    const { text } = await generateText({
-      model,
-      // 压缩策略:以"用户意图为骨架"组织 sessionContent(保留意图+结论双维度,丢冗长过程),
-      // 顺带把所有者画像沉淀为 user 记忆。不再产 summary——脉络的归宿就是 session 记忆 content。
-      // 从 memory/session-compactor.md 加载会话压缩器 prompt(原散落字符串 → promptManager 统一托管)
-      prompt: this.promptManager.render('memory/session-compactor.md', {
-        existing_memories: this.formatExistingMemories(existingMemories),
-        input_text: inputText,
-      }),
-    });
+    const resolvedTier = tier ?? 'standard';
+    const aiConfig = await this.systemConfigService.getAiConfig(resolvedTier);
+    const { text } = await this.piRuntime.completeText(
+      aiConfig,
+      {
+        // 压缩策略:以"用户意图为骨架"组织 sessionContent(保留意图+结论双维度,丢冗长过程),
+        // 顺带把所有者画像沉淀为 user 记忆。不再产 summary——脉络的归宿就是 session 记忆 content。
+        // 从 memory/session-compactor.md 加载会话压缩器 prompt(原散落字符串 → promptManager 统一托管)
+        prompt: this.promptManager.render('memory/session-compactor.md', {
+          existing_memories: this.formatExistingMemories(existingMemories),
+          input_text: inputText,
+        }),
+      },
+      resolvedTier,
+    );
     return extractJSON<CompactResult>(text);
   }
 }

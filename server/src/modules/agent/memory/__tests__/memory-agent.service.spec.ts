@@ -77,6 +77,7 @@ describe('MemoryAgentService.forget — design §3.6 数据安全契约', () => 
       memoryRepo as never,
       {} as never, // systemConfigService 不参与 forget
       {} as never, // promptManager 不参与 forget
+      {} as never, // piRuntime 不参与 forget
     );
   };
 

@@ -168,7 +168,7 @@ export class ToolAssembler {
 
   /**
    * 根据入口上下文组装工具集。
-   * 返回的 Map 可直接传给 streamText({ tools })。
+   * 返回的 Map 保持 AI SDK tool 作为业务工具定义的单一真源，运行时由 Pi adapter 转换。
    *
    * @param entryContext  入口上下文（文档 / 选区）
    * @param allowedTools  工具白名单（来自 AgentEntryConfig.tools）；

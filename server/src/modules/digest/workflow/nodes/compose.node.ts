@@ -10,14 +10,12 @@
  *   3) Assemble：纯代码拼 headline + deck + 各主题(## 标题 + 正文)。
  * 每次 LLM 调用的输入/输出都可控,根治"单次超长崩溃"。
  *
- * 为什么 Plan 用 generateText 而非 generateObject:
+ * 为什么 Plan 用文本响应而非结构化输出:
  *   deepseek-v4-pro 只支持 json_object(JSON mode)、不支持 json_schema,generateObject 直接崩
  *   ("No object generated")。改 generateText + JSON mode(prompt 给结构示例)+ extractJSON 兜底
  *   + zod 校验。同款方案见 memory-agent.service。
  */
 import { Injectable, Logger } from '@nestjs/common';
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { generateText, type LanguageModel } from 'ai';
 import { z } from 'zod';
 // extractJSON:从 LLM 文本里兜底提取 JSON(纯 JSON / ```json 代码块 / 花括号截取)
 import { extractJSON } from '../../../agent/agent.utils';
@@ -25,6 +23,10 @@ import { extractJSON } from '../../../agent/agent.utils';
 import { PromptManagerService } from '../../../../infrastructure/prompt/prompt-manager.service';
 import type { DigestTask, Finding } from '../../digest-task.entity'; // 非注入参数，保留 type import
 import { SystemConfigService } from '../../../settings/system-config.service';
+import {
+  PiModelRuntimeService,
+  type PiModelConfig,
+} from '../../../../infrastructure/ai/pi-model-runtime.service';
 
 // 最终产出(commit 节点消费)。字数靠 prompt 软约束,schema 只设宽松上限防极端失控。
 export const ComposeSchema = z.object({
@@ -114,6 +116,7 @@ export class ComposeNode {
   constructor(
     private readonly promptManager: PromptManagerService,
     private readonly systemConfigService: SystemConfigService,
+    private readonly piRuntime: PiModelRuntimeService,
   ) {}
 
   async run(task: DigestTask): Promise<ComposeOutput> {
@@ -122,15 +125,8 @@ export class ComposeNode {
     );
 
     const aiConfig = await this.systemConfigService.getAiConfig('standard');
-    const provider = createOpenAICompatible({
-      name: 'digest-compose',
-      baseURL: aiConfig.baseUrl,
-      apiKey: aiConfig.apiKey,
-    });
-    const model = provider.chatModel(aiConfig.model);
-
     // ── 阶段 1: Plan —— 只用 title+reason 分主题 + 定 headline/deck(输入/输出都小,稳)
-    const plan = await this.plan(model, task);
+    const plan = await this.plan(aiConfig, task);
     this.logger.log(
       `[compose] plan 完成 taskId=${task._id} topics=${plan.topics.length} headline="${plan.headline}"`,
     );
@@ -159,7 +155,7 @@ export class ComposeNode {
           .filter((f): f is Finding => !!f);
         if (findings.length === 0) return null; // plan 给了空/无效引用号
         try {
-          const md = await this.writeSection(model, topic.title, findings);
+          const md = await this.writeSection(aiConfig, topic.title, findings);
           return { title: topic.title, md: md.trim() };
         } catch (err) {
           this.logger.error(
@@ -201,15 +197,14 @@ export class ComposeNode {
   }
 
   /** 阶段 1:分主题 + 定 headline/deck。只喂 title+reason,输出小 JSON。 */
-  private async plan(model: LanguageModel, task: DigestTask): Promise<Plan> {
+  private async plan(config: PiModelConfig, task: DigestTask): Promise<Plan> {
     const system = this.promptManager.render('digest/compose-plan.md');
     const prompt = `<findings>\n${buildPlanInput(task.findings)}\n</findings>`;
-    // 8192:deepseek-v4-pro 带 reasoning,小预算(2048)会被思考过程吃光导致 content 为空(textLen=0)。
-    const { text, finishReason } = await generateText({
-      model,
+    // 规划也可能包含较长 reasoning；32k 避免思考过程挤占最终 JSON。
+    const { text, finishReason } = await this.piRuntime.completeText(config, {
       system,
       prompt,
-      maxOutputTokens: 8192,
+      maxTokens: 32_768,
     });
     this.logger.debug(
       `[compose] plan 响应 taskId=${task._id} finishReason=${finishReason} textLen=${text.length}`,
@@ -236,18 +231,17 @@ export class ComposeNode {
 
   /** 阶段 2:写一个主题小节。只喂该组原文,输出裸 markdown(从 ### 篇名 开始,不含 ## 主题)。 */
   private async writeSection(
-    model: LanguageModel,
+    config: PiModelConfig,
     sectionTitle: string,
     findings: Finding[],
   ): Promise<string> {
     const system = this.promptManager.render('digest/compose-write-section.md');
     const prompt = `<section title="${escapeAttr(sectionTitle)}">\n${buildSourcesXml(findings)}\n</section>`;
-    // 8192:同 plan,给 reasoning 留足空间,避免思考吃光预算后正文为空
-    const { text, finishReason } = await generateText({
-      model,
+    // 长文小节给 64k 输出空间；实际长度仍由写作提示和来源规模决定。
+    const { text, finishReason } = await this.piRuntime.completeText(config, {
       system,
       prompt,
-      maxOutputTokens: 8192,
+      maxTokens: 65_536,
     });
     this.logger.debug(
       `[compose] section「${sectionTitle}」finishReason=${finishReason} textLen=${text.length}`,

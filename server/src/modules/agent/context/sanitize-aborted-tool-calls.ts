@@ -7,9 +7,8 @@
  * 用户按「停止」时 AbortSignal 把流截掉，已经下发的 tool_call 通常停在
  * input-available（input 已全、tool 还没执行），偶尔停在 input-streaming（input 都没完）。
  *
- * 这种「半截 tool 调用」会被前端 saveSession 落进 DB。再开一轮时，
- * convertToLanguageModelPrompt 把它转成 OpenAI 协议的 assistant.tool_calls，
- * 但找不到配对的 tool message → 抛 AI_MissingToolResultsError，整轮死锁。
+ * 这种「半截 tool 调用」可能由后端流完成回调落进 DB。再开一轮时，若把它
+ * 转成 Responses 的 function_call，却没有配对的 function_call_output，协议会被拒绝。
  * 用户看到「出错了：Tool result is missing for tool call call_xxx」，会话无法继续。
  *
  * 修复策略（不修改存储原文）：
@@ -19,11 +18,8 @@
  *   2. 后续上下文裁剪可以统一识别并删除这类无效调用
  *   3. 数据库中的 toolCallId / input 不受影响，仍可供界面展示与排查
  *
- * 应用位置：streamText 调用前给 convertToModelMessages 的输入消毒（agent.service.ts）。
- *
- * 为什么不用 AI SDK 内建的 { ignoreIncompleteToolCalls: true }：
- * 那个选项会在协议转换内部直接过滤部件，无法与项目统一的上下文清理和测试口径协作。
- * 这里先显式补齐，再由 pruneFailedToolTurns 删除整个无效轮次。
+ * 应用位置：转换为 Pi transcript 前消毒（agent.service.ts）。这里先显式补齐，
+ * 再由 pruneFailedToolTurns 删除整个无效轮次，使 UI 存储和模型上下文职责分离。
  */
 
 /** 半截状态：input 阶段中断（无 output / errorText），convertToModelMessages 会只生成 tool_call。 */

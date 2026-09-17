@@ -9,17 +9,6 @@
  *   5. react_agent 失败 → updateStatus failed（兜底）
  */
 
-jest.mock('ai', () => ({
-  generateText: jest.fn(),
-  generateObject: jest.fn(),
-  stepCountIs: jest.fn(() => 'stopWhen'),
-}));
-jest.mock('@ai-sdk/openai-compatible', () => ({
-  createOpenAICompatible: jest.fn(() => ({
-    chatModel: jest.fn(() => ({})),
-  })),
-}));
-
 import { NotFoundException } from '@nestjs/common';
 import { DigestWorkflowService } from '../digest-workflow.service';
 import { DigestTaskStatus } from '../../digest-task.entity';

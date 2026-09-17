@@ -11,12 +11,9 @@
  * Case 7: Seed sources on startup（幂等 + API 可见 26 条）
  *
  * Mock 策略：
- * - generateText：jest.mock('ai')，只 mock LLM 调用不改任何 DB/Git 逻辑
+ * - PiModelRuntimeService：只 mock Responses 运行时，不改任何 DB/Git 逻辑
  * - RssFetcher.prototype.fetch：jest.spyOn，返回固定 2 条 FetchedItem
  * - 其余全用真服务（NestJS 全模块启动，连接内存 MongoDB + 临时 Git）
- *
- * 注意：jest.mock('ai') 必须在文件顶部（jest 会 hoist mock 调用到 import 之前），
- * 随后 import 的 generateText 就是 jest mock function。
  *
  * v4 工具集变更（Task #41）：
  * - 删除 list_sources / search / view，browse 入参从 source(ref) 改为 sourceId(src_xxx)。
@@ -24,33 +21,24 @@
  * - mock 序列改为：browse({sourceId}) → pick([{ref, reason}])（不再调 list_sources）。
  */
 
-// ─── LLM mock（必须在所有 import 之前声明，jest hoist 会提升到顶部）────────
-jest.mock('ai', () => {
-  const actual = jest.requireActual<typeof import('ai')>('ai');
-  return {
-    ...actual,
-    generateText: jest.fn(),
-  };
-});
+// ─── Pi Responses runtime mock（必须在所有 import 之前声明）──────────────
+jest.mock('../src/infrastructure/ai/pi-model-runtime.service', () => ({
+  PiModelRuntimeService: class MockPiModelRuntimeService {
+    createRuntime() {
+      return Promise.resolve({ model: MOCK_PI_MODEL, streamFn: jest.fn() });
+    }
 
-// mock OpenAI compatible provider（react-agent.node 和 compose.node 构建时用到）
-jest.mock('@ai-sdk/openai-compatible', () => ({
-  createOpenAICompatible: jest.fn(() => ({
-    chatModel: jest.fn(() => ({})),
-  })),
+    createAgent(options: unknown) {
+      return Promise.resolve(createDigestFakeAgent(options));
+    }
+
+    completeText(_config: unknown, options: { prompt?: string }) {
+      return Promise.resolve(makeDigestTextResponse(options.prompt ?? ''));
+    }
+  },
 }));
 
-// mock makeRepairToolCall（react-agent.node 依赖，不影响测试目的）
-jest.mock('../src/modules/agent/agent.utils', () => {
-  const actual = jest.requireActual('../src/modules/agent/agent.utils');
-  return {
-    ...actual,
-    makeRepairToolCall: jest.fn(() => jest.fn()),
-  };
-});
-
 import supertest from 'supertest';
-import { generateText } from 'ai';
 import { TestContext, login } from './helpers';
 import { DigestModule } from '../src/modules/digest/digest.module';
 import { RssFetcher } from '../src/modules/digest/fetchers/rss-fetcher.service';
@@ -66,9 +54,21 @@ import { InfoSource } from '../src/modules/digest/info-source.entity';
 import { InfoSourceService } from '../src/modules/digest/info-source.service';
 
 // 强类型 mock：避免在 test body 里反复 as any
-const mockGenerateText = generateText as jest.MockedFunction<
-  typeof generateText
->;
+const MOCK_PI_MODEL = {
+  id: 'e2e-model',
+  name: 'e2e-model',
+  api: 'openai-responses',
+  provider: 'e2e',
+  baseUrl: 'https://example.test',
+  reasoning: false,
+  input: ['text'],
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  contextWindow: 32_000,
+  maxTokens: 4_096,
+};
+
+let mockShouldPick = false;
+let mockDigestSourceId: string | undefined;
 // ─── 固定 mock 数据 ───────────────────────────────────────────────────────────
 
 // publishedAt 设为"昨天"和"前天"，确保通过 browse 工具的 since=7天前 过滤
@@ -100,58 +100,102 @@ function installDigestGenerateTextMock({
   pick: boolean;
   sourceId?: string;
 }) {
-  mockGenerateText.mockImplementation(async (args: any) => {
-    const { prompt, tools } = args;
+  mockShouldPick = pick;
+  mockDigestSourceId = sourceId;
+}
 
-    if (tools) {
-      if (!sourceId) {
-        return { steps: [], text: 'no source' } as any;
-      }
+function makeDigestTextResponse(prompt: string) {
+  const text = prompt.includes('<findings>')
+    ? JSON.stringify({
+        headline: 'e2e 测试本期',
+        deck: '本期覆盖 e2e 工作流中的两篇 mock 文章。',
+        topics: [{ title: '概要', citationIds: [1, 2] }],
+      })
+    : '### Mock 文章 1\n\n本期内容 [@#CIT 1]。\n\n' +
+      '### Mock 文章 2\n\n这是 e2e 自动生成的报告正文 [@#CIT 2]。';
+  return { text, finishReason: 'stop', message: {} };
+}
 
-      const browseResult = await tools.browse.execute({ sourceId }, {} as any);
+function createDigestFakeAgent(rawOptions: unknown) {
+  const options = rawOptions as {
+    initialState: {
+      tools: Array<{
+        name: string;
+        execute: (
+          toolCallId: string,
+          input: unknown,
+          signal?: AbortSignal,
+        ) => Promise<unknown>;
+      }>;
+    };
+  };
+  const listeners: Array<
+    (event: Record<string, unknown>) => void | Promise<void>
+  > = [];
+  const state = { messages: [] as unknown[], errorMessage: undefined };
+  const emit = async (event: Record<string, unknown>) => {
+    for (const listener of listeners) await listener(event);
+  };
+  const runTool = async (name: string, input: Record<string, unknown>) => {
+    const tool = options.initialState.tools.find((item) => item.name === name);
+    if (!tool) throw new Error(`missing mock tool: ${name}`);
+    const toolCallId = `call-${name}`;
+    await emit({
+      type: 'tool_execution_start',
+      toolCallId,
+      toolName: name,
+      args: input,
+    });
+    const result = (await tool.execute(toolCallId, input)) as {
+      details?: { output?: unknown };
+    };
+    await emit({
+      type: 'tool_execution_end',
+      toolCallId,
+      toolName: name,
+      result,
+      isError: false,
+    });
+    return result;
+  };
 
-      if (pick) {
-        const parsedBrowse = JSON.parse(browseResult) as {
-          meta: { items: Array<{ ref: string }> };
-        };
-        const items = parsedBrowse.meta.items;
-        if (!items || items.length === 0) {
-          throw new Error('browse returned no items');
-        }
-
-        await tools.pick.execute(
-          {
-            items: items.slice(0, 2).map((i: { ref: string }) => ({
-              ref: i.ref,
+  return {
+    state,
+    subscribe(
+      listener: (event: Record<string, unknown>) => void | Promise<void>,
+    ) {
+      listeners.push(listener);
+      return () => undefined;
+    },
+    abort: jest.fn(),
+    async prompt() {
+      if (mockDigestSourceId) {
+        const browse = await runTool('browse', {
+          sourceId: mockDigestSourceId,
+        });
+        if (mockShouldPick) {
+          const raw = browse.details?.output;
+          const parsed = JSON.parse(
+            typeof raw === 'string' ? raw : JSON.stringify(raw),
+          ) as { meta: { items: Array<{ ref: string }> } };
+          await runTool('pick', {
+            items: parsed.meta.items.slice(0, 2).map(({ ref }) => ({
+              ref,
               reason: 'e2e mock 挑这条',
             })),
-          },
-          {} as any,
-        );
+          });
+        }
       }
-
-      return { steps: [{}], text: pick ? 'done' : 'no picks' } as any;
-    }
-
-    const textPrompt = String(prompt ?? '');
-    if (textPrompt.includes('"topics"') || textPrompt.includes('citationIds')) {
-      return {
-        finishReason: 'stop',
-        text: JSON.stringify({
-          headline: 'e2e 测试本期',
-          deck: '本期覆盖 e2e 工作流中的两篇 mock 文章。',
-          topics: [{ title: '概要', citationIds: [1, 2] }],
-        }),
-      } as any;
-    }
-
-    return {
-      finishReason: 'stop',
-      text:
-        '### Mock 文章 1\n\n本期内容 [@#CIT 1]。\n\n' +
-        '### Mock 文章 2\n\n这是 e2e 自动生成的报告正文 [@#CIT 2]。',
-    } as any;
-  });
+      const message = {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'done' }],
+        stopReason: 'stop',
+        usage: { input: 1, output: 1 },
+      };
+      state.messages.push(message);
+      await emit({ type: 'turn_end', message, toolResults: [] });
+    },
+  };
 }
 
 // ─── 辅助函数 ─────────────────────────────────────────────────────────────────

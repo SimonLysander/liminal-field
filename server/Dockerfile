@@ -1,5 +1,5 @@
 # Server — NestJS build + production runtime
-FROM node:22-alpine AS build
+FROM node:22.22-alpine AS build
 RUN sed -i 's#https://dl-cdn.alpinelinux.org#https://mirrors.aliyun.com#g' /etc/apk/repositories
 ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
 RUN corepack enable && corepack prepare pnpm@10.28.2 --activate
@@ -9,7 +9,7 @@ RUN pnpm install  --ignore-scripts --registry https://registry.npmmirror.com
 COPY . .
 RUN pnpm build
 
-FROM node:22-alpine
+FROM node:22.22-alpine
 RUN sed -i 's#https://dl-cdn.alpinelinux.org#https://mirrors.aliyun.com#g' /etc/apk/repositories
 RUN apk add --no-cache git openssh-client
 ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com

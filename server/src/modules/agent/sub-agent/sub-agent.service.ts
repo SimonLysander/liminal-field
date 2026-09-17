@@ -7,12 +7,10 @@
  * - 只读工具集（知识库、当前学习内容、网页检索与读取）
  * - 不能 remember / forget / sub_agent（不能写记忆，不能嵌套）
  *
- * 用 generateText（非流式）执行，完成后把完整研究报告返回给主 agent。
+ * 用 Pi Agent + OpenAI Responses 执行，完成后把完整研究报告返回给主 agent。
  */
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { generateText, stepCountIs } from 'ai';
 import { SystemConfigService } from '../../settings/system-config.service';
 import { ContentService } from '../../content/content.service';
 import { NoteViewService } from '../../workspace/note-view.service';
@@ -28,13 +26,23 @@ import { createWebSearchProviderFromEnv } from '../tools/web-search-provider';
 import { createWebFetchTool } from '../tools/web-fetch.tool';
 import { createWebFetchProviderFromEnv } from '../tools/web-fetch-provider';
 import { applyToolDescriptions } from '../tools/apply-tool-descriptions';
-import { consecutiveInvalidToolCallsIs, retryOnce } from '../agent.utils';
 import { toolResult } from '../tools/tool-result';
 import { PromptManagerService } from '../../../infrastructure/prompt/prompt-manager.service';
 import {
   buildSubAgentPrompt,
   type SubAgentParentContext,
 } from './sub-agent-context';
+import { PiModelRuntimeService } from '../../../infrastructure/ai/pi-model-runtime.service';
+import { adaptToolsForPi } from '../../../infrastructure/ai/pi-tool.adapter';
+import {
+  isPiToolResultInvalid,
+  readPiToolOutput,
+} from '../../../infrastructure/ai/pi-tool-result';
+import { hasRepeatedInvalidToolNames } from '../agent.utils';
+import {
+  AI_RUNTIME_LIMITS,
+  resolveSubAgentSteps,
+} from '../../../infrastructure/ai/ai-runtime-limits';
 
 const READ_TOOL_NAMES = new Set([
   'read_document_content',
@@ -54,6 +62,7 @@ export class SubAgentService {
     private readonly promptManager: PromptManagerService,
     private readonly editorDraftRepo: EditorDraftRepository,
     private readonly externalCacheRepo: ExternalCacheRepository,
+    private readonly piRuntime: PiModelRuntimeService,
   ) {}
 
   /**
@@ -61,7 +70,7 @@ export class SubAgentService {
    *
    * @param task 主 agent 指定的研究焦点
    * @param parentContext 自动继承的用户目标、近期对话和业务现场
-   * @param maxSteps 最大推理步数(≈ Claude Code 的 maxTurns;探索型研究取偏大),默认 12
+   * @param maxSteps 最大推理步数；缺省使用统一的宽松研究深度
    * @param tier 模型层级，默认 standard
    */
   async execute(params: {
@@ -70,30 +79,35 @@ export class SubAgentService {
     maxSteps?: number;
     tier?: string;
     sessionKey?: string;
+    signal?: AbortSignal;
   }): Promise<string> {
     const {
       task,
       parentContext = {},
-      maxSteps = 12,
+      maxSteps: requestedMaxSteps,
       tier = 'standard',
       sessionKey,
+      signal,
     } = params;
+    const maxSteps = resolveSubAgentSteps(requestedMaxSteps);
 
     this.logger.log(
       `子 agent 启动: sessionKey=${sessionKey ?? 'UNDEFINED'}, task="${task.slice(0, 40)}..."`,
     );
+    if (signal?.aborted) {
+      return toolResult('委派已取消', undefined, {
+        status: 'error',
+        stepsUsed: 0,
+        steps: [],
+      });
+    }
 
     const aiConfig = await this.systemConfigService.getAiConfig(tier);
     if (!aiConfig.baseUrl || !aiConfig.apiKey || !aiConfig.model) {
       return '子 agent 执行失败：AI 配置不完整';
     }
 
-    const provider = createOpenAICompatible({
-      name: 'sub-agent',
-      baseURL: aiConfig.baseUrl,
-      apiKey: aiConfig.apiKey,
-    });
-    const model = provider.chatModel(aiConfig.model);
+    const runtime = await this.piRuntime.createRuntime(aiConfig, tier);
 
     const webSearchProvider = createWebSearchProviderFromEnv();
     const webFetchProvider = createWebFetchProviderFromEnv();
@@ -135,105 +149,92 @@ export class SubAgentService {
       `子 agent 开始: "${task.slice(0, 50)}…" (max ${maxSteps} steps)`,
     );
 
-    // 墙钟超时仅作"防挂死"安全网(子 agent 是研究任务,真正边界靠 maxSteps,不是 Bash 那种 120s)
-    const abortController = new AbortController();
-    const timeout = setTimeout(() => abortController.abort(), 300_000);
+    let turnTools: Array<{ name: string; summary: string }> = [];
+    const invalidToolNamesByTurn: Array<ReadonlySet<string>> = [];
+    const agent = await this.piRuntime.createAgent({
+      initialState: {
+        systemPrompt: this.promptManager.render('sub-agent/researcher.md'),
+        model: runtime.model,
+        tools: adaptToolsForPi(tools),
+        messages: [],
+        thinkingLevel: tier === 'think' ? 'high' : 'off',
+      },
+      streamFn: runtime.streamFn,
+      sessionId: sessionKey,
+      toolExecution: 'parallel',
+      shouldStopAfterTurn: () =>
+        stepsUsed >= maxSteps ||
+        hasRepeatedInvalidToolNames(invalidToolNamesByTurn, 2),
+    });
+
+    const unsubscribe = agent.subscribe((event) => {
+      if (event.type === 'tool_execution_start') {
+        return;
+      }
+      if (event.type === 'tool_execution_end') {
+        const parsedResult = this.extractToolResult(event.result);
+        const name = event.toolName;
+        if (
+          READ_TOOL_NAMES.has(name) &&
+          parsedResult?.meta?.status === 'ok' &&
+          parsedResult.meta.source !== 'none'
+        ) {
+          resourcesRead += 1;
+        }
+        turnTools.push({ name, summary: parsedResult?.summary ?? '' });
+        return;
+      }
+      if (event.type !== 'turn_end') return;
+      // Pi 先发 turn_end，再执行 shouldStopAfterTurn。步数必须在事件中先递增，
+      // 否则首步进度会被记为 0，上限判断也会晚一轮。
+      stepsUsed += 1;
+      invalidToolNamesByTurn.push(
+        new Set(
+          event.toolResults
+            .filter(isPiToolResultInvalid)
+            .map((result) => result.toolName),
+        ),
+      );
+      if (invalidToolNamesByTurn.length > 2) invalidToolNamesByTurn.shift();
+      if (turnTools.length === 0) return;
+      const record = { step: stepsUsed, tools: turnTools };
+      stepRecords.push(record);
+      if (sessionKey) {
+        this.eventEmitter.emit('sub-agent.step', {
+          sessionKey,
+          step: stepsUsed,
+          tools: turnTools,
+        });
+      }
+      this.logger.debug(
+        `子 agent step=${stepsUsed} tools=${turnTools.map((tool) => tool.name).join(',')}`,
+      );
+      turnTools = [];
+    });
+
+    // 墙钟超时是防挂死边界；父 agent 的 AbortSignal 同步向下传播。
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      agent.abort();
+    }, AI_RUNTIME_LIMITS.subAgentTimeoutMs);
+    const onParentAbort = () => agent.abort();
+    signal?.addEventListener('abort', onParentAbort, { once: true });
 
     try {
-      // 外层只兜底 provider 请求级故障；工具参数错误留在当前 ReAct 循环内纠正。
-      const result = await retryOnce(
-        () =>
-          generateText({
-            model,
-            abortSignal: abortController.signal,
-            system: this.promptManager.render('sub-agent/researcher.md'),
-            prompt: buildSubAgentPrompt(task, parentContext),
-            tools,
-            stopWhen: [
-              stepCountIs(maxSteps),
-              consecutiveInvalidToolCallsIs<typeof tools>(2),
-            ],
-            onStepFinish: (event) => {
-              const { stepNumber } = event;
-              stepsUsed++;
-
-              // 工具调用统计(日志 + SSE 展示)：StepResult 的 toolCalls/staticToolCalls
-              // 字段类型已暴露，直接用；优先 staticToolCalls（我们的工具 jsonSchema 定义）。
-              const rawCalls = event.staticToolCalls?.length
-                ? event.staticToolCalls
-                : event.toolCalls?.length
-                  ? event.toolCalls
-                  : (event.dynamicToolCalls ?? []);
-              this.logger.log(
-                `  子 agent step ${stepNumber}: ${rawCalls.length} tool calls`,
-              );
-
-              if (rawCalls.length > 0) {
-                // 结果按 toolCallId 映射:每步显示该工具结果的 summary(= 同主流程"工具 + 反馈统计")
-                const rawResults = event.staticToolResults?.length
-                  ? event.staticToolResults
-                  : (event.toolResults ?? []);
-                const resById = new Map<string, unknown>();
-                for (const result of rawResults) {
-                  if (result) resById.set(result.toolCallId, result);
-                }
-
-                const stepTools = rawCalls.flatMap((call) => {
-                  if (!call) return [];
-                  const name = call.toolName ?? 'unknown';
-                  const parsedResult = this.extractToolResult(
-                    resById.get(call.toolCallId),
-                  );
-                  if (
-                    READ_TOOL_NAMES.has(name) &&
-                    parsedResult?.meta?.status === 'ok' &&
-                    parsedResult.meta.source !== 'none'
-                  ) {
-                    resourcesRead++;
-                  }
-                  const summary = parsedResult?.summary ?? '';
-                  return [{ name, summary }];
-                });
-                stepRecords.push({ step: stepNumber, tools: stepTools });
-
-                // 通过 EventEmitter 实时推送步骤给 SSE 端点
-                if (sessionKey) {
-                  this.eventEmitter.emit('sub-agent.step', {
-                    sessionKey,
-                    step: stepNumber,
-                    tools: stepTools,
-                  });
-                }
-
-                this.logger.log(
-                  `  子 agent step ${stepNumber}: ${stepTools.map((t) => t.name).join(', ')}`,
-                );
-              }
-            },
-          }),
-        {
-          onRetry: () => {
-            stepsUsed = 0;
-            resourcesRead = 0;
-            stepRecords.length = 0;
-            this.logger.warn('子 agent 首次执行失败,重置后重试一次');
-          },
-          aborted: () => abortController.signal.aborted,
-        },
-      );
+      await agent.prompt(buildSubAgentPrompt(task, parentContext));
 
       clearTimeout(timeout);
+      if (timedOut) throw new Error('子 agent 超时');
+      if (signal?.aborted) throw new Error('子 agent 已被上级取消');
+      if (agent.state.errorMessage) throw new Error(agent.state.errorMessage);
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       this.logger.log(
         `子 agent 完成: ${stepsUsed} steps, ${resourcesRead} resources, ${elapsed}s`,
       );
 
-      const conclusion = result.text || '子 agent 未生成结论';
-
-      // 通知前端子 agent 已完成
-      if (sessionKey) {
-        this.eventEmitter.emit('sub-agent.done', { sessionKey });
-      }
+      const conclusion =
+        readLastAssistantText(agent.state.messages) || '子 agent 未生成结论';
 
       // 统一契约:summary = 一行结果统计;完整研究报告进 detail 给主 agent 消费。
       // 子 agent 是黑盒,前端只显示这一行,不展开内部步骤。
@@ -254,14 +255,14 @@ export class SubAgentService {
     } catch (err: unknown) {
       clearTimeout(timeout);
       const msg = err instanceof Error ? err.message : String(err);
-      const isTimeout = msg.includes('abort');
+      const isTimeout = timedOut;
       this.logger.error(
         `子 agent ${isTimeout ? '超时' : '失败'}: ${msg}`,
         err instanceof Error ? err.stack : undefined,
       );
       return toolResult(
         isTimeout
-          ? `未完成 · 超时(300s 上限),已 ${stepsUsed} 步`
+          ? `未完成 · 超时(${Math.round(AI_RUNTIME_LIMITS.subAgentTimeoutMs / 60_000)} 分钟上限),已 ${stepsUsed} 步`
           : `委派失败:${msg}`,
         undefined,
         {
@@ -270,6 +271,13 @@ export class SubAgentService {
           steps: stepRecords,
         },
       );
+    } finally {
+      clearTimeout(timeout);
+      unsubscribe();
+      signal?.removeEventListener('abort', onParentAbort);
+      if (sessionKey) {
+        this.eventEmitter.emit('sub-agent.done', { sessionKey });
+      }
     }
   }
 
@@ -278,8 +286,7 @@ export class SubAgentService {
     res: unknown,
   ): { summary?: string; meta?: Record<string, unknown> } | null {
     try {
-      const r = res as { output?: unknown; result?: unknown } | undefined;
-      const out = r?.output ?? r?.result;
+      const out = readPiToolOutput(res);
       const s = typeof out === 'string' ? out : JSON.stringify(out);
       return JSON.parse(s) as {
         summary?: string;
@@ -289,4 +296,19 @@ export class SubAgentService {
       return null;
     }
   }
+}
+
+function readLastAssistantText(messages: unknown[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index] as {
+      role?: string;
+      content?: Array<{ type?: string; text?: string }>;
+    };
+    if (message.role !== 'assistant') continue;
+    return (message.content ?? [])
+      .filter((part) => part.type === 'text' && typeof part.text === 'string')
+      .map((part) => part.text as string)
+      .join('');
+  }
+  return '';
 }
