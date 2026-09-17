@@ -1,7 +1,7 @@
 /**
  * ToolUseListener — 监听 agent.afterToolUse 事件，记录工具调用日志。
  *
- * 设计：把工具调用日志从 AgentService 的 onStepFinish 回调中解耦，
+ * 设计：把工具调用日志从 AgentService 的 Pi 事件订阅中解耦，
  * 日志记录逻辑独立可扩展（将来可以加统计、告警等）。
  */
 import { Injectable, Logger } from '@nestjs/common';

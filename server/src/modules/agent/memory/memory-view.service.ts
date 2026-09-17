@@ -14,13 +14,12 @@
  * 失败必 catch + log,绝不阻塞 onAfterChat 主路径。
  */
 import { Injectable, Logger } from '@nestjs/common';
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { generateText } from 'ai';
 import { SystemConfigService } from '../../settings/system-config.service';
 import { AgentMemoryObservationRepository } from './agent-memory-observation.repository';
 import { type AgentMemoryObservation } from './agent-memory-observation.entity';
 // 从 memory/profile-renderer.md 加载画像渲染器 prompt(原散落大段字符串 → promptManager 统一托管)
 import { PromptManagerService } from '../../../infrastructure/prompt/prompt-manager.service';
+import { PiModelRuntimeService } from '../../../infrastructure/ai/pi-model-runtime.service';
 
 /** 触发阈值(常量,后续可考虑放 SystemConfig) */
 const REFRESH_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000; // 7 天
@@ -35,6 +34,7 @@ export class MemoryViewService {
     private readonly systemConfigService: SystemConfigService,
     // PromptManagerService 是 @Global() 注入,无需 module import
     private readonly promptManager: PromptManagerService,
+    private readonly piRuntime: PiModelRuntimeService,
   ) {}
 
   /**
@@ -136,16 +136,6 @@ export class MemoryViewService {
     return { triggered: true, reason };
   }
 
-  private async getModel(tier: string = 'standard') {
-    const aiConfig = await this.systemConfigService.getAiConfig(tier);
-    const provider = createOpenAICompatible({
-      name: 'memory-view',
-      baseURL: aiConfig.baseUrl,
-      apiKey: aiConfig.apiKey,
-    });
-    return provider.chatModel(aiConfig.model);
-  }
-
   /**
    * 把全量 observations 喂给 LLM,产出按 4 类 topic 分段的当前画像 markdown。
    *
@@ -156,7 +146,8 @@ export class MemoryViewService {
     observations: AgentMemoryObservation[],
     tier?: string,
   ): Promise<string> {
-    const model = await this.getModel(tier);
+    const resolvedTier = tier ?? 'standard';
+    const aiConfig = await this.systemConfigService.getAiConfig(resolvedTier);
     const observationsText = observations
       .map((o) => {
         const date = new Date(o.observedAt).toISOString().slice(0, 10);
@@ -170,7 +161,11 @@ export class MemoryViewService {
       observations: observationsText,
     });
 
-    const { text } = await generateText({ model, prompt });
+    const { text } = await this.piRuntime.completeText(
+      aiConfig,
+      { prompt },
+      resolvedTier,
+    );
     return text.trim();
   }
 }

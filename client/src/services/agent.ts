@@ -118,6 +118,18 @@ export function deleteSession(sessionKey: string): Promise<void> {
   });
 }
 
+/** 显式停止服务端 Pi 运行；仅中断浏览器请求不会隐式取消后台任务。 */
+export function cancelActiveRun(
+  sessionKey: string,
+  runId?: string,
+): Promise<{ cancelled: boolean }> {
+  const query = runId ? `?runId=${encodeURIComponent(runId)}` : '';
+  return request<{ cancelled: boolean }>(
+    `/agent/runs/${encodeURIComponent(sessionKey)}/active${query}`,
+    { method: 'DELETE' },
+  );
+}
+
 // ── 记忆管理(2026-05-30 event log) ────────────────────────
 
 /**

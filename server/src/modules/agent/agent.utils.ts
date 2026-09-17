@@ -1,8 +1,6 @@
 /**
  * agent.utils.ts — Agent 模块内共用的工具函数。
  */
-import { InvalidToolInputError, type StopCondition, type ToolSet } from 'ai';
-
 export function readToolResultRecord(
   output: unknown,
   depth = 0,
@@ -30,58 +28,21 @@ export function readToolResultStatus(output: unknown): string | undefined {
   return typeof status === 'string' ? status : undefined;
 }
 
-function invalidToolNames(
-  content: ReadonlyArray<unknown>,
-): ReadonlySet<string> {
-  const names = new Set<string>();
-  for (const value of content) {
-    if (value == null || typeof value !== 'object') continue;
-    const part = value as Record<string, unknown>;
-    const toolName =
-      typeof part['toolName'] === 'string' ? part['toolName'] : undefined;
-    if (!toolName) continue;
-    if (
-      (part['type'] === 'tool-error' &&
-        InvalidToolInputError.isInstance(part['error'])) ||
-      (part['type'] === 'tool-result' &&
-        readToolResultStatus(part['output']) === 'invalid')
-    ) {
-      names.add(toolName);
-    }
-  }
-  return names;
-}
-
-/**
- * 同一工具连续返回无效输入时停止 ReAct 循环。
- *
- * AI SDK 已把坏 JSON 作为 tool-error 回灌给当前主模型；业务校验失败则返回
- * ToolResult(status=invalid)。允许模型在下一步自行纠正，但不启动隐藏模型调用，
- * 也不允许同一错误跑满整个 step budget。
- */
-export function consecutiveInvalidToolCallsIs<TOOLS extends ToolSet = ToolSet>(
+/** Pi 运行时版本的同工具连续无效判断；每个 Set 表示一轮中的无效工具名。 */
+export function hasRepeatedInvalidToolNames(
+  turns: ReadonlyArray<ReadonlySet<string>>,
   limit: number,
-): StopCondition<TOOLS> {
+): boolean {
   if (!Number.isInteger(limit) || limit < 1) {
     throw new RangeError('limit 必须是正整数');
   }
-
-  return ({ steps }) => {
-    if (steps.length < limit) return false;
-    let repeatedNames: ReadonlySet<string> | undefined;
-    for (const step of steps.slice(-limit).reverse()) {
-      const currentNames = invalidToolNames(step.content);
-      if (currentNames.size === 0) return false;
-      repeatedNames =
-        repeatedNames == null
-          ? currentNames
-          : new Set(
-              [...repeatedNames].filter((name) => currentNames.has(name)),
-            );
-      if (repeatedNames.size === 0) return false;
-    }
-    return true;
-  };
+  if (turns.length < limit) return false;
+  let repeated = new Set(turns[turns.length - 1]);
+  for (const names of turns.slice(-limit, -1)) {
+    repeated = new Set([...repeated].filter((name) => names.has(name)));
+    if (repeated.size === 0) return false;
+  }
+  return repeated.size > 0;
 }
 
 /**
@@ -105,10 +66,8 @@ export async function retryOnce<T>(
  * 从 LLM 文本响应中提取 JSON。纯函数,便于单测——提取失败会让调用链崩。
  * 兼容:纯 JSON、```json 代码块、花括号截取。
  *
- * 为什么要它:DeepSeek 等 OpenAI-compatible provider 不支持 structured outputs
- * (json_schema),只能用 generateText 让模型吐 JSON 文本再手动解析。generateObject
- * 走 json_schema 路径,撞上这类 provider 会直接崩(No object generated)。
- * memory-agent / digest-compose 都靠这个函数兜住模型输出。
+ * 部分 Responses provider 不支持 structured outputs(json_schema)，因此让模型输出
+ * JSON 文本后在应用层解析。memory-agent / digest-compose 共用此函数。
  */
 export function extractJSON<T>(text: string): T {
   // 尝试直接解析

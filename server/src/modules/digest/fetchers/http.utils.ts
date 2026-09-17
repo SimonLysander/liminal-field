@@ -8,8 +8,8 @@
  *   单源即使重试后仍失败也不阻塞其他源 — browse 工具返 status='partial' 给 agent
  *
  * 重试策略:
- * - 最多 retries 次重试(默认 1 次,共 2 次尝试)
- * - 指数退避:第 N 次重试前等 backoffMs * 2^(N-1)(默认 backoffMs=500 → 500ms, 1500ms)
+ * - 最多 retries 次重试(默认 2 次,共 3 次尝试)
+ * - 指数退避:第 N 次重试前等 backoffMs * 2^(N-1)(默认 backoffMs=500 → 500ms, 1000ms)
  * - 只对网络层/timeout 失败重试;HTTP 4xx(语义错误) 直接 throw 不重试
  */
 import { Logger } from '@nestjs/common';
@@ -17,9 +17,9 @@ import { Logger } from '@nestjs/common';
 const logger = new Logger('FetcherHttp');
 
 export interface HttpFetchOptions {
-  /** AbortSignal timeout 毫秒;默认 15000 */
+  /** AbortSignal timeout 毫秒;默认 60000 */
   timeoutMs?: number;
-  /** 重试次数(不含首次);默认 1(即最多 2 次尝试) */
+  /** 重试次数(不含首次);默认 2(即最多 3 次尝试) */
   retries?: number;
   /** 首次退避毫秒;默认 500。退避 = backoffMs * 2^(retryIdx) */
   backoffMs?: number;
@@ -33,8 +33,8 @@ export interface HttpFetchOptions {
   label?: string;
 }
 
-const DEFAULT_TIMEOUT_MS = 15_000;
-const DEFAULT_RETRIES = 1;
+const DEFAULT_TIMEOUT_MS = 60_000;
+const DEFAULT_RETRIES = 2;
 const DEFAULT_BACKOFF_MS = 500;
 const DEFAULT_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36';

@@ -1,9 +1,9 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { generateText, streamText } from 'ai';
 import { SystemConfigService } from '../settings/system-config.service';
 import { PromptManagerService } from '../../infrastructure/prompt/prompt-manager.service';
 import type { InlineAssistDto } from './dto/inline-assist.dto';
+import { PiModelRuntimeService } from '../../infrastructure/ai/pi-model-runtime.service';
+import { AI_RUNTIME_LIMITS } from '../../infrastructure/ai/ai-runtime-limits';
 
 export interface InlineAssistResult {
   markdown: string;
@@ -59,6 +59,7 @@ export class InlineAssistService {
   constructor(
     private readonly systemConfigService: SystemConfigService,
     private readonly promptManager: PromptManagerService,
+    private readonly piRuntime: PiModelRuntimeService,
   ) {}
 
   async assist(dto: InlineAssistDto): Promise<InlineAssistResult> {
@@ -67,21 +68,18 @@ export class InlineAssistService {
   }
 
   async assistStream(dto: InlineAssistDto): Promise<Response> {
-    const { model, system, prompt } = await this.prepare(dto);
-    const result = streamText({
-      model,
+    const { aiConfig, system, prompt } = await this.prepare(dto);
+    const stream = await this.piRuntime.streamText(aiConfig, {
       system,
       prompt,
-      abortSignal: AbortSignal.timeout(60_000),
-      onError: ({ error }: { error: unknown }) =>
-        this.logger.error(
-          'inline assist stream failed',
-          error instanceof Error ? error.stack : String(error),
-        ),
+      signal: AbortSignal.timeout(AI_RUNTIME_LIMITS.inlineAssistTimeoutMs),
+      onError: (error) =>
+        this.logger.error('inline assist Responses stream failed', error.stack),
     });
 
-    return result.toTextStreamResponse({
+    return new Response(stream, {
       headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
         'Cache-Control': 'no-cache, no-transform',
         'X-Accel-Buffering': 'no',
       },
@@ -89,14 +87,13 @@ export class InlineAssistService {
   }
 
   private async generate(dto: InlineAssistDto): Promise<string> {
-    const { model, system, prompt } = await this.prepare(dto);
+    const { aiConfig, system, prompt } = await this.prepare(dto);
 
     try {
-      const result = await generateText({
-        model,
+      const result = await this.piRuntime.completeText(aiConfig, {
         system,
         prompt,
-        abortSignal: AbortSignal.timeout(60_000),
+        signal: AbortSignal.timeout(AI_RUNTIME_LIMITS.inlineAssistTimeoutMs),
       });
       return result.text;
     } catch (err) {
@@ -109,10 +106,11 @@ export class InlineAssistService {
   }
 
   private async prepare(dto: InlineAssistDto) {
-    const documentMarkdown = clipMarkedDocument(dto.documentMarkdown, 24_000);
-    const beforeText = clip(dto.beforeText, 12_000);
-    const selectedText = clip(dto.selectedText, 4_000);
-    const afterText = clip(dto.afterText, 4_000);
+    // DTO 已限定请求体大小；这里保留其完整有效输入，避免二次静默裁掉长文上下文。
+    const documentMarkdown = clipMarkedDocument(dto.documentMarkdown, 60_000);
+    const beforeText = clip(dto.beforeText, 40_000);
+    const selectedText = clip(dto.selectedText, 20_000);
+    const afterText = clip(dto.afterText, 20_000);
 
     if (
       !documentMarkdown.trim() &&
@@ -128,12 +126,6 @@ export class InlineAssistService {
         'AI 配置不完整，请先在设置页配置 API 地址、密钥和模型',
       );
     }
-
-    const provider = createOpenAICompatible({
-      name: 'inline-assist',
-      baseURL: aiConfig.baseUrl,
-      apiKey: aiConfig.apiKey,
-    });
 
     const system = this.promptManager.render(CONTINUE_SYSTEM_PROMPT);
     const prompt = [
@@ -166,7 +158,7 @@ export class InlineAssistService {
       .join('\n\n');
 
     return {
-      model: provider.chatModel(aiConfig.model),
+      aiConfig,
       system,
       prompt,
     };

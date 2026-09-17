@@ -273,7 +273,7 @@ describe('web_fetch tool', () => {
         key: {
           url: 'https://example.com/a',
           maxLength: 5000,
-          provider: 'stub',
+          provider: 'v2:stub',
         },
       }),
       expect.objectContaining({ markdown: '# Hello\n\nbody.' }),
@@ -338,7 +338,7 @@ describe('web_fetch tool', () => {
     expect(cache.setOk).toHaveBeenCalledWith(
       expect.objectContaining({
         key: expect.objectContaining({
-          provider: 'auto:direct-firecrawl-jina:v1',
+          provider: 'v2:auto:direct-firecrawl-jina:v1',
         }),
       }),
       expect.anything(),

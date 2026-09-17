@@ -307,6 +307,11 @@ export class AgentLifecycle {
 
     const normalizedLearningEntryContext =
       await this.normalizeLearningEntryContext(dto);
+    const ownerName = ownerProfile.name?.trim() || '所有者';
+    const entrySystemPrompt = aiConfig.entrySystemPrompt?.replaceAll(
+      '{{owner_name}}',
+      ownerName,
+    );
 
     const systemPrompt = this.prompt.buildSystemPrompt({
       ownerProfile: ownerProfile.name ? ownerProfile : undefined,
@@ -321,7 +326,7 @@ export class AgentLifecycle {
       // 精选阅读页(report-reader):报告元数据 + findings 索引 + 可选选区,prompt 内全塞,不走工具
       digestReport: dto.entryContext.digestReport,
       customSystemPrompt: aiConfig.aiSystemPrompt,
-      entrySystemPrompt: aiConfig.entrySystemPrompt,
+      entrySystemPrompt,
       // 学习场景:前端实时拼好的"当前业务场景"状态串(篇目结构,无正文)
       learningContext: normalizedLearningEntryContext.learningContext,
       tasks,
@@ -523,7 +528,7 @@ export class AgentLifecycle {
   }
 
   /**
-   * 工具调用事件发射：供 AgentService 在 onStepFinish 回调里调用。
+   * 工具调用事件发射：供 AgentService 在 Pi turn_end 事件中调用。
    * 封装在 lifecycle 上，避免 AgentService 直接依赖 EventEmitter2。
    */
   emitAfterToolUse(

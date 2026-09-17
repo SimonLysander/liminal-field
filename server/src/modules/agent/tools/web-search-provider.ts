@@ -71,8 +71,8 @@ export interface WebSearchProvider {
 // ──────────────────────────────────────────────────────────────────────────
 
 const TAVILY_ENDPOINT = 'https://api.tavily.com/search';
-/** 第三方 API 防雪崩兜底超时 — Tavily basic search 一般 < 3s,留 15s 富余 */
-const DEFAULT_TIMEOUT_MS = 15_000;
+/** 第三方 API 防挂死边界；国内生产网络波动时仍留足响应时间。 */
+const DEFAULT_TIMEOUT_MS = 60_000;
 
 interface TavilyRawResult {
   title: string;

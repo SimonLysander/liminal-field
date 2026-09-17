@@ -180,7 +180,7 @@ describe('FirecrawlWebFetchProvider', () => {
           onlyMainContent: true,
           removeBase64Images: true,
           blockAds: true,
-          timeout: 30000,
+          timeout: 90000,
         }),
       }),
     );

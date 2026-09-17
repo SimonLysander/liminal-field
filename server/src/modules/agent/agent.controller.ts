@@ -3,6 +3,7 @@
  *
  * 接口列表：
  * - POST   /agent/chat              SSE 流式对话(上下文组装 + 持久化全在 service)
+ * - DELETE /agent/runs/:key/active  终止指定会话的当前运行
  * - GET    /agent/sessions/:key     加载会话历史（含自动召回的相关记忆）
  * - DELETE /agent/sessions/:key     删除会话（清空对话历史）
  *
@@ -35,6 +36,7 @@ import { AgentMemoryObservationRepository } from './memory/agent-memory-observat
 import { PendingWriteCommitService } from './approval/pending-write.service';
 import { AgentChatDto } from './dto/agent-chat.dto';
 import { WriteApprovalDto } from './dto/write-approval.dto';
+import { AgentRunManager } from './run/agent-run-manager.service';
 
 @Controller()
 export class AgentController {
@@ -45,6 +47,7 @@ export class AgentController {
     private readonly observationRepo: AgentMemoryObservationRepository,
     private readonly eventEmitter: EventEmitter2,
     private readonly commitService: PendingWriteCommitService,
+    private readonly runManager: AgentRunManager,
   ) {}
 
   @RawResponse()
@@ -54,6 +57,15 @@ export class AgentController {
     // service 直接返回 Web Response,这里只负责转发 SSE 流。
     const response = await this.agentService.chat(dto);
     return reply.send(response);
+  }
+
+  /** 用户点击停止时显式终止服务端 Pi 运行；仅关闭浏览器连接不会误杀任务。 */
+  @Delete('agent/runs/:sessionKey/active')
+  cancelActiveRun(
+    @Param('sessionKey') sessionKey: string,
+    @Query('runId') runId?: string,
+  ) {
+    return { cancelled: this.runManager.cancel(sessionKey, runId) };
   }
 
   /**

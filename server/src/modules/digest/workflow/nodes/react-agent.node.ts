@@ -1,5 +1,5 @@
 /**
- * ReactAgentNode — 工作流第 1 节点：ReAct loop（generateText + stepCountIs + 4 工具）。
+ * ReactAgentNode — 工作流第 1 节点：Pi Agent Responses loop（4 个工具）。
  *
  * 功能：用 LLM 自主 browse/web_search/web_fetch/pick，将命中条目累积进 DigestTask.findings。
  * 完成后 caller 从 taskRepo.findById 读 findings——本节点不返回 findings，通过 DB 传递。
@@ -14,16 +14,12 @@
  *     因此在 execute() 里查完源后直接拼字符串更自然，职责清晰。
  */
 import { Injectable, Logger } from '@nestjs/common';
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { generateText, stepCountIs } from 'ai';
-import type { StepResult, ToolSet } from 'ai';
 // import type 用于 @Injectable 构造器参数会导致 NestJS IoC 运行时无法解析，改为正式 import
 import { PromptManagerService } from '../../../../infrastructure/prompt/prompt-manager.service';
 import { SmartTopicConfigRepository } from '../../smart-topic-config.repository';
 import { InfoSourceRepository } from '../../info-source.repository';
 import { ContentRepository } from '../../../content/content.repository';
 import { SystemConfigService } from '../../../settings/system-config.service';
-import { consecutiveInvalidToolCallsIs } from '../../../agent/agent.utils';
 import { DigestTaskRepository } from '../../digest-task.repository';
 import { DigestReportRepository } from '../../digest-report.repository';
 // periodFromCron 收口到 period.util(commit 算 periodKey 也用同一份,消除重复定义)
@@ -33,6 +29,13 @@ import type { AgentStep } from '../../digest-task.entity';
 // 工具池全项目共有,workflow 跑 react-agent 跟 report-analyst sub-agent 走同一套工具
 import { ToolAssembler } from '../../../agent/lifecycle/tool.assembler';
 import type { DigestTaskContext } from '../../../agent/tools/digest-task-context';
+import { PiModelRuntimeService } from '../../../../infrastructure/ai/pi-model-runtime.service';
+import { adaptToolsForPi } from '../../../../infrastructure/ai/pi-tool.adapter';
+import {
+  isPiToolResultInvalid,
+  readPiToolOutput,
+} from '../../../../infrastructure/ai/pi-tool-result';
+import { hasRepeatedInvalidToolNames } from '../../../agent/agent.utils';
 
 /**
  * 把 Date 格式化为带时区 offset 的本地 ISO 8601:
@@ -73,6 +76,7 @@ export class ReactAgentNode {
     private readonly taskRepository: DigestTaskRepository,
     // 算"本期收集窗口"需要上期 report.publishedAt(首选)
     private readonly digestReportRepository: DigestReportRepository,
+    private readonly piRuntime: PiModelRuntimeService,
   ) {}
 
   /**
@@ -153,43 +157,77 @@ export class ReactAgentNode {
     );
 
     const aiConfig = await this.systemConfigService.getAiConfig('standard');
-    const provider = createOpenAICompatible({
-      name: 'digest-react-agent',
-      baseURL: aiConfig.baseUrl,
-      apiKey: aiConfig.apiKey,
-    });
-    const model = provider.chatModel(aiConfig.model);
-
-    const result = await generateText({
-      model,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: '开始本次收集。' }],
-      // DigestToolset 是具名类型，AI SDK 要求 ToolSet（带 index signature）
-      tools: tools as any,
-      // maxSteps 从事项配置读取，老数据 / 未配置时兜底 20
-      stopWhen: [
-        stepCountIs(stc?.maxSteps ?? 20),
-        consecutiveInvalidToolCallsIs(2),
-      ],
-      // 边跑边把每步 tool_call + result 摘要写进 DigestTask.steps，不存抓取全文
-      onStepFinish: async (step: StepResult<ToolSet>) => {
-        for (const tc of step.toolCalls ?? []) {
-          const tr = step.toolResults?.find(
-            (r) => r.toolCallId === tc.toolCallId,
-          );
-          // web_fetch 原文留存:拦截 detail 按 url 存进 ctx,供 pick 关联进 finding.fulltext
-          // (writeAgentStep 仍只存摘要,原文不进 task.steps,避免 steps 膨胀)
-          if (tc.toolName === 'web_fetch' && tr?.output) {
-            this.captureFulltext(digestTaskContext, tc.input, tr.output);
-          }
-          await this.writeAgentStep(taskId, tc, tr);
-        }
+    const runtime = await this.piRuntime.createRuntime(aiConfig, 'standard');
+    const maxSteps = stc?.maxSteps ?? 20;
+    let steps = 0;
+    const invalidToolNamesByTurn: Array<ReadonlySet<string>> = [];
+    const calls = new Map<string, { toolName: string; input: unknown }>();
+    const agent = await this.piRuntime.createAgent({
+      initialState: {
+        systemPrompt,
+        model: runtime.model,
+        tools: adaptToolsForPi(tools),
+        messages: [],
+        thinkingLevel: 'off',
       },
+      streamFn: runtime.streamFn,
+      sessionId: `digest:${taskId}`,
+      toolExecution: 'parallel',
+      shouldStopAfterTurn: () =>
+        steps >= maxSteps ||
+        hasRepeatedInvalidToolNames(invalidToolNamesByTurn, 2),
     });
 
-    this.logger.log(
-      `[react-agent] 完成 taskId=${taskId} steps=${result.steps?.length ?? 0}`,
-    );
+    const unsubscribe = agent.subscribe(async (event) => {
+      if (event.type === 'turn_end') {
+        // Pi 在 shouldStopAfterTurn 之前发出 turn_end；在这里统计才能让
+        // 完成日志和停止上限看到当前轮次。
+        steps += 1;
+        invalidToolNamesByTurn.push(
+          new Set(
+            event.toolResults
+              .filter(isPiToolResultInvalid)
+              .map((result) => result.toolName),
+          ),
+        );
+        if (invalidToolNamesByTurn.length > 2) invalidToolNamesByTurn.shift();
+        return;
+      }
+      if (event.type === 'tool_execution_start') {
+        calls.set(event.toolCallId, {
+          toolName: event.toolName,
+          input: event.args,
+        });
+        return;
+      }
+      if (event.type !== 'tool_execution_end') return;
+      const call = calls.get(event.toolCallId) ?? {
+        toolName: event.toolName,
+        input: {},
+      };
+      const output = readPiToolOutput(event.result);
+      if (call.toolName === 'web_fetch' && output !== undefined) {
+        this.captureFulltext(digestTaskContext, call.input, output);
+      }
+      await this.writeAgentStep(
+        taskId,
+        {
+          toolName: call.toolName,
+          input: call.input,
+          toolCallId: event.toolCallId,
+        },
+        { toolCallId: event.toolCallId, output },
+      );
+    });
+
+    try {
+      await agent.prompt('开始本次收集。');
+      if (agent.state.errorMessage) throw new Error(agent.state.errorMessage);
+    } finally {
+      unsubscribe();
+    }
+
+    this.logger.log(`[react-agent] 完成 taskId=${taskId} steps=${steps}`);
   }
 
   /**

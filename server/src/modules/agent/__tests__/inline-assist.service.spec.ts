@@ -1,24 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
-import { generateText } from 'ai';
 
 import { InlineAssistService } from '../inline-assist.service';
 import type { SystemConfigService } from '../../settings/system-config.service';
 import type { PromptManagerService } from '../../../infrastructure/prompt/prompt-manager.service';
 
-jest.mock('ai', () => ({
-  generateText: jest.fn(),
-  streamText: jest.fn(),
-}));
-
-jest.mock('@ai-sdk/openai-compatible', () => ({
-  createOpenAICompatible: jest.fn(() => ({
-    chatModel: jest.fn(() => 'mock-model'),
-  })),
-}));
-
-const mockGenerateText = generateText as jest.MockedFunction<
-  typeof generateText
->;
+const mockCompleteText = jest.fn();
 
 const makeService = (
   config: Partial<Awaited<ReturnType<SystemConfigService['getAiConfig']>>> = {},
@@ -42,7 +28,9 @@ const makeService = (
   } as unknown as PromptManagerService;
 
   return {
-    service: new InlineAssistService(systemConfig, promptManager),
+    service: new InlineAssistService(systemConfig, promptManager, {
+      completeText: mockCompleteText,
+    } as never),
     systemConfig,
     promptManager,
   };
@@ -50,13 +38,13 @@ const makeService = (
 
 describe('InlineAssistService', () => {
   beforeEach(() => {
-    mockGenerateText.mockReset();
+    mockCompleteText.mockReset();
   });
 
   it('strips an outer markdown fence from non-streaming output', async () => {
-    mockGenerateText.mockResolvedValue({
+    mockCompleteText.mockResolvedValue({
       text: '```markdown\n## 小节\n正文\n```',
-    } as never);
+    });
 
     const { service } = makeService();
 
@@ -66,7 +54,7 @@ describe('InlineAssistService', () => {
   });
 
   it('asks for replacement text only when selectedText is present', async () => {
-    mockGenerateText.mockResolvedValue({ text: '更短文本' } as never);
+    mockCompleteText.mockResolvedValue({ text: '更短文本' });
 
     const { service } = makeService();
 
@@ -76,7 +64,7 @@ describe('InlineAssistService', () => {
       instruction: '简写',
     });
 
-    const call = mockGenerateText.mock.calls[0]?.[0] as {
+    const call = mockCompleteText.mock.calls[0]?.[1] as {
       prompt?: string;
     };
 
@@ -90,7 +78,7 @@ describe('InlineAssistService', () => {
   });
 
   it('uses marked document markdown instead of fake before cursor context', async () => {
-    mockGenerateText.mockResolvedValue({ text: '续写内容' } as never);
+    mockCompleteText.mockResolvedValue({ text: '续写内容' });
 
     const { service } = makeService();
 
@@ -100,7 +88,7 @@ describe('InlineAssistService', () => {
       instruction: '续写',
     });
 
-    const call = mockGenerateText.mock.calls[0]?.[0] as {
+    const call = mockCompleteText.mock.calls[0]?.[1] as {
       prompt?: string;
     };
 
@@ -115,7 +103,7 @@ describe('InlineAssistService', () => {
     await expect(service.assist({ beforeText: '   ' })).rejects.toBeInstanceOf(
       BadRequestException,
     );
-    expect(mockGenerateText).not.toHaveBeenCalled();
+    expect(mockCompleteText).not.toHaveBeenCalled();
   });
 
   it('rejects incomplete AI config before calling the model', async () => {
@@ -124,6 +112,6 @@ describe('InlineAssistService', () => {
     await expect(
       service.assist({ beforeText: '上下文' }),
     ).rejects.toBeInstanceOf(BadRequestException);
-    expect(mockGenerateText).not.toHaveBeenCalled();
+    expect(mockCompleteText).not.toHaveBeenCalled();
   });
 });

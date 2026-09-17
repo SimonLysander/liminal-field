@@ -45,6 +45,7 @@ function mkService(
     repo as unknown as AgentMemoryObservationRepository,
     {} as never,
     mockPromptManager,
+    {} as never,
   );
   const spy = jest.spyOn(
     svc as unknown as { callViewLLM: jest.Mock },

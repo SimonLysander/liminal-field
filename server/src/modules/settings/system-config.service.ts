@@ -494,7 +494,13 @@ export class SystemConfigService implements OnModuleInit {
       description: def.description,
       enabled: mongo?.enabled ?? true,
       systemPrompt: promptFiles
-        .map((promptFile) => this.promptManager.render(promptFile))
+        // owner_name 只能在实际对话加载 ownerProfile 后确定。这里保留显式占位符，
+        // 避免配置列表读取时把运行时变量误判为缺失并刷告警。
+        .map((promptFile) =>
+          this.promptManager.render(promptFile, {
+            owner_name: '{{owner_name}}',
+          }),
+        )
         .join('\n\n'),
       tools: [...def.tools],
       tier: def.tier,

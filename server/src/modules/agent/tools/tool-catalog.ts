@@ -15,6 +15,8 @@
  * 找不到的 slug:前端 fallback 显原 slug,不破老数据/新工具尚未登记的过渡态。
  */
 
+import { AI_RUNTIME_LIMITS } from '../../../infrastructure/ai/ai-runtime-limits';
+
 export interface ToolParam {
   /** 参数名,跟 zod schema 一致(可能是嵌套路径,如 'observations[].topic') */
   name: string;
@@ -343,7 +345,7 @@ export const TOOL_CATALOG: Record<string, ToolMeta> = {
       },
       {
         name: 'max_steps',
-        type: 'number (默认 12)',
+        type: `number (默认 ${AI_RUNTIME_LIMITS.subAgentDefaultSteps}，最多 ${AI_RUNTIME_LIMITS.subAgentMaxSteps})`,
         required: false,
         description: '子 agent 最大推理步数',
       },

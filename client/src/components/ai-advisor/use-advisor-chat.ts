@@ -31,6 +31,7 @@ import type { Descendant } from 'platejs';
 import { deserializeMd } from '@platejs/markdown';
 import { preprocessMarkdownForPlate } from '@/components/shared/markdown-preprocess';
 import {
+  cancelActiveRun,
   getWriteApproval,
   loadSession,
   type SessionTask,
@@ -40,6 +41,7 @@ import { computeDocDiff } from '@/pages/admin/lib/compute-doc-diff';
 import { readResolved, markResolved } from '@/pages/admin/lib/resolved-store';
 import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
 import type { InlineRef } from './AiReferenceComposer';
+import { createLogger } from '@/lib/logger';
 // edit-session 现仅保留 ReferenceRegistry（渲染层读取历史 references 用于 chip 展示）
 // createEditSession / isEditConfirmation / isReferenceEditRequest 已随 v2 send 逻辑一并删除
 
@@ -48,6 +50,7 @@ import type { InlineRef } from './AiReferenceComposer';
 // 置 false → 改稿提议计算恒返回空 → 审批条/红绿 diff/逐块按钮等整条改稿 UI 全部失活,
 // 历史会话里残留的旧改稿 tool_call 也不会再拉起伪审批。要恢复:置 true + 后端取消注释。
 const PROPOSE_EDIT_ENABLED = false;
+const logger = createLogger('advisor-chat');
 
 export type Tier = 'flash' | 'standard' | 'think';
 
@@ -184,6 +187,7 @@ export function useAdvisorChat({
   const sessionKeyRef = useRef(sessionKey);
   const agentInstanceKeyRef = useRef(agentInstanceKey);
   const onAfterSaveRef = useRef(onAfterSave);
+  const activeRunIdRef = useRef<string | undefined>(undefined);
   // 懒加载游标：当前页第一条消息的绝对 index，下次加载传 before=firstIndex
   const firstIndexRef = useRef<number>(0);
 
@@ -213,6 +217,12 @@ export function useAdvisorChat({
     () =>
       new DefaultChatTransport({
         api: '/api/v1/agent/chat',
+        fetch: async (input, init) => {
+          const response = await fetch(input, init);
+          activeRunIdRef.current =
+            response.headers.get('X-Agent-Run-Id') ?? undefined;
+          return response;
+        },
         body: () => buildAgentRequestBody({
           tier: tierRef.current,
           agentKey,
@@ -562,6 +572,19 @@ export function useAdvisorChat({
   );
 
   const isStreaming = status === 'streaming' || status === 'submitted';
+  const stopActiveRun = useCallback(() => {
+    stop();
+    const activeSessionKey = sessionKeyRef.current;
+    const activeRunId = activeRunIdRef.current;
+    activeRunIdRef.current = undefined;
+    if (!activeSessionKey) return;
+    void cancelActiveRun(activeSessionKey, activeRunId).catch((error: unknown) => {
+      logger.warn('cancel_active_run_failed', {
+        sessionKey: activeSessionKey,
+        errorType: error instanceof Error ? error.name : typeof error,
+      });
+    });
+  }, [stop]);
 
   return {
     // 当前业务会话 key(含 :chat:UUID)——HITL 审批卡要用它(与暂存 pending 的 key 一致),
@@ -587,7 +610,7 @@ export function useAdvisorChat({
     tier,
     cycleTier,
     send,
-    stop,
+    stop: stopActiveRun,
     error,
   };
 }

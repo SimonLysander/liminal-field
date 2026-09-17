@@ -5,25 +5,19 @@
  * 1. 按 agentKey 加载 AgentEntryConfig（tier / systemPrompt / tools 白名单）
  * 2. 读取 AI 配置（baseUrl / apiKey / model），tier 优先级：前端传入 > 入口配置 > standard
  * 3. 通过 AgentLifecycle.onBeforeChat 获取 systemPrompt 和 tools
- * 4. 调用 Vercel AI SDK 的 streamText，内置 ReAct 循环（最多 10 步）
+ * 4. 由 Pi Agent 驱动 OpenAI Responses 工具循环
  *
  * 记忆加载、system prompt 构建、工具组装全部委托给 AgentLifecycle，
  * 本服务只负责 LLM 调用本身。
  */
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import {
-  convertToModelMessages,
+  consumeStream,
   createIdGenerator,
-  InvalidToolInputError,
-  stepCountIs,
-  streamText,
+  createUIMessageStream,
+  createUIMessageStreamResponse,
 } from 'ai';
-import {
-  consecutiveInvalidToolCallsIs,
-  readToolResultRecord,
-  readToolResultStatus,
-} from './agent.utils';
+import { randomUUID } from 'node:crypto';
 import { SystemConfigService } from '../settings/system-config.service';
 import { AgentLifecycle } from './lifecycle/agent-lifecycle.service';
 import { AgentSessionRepository } from './session/agent-session.repository';
@@ -35,8 +29,21 @@ import { sanitizeAbortedToolCalls } from './context/sanitize-aborted-tool-calls'
 import { pruneFailedToolTurns } from './context/prune-failed-tool-turns';
 import { dropContentlessMessages } from './context/drop-contentless-messages';
 import { stripNullFields } from './context/strip-null-fields';
-import { repairMalformedToolInput } from './tool-call-repair';
 import type { AgentChatDto } from './dto/agent-chat.dto';
+import { PiModelRuntimeService } from '../../infrastructure/ai/pi-model-runtime.service';
+import { adaptToolsForPi } from '../../infrastructure/ai/pi-tool.adapter';
+import {
+  readUserText,
+  uiMessagesToPi,
+} from '../../infrastructure/ai/pi-message.adapter';
+import { pipePiAgentToUi } from '../../infrastructure/ai/pi-ui-stream.adapter';
+import { AgentRunManager } from './run/agent-run-manager.service';
+import {
+  isPiToolResultInvalid,
+  readPiToolResultText,
+} from '../../infrastructure/ai/pi-tool-result';
+import { hasRepeatedInvalidToolNames } from './agent.utils';
+import { AI_RUNTIME_LIMITS } from '../../infrastructure/ai/ai-runtime-limits';
 
 /** 喂模型最近原文的 token 占比(与 compaction 同标准:超 60% 才裁,保留到 30% 额度) */
 const TRIGGER_RATIO = 0.6;
@@ -52,6 +59,8 @@ export class AgentService {
     private readonly sessionRepo: AgentSessionRepository,
     private readonly galleryView: GalleryViewService,
     private readonly pendingWriteRepo: PendingWriteRepository,
+    private readonly piRuntime: PiModelRuntimeService,
+    private readonly runManager: AgentRunManager,
   ) {}
 
   // 返回 Web Response(toUIMessageStreamResponse 产物),controller 直接 reply.send。
@@ -95,13 +104,8 @@ export class AgentService {
       );
     }
 
-    // 3. 创建兼容 OpenAI 格式的 LLM provider（支持任意 openai-compatible 接口）
-    const provider = createOpenAICompatible({
-      name: 'custom-llm',
-      baseURL: aiConfig.baseUrl,
-      apiKey: aiConfig.apiKey,
-    });
-    const model = provider.chatModel(aiConfig.model);
+    // 3. 创建 Pi Responses runtime。所有 provider 均通过 /responses，不再走 chat/completions。
+    const runtime = await this.piRuntime.createRuntime(aiConfig, tier);
 
     const incoming = dto.message as Record<string, unknown> | undefined;
     if (!incoming) {
@@ -174,174 +178,140 @@ export class AgentService {
       triggerRatio: TRIGGER_RATIO,
       keepRatio: KEEP_RATIO,
     });
-    const modelMessages = await convertToModelMessages(
-      toKeep as Parameters<typeof convertToModelMessages>[0],
-    );
+    // combined 的最后一条固定是本轮 incoming；Pi initialState 只放历史，当前消息
+    // 交给 prompt()，否则 Responses 会看到同一条用户消息两次。
+    const historyUi = toKeep.slice(0, -1);
+    const history = uiMessagesToPi(historyUi, runtime.model);
+    const userText = readUserText(incoming);
+    if (!userText.trim()) {
+      throw new BadRequestException('消息正文为空');
+    }
+    // 无持久化会话的临时请求不得共用同一个运行锁，否则两个匿名页面会互相取消。
+    const runKey = sessionKey || `ephemeral:${randomUUID()}`;
 
-    // 画廊场景:模型调 view_photos 后,把它点名的照片 base64 注进后续步的 user message
-    // (openai-compatible 不让 tool 返图,GV3 实测;故走 prepareStep 注入)。图不进 agent_sessions
-    // (onFinish 持久化的是 toUIMessageStream 的消息,不含此处临时注入),下轮要看再调 view_photos。
+    // 画廊场景:模型调 view_photos 后,把它点名的照片 base64 附在本次工具结果中。
+    // 图片只进入当前 Pi transcript，不写入 UIMessage/agent_sessions；下轮需要查看时再次调用工具。
     const gallery = dto.entryContext.gallery;
     const galleryImageCache = new Map<
       string,
       { b64: string; mediaType: string }
     >();
 
-    // 6. 调用 streamText：AI SDK 内置 ReAct 循环，stopWhen 限制最多 10 步防止无限循环
-    const result = streamText({
-      model,
-      system: systemPrompt + approvalFeedback,
-      messages: modelMessages,
-      tools,
-      stopWhen: [stepCountIs(10), consecutiveInvalidToolCallsIs(2)],
-      // 只修复 JSON 语法错误，不启动隐藏模型调用。SDK 会用原工具 Schema 再校验，
-      // 因此缺字段等语义错误仍会作为 tool-error 回灌给当前主模型。
-      experimental_repairToolCall: ({ toolCall, tools: availableTools }) => {
-        if (!(toolCall.toolName in availableTools))
-          return Promise.resolve(null);
-        const repairedInput = repairMalformedToolInput(toolCall.input);
-        if (!repairedInput) return Promise.resolve(null);
-        this.logger.warn(
-          `工具参数 JSON 已本地修复 tool=${toolCall.toolName} inputLength=${toolCall.input.length} repairedLength=${repairedInput.length}`,
-        );
-        return Promise.resolve({ ...toolCall, input: repairedInput });
+    // 6. Pi 负责 Responses 工具循环；Vercel AI SDK 仅保留为前端 UI stream 协议。
+    let turns = 0;
+    const invalidToolNamesByTurn: Array<ReadonlySet<string>> = [];
+    const agent = await this.piRuntime.createAgent({
+      initialState: {
+        systemPrompt: systemPrompt + approvalFeedback,
+        model: runtime.model,
+        tools: adaptToolsForPi(tools),
+        messages: history,
+        thinkingLevel: tier === 'think' ? 'high' : 'off',
       },
-      // 流中途错误(provider 在响应头已发出后失败)结构化记录,否则只进 SSE error part、
-      // 服务端无日志,违反「不静默失败」纪律,排错只能靠猜。
-      onError: ({ error }: { error: unknown }) =>
-        this.logger.error(
-          'streamText 流错误',
-          error instanceof Error ? error.stack : String(error),
-        ),
-      // 画廊按需注图:只注「刚执行那步」新调的 view_photos 的图——看完那步注一次,之后不每步重发
-      // (模型对图的描述已写进上下文,够后续用;要再看它会再调 view_photos → 下一步再注)。省视觉 token、提速。
-      prepareStep: gallery
-        ? async ({ steps, messages }) => {
-            const lastStep = steps[steps.length - 1];
-            const fresh: string[] = [];
-            for (const call of lastStep?.toolCalls ?? []) {
-              if (call.toolName !== 'view_photos') continue;
-              const fileNames =
-                (call.input as { fileNames?: string[] })?.fileNames ?? [];
-              for (const fn of fileNames)
-                if (
-                  gallery.photos.some((p) => p.fileName === fn) &&
-                  !fresh.includes(fn)
+      streamFn: runtime.streamFn,
+      sessionId: sessionKey || undefined,
+      toolExecution: 'parallel',
+      shouldStopAfterTurn: () =>
+        turns >= AI_RUNTIME_LIMITS.mainAgentMaxTurns ||
+        hasRepeatedInvalidToolNames(invalidToolNamesByTurn, 2),
+      afterToolCall: gallery
+        ? async ({ toolCall, args, result }) => {
+            if (toolCall.name !== 'view_photos') return undefined;
+            const fileNames = Array.isArray(
+              (args as { fileNames?: unknown }).fileNames,
+            )
+              ? (args as { fileNames: unknown[] }).fileNames.filter(
+                  (value): value is string => typeof value === 'string',
                 )
-                  fresh.push(fn);
-            }
-            if (fresh.length === 0) return {};
-            const imageParts: Array<
+              : [];
+            const images: Array<
               | { type: 'text'; text: string }
-              | { type: 'image'; image: string; mediaType: string }
+              | { type: 'image'; data: string; mimeType: string }
             > = [];
-            for (const fn of fresh) {
-              let img = galleryImageCache.get(fn);
-              if (!img) {
+            for (const fileName of fileNames) {
+              if (!gallery.photos.some((photo) => photo.fileName === fileName))
+                continue;
+              let image = galleryImageCache.get(fileName);
+              if (!image) {
                 try {
-                  // 严格走 OSS 缩放版(webp,~1280px),不读磁盘、不取原图
-                  // (见「agent 工具不读磁盘」原则);模型不需要高清,多图才扛得住。
-                  const { buffer, mediaType } =
-                    await this.galleryView.readPhotoForVision(
-                      gallery.contentItemId,
-                      fn,
-                    );
-                  img = { b64: buffer.toString('base64'), mediaType };
-                  galleryImageCache.set(fn, img);
-                } catch {
-                  continue; // 取不到字节(未上传完/已删)→跳过,不打断本轮
+                  const loaded = await this.galleryView.readPhotoForVision(
+                    gallery.contentItemId,
+                    fileName,
+                  );
+                  image = {
+                    b64: loaded.buffer.toString('base64'),
+                    mediaType: loaded.mediaType,
+                  };
+                  galleryImageCache.set(fileName, image);
+                } catch (error) {
+                  this.logger.warn(
+                    `画廊图片读取失败 fileName=${fileName} reason=${error instanceof Error ? error.message : String(error)}`,
+                  );
+                  continue;
                 }
               }
-              imageParts.push({ type: 'text', text: `[${fn}]` });
-              imageParts.push({
+              images.push({ type: 'text', text: `[${fileName}]` });
+              images.push({
                 type: 'image',
-                image: img.b64,
-                mediaType: img.mediaType,
+                data: image.b64,
+                mimeType: image.mediaType,
               });
             }
-            if (imageParts.length === 0) return {};
-            return {
-              messages: [
-                ...messages,
-                {
-                  role: 'user',
-                  content: [
-                    { type: 'text', text: '你请求查看的照片:' },
-                    ...imageParts,
-                  ],
-                },
-              ],
-            };
+            return images.length > 0
+              ? { content: [...result.content, ...images] }
+              : undefined;
           }
         : undefined,
-      experimental_telemetry: { isEnabled: true },
-      onStepFinish: ({
-        stepNumber,
-        toolCalls,
-        toolResults,
-        content,
-        usage,
-      }) => {
-        // 通过 lifecycle 发射工具调用事件，解耦日志记录逻辑
-        if (toolCalls.length > 0) {
-          this.lifecycle.emitAfterToolUse(
-            stepNumber,
-            toolCalls.map((t) => ({ toolName: t.toolName })),
-          );
-        }
-        for (const part of content) {
-          if (part.type !== 'tool-error') continue;
-          const input = part.input;
-          const inputKeys =
-            input != null && typeof input === 'object' && !Array.isArray(input)
-              ? Object.keys(input)
-              : [];
-          const context = `Step ${stepNumber}: tool=${part.toolName} toolCallId=${part.toolCallId} inputKeys=${inputKeys.join(',') || '-'}`;
-          if (InvalidToolInputError.isInstance(part.error)) {
-            const cause = part.error.cause;
-            const reason =
-              cause instanceof Error
-                ? `${cause.name}: ${cause.message}`.slice(0, 240)
-                : typeof cause === 'string'
-                  ? cause.slice(0, 240)
-                  : '输入不符合工具参数 Schema';
-            this.logger.warn(`${context} 工具参数解析失败 reason=${reason}`);
-          } else {
-            this.logger.error(
-              `${context} 工具执行失败`,
-              part.error instanceof Error
-                ? part.error.stack
-                : String(part.error),
-            );
-          }
-        }
-        for (const toolResult of toolResults) {
-          if (readToolResultStatus(toolResult.output) !== 'invalid') continue;
-          const result = readToolResultRecord(toolResult.output);
-          const summary =
-            typeof result?.['summary'] === 'string'
-              ? result['summary'].slice(0, 160)
-              : '参数未通过领域校验';
-          const input = toolResult.input;
-          const inputKeys =
-            input != null && typeof input === 'object' && !Array.isArray(input)
-              ? Object.keys(input)
-              : [];
-          this.logger.warn(
-            `Step ${stepNumber}: 工具参数无效 tool=${toolResult.toolName} toolCallId=${toolResult.toolCallId} inputKeys=${inputKeys.join(',') || '-'} reason=${summary}`,
-          );
-        }
-        if (usage) {
-          this.logger.debug(
-            `Step ${stepNumber}: tokens=${usage.totalTokens ?? '?'}`,
-          );
-        }
-      },
-      onFinish: ({ usage, steps }) => {
+    });
+    const runId = this.runManager.begin(runKey, agent);
+    const unsubscribeObservability = agent.subscribe((event) => {
+      if (event.type === 'agent_end') {
         this.logger.log(
-          `Agent finished: ${steps.length} steps, ${usage?.totalTokens ?? '?'} total tokens`,
+          `Agent finished sessionKey=${sessionKey || '-'} runId=${runId} turns=${turns}`,
         );
-      },
+        return;
+      }
+      if (event.type !== 'turn_end') return;
+
+      turns += 1;
+      invalidToolNamesByTurn.push(
+        new Set(
+          event.toolResults
+            .filter(isPiToolResultInvalid)
+            .map((result) => result.toolName),
+        ),
+      );
+      if (invalidToolNamesByTurn.length > 2) invalidToolNamesByTurn.shift();
+      if (turns >= AI_RUNTIME_LIMITS.mainAgentMaxTurns) {
+        this.logger.warn(
+          `Agent reached safety turn limit sessionKey=${sessionKey || '-'} runId=${runId} turns=${turns}`,
+        );
+      }
+      if (
+        event.message.role === 'assistant' &&
+        event.message.stopReason === 'length'
+      ) {
+        this.logger.warn(
+          `Agent response reached token limit sessionKey=${sessionKey || '-'} runId=${runId} turn=${turns}`,
+        );
+      }
+      const toolCalls = event.toolResults.map((result) => ({
+        toolName: result.toolName,
+      }));
+      if (toolCalls.length > 0) {
+        this.lifecycle.emitAfterToolUse(turns, toolCalls);
+      }
+      for (const result of event.toolResults) {
+        if (!result.isError) continue;
+        this.logger.warn(
+          `Step ${turns}: 工具执行失败 tool=${result.toolName} toolCallId=${result.toolCallId} reason=${readPiToolResultText(result).slice(0, 240)}`,
+        );
+      }
+      if (event.message.role === 'assistant') {
+        this.logger.debug(
+          `Step ${turns}: model=${event.message.model} input=${event.message.usage.input} output=${event.message.usage.output} tools=${toolCalls.length}`,
+        );
+      }
     });
 
     // 后端权威持久化:流结束时把本轮增量 append 进 agent_sessions(不再靠前端 PUT)。
@@ -349,9 +319,26 @@ export class AgentService {
     // slice(previousCount) 恰好取到 incoming(user) + assistant/tool 消息,映射既有 append-only。
     const agentInstanceKey = dto.entryContext.agentInstanceKey;
     const previousCount = previous.length;
-    const response = result.toUIMessageStreamResponse({
+    const stream = createUIMessageStream({
       originalMessages: combined as never,
-      generateMessageId: createIdGenerator({ prefix: 'msg', size: 16 }),
+      generateId: createIdGenerator({ prefix: 'msg', size: 16 }),
+      execute: async ({ writer }) => {
+        const unsubscribe = pipePiAgentToUi(agent, writer, this.logger);
+        try {
+          await agent.prompt(userText);
+        } finally {
+          unsubscribe();
+          unsubscribeObservability();
+          this.runManager.finish(runKey, runId);
+        }
+      },
+      onError: (error) => {
+        this.logger.error(
+          `Pi Agent 流失败 sessionKey=${sessionKey} runId=${runId}`,
+          error instanceof Error ? error.stack : String(error),
+        );
+        return error instanceof Error ? error.message : '模型响应失败';
+      },
       onFinish: ({ messages }) => {
         // 本轮增量(incoming user + 本轮 assistant/tool)。stripNullFields:持久化前剔除
         // AI SDK 给的显式 null 字段,保持 DB 干净(否则下轮读出会崩,见 strip-null-fields)。
@@ -379,16 +366,25 @@ export class AgentService {
           );
       },
     });
-    // consumeStream:客户端断开/按停时也把流消费完,确保 onFinish 触发 → 持久化本轮
-    // 「已生成的内容」(可能只是部分回复;若断在出文本前则 assistant 为空,被
-    // dropContentlessMessages 丢弃,只留 user)。保证的是不损坏/不留毒,而非完整回复。
-    // consumeStream 返回 PromiseLike(无 .catch),用 Promise.resolve 包一层再挂错误日志
-    void Promise.resolve(result.consumeStream()).catch((err: unknown) =>
-      this.logger.error(
-        'consumeStream 失败',
-        err instanceof Error ? err.stack : String(err),
-      ),
-    );
-    return response;
+    // 服务端保留一个消费分支：浏览器因切后台或网络切换断开时，Pi 仍能完成当前轮，
+    // handleUIMessageStreamFinish 也能拿到完整消息并触发 onFinish 持久化。
+    // 用户显式点击停止时由 AgentRunManager.abort() 中止两个分支共享的上游运行。
+    const [clientStream, persistenceStream] = stream.tee();
+    void consumeStream({
+      stream: persistenceStream,
+      onError: (error) =>
+        this.logger.error(
+          `Pi Agent 服务端流消费失败 sessionKey=${sessionKey} runId=${runId}`,
+          error instanceof Error ? error.stack : String(error),
+        ),
+    });
+    return createUIMessageStreamResponse({
+      stream: clientStream,
+      headers: {
+        'Cache-Control': 'no-cache, no-transform',
+        'X-Accel-Buffering': 'no',
+        'X-Agent-Run-Id': runId,
+      },
+    });
   }
 }

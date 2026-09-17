@@ -60,6 +60,7 @@ import { SkillModule } from '../skill/skill.module';
 // P3 重构:browse/pick 工具归 agent/tools/,需要 digest 的 repo + RssFetcher → 走 SharedModule
 import { DigestSharedModule } from '../digest/digest-shared.module';
 import { LearningModule } from '../learning/learning.module';
+import { AgentRunManager } from './run/agent-run-manager.service';
 
 @Module({
   imports: [
@@ -107,6 +108,7 @@ import { LearningModule } from '../learning/learning.module';
     MemoryAgentService,
     MemoryViewService,
     SubAgentService,
+    AgentRunManager,
   ],
   exports: [
     // ToolAssembler 给 digest workflow 用(P3 重构:工具池全项目共有)
