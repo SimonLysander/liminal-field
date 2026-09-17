@@ -11,6 +11,7 @@ export function pipePiAgentToUi(
   logger: Logger,
 ): () => void {
   let turn = 0;
+  let errorWritten = false;
   const contentIds = new Map<string, string>();
 
   return agent.subscribe((event) => {
@@ -20,13 +21,28 @@ export function pipePiAgentToUi(
         break;
       case 'turn_start':
         turn += 1;
+        errorWritten = false;
         writer.write({ type: 'start-step' });
         break;
       case 'turn_end':
         writer.write({ type: 'finish-step' });
         break;
       case 'message_update':
-        writeAssistantUpdate(event, writer, contentIds, turn, logger);
+        errorWritten =
+          writeAssistantUpdate(event, writer, contentIds, turn, logger) ||
+          errorWritten;
+        break;
+      case 'message_end':
+        if (
+          event.message.role === 'assistant' &&
+          event.message.stopReason === 'error' &&
+          !errorWritten
+        ) {
+          const message = event.message.errorMessage || '模型响应失败';
+          logger.error(`Pi Responses 终止错误: ${message}`);
+          writer.write({ type: 'error', errorText: message });
+          errorWritten = true;
+        }
         break;
       case 'tool_execution_start':
         writer.write({
@@ -73,7 +89,6 @@ export function pipePiAgentToUi(
         break;
       }
       case 'message_start':
-      case 'message_end':
         break;
     }
   });
@@ -85,15 +100,16 @@ function writeAssistantUpdate(
   contentIds: Map<string, string>,
   turn: number,
   logger: Logger,
-): void {
+): boolean {
   const update = event.assistantMessageEvent;
   if (!('contentIndex' in update)) {
     if (update.type === 'error') {
       const message = update.error.errorMessage || '模型响应失败';
       logger.error(`Pi Responses 流错误: ${message}`);
       writer.write({ type: 'error', errorText: message });
+      return true;
     }
-    return;
+    return false;
   }
 
   const key = `${turn}:${update.contentIndex}`;
@@ -124,6 +140,7 @@ function writeAssistantUpdate(
       // 工具参数在 tool_execution_start 时一次性下发，避免把半截 JSON 暴露给 UI。
       break;
   }
+  return false;
 }
 
 function mapFinishReason(

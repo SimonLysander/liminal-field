@@ -70,4 +70,44 @@ describe('pi-message.adapter', () => {
       isError: false,
     });
   });
+
+  it('把工具后的尾部文本前移，避免 Responses 将调用与输出拆开', () => {
+    const converted = uiMessagesToPi(
+      [
+        {
+          role: 'assistant',
+          parts: [
+            { type: 'text', text: '先检查。' },
+            {
+              type: 'tool-write_draft',
+              toolCallId: 'call-1',
+              state: 'output-available',
+              input: { markdown: '# 标题' },
+              output: { status: 'pending_approval' },
+            },
+            { type: 'text', text: '等待审批。' },
+          ],
+        },
+      ],
+      model,
+    );
+
+    expect(converted).toHaveLength(2);
+    expect(converted[0]).toMatchObject({
+      role: 'assistant',
+      content: [
+        { type: 'text', text: '先检查。' },
+        { type: 'text', text: '等待审批。' },
+        {
+          type: 'toolCall',
+          id: 'call-1',
+          name: 'write_draft',
+        },
+      ],
+    });
+    expect(converted[1]).toMatchObject({
+      role: 'toolResult',
+      toolCallId: 'call-1',
+    });
+  });
 });

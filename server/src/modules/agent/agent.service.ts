@@ -308,8 +308,13 @@ export class AgentService {
         );
       }
       if (event.message.role === 'assistant') {
+        if (event.message.stopReason === 'error') {
+          this.logger.error(
+            `Agent model error sessionKey=${sessionKey || '-'} runId=${runId} turn=${turns}: ${event.message.errorMessage || '模型响应失败'}`,
+          );
+        }
         this.logger.debug(
-          `Step ${turns}: model=${event.message.model} input=${event.message.usage.input} output=${event.message.usage.output} tools=${toolCalls.length}`,
+          `Step ${turns}: model=${event.message.model} stop=${event.message.stopReason} input=${event.message.usage.input} output=${event.message.usage.output} tools=${toolCalls.length}`,
         );
       }
     });
