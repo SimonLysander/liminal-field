@@ -78,10 +78,17 @@ describe('SystemConfigService integration config — Web Fetch keys', () => {
     process.env = OLD_ENV;
   });
 
-  it('getConfigView 脱敏返回 Firecrawl/Jina 配置状态', async () => {
+  it('getConfigView 脱敏返回 Firecrawl 凭证列表和 Jina 配置状态', async () => {
     const { service, mockRepo } = createMocks();
     mockRepo.get.mockResolvedValue({
-      firecrawlApiKey: 'fc-test',
+      firecrawlCredentials: [
+        {
+          id: 'fc-1',
+          label: '账户一',
+          apiKey: 'fc-secret-1234',
+          enabled: true,
+        },
+      ],
       jinaApiKey: 'jina-test',
     } as never);
 
@@ -89,26 +96,90 @@ describe('SystemConfigService integration config — Web Fetch keys', () => {
 
     expect(view.integration).toEqual(
       expect.objectContaining({
-        hasFirecrawlApiKey: true,
+        firecrawlCredentials: [
+          {
+            id: 'fc-1',
+            label: '账户一',
+            maskedKey: '••••1234',
+            enabled: true,
+          },
+        ],
         hasJinaApiKey: true,
       }),
     );
   });
 
-  it('saveIntegrationConfig 保存 Web Fetch keys 并同步到 process.env', async () => {
+  it('saveIntegrationConfig 保存 Jina key 并同步到 process.env', async () => {
     const { service, mockRepo } = createMocks();
 
     await service.saveIntegrationConfig({
-      firecrawlApiKey: 'fc-new',
       jinaApiKey: 'jina-new',
     });
 
     expect(mockRepo.patch).toHaveBeenCalledWith({
-      firecrawlApiKey: 'fc-new',
       jinaApiKey: 'jina-new',
     });
-    expect(process.env.FIRECRAWL_API_KEY).toBe('fc-new');
     expect(process.env.JINA_API_KEY).toBe('jina-new');
+  });
+
+  it('添加 Firecrawl 凭证后保存列表并投影启用 Key', async () => {
+    const { service, mockRepo } = createMocks();
+    mockRepo.get.mockResolvedValue({
+      firecrawlCredentials: [
+        {
+          id: 'old',
+          label: '旧账户',
+          apiKey: 'fc-old',
+          enabled: false,
+        },
+      ],
+    } as never);
+
+    await service.addFirecrawlCredential({
+      id: 'new',
+      label: '新账户',
+      apiKey: 'fc-new',
+    });
+
+    expect(mockRepo.patch).toHaveBeenCalledWith({
+      firecrawlCredentials: [
+        expect.objectContaining({ id: 'old', enabled: false }),
+        {
+          id: 'new',
+          label: '新账户',
+          apiKey: 'fc-new',
+          enabled: true,
+        },
+      ],
+    });
+    expect(JSON.parse(process.env.FIRECRAWL_API_KEYS ?? '[]')).toEqual([
+      'fc-new',
+    ]);
+    expect(process.env.FIRECRAWL_API_KEY).toBeUndefined();
+  });
+
+  it('更新和删除 Firecrawl 凭证会同步运行时 Key 池', async () => {
+    const credential = {
+      id: 'fc-1',
+      label: '账户一',
+      apiKey: 'fc-one',
+      enabled: true,
+    };
+    const { service, mockRepo } = createMocks();
+    mockRepo.get.mockResolvedValueOnce({
+      firecrawlCredentials: [credential],
+    } as never);
+
+    await service.updateFirecrawlCredential('fc-1', { enabled: false });
+    expect(JSON.parse(process.env.FIRECRAWL_API_KEYS ?? '[]')).toEqual([]);
+
+    mockRepo.get.mockResolvedValueOnce({
+      firecrawlCredentials: [credential],
+    } as never);
+    await service.deleteFirecrawlCredential('fc-1');
+    expect(mockRepo.patch).toHaveBeenLastCalledWith({
+      firecrawlCredentials: [],
+    });
   });
 });
 

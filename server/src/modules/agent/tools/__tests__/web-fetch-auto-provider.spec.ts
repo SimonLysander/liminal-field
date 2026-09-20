@@ -1,6 +1,7 @@
 import {
   AutoWebFetchProvider,
   DirectFetchProvider,
+  FirecrawlKeyPoolProvider,
   FirecrawlWebFetchProvider,
   JinaReaderProvider,
   WebFetchError,
@@ -105,9 +106,9 @@ describe('createWebFetchProviderFromEnv', () => {
     process.env = OLD_ENV;
   });
 
-  it('auto 配了 FIRECRAWL_API_KEY 时按 direct → firecrawl → jina 顺序', () => {
+  it('auto 配了 FIRECRAWL_API_KEYS 时按 direct → firecrawl pool → jina 顺序', () => {
     process.env.WEB_FETCH_PROVIDER = 'auto';
-    process.env.FIRECRAWL_API_KEY = 'fc-test';
+    process.env.FIRECRAWL_API_KEYS = JSON.stringify(['fc-one', 'fc-two']);
     process.env.JINA_API_KEY = 'jina-test';
 
     const auto = createWebFetchProviderFromEnv();
@@ -117,14 +118,14 @@ describe('createWebFetchProviderFromEnv', () => {
       (auto as unknown as { providers: WebFetchProvider[] }).providers,
     ).toEqual([
       expect.any(DirectFetchProvider),
-      expect.any(FirecrawlWebFetchProvider),
+      expect.any(FirecrawlKeyPoolProvider),
       expect.any(JinaReaderProvider),
     ]);
   });
 
-  it('auto 没配 FIRECRAWL_API_KEY 时仍使用 keyless firecrawl', () => {
+  it('auto 没配 FIRECRAWL_API_KEYS 时仍使用 keyless firecrawl', () => {
     process.env.WEB_FETCH_PROVIDER = 'auto';
-    delete process.env.FIRECRAWL_API_KEY;
+    delete process.env.FIRECRAWL_API_KEYS;
 
     const auto = createWebFetchProviderFromEnv();
 
@@ -230,5 +231,88 @@ describe('FirecrawlWebFetchProvider', () => {
       kind: 'rate_limited',
       message: expect.stringContaining('Firecrawl 限速'),
     });
+  });
+
+  it('Firecrawl 额度不足时抛 quota_exhausted', async () => {
+    global.fetch = jest.fn().mockResolvedValue(
+      new Response(JSON.stringify({ success: false, error: 'no credits' }), {
+        status: 402,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    await expect(
+      new FirecrawlWebFetchProvider('fc-test').fetch('https://a.dev', {}),
+    ).rejects.toMatchObject({
+      kind: 'quota_exhausted',
+      message: expect.stringContaining('额度不足'),
+    });
+  });
+});
+
+describe('FirecrawlKeyPoolProvider', () => {
+  const OLD_FETCH = global.fetch;
+
+  afterEach(() => {
+    global.fetch = OLD_FETCH;
+    jest.restoreAllMocks();
+  });
+
+  it('当前 Key 额度不足时切换到下一 Key', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ success: false, error: 'no credits' }), {
+          status: 402,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: { markdown: 'second key body' },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+    global.fetch = fetchMock;
+
+    const got = await new FirecrawlKeyPoolProvider([
+      'fc-pool-a',
+      'fc-pool-b',
+    ]).fetch('https://a.dev', {});
+
+    expect(got.markdown).toBe('second key body');
+    expect(got.attempts).toEqual([
+      expect.objectContaining({
+        provider: expect.stringMatching(/^firecrawl-/),
+        status: 'error',
+        kind: 'quota_exhausted',
+      }),
+      expect.objectContaining({
+        provider: expect.stringMatching(/^firecrawl-/),
+        status: 'ok',
+      }),
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('页面级失败不会遍历全部 Key', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(
+      new Response(JSON.stringify({ success: false, error: 'not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    global.fetch = fetchMock;
+
+    await expect(
+      new FirecrawlKeyPoolProvider(['fc-page-a', 'fc-page-b']).fetch(
+        'https://a.dev/missing',
+        {},
+      ),
+    ).rejects.toMatchObject({ kind: 'not_found' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

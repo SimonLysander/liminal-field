@@ -29,6 +29,14 @@ const WEB_FETCH_ERROR_SUMMARY = '页面读取失败';
 const WEB_FETCH_CACHE_VERSION = 'v2';
 const logger = new Logger('WebFetchTool');
 
+function safeHostname(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return 'invalid';
+  }
+}
+
 function buildWebFetchCacheKey(
   provider: WebFetchProvider,
   url: string,
@@ -186,6 +194,15 @@ export function createWebFetchTool(
         });
       } catch (err) {
         if (err instanceof WebFetchError) {
+          logger.warn(
+            `web_fetch failed host=${safeHostname(url)} kind=${err.kind} attempts=${JSON.stringify(
+              (err.attempts ?? []).map((attempt) => ({
+                provider: attempt.provider,
+                kind: attempt.kind,
+                durationMs: attempt.durationMs,
+              })),
+            )}`,
+          );
           // invalid_url → invalid;其它(network/timeout/404/403/429/未知)→ error
           const status = err.kind === 'invalid_url' ? 'invalid' : 'error';
           if (cacheRepo && status === 'error') {
@@ -199,7 +216,8 @@ export function createWebFetchTool(
                   retryable:
                     err.kind === 'network' ||
                     err.kind === 'timeout' ||
-                    err.kind === 'rate_limited',
+                    err.kind === 'rate_limited' ||
+                    err.kind === 'quota_exhausted',
                 },
                 { attempts: err.attempts },
                 new Date(now.getTime() + ERROR_CACHE_TTL_MS),
@@ -223,6 +241,10 @@ export function createWebFetchTool(
             attempts: err.attempts,
           });
         }
+        logger.error(
+          `web_fetch unknown failure host=${safeHostname(url)}`,
+          err instanceof Error ? err.stack : String(err),
+        );
         return toolResult(
           `web_fetch 未知错误: ${err instanceof Error ? err.message : String(err)}`,
           undefined,

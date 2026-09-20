@@ -134,11 +134,40 @@ export class SettingsController {
     dto: {
       mineruToken?: string;
       tavilyApiKey?: string;
-      firecrawlApiKey?: string;
       jinaApiKey?: string;
     },
   ): Promise<{ success: boolean }> {
     await this.systemConfigService.saveIntegrationConfig(dto);
+    return { success: true };
+  }
+
+  @Post('firecrawl-credentials')
+  async addFirecrawlCredential(
+    @Body() dto: { label?: string; apiKey: string },
+  ): Promise<{ success: boolean; id: string }> {
+    const id = nanoid(8);
+    await this.systemConfigService.addFirecrawlCredential({
+      id,
+      label: dto.label,
+      apiKey: dto.apiKey,
+    });
+    return { success: true, id };
+  }
+
+  @Put('firecrawl-credentials/:id')
+  async updateFirecrawlCredential(
+    @Param('id') id: string,
+    @Body() dto: { label?: string; enabled?: boolean },
+  ): Promise<{ success: boolean }> {
+    await this.systemConfigService.updateFirecrawlCredential(id, dto);
+    return { success: true };
+  }
+
+  @Delete('firecrawl-credentials/:id')
+  async deleteFirecrawlCredential(
+    @Param('id') id: string,
+  ): Promise<{ success: boolean }> {
+    await this.systemConfigService.deleteFirecrawlCredential(id);
     return { success: true };
   }
 

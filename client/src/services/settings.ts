@@ -86,7 +86,12 @@ export interface SettingsConfigView {
   integration: {
     hasMineruToken: boolean;
     hasTavilyApiKey: boolean;
-    hasFirecrawlApiKey: boolean;
+    firecrawlCredentials: {
+      id: string;
+      label: string;
+      maskedKey: string;
+      enabled: boolean;
+    }[];
     hasJinaApiKey: boolean;
   };
   ai: {
@@ -195,12 +200,31 @@ export const settingsApi = {
   saveIntegrationConfig: (data: {
     mineruToken?: string;
     tavilyApiKey?: string;
-    firecrawlApiKey?: string;
     jinaApiKey?: string;
   }) =>
     request<{ success: boolean }>('/settings/integration-config', {
       method: 'PUT',
       body: JSON.stringify(data),
+    }),
+
+  addFirecrawlCredential: (data: { label?: string; apiKey: string }) =>
+    request<{ success: boolean; id: string }>('/settings/firecrawl-credentials', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateFirecrawlCredential: (
+    id: string,
+    data: { label?: string; enabled?: boolean },
+  ) =>
+    request<{ success: boolean }>(`/settings/firecrawl-credentials/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteFirecrawlCredential: (id: string) =>
+    request<{ success: boolean }>(`/settings/firecrawl-credentials/${id}`, {
+      method: 'DELETE',
     }),
 
   // AI 多提供商管理
