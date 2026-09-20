@@ -59,6 +59,12 @@ export class AgentController {
     return reply.send(response);
   }
 
+  /** SSE 断线后供前端确认后台任务是否仍在运行。 */
+  @Get('agent/runs/:sessionKey/active')
+  getActiveRun(@Param('sessionKey') sessionKey: string) {
+    return this.runManager.getStatus(sessionKey);
+  }
+
   /** 用户点击停止时显式终止服务端 Pi 运行；仅关闭浏览器连接不会误杀任务。 */
   @Delete('agent/runs/:sessionKey/active')
   cancelActiveRun(

@@ -334,7 +334,6 @@ export class AgentService {
         } finally {
           unsubscribe();
           unsubscribeObservability();
-          this.runManager.finish(runKey, runId);
         }
       },
       onError: (error) => {
@@ -344,7 +343,7 @@ export class AgentService {
         );
         return error instanceof Error ? error.message : '模型响应失败';
       },
-      onFinish: ({ messages }) => {
+      onFinish: async ({ messages }) => {
         // 本轮增量(incoming user + 本轮 assistant/tool)。stripNullFields:持久化前剔除
         // AI SDK 给的显式 null 字段,保持 DB 干净(否则下轮读出会崩,见 strip-null-fields)。
         // dropContentlessMessages:丢弃空 assistant 毒消息,防模型空回复进库毒死后续轮。
@@ -355,20 +354,25 @@ export class AgentService {
             ),
           ),
         );
-        if (delta.length === 0) return;
-        void this.lifecycle
-          .onAfterChat(
+        try {
+          if (delta.length === 0) return;
+          // 运行状态只有在消息真正写入会话后才结束。否则浏览器断线恢复会先读到
+          // idle，再读到尚未更新的旧会话，误判后台任务失败。
+          await this.lifecycle.onAfterChat(
             sessionKey,
             delta,
             aiConfig.contextWindow,
             agentInstanceKey,
-          )
-          .catch((err: unknown) =>
-            this.logger.error(
-              `onAfterChat 调用异常 sessionKey=${sessionKey}`,
-              err instanceof Error ? err.stack : String(err),
-            ),
           );
+        } catch (err: unknown) {
+          this.logger.error(
+            `onAfterChat 调用异常 sessionKey=${sessionKey}`,
+            err instanceof Error ? err.stack : String(err),
+          );
+          throw err;
+        } finally {
+          this.runManager.finish(runKey, runId);
+        }
       },
     });
     // 服务端保留一个消费分支：浏览器因切后台或网络切换断开时，Pi 仍能完成当前轮，
@@ -382,6 +386,9 @@ export class AgentService {
           `Pi Agent 服务端流消费失败 sessionKey=${sessionKey} runId=${runId}`,
           error instanceof Error ? error.stack : String(error),
         ),
+    }).finally(() => {
+      // onFinish 正常路径会先完成持久化再清理；这里仅兜底流协议异常，防止运行锁泄漏。
+      this.runManager.finish(runKey, runId);
     });
     return createUIMessageStreamResponse({
       stream: clientStream,

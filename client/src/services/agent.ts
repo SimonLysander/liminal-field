@@ -130,6 +130,17 @@ export function cancelActiveRun(
   );
 }
 
+export type AgentRunStatus =
+  | { status: 'idle' }
+  | { status: 'running'; runId: string; startedAt: string };
+
+/** 查询后端任务状态；SSE 断开后据此等待任务完成并重新读取会话。 */
+export function getActiveRun(sessionKey: string): Promise<AgentRunStatus> {
+  return request<AgentRunStatus>(
+    `/agent/runs/${encodeURIComponent(sessionKey)}/active`,
+  );
+}
+
 // ── 记忆管理(2026-05-30 event log) ────────────────────────
 
 /**

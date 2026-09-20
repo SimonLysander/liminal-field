@@ -239,6 +239,7 @@ export function AdvisorSidebar({
     messages,
     status,
     isStreaming,
+    isRecovering,
     sessionReady,
     hasMore,
     isLoadingMore,
@@ -583,6 +584,7 @@ export function AdvisorSidebar({
           <MessageList
             messages={messages}
             status={status}
+            isRecovering={isRecovering}
             sessionKey={currentSessionKey}
             error={error}
             hasMore={hasMore}
