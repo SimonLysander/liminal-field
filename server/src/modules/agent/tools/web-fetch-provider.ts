@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 /**
  * web-fetch-provider — Aurora 读 URL 的 provider 抽象。
  *
@@ -5,7 +7,7 @@
  *   - web_search 给 query → 拿一堆 url + 摘要片段(浅)
  *   - web_fetch 给 url → 拿单页全文 markdown(深读)
  *
- * 默认 provider:auto(direct → Firecrawl → Jina Reader fallback)。direct 用服务器
+ * 默认 provider:auto(direct → Firecrawl Key 池 → Jina Reader fallback)。direct 用服务器
  * 直抓 + Readability;Firecrawl 负责更强的 JS/反爬/AI-ready markdown;Jina 作为
  * 免费轻量 reader fallback。
  * 切换 provider 同 web-search-provider 模式:加 class + 工厂 case + .env 切换。
@@ -49,6 +51,7 @@ export class WebFetchError extends Error {
       | 'network'
       | 'timeout'
       | 'rate_limited'
+      | 'quota_exhausted'
       | 'forbidden'
       | 'too_large'
       | 'unknown',
@@ -86,22 +89,30 @@ export class AutoWebFetchProvider implements WebFetchProvider {
       const started = Date.now();
       try {
         const response = await provider.fetch(url, options);
-        attempts.push({
-          provider: provider.name,
-          status: 'ok',
-          durationMs: Date.now() - started,
-        });
+        if (response.attempts?.length) {
+          attempts.push(...response.attempts);
+        } else {
+          attempts.push({
+            provider: provider.name,
+            status: 'ok',
+            durationMs: Date.now() - started,
+          });
+        }
         return { ...response, attempts };
       } catch (err) {
         const kind = err instanceof WebFetchError ? err.kind : 'unknown';
         const message = err instanceof Error ? err.message : String(err);
-        attempts.push({
-          provider: provider.name,
-          status: 'error',
-          kind,
-          message,
-          durationMs: Date.now() - started,
-        });
+        if (err instanceof WebFetchError && err.attempts?.length) {
+          attempts.push(...err.attempts);
+        } else {
+          attempts.push({
+            provider: provider.name,
+            status: 'error',
+            kind,
+            message,
+            durationMs: Date.now() - started,
+          });
+        }
         if (kind === 'invalid_url') {
           throw new WebFetchError(kind, message, err, attempts);
         }
@@ -177,7 +188,8 @@ function firecrawlErrorKind(status: number): WebFetchError['kind'] {
   if (status === 404) return 'not_found';
   if (status === 401 || status === 403) return 'forbidden';
   if (status === 408) return 'timeout';
-  if (status === 402 || status === 429) return 'rate_limited';
+  if (status === 402) return 'quota_exhausted';
+  if (status === 429) return 'rate_limited';
   return 'unknown';
 }
 
@@ -260,9 +272,11 @@ export class FirecrawlWebFetchProvider implements WebFetchProvider {
       const message = json.error || `Firecrawl HTTP ${res.status}`;
       throw new WebFetchError(
         kind,
-        kind === 'rate_limited'
-          ? `Firecrawl 限速或额度不足: ${message}`
-          : `Firecrawl 抓取失败: ${message}`,
+        kind === 'quota_exhausted'
+          ? `Firecrawl 额度不足: ${message}`
+          : kind === 'rate_limited'
+            ? `Firecrawl 限速或额度不足: ${message}`
+            : `Firecrawl 抓取失败: ${message}`,
       );
     }
 
@@ -280,6 +294,126 @@ export class FirecrawlWebFetchProvider implements WebFetchProvider {
       truncated,
       provider: this.name,
     };
+  }
+}
+
+const FIRECRAWL_RATE_LIMIT_COOLDOWN_MS = 60_000;
+const FIRECRAWL_FORBIDDEN_COOLDOWN_MS = 15 * 60_000;
+const FIRECRAWL_QUOTA_COOLDOWN_MS = 6 * 60 * 60_000;
+const firecrawlCooldowns = new Map<string, number>();
+let firecrawlCursor = 0;
+
+function credentialFingerprint(apiKey: string): string {
+  return createHash('sha256').update(apiKey).digest('hex').slice(0, 12);
+}
+
+/**
+ * Firecrawl 多账户池。
+ *
+ * 只有凭证相关错误才切换 Key；页面不存在、抓取失败或网络不可达时继续换 Key
+ * 不会改善结果，反而会重复消耗额度，因此直接交给 auto provider 尝试 Jina。
+ */
+export class FirecrawlKeyPoolProvider implements WebFetchProvider {
+  readonly name = 'firecrawl';
+  readonly cacheKey: string;
+
+  constructor(private readonly apiKeys: string[]) {
+    const poolVersion = createHash('sha256')
+      .update(apiKeys.join('\u0000'))
+      .digest('hex')
+      .slice(0, 12);
+    this.cacheKey = `firecrawl-pool:${poolVersion}`;
+  }
+
+  async fetch(
+    url: string,
+    options: WebFetchOptions,
+  ): Promise<WebFetchResponse> {
+    const now = Date.now();
+    const attempts: WebFetchAttempt[] = [];
+    const count = this.apiKeys.length;
+    if (count === 0) {
+      return new FirecrawlWebFetchProvider().fetch(url, options);
+    }
+
+    const start = firecrawlCursor % count;
+    firecrawlCursor = (firecrawlCursor + 1) % count;
+    let lastError: WebFetchError | undefined;
+
+    for (let offset = 0; offset < count; offset += 1) {
+      const index = (start + offset) % count;
+      const apiKey = this.apiKeys[index];
+      const fingerprint = credentialFingerprint(apiKey);
+      if ((firecrawlCooldowns.get(fingerprint) ?? 0) > now) continue;
+
+      const providerName = `firecrawl-${index + 1}`;
+      const started = Date.now();
+      try {
+        const response = await new FirecrawlWebFetchProvider(apiKey).fetch(
+          url,
+          options,
+        );
+        attempts.push({
+          provider: providerName,
+          status: 'ok',
+          durationMs: Date.now() - started,
+        });
+        return { ...response, attempts };
+      } catch (error) {
+        const webError =
+          error instanceof WebFetchError
+            ? error
+            : new WebFetchError(
+                'unknown',
+                error instanceof Error ? error.message : String(error),
+                error,
+              );
+        lastError = webError;
+        attempts.push({
+          provider: providerName,
+          status: 'error',
+          kind: webError.kind,
+          message: webError.message,
+          durationMs: Date.now() - started,
+        });
+
+        if (webError.kind === 'quota_exhausted') {
+          firecrawlCooldowns.set(
+            fingerprint,
+            now + FIRECRAWL_QUOTA_COOLDOWN_MS,
+          );
+          continue;
+        }
+        if (webError.kind === 'rate_limited') {
+          firecrawlCooldowns.set(
+            fingerprint,
+            now + FIRECRAWL_RATE_LIMIT_COOLDOWN_MS,
+          );
+          continue;
+        }
+        if (webError.kind === 'forbidden') {
+          firecrawlCooldowns.set(
+            fingerprint,
+            now + FIRECRAWL_FORBIDDEN_COOLDOWN_MS,
+          );
+          continue;
+        }
+
+        throw new WebFetchError(
+          webError.kind,
+          webError.message,
+          webError,
+          attempts,
+        );
+      }
+    }
+
+    throw new WebFetchError(
+      lastError?.kind ?? 'quota_exhausted',
+      lastError?.message ?? 'Firecrawl 当前没有可用凭证',
+      lastError,
+      attempts,
+    );
   }
 }
 
@@ -640,10 +774,10 @@ export class DirectFetchProvider implements WebFetchProvider {
 /**
  * 按 .env 选择 provider 并构造实例。
  *
- * 默认 auto:direct → Firecrawl → jina。Firecrawl 支持 keyless,配 key 只用于提额;
+ * 默认 auto:direct → Firecrawl Key 池 → jina。未配置 Key 时 Firecrawl 走 keyless;
  * Jina 是最后一层轻量 reader fallback。
  * 切 direct:WEB_FETCH_PROVIDER=direct。
- * 切 firecrawl:WEB_FETCH_PROVIDER=firecrawl + FIRECRAWL_API_KEY=可选。
+ * 切 firecrawl:WEB_FETCH_PROVIDER=firecrawl + FIRECRAWL_API_KEYS(JSON 数组)可选。
  * 切 jina:WEB_FETCH_PROVIDER=jina + JINA_API_KEY=可选。
  *
  * **总会**返回 provider,装配层无脑挂工具。
@@ -651,11 +785,15 @@ export class DirectFetchProvider implements WebFetchProvider {
 export function createWebFetchProviderFromEnv(): WebFetchProvider {
   const provider = process.env.WEB_FETCH_PROVIDER?.toLowerCase() ?? 'auto';
   const jinaKey = process.env.JINA_API_KEY?.trim();
-  const firecrawlKey = process.env.FIRECRAWL_API_KEY?.trim();
+  const firecrawlKeys = parseFirecrawlApiKeys(process.env.FIRECRAWL_API_KEYS);
+  const firecrawlProvider = (): WebFetchProvider =>
+    firecrawlKeys.length > 0
+      ? new FirecrawlKeyPoolProvider(firecrawlKeys)
+      : new FirecrawlWebFetchProvider();
 
   const autoProviders = (): WebFetchProvider[] => [
     new DirectFetchProvider(),
-    new FirecrawlWebFetchProvider(firecrawlKey || undefined),
+    firecrawlProvider(),
     new JinaReaderProvider(jinaKey || undefined),
   ];
 
@@ -666,7 +804,7 @@ export function createWebFetchProviderFromEnv(): WebFetchProvider {
     return new DirectFetchProvider();
   }
   if (provider === 'firecrawl') {
-    return new FirecrawlWebFetchProvider(firecrawlKey || undefined);
+    return firecrawlProvider();
   }
   if (provider === 'jina') {
     return new JinaReaderProvider(jinaKey || undefined);
@@ -678,4 +816,18 @@ export function createWebFetchProviderFromEnv(): WebFetchProvider {
     `[web-fetch] 未知 WEB_FETCH_PROVIDER=${provider},fallback 到 auto`,
   );
   return new AutoWebFetchProvider(autoProviders());
+}
+
+function parseFirecrawlApiKeys(raw: string | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return [...new Set(parsed)]
+      .filter((value): value is string => typeof value === 'string')
+      .map((value) => value.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
 }

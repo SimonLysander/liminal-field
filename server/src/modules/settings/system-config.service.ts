@@ -17,7 +17,10 @@ import {
   type SkillDeletedEvent,
 } from '../skill/skill.service';
 import { SystemConfigRepository } from './system-config.repository';
-import type { AgentEntryConfig } from './system-config.entity';
+import type {
+  AgentEntryConfig,
+  FirecrawlCredential,
+} from './system-config.entity';
 // 从 settings/digest-report-analyst.md 加载报告分析师默认 system prompt(原散落字符串 → promptManager 统一托管)
 import { PromptManagerService } from '../../infrastructure/prompt/prompt-manager.service';
 import {
@@ -39,7 +42,12 @@ export interface SettingsConfigView {
   integration: {
     hasMineruToken: boolean;
     hasTavilyApiKey: boolean;
-    hasFirecrawlApiKey: boolean;
+    firecrawlCredentials: {
+      id: string;
+      label: string;
+      maskedKey: string;
+      enabled: boolean;
+    }[];
     hasJinaApiKey: boolean;
   };
   ai: {
@@ -172,7 +180,14 @@ export class SystemConfigService implements OnModuleInit {
       integration: {
         hasMineruToken: !!config?.mineruToken,
         hasTavilyApiKey: !!config?.tavilyApiKey,
-        hasFirecrawlApiKey: !!config?.firecrawlApiKey,
+        firecrawlCredentials: (config?.firecrawlCredentials ?? []).map(
+          (credential) => ({
+            id: credential.id,
+            label: credential.label,
+            maskedKey: `••••${credential.apiKey.slice(-4)}`,
+            enabled: credential.enabled,
+          }),
+        ),
         hasJinaApiKey: !!config?.jinaApiKey,
       },
       ai: {
@@ -253,7 +268,6 @@ export class SystemConfigService implements OnModuleInit {
   async saveIntegrationConfig(input: {
     mineruToken?: string;
     tavilyApiKey?: string;
-    firecrawlApiKey?: string;
     jinaApiKey?: string;
   }): Promise<void> {
     const fields: Record<string, string> = {};
@@ -265,10 +279,6 @@ export class SystemConfigService implements OnModuleInit {
       fields.tavilyApiKey = input.tavilyApiKey;
       process.env.TAVILY_API_KEY = input.tavilyApiKey;
     }
-    if (input.firecrawlApiKey !== undefined) {
-      fields.firecrawlApiKey = input.firecrawlApiKey;
-      process.env.FIRECRAWL_API_KEY = input.firecrawlApiKey;
-    }
     if (input.jinaApiKey !== undefined) {
       fields.jinaApiKey = input.jinaApiKey;
       process.env.JINA_API_KEY = input.jinaApiKey;
@@ -276,6 +286,83 @@ export class SystemConfigService implements OnModuleInit {
 
     await this.repo.patch(fields);
     this.logger.log('Integration config saved');
+  }
+
+  async addFirecrawlCredential(input: {
+    id: string;
+    label?: string;
+    apiKey: string;
+  }): Promise<void> {
+    const apiKey = input.apiKey.trim();
+    if (!apiKey) throw new BadRequestException('Firecrawl API Key 不能为空');
+    if (apiKey.length > 512) {
+      throw new BadRequestException('Firecrawl API Key 过长');
+    }
+    const label = input.label?.trim();
+    if (label && label.length > 80) {
+      throw new BadRequestException('Firecrawl 凭证名称不能超过 80 个字符');
+    }
+
+    const config = await this.repo.get();
+    const credentials = config?.firecrawlCredentials ?? [];
+    if (credentials.some((credential) => credential.apiKey === apiKey)) {
+      throw new BadRequestException('该 Firecrawl API Key 已存在');
+    }
+
+    const next: FirecrawlCredential[] = [
+      ...credentials,
+      {
+        id: input.id,
+        label: label || `Firecrawl ${credentials.length + 1}`,
+        apiKey,
+        enabled: true,
+      },
+    ];
+    await this.repo.patch({ firecrawlCredentials: next });
+    this.applyFirecrawlCredentialsToEnv(next);
+    this.logger.log(`Firecrawl credential added: id=${input.id}`);
+  }
+
+  async updateFirecrawlCredential(
+    id: string,
+    input: { label?: string; enabled?: boolean },
+  ): Promise<void> {
+    const config = await this.repo.get();
+    const credentials = config?.firecrawlCredentials ?? [];
+    const index = credentials.findIndex((credential) => credential.id === id);
+    if (index < 0) throw new BadRequestException('Firecrawl 凭证不存在');
+    const label = input.label?.trim();
+    if (label && label.length > 80) {
+      throw new BadRequestException('Firecrawl 凭证名称不能超过 80 个字符');
+    }
+
+    const next = credentials.map((credential, credentialIndex) => {
+      if (credentialIndex !== index) return credential;
+      return {
+        ...credential,
+        label:
+          input.label !== undefined
+            ? label || credential.label
+            : credential.label,
+        enabled: input.enabled ?? credential.enabled,
+      };
+    });
+    await this.repo.patch({ firecrawlCredentials: next });
+    this.applyFirecrawlCredentialsToEnv(next);
+    this.logger.log(`Firecrawl credential updated: id=${id}`);
+  }
+
+  async deleteFirecrawlCredential(id: string): Promise<void> {
+    const config = await this.repo.get();
+    const credentials = config?.firecrawlCredentials ?? [];
+    const next = credentials.filter((credential) => credential.id !== id);
+    if (next.length === credentials.length) {
+      throw new BadRequestException('Firecrawl 凭证不存在');
+    }
+
+    await this.repo.patch({ firecrawlCredentials: next });
+    this.applyFirecrawlCredentialsToEnv(next);
+    this.logger.log(`Firecrawl credential deleted: id=${id}`);
   }
 
   /** 添加一个 AI 提供商配置（三 tier 模型绑定） */
@@ -860,7 +947,7 @@ export class SystemConfigService implements OnModuleInit {
     gitSyncEnabled?: boolean;
     mineruToken?: string;
     tavilyApiKey?: string;
-    firecrawlApiKey?: string;
+    firecrawlCredentials?: FirecrawlCredential[];
     jinaApiKey?: string;
   }): void {
     if (config.remoteUrl) process.env.KB_REMOTE_URL = config.remoteUrl;
@@ -875,9 +962,22 @@ export class SystemConfigService implements OnModuleInit {
       config.gitSyncEnabled === false ? 'false' : 'true';
     if (config.mineruToken) process.env.MINERU_TOKEN = config.mineruToken;
     if (config.tavilyApiKey) process.env.TAVILY_API_KEY = config.tavilyApiKey;
-    if (config.firecrawlApiKey)
-      process.env.FIRECRAWL_API_KEY = config.firecrawlApiKey;
+    this.applyFirecrawlCredentialsToEnv(config.firecrawlCredentials ?? []);
     if (config.jinaApiKey) process.env.JINA_API_KEY = config.jinaApiKey;
+  }
+
+  /** 运行时消费方统一读 env；只投影启用凭证，空数组表示使用 Firecrawl keyless。 */
+  private applyFirecrawlCredentialsToEnv(
+    credentials: FirecrawlCredential[],
+  ): void {
+    const enabledKeys = credentials
+      .filter((credential) => credential.enabled)
+      .map((credential) => credential.apiKey);
+    process.env.FIRECRAWL_API_KEYS = JSON.stringify(enabledKeys);
+    delete process.env.FIRECRAWL_API_KEY;
+    this.logger.debug(
+      `Firecrawl credential pool applied: enabled=${enabledKeys.length}`,
+    );
   }
 
   /**

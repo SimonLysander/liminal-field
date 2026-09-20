@@ -26,6 +26,7 @@ import {
   ValidationBanner,
   PrimaryButton,
   SecondaryButton,
+  Toggle,
 } from './SettingsUI';
 
 // ── AI 提供商预设（只含 id 和名称，模型列表从 API 实时获取） ──────
@@ -588,9 +589,11 @@ export function IntegrationTab() {
   const tavilyDirty = tavilyApiKey.trim().length > 0;
 
   // Web Fetch
+  const [firecrawlLabel, setFirecrawlLabel] = useState('');
   const [firecrawlApiKey, setFirecrawlApiKey] = useState('');
   const [firecrawlVisible, setFirecrawlVisible] = useState(false);
   const [savingFirecrawl, setSavingFirecrawl] = useState(false);
+  const [deletingFirecrawlId, setDeletingFirecrawlId] = useState<string | null>(null);
   const firecrawlDirty = firecrawlApiKey.trim().length > 0;
   const [jinaApiKey, setJinaApiKey] = useState('');
   const [jinaVisible, setJinaVisible] = useState(false);
@@ -640,16 +643,40 @@ export function IntegrationTab() {
     if (!firecrawlDirty) return;
     setSavingFirecrawl(true);
     try {
-      await settingsApi.saveIntegrationConfig({
-        firecrawlApiKey: firecrawlApiKey.trim() || undefined,
+      await settingsApi.addFirecrawlCredential({
+        label: firecrawlLabel.trim() || undefined,
+        apiKey: firecrawlApiKey.trim(),
       });
-      banner.success('Firecrawl API key 已保存');
+      banner.success('Firecrawl 凭证已添加');
+      setFirecrawlLabel('');
       setFirecrawlApiKey('');
       await loadData(true);
     } catch {
       banner.error('保存失败');
     } finally {
       setSavingFirecrawl(false);
+    }
+  };
+
+  const handleToggleFirecrawl = async (id: string, enabled: boolean) => {
+    try {
+      await settingsApi.updateFirecrawlCredential(id, { enabled });
+      await loadData(true);
+    } catch {
+      banner.error('更新失败');
+    }
+  };
+
+  const handleDeleteFirecrawl = async (id: string) => {
+    setDeletingFirecrawlId(id);
+    try {
+      await settingsApi.deleteFirecrawlCredential(id);
+      banner.success('Firecrawl 凭证已删除');
+      await loadData(true);
+    } catch {
+      banner.error('删除失败');
+    } finally {
+      setDeletingFirecrawlId(null);
     }
   };
 
@@ -835,17 +862,22 @@ export function IntegrationTab() {
           <div className="h-7 max-w-md rounded-sm animate-pulse" style={{ background: 'var(--shelf)' }} />
         ) : (
           <div className="grid gap-5 lg:grid-cols-2">
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <div className="text-xs font-medium" style={{ color: 'var(--ink-faded)' }}>
-                  Firecrawl API Key
-                </div>
-                <div className="relative max-w-md">
+            <div className="space-y-4">
+              <div className="text-xs font-medium" style={{ color: 'var(--ink-faded)' }}>
+                Firecrawl 凭证池
+              </div>
+              <div className="grid max-w-md gap-2 sm:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)]">
+                <Input
+                  value={firecrawlLabel}
+                  onChange={(e) => setFirecrawlLabel(e.target.value)}
+                  placeholder="账户名称（可选）"
+                />
+                <div className="relative">
                   <Input
                     type={firecrawlVisible ? 'text' : 'password'}
                     value={firecrawlApiKey}
                     onChange={(e) => setFirecrawlApiKey(e.target.value)}
-                    placeholder={config?.hasFirecrawlApiKey ? '已配置,留空则不修改' : 'fc-...'}
+                    placeholder="fc-..."
                     className="pr-8"
                   />
                   <button
@@ -866,19 +898,45 @@ export function IntegrationTab() {
                   onClick={() => void handleSaveFirecrawl()}
                   disabled={savingFirecrawl || !firecrawlDirty}
                 >
-                  {savingFirecrawl ? '保存中…' : '保存 Firecrawl'}
+                  {savingFirecrawl ? '添加中…' : '添加凭证'}
                 </Button>
-                {config?.hasFirecrawlApiKey ? (
-                  <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--success)' }}>
-                    <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: 'var(--success)' }} />
-                    已配置
-                  </span>
-                ) : (
+                {(config?.firecrawlCredentials?.length ?? 0) === 0 && (
                   <span className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
                     未配置 · 仍可低限额使用
                   </span>
                 )}
               </div>
+              {(config?.firecrawlCredentials?.length ?? 0) > 0 && (
+                <div className="max-w-md divide-y" style={{ borderColor: 'var(--separator)' }}>
+                  {config?.firecrawlCredentials?.map((credential) => (
+                    <div key={credential.id} className="flex min-h-10 items-center gap-3 py-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs font-medium" style={{ color: 'var(--ink)' }}>
+                          {credential.label}
+                        </div>
+                        <div className="text-xs" style={{ color: 'var(--ink-ghost)' }}>
+                          {credential.maskedKey}
+                        </div>
+                      </div>
+                      <Toggle
+                        checked={credential.enabled}
+                        ariaLabel={`${credential.label}启用状态`}
+                        onChange={(enabled) => void handleToggleFirecrawl(credential.id, enabled)}
+                      />
+                      <button
+                        type="button"
+                        aria-label={`删除${credential.label}`}
+                        disabled={deletingFirecrawlId === credential.id}
+                        onClick={() => void handleDeleteFirecrawl(credential.id)}
+                        className="rounded-sm p-1.5 disabled:opacity-40"
+                        style={{ color: 'var(--ink-ghost)' }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="space-y-3">

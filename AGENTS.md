@@ -26,7 +26,7 @@
   - **系统内部容错定时**：`GIT_ARCHIVE_RETRY_CRON`（归档失败重试，管理员不该 care）
 - **管理页面 → Mongo**：管理员运行时通过 UI 自助配置/变更、非部署绑定、要在界面看状态。
   - 同步：`remoteUrl`、`gitToken`、`gitAuthorName/Email`、`gitSyncEnabled`、**业务定时** `gitSyncCron`（多久推一次远端，管理员关心的节奏）
-  - 集成：`mineruToken`；AI：providers（key/baseUrl/models/`contextWindow`）、`aiSystemPrompt`
+  - 集成：`mineruToken`、`tavilyApiKey`、`firecrawlCredentials`（多账户凭证池）、`jinaApiKey`；AI：providers（key/baseUrl/models/`contextWindow`）、`aiSystemPrompt`
   - 身份与 agent：`ownerProfile`；`agentConfigs` 仅存**用户新建的 agent** 与**内置 agent 的 provider 绑定/enabled**（内置 agent/skill 定义本身在文件，见「提示词管理」）
 
 **定时任务的区分**：管理员可调的业务节奏（`gitSyncCron`）→ UI；系统内部容错机制（`GIT_ARCHIVE_RETRY_CRON`）→ .env。看的是"管理员会不会去调它"，不是"它是不是 cron"。
