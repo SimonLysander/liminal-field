@@ -8,6 +8,10 @@ interface ActiveRun {
   startedAt: number;
 }
 
+export type AgentRunStatus =
+  | { status: 'idle' }
+  | { status: 'running'; runId: string; startedAt: string };
+
 /** 进程内运行协调：同一会话仅允许一个活跃 Pi agent，并提供显式取消入口。 */
 @Injectable()
 export class AgentRunManager {
@@ -35,6 +39,22 @@ export class AgentRunManager {
     this.logger.log(
       `运行结束 sessionKey=${sessionKey} runId=${runId} durationMs=${Date.now() - current.startedAt}`,
     );
+  }
+
+  /**
+   * 返回当前进程中该会话的权威运行状态。
+   *
+   * SSE 只是展示通道；浏览器断线后由前端查询这里，等待后台运行结束后重新读取
+   * 已持久化的会话。状态保持为 running 直到消息持久化完成，避免前端过早刷新。
+   */
+  getStatus(sessionKey: string): AgentRunStatus {
+    const current = this.active.get(sessionKey);
+    if (!current) return { status: 'idle' };
+    return {
+      status: 'running',
+      runId: current.runId,
+      startedAt: new Date(current.startedAt).toISOString(),
+    };
   }
 
   cancel(sessionKey: string, expectedRunId?: string): boolean {

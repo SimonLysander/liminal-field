@@ -17,6 +17,8 @@ import { ChatMessage } from './ChatMessage';
 interface MessageListProps {
   messages: UIMessage[];
   status: string;
+  /** 实时流已断开，但后端任务仍在运行，正在等待持久化结果。 */
+  isRecovering?: boolean;
   /** sub_agent 执行中实时步骤需要 sessionKey(透传给 ChatMessage → ToolCallCard) */
   sessionKey?: string;
   /** 舒适密度(全页 agent);默认紧凑(侧栏) */
@@ -43,6 +45,7 @@ interface MessageListProps {
 export function MessageList({
   messages,
   status,
+  isRecovering,
   sessionKey,
   comfortable,
   error,
@@ -188,7 +191,7 @@ export function MessageList({
             <img className="gs-half" src="/garden/iris-half.webp" alt="" draggable={false} />
             <img className="gs-bloom" src="/garden/iris-bloom.webp" alt="" draggable={false} />
           </div>
-          <span>凝思中</span>
+          <span>{isRecovering ? '后台处理中' : '凝思中'}</span>
         </div>
       )}
 

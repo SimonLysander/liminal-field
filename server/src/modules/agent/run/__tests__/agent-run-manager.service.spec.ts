@@ -57,4 +57,20 @@ describe('AgentRunManager', () => {
     expect(second.abort).not.toHaveBeenCalled();
     expect(manager.cancel('session-1')).toBe(true);
   });
+
+  it('提供可供断线恢复查询的运行状态', () => {
+    const manager = new AgentRunManager();
+    const agent = makeAgent();
+
+    expect(manager.getStatus('session-1')).toEqual({ status: 'idle' });
+
+    const runId = manager.begin('session-1', agent as never);
+    expect(manager.getStatus('session-1')).toMatchObject({
+      status: 'running',
+      runId,
+    });
+
+    manager.finish('session-1', runId);
+    expect(manager.getStatus('session-1')).toEqual({ status: 'idle' });
+  });
 });

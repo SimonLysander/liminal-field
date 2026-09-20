@@ -42,6 +42,7 @@ import { readResolved, markResolved } from '@/pages/admin/lib/resolved-store';
 import type { Proposal } from '@/pages/admin/lib/use-proposal-controller';
 import type { InlineRef } from './AiReferenceComposer';
 import { createLogger } from '@/lib/logger';
+import { recoverAgentStream } from './recover-agent-stream';
 // edit-session 现仅保留 ReferenceRegistry（渲染层读取历史 references 用于 chip 展示）
 // createEditSession / isEditConfirmation / isReferenceEditRequest 已随 v2 send 逻辑一并删除
 
@@ -188,6 +189,9 @@ export function useAdvisorChat({
   const agentInstanceKeyRef = useRef(agentInstanceKey);
   const onAfterSaveRef = useRef(onAfterSave);
   const activeRunIdRef = useRef<string | undefined>(undefined);
+  const pendingMessageIdRef = useRef<string | undefined>(undefined);
+  const recoveryAttemptRef = useRef(0);
+  const manuallyStoppedRef = useRef(false);
   // 懒加载游标：当前页第一条消息的绝对 index，下次加载传 before=firstIndex
   const firstIndexRef = useRef<number>(0);
 
@@ -235,6 +239,7 @@ export function useAdvisorChat({
           // 后端权威上下文:历史由后端从 agent_sessions 读,前端只发最新这条,
           // 请求体不再随对话变长。chips 已拼进 user message text。
           const fallbackBody = body ?? {};
+          pendingMessageIdRef.current = messages[messages.length - 1]?.id;
           return {
             body: {
               ...fallbackBody,
@@ -248,7 +253,78 @@ export function useAdvisorChat({
       }),
   );
 
-  const { messages, sendMessage, setMessages, status, stop, error } = useChat({ transport });
+  const {
+    messages,
+    sendMessage,
+    setMessages,
+    status,
+    stop,
+    error,
+    clearError,
+  } = useChat({ transport });
+  const [isRecovering, setIsRecovering] = useState(false);
+  const [recoveryError, setRecoveryError] = useState<Error>();
+
+  /**
+   * SSE 是实时展示通道，不是任务状态真源。浏览器网络变化导致流断开后，后端仍会
+   * 继续运行并持久化结果；这里等待运行结束，再用会话接口恢复完整消息。
+   */
+  useEffect(() => {
+    if (!error) return;
+    if (manuallyStoppedRef.current) {
+      manuallyStoppedRef.current = false;
+      clearError();
+      return;
+    }
+
+    const attempt = ++recoveryAttemptRef.current;
+    const pendingMessageId = pendingMessageIdRef.current;
+    setIsRecovering(true);
+    setRecoveryError(undefined);
+    logger.warn('stream_disconnected_recovering', {
+      sessionKey,
+      runId: activeRunIdRef.current,
+      errorType: error.name,
+    });
+
+    const isCurrentAttempt = () => recoveryAttemptRef.current === attempt;
+
+    void (async () => {
+      const data = await recoverAgentStream({
+        sessionKey,
+        agentInstanceKey,
+        pendingMessageId,
+        isCancelled: () => !isCurrentAttempt(),
+      });
+      if (!isCurrentAttempt()) return;
+      if (data) {
+        setMessages(data.messages as unknown as UIMessage[]);
+        setWriteApprovals(data.writeApprovals);
+        firstIndexRef.current = data.firstIndex;
+        setHasMore(data.hasMore);
+        activeRunIdRef.current = undefined;
+        pendingMessageIdRef.current = undefined;
+        clearError();
+        setIsRecovering(false);
+        logger.debug('stream_recovery_completed', { sessionKey });
+        onAfterSaveRef.current?.();
+        return;
+      }
+
+      setIsRecovering(false);
+      setRecoveryError(error);
+      logger.error('stream_recovery_failed', {
+        sessionKey,
+        runId: activeRunIdRef.current,
+      });
+    })();
+
+    return () => {
+      if (recoveryAttemptRef.current === attempt) {
+        recoveryAttemptRef.current += 1;
+      }
+    };
+  }, [agentInstanceKey, clearError, error, sessionKey, setMessages]);
    
 
   // 任务清单(钉在输入框上方的独立计划区):从消息流里取最近一次 write_tasks 的入参,实时反映。
@@ -432,6 +508,7 @@ export function useAdvisorChat({
    */
   useEffect(() => {
     let cancelled = false;
+    recoveryAttemptRef.current += 1;
     firstIndexRef.current = 0;
     // 推迟 setState 到微任务，避免在 effect 同步体内调用（react-hooks/set-state-in-effect）
     queueMicrotask(() => {
@@ -439,6 +516,8 @@ export function useAdvisorChat({
       setSessionReady(false);
       setMessages([]);
       setWriteApprovals({});
+      setIsRecovering(false);
+      setRecoveryError(undefined);
     });
     loadSession(sessionKey, { agentInstanceKey })
       .then((data) => {
@@ -519,6 +598,8 @@ export function useAdvisorChat({
     (text: string, references?: InlineRef[]) => {
       const t = text.trim();
       if (!t) return;
+      manuallyStoppedRef.current = false;
+      setRecoveryError(undefined);
       // 发新 prompt 时:把当前 active proposal 标 resolved(用户忽略上一个,不希望它继续干扰下一轮)
       activeProposalCallIdsRef.current.forEach((cid) => markResolved(cid));
       // 顺序式:引用内容已就地展开进 text(模型按位置读)。references 作为 metadata 随消息持久化,
@@ -571,8 +652,14 @@ export function useAdvisorChat({
     [],
   );
 
-  const isStreaming = status === 'streaming' || status === 'submitted';
+  const effectiveStatus = isRecovering ? 'submitted' : status;
+  const isStreaming =
+    effectiveStatus === 'streaming' || effectiveStatus === 'submitted';
   const stopActiveRun = useCallback(() => {
+    manuallyStoppedRef.current = true;
+    recoveryAttemptRef.current += 1;
+    setIsRecovering(false);
+    setRecoveryError(undefined);
     stop();
     const activeSessionKey = sessionKeyRef.current;
     const activeRunId = activeRunIdRef.current;
@@ -591,8 +678,9 @@ export function useAdvisorChat({
     // 否则审批 sessionKey 不符会被后端判 forbidden、不落库。
     sessionKey,
     messages,
-    status,
+    status: effectiveStatus,
     isStreaming,
+    isRecovering,
     sessionReady,
     hasMore,
     isLoadingMore,
@@ -611,7 +699,7 @@ export function useAdvisorChat({
     cycleTier,
     send,
     stop: stopActiveRun,
-    error,
+    error: isRecovering ? undefined : (recoveryError ?? error),
   };
 }
 
