@@ -1,9 +1,11 @@
 /*
- * MoveToDialog — 面包屑钻入式文件夹选择弹窗
+ * MoveToDialog — 面包屑钻入式目标节点选择弹窗
  *
  * 用户在列表项上触发"移动到..."后弹出。
  * 交互模式与 AdminStructurePanel / 展示端 Sidebar 一致：
- * 一次显示一个层级的文件夹，点击进入下一层，面包屑回退。
+ * 一次显示一个层级的节点，点击进入下一层，面包屑回退。
+ * 节点采用同质化模型：叶子节点同样可以接收子节点，因此不能只展示
+ * 当前已经拥有子节点的“文件夹”。
  * 选定目标后点"移动到此处"确认。
  *
  * 外壳迁移：原 fixed inset-0 + blur + motion → 统一 <Modal> 标准组件（L3）。
@@ -19,21 +21,24 @@ import { LoadingState, ContentFade } from '@/components/LoadingState';
 import { Modal } from '@/components/shared/Modal';
 import { Button } from '@/components/ui/button';
 import { FieldError } from '@/components/ui/field-error';
+import { createLogger } from '@/lib/logger';
+
+const logger = createLogger('move-to-dialog');
 
 type BreadcrumbItem = { id: string; name: string };
 
 type MoveToDialogProps = {
   /** 正在移动的节点（用于显示标题 + 排除自身） */
   node: StructureNode;
-  /** scope 隔离：只显示同 scope 的文件夹 */
+  /** scope 隔离：只显示同 scope 的候选父节点 */
   scope: string;
-  onConfirm: (targetFolderId: string | null) => Promise<void>;
+  onConfirm: (targetParentId: string | null) => Promise<void>;
   onClose: () => void;
 };
 
-/** 加载指定层级的文件夹列表（scope 隔离） */
-function useFolderLevel(parentId: string | undefined, scope: string) {
-  const [folders, setFolders] = useState<StructureNode[]>([]);
+/** 加载指定层级的候选父节点（scope 隔离） */
+function useTargetLevel(parentId: string | undefined, scope: string) {
+  const [targets, setTargets] = useState<StructureNode[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -50,12 +55,16 @@ function useFolderLevel(parentId: string | undefined, scope: string) {
       try {
         const result = await req;
         if (!cancelled) {
-          setFolders(result.children.filter((n) => n.type === 'FOLDER'));
+          setTargets(result.children);
         }
       } catch (err) {
-        console.error('[MoveToDialog] 加载文件夹失败:', err);
-        // 文件夹列表加载失败时静默降级为空列表
-        if (!cancelled) setFolders([]);
+        logger.error('load_targets_failed', {
+          parentId: parentId ?? null,
+          scope,
+          errorType: err instanceof Error ? err.name : typeof err,
+        });
+        // 保持弹窗可操作，并通过空列表明确表示当前层级不可用。
+        if (!cancelled) setTargets([]);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -66,7 +75,7 @@ function useFolderLevel(parentId: string | undefined, scope: string) {
     };
   }, [parentId, scope]);
 
-  return { folders, loading };
+  return { targets, loading };
 }
 
 export function MoveToDialog({ node, scope, onConfirm, onClose }: MoveToDialogProps) {
@@ -78,16 +87,16 @@ export function MoveToDialog({ node, scope, onConfirm, onClose }: MoveToDialogPr
     ? breadcrumb[breadcrumb.length - 1].id
     : undefined;
 
-  const { folders, loading } = useFolderLevel(selectedParentId, scope);
+  const { targets, loading } = useTargetLevel(selectedParentId, scope);
 
   /* 目标与当前位置相同时禁用确认按钮 */
   const isSamePosition = (selectedParentId ?? null) === (node.parentId ?? null);
 
-  /* 排除正在移动的节点自身（如果它是文件夹，不能移入自己） */
-  const filteredFolders = folders.filter((f) => f.id !== node.id);
+  /* 排除自身后，其后代也无法从当前层级进入；后端仍负责最终循环校验。 */
+  const availableTargets = targets.filter((target) => target.id !== node.id);
 
-  const enterFolder = (folder: StructureNode) => {
-    setBreadcrumb((prev) => [...prev, { id: folder.id, name: folder.name }]);
+  const enterTarget = (target: StructureNode) => {
+    setBreadcrumb((prev) => [...prev, { id: target.id, name: target.name }]);
   };
 
   const goToBreadcrumb = (index: number | null) => {
@@ -207,31 +216,29 @@ export function MoveToDialog({ node, scope, onConfirm, onClose }: MoveToDialogPr
         )}
       </div>
 
-      {/* 文件夹列表（限高保证弹窗不撑满屏幕） */}
+      {/* 候选父节点列表（限高保证弹窗不撑满屏幕） */}
       <div className="overflow-y-auto" style={{ minHeight: 120, maxHeight: '40vh' }}>
-        <ContentFade stateKey={loading ? 'loading' : `folders-${selectedParentId || 'root'}`}>
+        <ContentFade stateKey={loading ? 'loading' : `targets-${selectedParentId || 'root'}`}>
           {loading ? (
             <LoadingState />
-          ) : filteredFolders.length === 0 ? (
+          ) : availableTargets.length === 0 ? (
             <div className="py-6 text-center text-xs" style={{ color: 'var(--ink-ghost)' }}>
-              无子文件夹
+              无下级节点
             </div>
           ) : (
             <div>
-              {filteredFolders.map((folder) => (
+              {availableTargets.map((target) => (
                 <div
-                  key={folder.id}
+                  key={target.id}
                   className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors duration-150 hover:bg-[var(--shelf)]"
                   style={{ color: 'var(--ink-light)' }}
-                  onClick={() => enterFolder(folder)}
+                  onClick={() => enterTarget(target)}
                 >
                   <Folder size={14} strokeWidth={1.5} style={{ color: 'var(--ink-ghost)' }} />
                   <span className="min-w-0 flex-1 truncate text-base">
-                    {folder.name}
+                    {target.name}
                   </span>
-                  {folder.hasChildren && (
-                    <ChevronRight size={12} strokeWidth={2} className="shrink-0" style={{ color: 'var(--ink-ghost)' }} />
-                  )}
+                  <ChevronRight size={12} strokeWidth={2} className="shrink-0" style={{ color: 'var(--ink-ghost)' }} />
                 </div>
               ))}
             </div>
