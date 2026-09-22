@@ -20,6 +20,7 @@ import { PromptManagerModule } from './infrastructure/prompt/prompt-manager.modu
 import { yamlLoader } from './config/yaml.loader';
 import { StartupDiagnosticsService } from './startup-diagnostics.service';
 import { PiAiModule } from './infrastructure/ai/pi-ai.module';
+import { StructureModule } from './modules/structure/structure.module';
 
 @Module({
   imports: [
@@ -74,6 +75,7 @@ import { PiAiModule } from './infrastructure/ai/pi-ai.module';
     AgentModule,
     DigestModule,
     LearningModule,
+    StructureModule,
   ],
   controllers: [AppController],
   providers: [AppService, StartupDiagnosticsService],

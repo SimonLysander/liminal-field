@@ -21,10 +21,14 @@ import {
 } from './dto/structure-node.dto';
 import { NavigationNodeService } from './navigation.service';
 import { UpdateStructureNodeDto } from './dto/update-structure-node.dto';
+import { StructureMutationService } from '../structure/structure-mutation.service';
 
 @Controller()
 export class NavigationNodeController {
-  constructor(private readonly navigationNodeService: NavigationNodeService) {}
+  constructor(
+    private readonly navigationNodeService: NavigationNodeService,
+    private readonly structureMutationService: StructureMutationService,
+  ) {}
 
   @Post('structure-nodes')
   async createStructureNode(
@@ -40,7 +44,7 @@ export class NavigationNodeController {
     @Param('id') id: string,
     @Body() updateStructureNodeDto: UpdateStructureNodeDto,
   ): Promise<StructureNodeDto> {
-    return this.navigationNodeService.updateStructureNode(
+    return this.structureMutationService.updateStructureNode(
       id,
       updateStructureNodeDto,
     );
@@ -77,7 +81,7 @@ export class NavigationNodeController {
 
   @Delete('structure-nodes/:id')
   async deleteStructureNode(@Param('id') id: string): Promise<void> {
-    return this.navigationNodeService.deleteNavigationNodeById(id);
+    return this.structureMutationService.deleteStructureNode(id);
   }
 
   @Public()

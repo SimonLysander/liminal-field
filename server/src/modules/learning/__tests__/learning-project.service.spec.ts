@@ -5,6 +5,7 @@ import { NavigationRepository } from '../../navigation/navigation.repository';
 import { NavigationNodeService } from '../../navigation/navigation.service';
 import { EditorDraftRepository } from '../../workspace/editor-draft.repository';
 import type { StructureNodeDto } from '../../navigation/dto/structure-node.dto';
+import { NavigationTopologyLockService } from '../../navigation/navigation-topology-lock.service';
 
 function node(input: {
   id: string;
@@ -32,6 +33,7 @@ describe('LearningProjectService', () => {
   let navigationRepo: jest.Mocked<NavigationRepository>;
   let navigationService: jest.Mocked<NavigationNodeService>;
   let editorDraftRepo: jest.Mocked<EditorDraftRepository>;
+  let topologyLock: jest.Mocked<NavigationTopologyLockService>;
 
   beforeEach(() => {
     projectRepo = {
@@ -54,11 +56,16 @@ describe('LearningProjectService', () => {
       deleteAiDraftsByContentItemIds: jest.fn(),
     } as unknown as jest.Mocked<EditorDraftRepository>;
 
+    topologyLock = {
+      runExclusive: jest.fn((operation: () => Promise<unknown>) => operation()),
+    } as unknown as jest.Mocked<NavigationTopologyLockService>;
+
     service = new LearningProjectService(
       projectRepo,
       navigationRepo,
       navigationService,
       editorDraftRepo,
+      topologyLock,
     );
   });
 
@@ -177,7 +184,7 @@ describe('LearningProjectService', () => {
     );
   });
 
-  it('startProject checks ancestors but persists only the subtree so sibling projects remain independent', async () => {
+  it('startProject checks ancestors and descendants while keeping sibling projects independent', async () => {
     const parent = node({ id: 'parent', contentItemId: 'ci_parent' });
     const root = node({
       id: 'root',
@@ -211,8 +218,98 @@ describe('LearningProjectService', () => {
     expect(projectRepo.createActive).toHaveBeenCalledWith({
       rootNodeId: 'root',
       rootContentItemId: 'ci_root',
-      scopeNodeIds: ['root', 'child', 'leaf'],
     });
+  });
+
+  it('startProject serializes topology validation and project creation', async () => {
+    const root = node({ id: 'root', contentItemId: 'ci_root' });
+    navigationService.findStructurePathByNodeId.mockResolvedValue([root]);
+    navigationRepo.findAllDescendants.mockResolvedValue([]);
+    projectRepo.findActiveByRootNodeIds.mockResolvedValue([]);
+    projectRepo.createActive.mockResolvedValue({
+      id: 'p1',
+      rootNodeId: 'root',
+      rootContentItemId: 'ci_root',
+      status: 'active',
+    });
+
+    await service.startProject('root');
+
+    expect(topologyLock.runExclusive).toHaveBeenCalledTimes(1);
+    expect(projectRepo.createActive).toHaveBeenCalledTimes(1);
+  });
+
+  it('assertMoveAllowed permits moving ordinary nodes between projects', async () => {
+    navigationRepo.findAllDescendantIds.mockResolvedValue(['child']);
+    projectRepo.findActiveByRootNodeIds.mockResolvedValue([]);
+
+    await expect(
+      service.assertMoveAllowed('node', 'target'),
+    ).resolves.toBeUndefined();
+
+    expect(navigationService.findStructurePathByNodeId).not.toHaveBeenCalled();
+  });
+
+  it('assertMoveAllowed rejects nesting an active project under another one', async () => {
+    const target = node({ id: 'target', contentItemId: 'ci_target' });
+    navigationRepo.findAllDescendantIds.mockResolvedValue(['project-root']);
+    projectRepo.findActiveByRootNodeIds
+      .mockResolvedValueOnce([
+        {
+          id: 'moving-project',
+          rootNodeId: 'project-root',
+          rootContentItemId: 'ci_moving',
+          status: 'active',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'target-project',
+          rootNodeId: 'target',
+          rootContentItemId: 'ci_target',
+          status: 'active',
+        },
+      ]);
+    navigationService.findStructurePathByNodeId.mockResolvedValue([target]);
+
+    await expect(service.assertMoveAllowed('node', 'target')).rejects.toThrow(
+      '两个进行中的学习项目范围重叠',
+    );
+  });
+
+  it('assertMoveAllowed leaves structural cycle detection to navigation', async () => {
+    const target = node({ id: 'target', contentItemId: 'ci_target' });
+    const project = {
+      id: 'same-project',
+      rootNodeId: 'project-root',
+      rootContentItemId: 'ci_project',
+      status: 'active' as const,
+    };
+    navigationRepo.findAllDescendantIds.mockResolvedValue(['project-root']);
+    projectRepo.findActiveByRootNodeIds
+      .mockResolvedValueOnce([project])
+      .mockResolvedValueOnce([project]);
+    navigationService.findStructurePathByNodeId.mockResolvedValue([target]);
+
+    await expect(
+      service.assertMoveAllowed('node', 'target'),
+    ).resolves.toBeUndefined();
+  });
+
+  it('assertDeleteAllowed rejects deleting a subtree with an active project', async () => {
+    navigationRepo.findAllDescendantIds.mockResolvedValue(['project-root']);
+    projectRepo.findActiveByRootNodeIds.mockResolvedValue([
+      {
+        id: 'p1',
+        rootNodeId: 'project-root',
+        rootContentItemId: 'ci_root',
+        status: 'active',
+      },
+    ]);
+
+    await expect(service.assertDeleteAllowed('node')).rejects.toThrow(
+      '存在进行中的学习',
+    );
   });
 
   it('discardProject deletes root and descendant aidrafts then archives the project', async () => {
@@ -240,6 +337,7 @@ describe('LearningProjectService', () => {
       ['ci_root', 'ci_child', 'ci_leaf'],
     );
     expect(projectRepo.archive).toHaveBeenCalledWith('p1');
+    expect(topologyLock.runExclusive).toHaveBeenCalledTimes(1);
     expect(result).toEqual({
       affectedContentItemIds: ['ci_root', 'ci_child', 'ci_leaf'],
       deleted: 3,

@@ -7,7 +7,7 @@ export class UpdateNavigationNodeDto {
 
   @IsString()
   @IsOptional()
-  parentId?: string;
+  parentId?: string | null;
 
   @IsString()
   @IsOptional()

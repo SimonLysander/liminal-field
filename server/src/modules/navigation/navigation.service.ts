@@ -143,7 +143,7 @@ export class NavigationNodeService {
   }
 
   private async getParentOrThrow(
-    parentId?: string,
+    parentId?: string | null,
   ): Promise<NavigationNode | null> {
     if (!parentId) return null;
 
@@ -166,7 +166,7 @@ export class NavigationNodeService {
 
   private async assertNoCycle(
     id: string,
-    nextParentId?: string,
+    nextParentId?: string | null,
   ): Promise<void> {
     // 更新父节点时沿祖先链向上检查，直接阻断自指和后代回挂，避免把整棵结构树写坏。
     let cursor = nextParentId;

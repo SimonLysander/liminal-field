@@ -26,13 +26,11 @@ export class LearningProjectRepository {
   async createActive(input: {
     rootNodeId: string;
     rootContentItemId: string;
-    scopeNodeIds: string[];
   }): Promise<LearningProjectDto> {
     const now = new Date();
     const project = await this.model.create({
       rootNodeId: input.rootNodeId,
       rootContentItemId: input.rootContentItemId,
-      scopeNodeIds: input.scopeNodeIds,
       status: 'active',
       createdAt: now,
       updatedAt: now,

@@ -15,7 +15,7 @@ export interface CreateNavigationNode {
 // 仅在命名 & 结构上移动的更新
 export interface UpdateNavigationNode {
   name?: string;
-  parentId?: string;
+  parentId?: string | null;
   contentItemId?: string;
   order?: number;
 }

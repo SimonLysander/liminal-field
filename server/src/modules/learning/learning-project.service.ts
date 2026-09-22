@@ -7,6 +7,7 @@ import {
 import { isMongoDuplicateKeyError } from '../../common/mongo-errors';
 import { NavigationRepository } from '../navigation/navigation.repository';
 import { NavigationNodeService } from '../navigation/navigation.service';
+import { NavigationTopologyLockService } from '../navigation/navigation-topology-lock.service';
 import { EditorDraftRepository } from '../workspace/editor-draft.repository';
 import { LearningProjectRepository } from './learning-project.repository';
 import type {
@@ -24,6 +25,7 @@ export class LearningProjectService {
     private readonly navigationRepo: NavigationRepository,
     private readonly navigationService: NavigationNodeService,
     private readonly editorDraftRepo: EditorDraftRepository,
+    private readonly topologyLock: NavigationTopologyLockService,
   ) {}
 
   async resolveByNodeId(nodeId: string): Promise<LearningProjectResolveDto> {
@@ -96,6 +98,14 @@ export class LearningProjectService {
   }
 
   async startProject(rootNodeId: string): Promise<LearningProjectDto> {
+    return this.topologyLock.runExclusive(() =>
+      this.startProjectUnlocked(rootNodeId),
+    );
+  }
+
+  private async startProjectUnlocked(
+    rootNodeId: string,
+  ): Promise<LearningProjectDto> {
     if (!rootNodeId?.trim()) {
       throw new BadRequestException('缺少 rootNodeId');
     }
@@ -122,9 +132,6 @@ export class LearningProjectService {
       throw new BadRequestException('当前节点已与一个学习项目范围重叠');
     }
 
-    // 持久化范围只能包含当前子树。若把祖先写入唯一多键索引，兄弟项目会因共享父节点而误判重叠。
-    const scopeNodeIds = uniqueStrings([rootNodeId, ...descendantNodeIds]);
-
     this.logger.log(
       `start learning rootNodeId=${rootNodeId} rootContentItemId=${rootNode.contentItemId}`,
     );
@@ -133,7 +140,6 @@ export class LearningProjectService {
       return await this.projectRepo.createActive({
         rootNodeId,
         rootContentItemId: rootNode.contentItemId,
-        scopeNodeIds,
       });
     } catch (err) {
       if (isMongoDuplicateKeyError(err)) {
@@ -143,7 +149,61 @@ export class LearningProjectService {
     }
   }
 
+  /**
+   * 普通节点可以在学习项目之间自由移动；只有移动子树本身包含活动项目根，
+   * 且目标位置已经属于另一个活动项目时，移动才会制造真实的父子项目重叠。
+   */
+  async assertMoveAllowed(
+    nodeId: string,
+    targetParentId?: string | null,
+  ): Promise<void> {
+    if (!targetParentId) return;
+
+    const movingDescendantIds =
+      await this.navigationRepo.findAllDescendantIds(nodeId);
+    const movingProjectRoots = await this.projectRepo.findActiveByRootNodeIds(
+      uniqueStrings([nodeId, ...movingDescendantIds]),
+    );
+    if (movingProjectRoots.length === 0) return;
+
+    const targetPath =
+      await this.navigationService.findStructurePathByNodeId(targetParentId);
+    const targetProjects = await this.projectRepo.findActiveByRootNodeIds(
+      targetPath.map((node) => node.id),
+    );
+    const movingProjectIds = new Set(
+      movingProjectRoots.map((project) => project.id),
+    );
+    if (targetProjects.some((project) => !movingProjectIds.has(project.id))) {
+      throw new BadRequestException(
+        '移动后会使两个进行中的学习项目范围重叠，请先放弃其中一个学习项目',
+      );
+    }
+  }
+
+  /** 删除活动学习根会留下无法解析的项目，因此要求先显式放弃学习。 */
+  async assertDeleteAllowed(nodeId: string): Promise<void> {
+    const descendantIds =
+      await this.navigationRepo.findAllDescendantIds(nodeId);
+    const projects = await this.projectRepo.findActiveByRootNodeIds(
+      uniqueStrings([nodeId, ...descendantIds]),
+    );
+    if (projects.length > 0) {
+      throw new BadRequestException(
+        '该节点范围内存在进行中的学习，请先放弃学习再删除',
+      );
+    }
+  }
+
   async discardProject(projectId: string): Promise<LearningProjectDiscardDto> {
+    return this.topologyLock.runExclusive(() =>
+      this.discardProjectUnlocked(projectId),
+    );
+  }
+
+  private async discardProjectUnlocked(
+    projectId: string,
+  ): Promise<LearningProjectDiscardDto> {
     const project = await this.projectRepo.findById(projectId);
     if (!project) {
       throw new NotFoundException(`LearningProject ${projectId} not found`);

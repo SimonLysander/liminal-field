@@ -7,7 +7,7 @@ export class UpdateStructureNodeDto {
 
   @IsString()
   @IsOptional()
-  parentId?: string;
+  parentId?: string | null;
 
   @IsIn(['FOLDER', 'DOC'])
   @IsOptional()

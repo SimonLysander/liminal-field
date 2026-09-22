@@ -1,21 +1,28 @@
 import { NavigationNodeController } from '../navigation.controller';
 import { NavigationNodeService } from '../navigation.service';
+import { StructureMutationService } from '../../structure/structure-mutation.service';
 
 describe('NavigationNodeController', () => {
   let controller: NavigationNodeController;
   let navigationNodeService: jest.Mocked<NavigationNodeService>;
+  let structureMutationService: jest.Mocked<StructureMutationService>;
 
   beforeEach(() => {
     navigationNodeService = {
-      deleteNavigationNodeById: jest.fn(),
       createStructureNode: jest.fn(),
-      updateStructureNode: jest.fn(),
       listStructureNodes: jest.fn(),
       findStructurePathByNodeId: jest.fn(),
       findStructurePathByContentItemId: jest.fn(),
     } as unknown as jest.Mocked<NavigationNodeService>;
+    structureMutationService = {
+      updateStructureNode: jest.fn(),
+      deleteStructureNode: jest.fn(),
+    } as unknown as jest.Mocked<StructureMutationService>;
 
-    controller = new NavigationNodeController(navigationNodeService);
+    controller = new NavigationNodeController(
+      navigationNodeService,
+      structureMutationService,
+    );
   });
 
   it('delegates structure node creation to the service', async () => {
@@ -50,6 +57,24 @@ describe('NavigationNodeController', () => {
     expect(navigationNodeService.findStructurePathByNodeId.mock.calls).toEqual([
       ['child'],
     ]);
+  });
+
+  it('delegates structure mutations to the coordinator', async () => {
+    const dto = { parentId: 'target' };
+    structureMutationService.updateStructureNode.mockResolvedValue({
+      id: 'node',
+    } as never);
+
+    await controller.updateStructureNode('node', dto);
+    await controller.deleteStructureNode('node');
+
+    expect(structureMutationService.updateStructureNode).toHaveBeenCalledWith(
+      'node',
+      dto,
+    );
+    expect(structureMutationService.deleteStructureNode).toHaveBeenCalledWith(
+      'node',
+    );
   });
 
   it('passes visibility through when listing structure nodes', async () => {

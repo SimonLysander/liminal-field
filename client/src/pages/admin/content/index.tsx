@@ -142,7 +142,8 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
         });
     }
     return () => { alive = false; };
-  }, [activeNode?.id, scope]);
+  // 节点移动后 id 不变，但学习归属可能随祖先链改变；parentId 必须参与失效判断。
+  }, [activeNode?.id, activeNode?.parentId, scope]);
   const currentLearningResolve =
     learningResolve?.currentNode.id === activeNode?.id ? learningResolve : null;
   const learningState = getLearningEntryState(currentLearningResolve);

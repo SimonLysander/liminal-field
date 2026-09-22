@@ -4,12 +4,19 @@ import { ContentModule } from '../content/content.module';
 import { NavigationNode } from './navigation.entity';
 import { NavigationRepository } from './navigation.repository';
 import { NavigationNodeService } from './navigation.service';
-import { NavigationNodeController } from './navigation.controller';
+import { NavigationTopologyLockService } from './navigation-topology-lock.service';
 
 @Module({
   imports: [TypegooseModule.forFeature([NavigationNode]), ContentModule],
-  controllers: [NavigationNodeController],
-  providers: [NavigationNodeService, NavigationRepository],
-  exports: [NavigationRepository, NavigationNodeService],
+  providers: [
+    NavigationNodeService,
+    NavigationRepository,
+    NavigationTopologyLockService,
+  ],
+  exports: [
+    NavigationRepository,
+    NavigationNodeService,
+    NavigationTopologyLockService,
+  ],
 })
 export class NavigationModule {}

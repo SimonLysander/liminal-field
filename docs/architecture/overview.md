@@ -102,6 +102,8 @@
 AuthModule          — 鉴权层（多设备 JWT，bcrypt 密码验证）
 ├── ContentModule   — 存储层（Snapshot + Git + MongoDB，无业务概念）
 ├── NavigationModule— 索引层（树形导航，scope 隔离）
+├── LearningModule  — 学习项目（活动根、动态子树归属）
+├── StructureModule — 结构写入编排（导航约束 + 学习拓扑约束）
 ├── OssModule       — 对象存储层（MinIO，草稿资源生命周期）
 ├── HomeModule      — 首页聚合（独立模块避免 ContentModule ↔ WorkspaceModule 循环依赖）
 ├── ImportModule    — 内容导入（批量文件解析、session 状态机、确认写库）
@@ -179,6 +181,12 @@ MongoDB 是内容的一手数据源，存四类数据：
 4. **EditorDraft** — 草稿缓冲区（autosave 内容，与 ContentItem 解耦）。详见 `server/src/modules/workspace/editor-draft.entity.ts`。
 
 **设计原则**：`ContentItem` 只存指针和状态，从不存正文；正文落在独立的 `ContentSnapshot` 集合，Git 异步回填 `commitHash` 作为备份锚点。查询复杂度与内容体量解耦。
+
+#### 学习项目与导航树
+
+学习项目只锚定一个活动根节点，不保存创建时的子树快照。节点的学习归属始终由当前导航树动态推导，因此移动节点只改变归属关系，不复制或迁移该节点按 `contentItemId` 保存的草稿。
+
+开始学习、跨层级移动和级联删除共享同一个导航拓扑互斥区：移动普通节点可以自然加入或退出学习项目；会使两个活动学习根形成祖先关系的移动必须拒绝；包含活动学习根的子树必须先放弃学习才能删除。当前部署为单个 server 实例，互斥锁位于进程内；若改为多实例部署，必须先替换为跨实例的分布式锁。
 
 #### MinIO 草稿资源
 

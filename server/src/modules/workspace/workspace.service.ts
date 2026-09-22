@@ -238,7 +238,12 @@ export class WorkspaceService {
   }
 
   /** 删除条目：移除 Navigation 索引（Content 存储保留，由 Git 管理生命周期）。 */
-  async remove(_scope: string, contentItemId: string): Promise<void> {
+  async remove(scope: string, contentItemId: string): Promise<void> {
+    // 笔记可能是树根或学习项目根，必须走 structure-nodes 删除链路完成级联检查。
+    if (scope === 'notes') {
+      throw new BadRequestException('笔记请从内容结构中删除');
+    }
+
     // 已发布内容不允许直接删除
     const content = await this.contentRepository.findById(contentItemId);
     if (content?.publishedVersion) {

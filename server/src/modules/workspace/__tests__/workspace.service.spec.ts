@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { WorkspaceService } from '../workspace.service';
 
 // ─── Mock 工厂 ───────────────────────────────────────────────────────────────
@@ -129,5 +129,16 @@ describe('WorkspaceService.publish', () => {
       'ci_001',
       'abc1234',
     );
+  });
+});
+
+describe('WorkspaceService.remove', () => {
+  it('rejects notes deletion outside the structure mutation flow', async () => {
+    const { service, mockNavigationRepository } = createMocks();
+
+    await expect(service.remove('notes', 'ci_001')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(mockNavigationRepository.findByContentItemId).not.toHaveBeenCalled();
   });
 });
