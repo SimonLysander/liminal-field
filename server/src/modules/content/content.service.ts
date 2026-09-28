@@ -22,7 +22,10 @@ import { ContentRepository } from './content.repository';
 import { ContentSnapshotRepository } from './content-snapshot.repository';
 import type { ContentSnapshot } from './content-snapshot.entity';
 import { OssService } from '../oss/oss.service';
-import { NavigationNode } from '../navigation/navigation.entity';
+import {
+  NavigationNode,
+  NavigationScope,
+} from '../navigation/navigation.entity';
 import { ChangeLogDto } from './dto/change-log.dto';
 import { ContentDetailDto, ContentVersionDto } from './dto/content-detail.dto';
 import { extractHeadings } from '../../common/extract-headings';
@@ -1027,6 +1030,59 @@ export class ContentService {
       publicView,
       opts?.withSnippet !== false,
     );
+  }
+
+  /** 目录列举先按范围筛选再分页，不复用有候选截断的关键词搜索。 */
+  async listKnowledgeBase(options: {
+    scope?: string;
+    limit: number;
+    offset: number;
+  }): Promise<{ items: SearchResultDto[]; hasMore: boolean }> {
+    const { limit, offset } = options;
+    const scope = [
+      NavigationScope.notes,
+      NavigationScope.gallery,
+      NavigationScope.anthology,
+    ].find((value) => value === options.scope);
+    if (
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      !Number.isSafeInteger(limit + 1) ||
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
+      !Number.isSafeInteger(offset + limit) ||
+      (options.scope !== undefined && scope === undefined)
+    ) {
+      throw new BadRequestException('目录范围、limit 或 offset 无效');
+    }
+    const startedAt = Date.now();
+    // 仅取范围内的 ID，在 Mongo 查询中施加过滤；不拉全库正文或快照。
+    const contentIds = scope
+      ? await this.navigationModel.distinct('contentItemId', { scope })
+      : undefined;
+    const window = await this.contentRepository.list({
+      contentIds,
+      offset,
+      pageSize: limit + 1,
+    });
+    const hasMore = window.length > limit;
+    const items = await this.enrichWithScopeAndSnippet(
+      window.slice(0, limit),
+      '',
+      undefined,
+      false,
+      false,
+    );
+    this.logger.debug({
+      event: 'knowledge_base_listed',
+      scope: scope ?? 'all',
+      offset,
+      limit,
+      shown: items.length,
+      hasMore,
+      durationMs: Date.now() - startedAt,
+    });
+    return { items, hasMore };
   }
 
   /**

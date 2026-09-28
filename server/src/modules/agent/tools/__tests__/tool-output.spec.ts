@@ -38,14 +38,15 @@ function mkItem(
 describe('list_knowledge_base', () => {
   it('全部:行内带类型构成,无 ⎿', async () => {
     const content = {
-      searchWithScope: jest
-        .fn()
-        .mockResolvedValue([
+      listKnowledgeBase: jest.fn().mockResolvedValue({
+        items: [
           ...Array.from({ length: 44 }, (_, i) => mkItem(`n${i}`, 'notes')),
           ...Array.from({ length: 6 }, (_, i) => mkItem(`g${i}`, 'gallery')),
-        ]),
+        ],
+        hasMore: false,
+      }),
     };
-    const tool = createListKnowledgeBaseTool(content as never);
+    const tool = createListKnowledgeBaseTool(content);
     const r = parse(
       await (
         tool as never as {
@@ -53,19 +54,18 @@ describe('list_knowledge_base', () => {
         }
       ).execute({}, RUN),
     );
-    expect(r.summary).toBe('全部 · 笔记 44 · 相册 6 · 共 50 篇');
+    expect(r.summary).toBe('全部 · 笔记 44 · 相册 6 · 本页 50 篇');
     expect(r.meta?.list).toBeUndefined();
   });
 
-  it('指定范围:行内 = 范围词 · 共 N 篇', async () => {
+  it('指定范围:行内只统计本页', async () => {
     const content = {
-      searchWithScope: jest
-        .fn()
-        .mockResolvedValue(
-          Array.from({ length: 44 }, (_, i) => mkItem(`n${i}`, 'notes')),
-        ),
+      listKnowledgeBase: jest.fn().mockResolvedValue({
+        items: Array.from({ length: 44 }, (_, i) => mkItem(`n${i}`, 'notes')),
+        hasMore: false,
+      }),
     };
-    const tool = createListKnowledgeBaseTool(content as never);
+    const tool = createListKnowledgeBaseTool(content);
     const r = parse(
       await (
         tool as never as {
@@ -73,12 +73,16 @@ describe('list_knowledge_base', () => {
         }
       ).execute({ scope: 'notes' }, RUN),
     );
-    expect(r.summary).toBe('笔记 · 共 44 篇');
+    expect(r.summary).toBe('笔记 · 本页 44 篇');
   });
 
-  it('空库:not 报错,status ok total 0', async () => {
-    const content = { searchWithScope: jest.fn().mockResolvedValue([]) };
-    const tool = createListKnowledgeBaseTool(content as never);
+  it('空页不声称整个知识库为空', async () => {
+    const content = {
+      listKnowledgeBase: jest
+        .fn()
+        .mockResolvedValue({ items: [], hasMore: false }),
+    };
+    const tool = createListKnowledgeBaseTool(content);
     const r = parse(
       await (
         tool as never as {
@@ -87,7 +91,9 @@ describe('list_knowledge_base', () => {
       ).execute({}, RUN),
     );
     expect(r.meta?.status).toBe('ok');
-    expect(r.meta?.total).toBe(0);
+    expect(r.meta).toMatchObject({ shown: 0, offset: 0, hasMore: false });
+    expect(r.meta?.total).toBeUndefined();
+    expect(r.summary).toBe('当前范围本页没有内容');
   });
 });
 

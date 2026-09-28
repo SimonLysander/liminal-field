@@ -81,13 +81,15 @@ export class ContentRepository {
   async list(options?: {
     page?: number;
     pageSize?: number;
+    offset?: number;
+    contentIds?: string[];
   }): Promise<ContentItem[]> {
     const page = options?.page ?? 1;
     const pageSize = options?.pageSize ?? 20;
     return this.contentItemModel
-      .find({})
+      .find(options?.contentIds ? { _id: { $in: options.contentIds } } : {})
       .sort({ updatedAt: -1, _id: 1 })
-      .skip((page - 1) * pageSize)
+      .skip(options?.offset ?? (page - 1) * pageSize)
       .limit(pageSize);
   }
 

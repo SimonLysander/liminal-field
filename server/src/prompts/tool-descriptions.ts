@@ -8,7 +8,7 @@
 export const TOOL_DESCRIPTIONS: Record<string, string> = {
   browse: `扫订阅信箱,并行拉全部(或指定)订阅源在 since/until 窗口内的条目。不传 sourceIds 默认扫当前事项订阅的所有源;since/until 是本期收集窗口(ISO 8601 字符串),由 system prompt 给出,务必传;keywords 可选:传【正则】数组按主题精筛(OR——命中任一即留),对所有源的标题+摘要本地匹配、不区分大小写;英文加词边界 \\bword\\b 防误中(\\bagent\\b 不会误中 agentic),中文用交替 大模型|智能体。已历史去重(剔除本期 findings 已收录的)。返回 items 含 ref(i1, i2...)、title、url、publishedAt、snippet。搜索具体关键词找全网历史时,改用 web_search。`,
 
-  list_knowledge_base: `列出所有者知识库内容的目录(标题、范围、文件夹路径、id;最新已提交,不论是否发布),不含正文。用于了解"库里到底有哪些内容"。要读全文用 contentItemId 调 read_document_content;要按关键词找用 search_knowledge_base。`,
+  list_knowledge_base: `分页列出所有者知识库内容的目录（标题、范围、文件夹路径、contentItemId；最新已提交，不论是否发布），不含正文。scope 限定范围，按内容更新时间倒序排列；limit 默认 50，offset 是所选范围内跳过的条数。shown 和 byScope 只统计本页，hasMore 表示后面是否还有条目，nextOffset 是续页偏移。单页未列出不代表内容不存在。要读全文用 contentItemId 调 read_document_content；要按关键词找用 search_knowledge_base。`,
 
   load_skill: `load_skill:加载一个已注册的技能（方法论）。传 name（slug）即可，系统会把对应正文注入对话；加载后必须按照该方法完成当前任务，不能把它降为可选参考。只使用 <available_skills> 列出的 name。`,
 

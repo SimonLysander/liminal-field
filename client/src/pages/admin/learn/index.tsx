@@ -72,6 +72,7 @@ import {
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { buildLearningUrl } from '@/services/learning';
 import { useLearningRoute } from './useLearningRoute';
+import { buildLearningContext } from './learning-context';
 import { CommitForm } from '../components/CommitForm';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import {
@@ -410,25 +411,8 @@ function NodeScreen({
   const hasPlan = !!plan;
   const resume = [...learningNodes].reverse().find((c) => c.studied) ?? learningNodes[0] ?? null;
 
-  // 工作上下文(实时拼、无正文)→ 后端原样投影进 <current_context>。
-  // 约定:凡出现的节点一律写成「标题(ID:contentItemId)」,ID 随标题走——agent 读/引用该节点
-  // (read_content)直接用这个 ID,不会再把「第几篇」的序号当 ID(此前 read_content("1") 读空即此)。
-  const planOverview = data.plan?.goal ? `(概要:${data.plan.goal})` : '';
-  const ref = (t: string, id: string | null) => `《${t}》(ID:${id ?? '—'})`;
-  const chapterLines = learningNodes
-    .map(
-      (c, i) =>
-        `  ${i + 1}. ${'  '.repeat(c.depth)}${ref(c.title, c.contentItemId)} ${c.studied ? '已研究' : '空'}${c.contentItemId === currentCid ? ' ←当前' : ''}`,
-    )
-    .join('\n');
-  const learningContextStr =
-    (isTopic
-      ? `在规划 ${ref(data.topicTitle, currentCid)}${planOverview}。`
-      : `在写 ${ref(title, currentCid)},所属 ${ref(data.topicTitle, data.topicContentItemId)}${planOverview}。`) +
-    '\n' +
-    (learningNodes.length
-      ? `《${data.topicTitle}》的学习篇目(共 ${learningNodes.length}，不含独立子学习):\n${chapterLines}`
-      : `《${data.topicTitle}》的篇目:(还没建,照规划新建一篇)`);
+  // 上下文保留整份目录；上下篇导航和研究进度仍只使用当前学习拥有的节点。
+  const learningContextStr = buildLearningContext(data, { isTopic, contentItemId: currentCid, title });
 
   // 左栏 = Aurora 的 AI 初稿(只读;总章态左是规划提案,不拉 aiDraft)。null=加载中。
   const [aiDraft, setAiDraft] = useState<string | null>(null);
