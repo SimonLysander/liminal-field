@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { isMongoDuplicateKeyError } from '../../common/mongo-errors';
 import { NavigationRepository } from '../navigation/navigation.repository';
+import { StructureNodeDto } from '../navigation/dto/structure-node.dto';
 import { NavigationNodeService } from '../navigation/navigation.service';
 import { NavigationTopologyLockService } from '../navigation/navigation-topology-lock.service';
 import { EditorDraftRepository } from '../workspace/editor-draft.repository';
@@ -14,6 +15,7 @@ import type {
   LearningProjectDiscardDto,
   LearningProjectDto,
   LearningProjectResolveDto,
+  LearningProjectOutlineDto,
 } from './dto/learning-project.dto';
 
 @Injectable()
@@ -155,18 +157,116 @@ export class LearningProjectService {
     }
   }
 
-  /** 删除活动学习根会留下无法解析的项目，因此要求先显式放弃学习。 */
-  async assertDeleteAllowed(nodeId: string): Promise<void> {
-    const descendantIds =
-      await this.navigationRepo.findAllDescendantIds(nodeId);
-    const projects = await this.projectRepo.findActiveByRootNodeIds(
-      uniqueStrings([nodeId, ...descendantIds]),
+  /** 调用方持有拓扑锁，并已校验完整删除范围；范围外的祖先学习不受影响。 */
+  async runSubtreeDeletion(
+    nodeIds: string[],
+    operation: () => Promise<void>,
+  ): Promise<void> {
+    const projects = await this.projectRepo.findActiveByRootNodeIds(nodeIds);
+    this.logger.debug(
+      `delete subtree nodes=${nodeIds.length} learningProjects=${projects.length}`,
     );
-    if (projects.length > 0) {
-      throw new BadRequestException(
-        '该节点范围内存在进行中的学习，请先放弃学习再删除',
+    try {
+      // Standalone Mongo 不支持跨表事务。先结束项目，避免删根后留下活动项目；
+      // 不调用 discard，保留 Content/Git 生命周期内的正文和草稿。
+      await this.projectRepo.archiveActiveByIds(
+        projects.map((project) => project.id),
       );
+      await operation();
+    } catch (error) {
+      this.logger.error(
+        `delete subtree failed nodes=${nodeIds.length} learningProjects=${projects.length}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      if (projects.length > 0) {
+        try {
+          // 删除可能已执行但响应丢失，不能把已删根的项目重新激活。
+          const existing = new Set(
+            await this.navigationRepo.findExistingIds(
+              projects.map((project) => project.rootNodeId),
+            ),
+          );
+          await this.projectRepo.restoreActiveByIds(
+            projects
+              .filter((project) => existing.has(project.rootNodeId))
+              .map((project) => project.id),
+          );
+        } catch (rollbackError) {
+          this.logger.error(
+            'delete subtree learning restoration failed',
+            rollbackError instanceof Error ? rollbackError.stack : undefined,
+          );
+          throw new AggregateError(
+            [error, rollbackError],
+            '删除失败，且学习状态恢复失败，请检查服务日志',
+          );
+        }
+      }
+      throw error;
     }
+    this.logger.log(
+      `deleted subtree nodes=${nodeIds.length} endedLearningProjects=${projects.length}`,
+    );
+  }
+
+  /** 独立子学习保留目录入口，不混入父学习的正文遍历和研究上下文。 */
+  async getOutline(nodeId: string): Promise<LearningProjectOutlineDto> {
+    return this.topologyLock.runExclusive(async () => {
+      const resolved = await this.resolveByNodeId(nodeId);
+      if (!resolved.project || resolved.rootNode.id !== nodeId) {
+        throw new BadRequestException('学习归属已变化，请重新进入学习');
+      }
+      const descendants = await this.navigationRepo.findAllDescendants(nodeId);
+      const independentIds = new Set(
+        (
+          await this.projectRepo.findActiveByRootNodeIds(
+            descendants.map((node) => node._id.toString()),
+          )
+        ).map((project) => project.rootNodeId),
+      );
+      const childrenByParent = new Map<string, typeof descendants>();
+      for (const node of descendants) {
+        const parentId = node.parentId?.toString();
+        if (!parentId) continue;
+        const children = childrenByParent.get(parentId) ?? [];
+        children.push(node);
+        childrenByParent.set(parentId, children);
+      }
+      for (const children of childrenByParent.values()) {
+        children.sort(
+          (a, b) =>
+            a.order - b.order ||
+            (a.name < b.name ? -1 : a.name > b.name ? 1 : 0) ||
+            a._id.toString().localeCompare(b._id.toString()),
+        );
+      }
+      const chapters: LearningProjectOutlineDto['chapters'] = [];
+      const pending = (childrenByParent.get(nodeId) ?? [])
+        .map((node) => ({ node, depth: 0 }))
+        .reverse();
+      while (pending.length > 0) {
+        const { node, depth } = pending.pop()!;
+        const id = node._id.toString();
+        const isIndependentLearningRoot = independentIds.has(id);
+        const children = childrenByParent.get(id) ?? [];
+        chapters.push({
+          node: StructureNodeDto.fromEntity(node, children.length > 0),
+          depth,
+          isIndependentLearningRoot,
+        });
+        if (!isIndependentLearningRoot) {
+          pending.push(
+            ...children
+              .map((child) => ({ node: child, depth: depth + 1 }))
+              .reverse(),
+          );
+        }
+      }
+      this.logger.debug(
+        `learning outline rootNodeId=${nodeId} chapters=${chapters.length} independentProjects=${independentIds.size}`,
+      );
+      return { rootNode: resolved.rootNode, chapters };
+    });
   }
 
   async discardProject(projectId: string): Promise<LearningProjectDiscardDto> {

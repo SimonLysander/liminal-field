@@ -356,6 +356,7 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
       {workspace.deleteTarget && (
         <ConfirmDialog
           node={workspace.deleteTarget}
+          scope={scope}
           onConfirm={workspace.handleDelete}
           onCancel={() => workspace.setDeleteTarget(null)}
         />

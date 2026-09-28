@@ -29,8 +29,11 @@ export class StructureMutationService {
 
   async deleteStructureNode(id: string): Promise<void> {
     await this.topologyLock.runExclusive(async () => {
-      await this.learningProjectService.assertDeleteAllowed(id);
-      await this.navigationService.deleteNavigationNodeById(id);
+      const nodes = await this.navigationService.getDeletableSubtree(id);
+      await this.learningProjectService.runSubtreeDeletion(
+        nodes.map((node) => node._id.toString()),
+        () => this.navigationService.deletePreparedSubtree(nodes),
+      );
     });
   }
 }

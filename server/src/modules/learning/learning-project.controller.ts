@@ -4,6 +4,7 @@ import type {
   LearningProjectDiscardDto,
   LearningProjectDto,
   LearningProjectResolveDto,
+  LearningProjectOutlineDto,
 } from './dto/learning-project.dto';
 import { LearningProjectService } from './learning-project.service';
 
@@ -14,6 +15,11 @@ export class LearningProjectController {
   @Get('resolve')
   resolve(@Query('nodeId') nodeId: string): Promise<LearningProjectResolveDto> {
     return this.service.resolveByNodeId(nodeId);
+  }
+
+  @Get('outline')
+  outline(@Query('nodeId') nodeId: string): Promise<LearningProjectOutlineDto> {
+    return this.service.getOutline(nodeId);
   }
 
   @Post()

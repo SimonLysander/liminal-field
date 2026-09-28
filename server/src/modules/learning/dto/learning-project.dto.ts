@@ -23,3 +23,12 @@ export interface LearningProjectDiscardDto {
   affectedContentItemIds: string[];
   deleted: number;
 }
+
+export interface LearningProjectOutlineDto {
+  rootNode: StructureNodeDto;
+  chapters: Array<{
+    node: StructureNodeDto;
+    depth: number;
+    isIndependentLearningRoot: boolean;
+  }>;
+}

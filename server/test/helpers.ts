@@ -33,7 +33,7 @@ import supertest from 'supertest';
 
 import { AuthModule } from '../src/modules/auth/auth.module';
 import { ContentModule } from '../src/modules/content/content.module';
-import { NavigationModule } from '../src/modules/navigation/navigation.module';
+import { StructureModule } from '../src/modules/structure/structure.module';
 import { WorkspaceModule } from '../src/modules/workspace/workspace.module';
 import { OssModule } from '../src/modules/oss/oss.module';
 import { OssService } from '../src/modules/oss/oss.service';
@@ -125,7 +125,8 @@ export class TestContext {
         OssModule,
         AuthModule,
         ContentModule,
-        NavigationModule,
+        // 对外结构路由属于编排模块；仅导入 NavigationModule 不会注册这些接口。
+        StructureModule,
         WorkspaceModule,
         ImportModule,
         AgentModule,

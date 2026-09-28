@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ContentService } from '../content/content.service';
@@ -18,12 +19,16 @@ import {
 import { UpdateNavigationNodeDto } from './dto/update-navigation-node.dto';
 import { UpdateStructureNodeDto } from './dto/update-structure-node.dto';
 import { NavigationNode } from './navigation.entity';
+import { NavigationTopologyLockService } from './navigation-topology-lock.service';
 
 @Injectable()
 export class NavigationNodeService {
+  private readonly logger = new Logger(NavigationNodeService.name);
+
   constructor(
     private readonly navigationRepository: NavigationRepository,
     private readonly contentService: ContentService,
+    private readonly topologyLock: NavigationTopologyLockService,
   ) {}
 
   private async toDtos(
@@ -191,6 +196,15 @@ export class NavigationNodeService {
   async createNavigationNode(
     dto: CreateNavigationNodeDto,
   ): Promise<NavigationNodeDto> {
+    // 父节点校验与插入不能跨越级联删除，否则新节点会挂到已删除的父节点。
+    return this.topologyLock.runExclusive(() =>
+      this.createNavigationNodeUnlocked(dto),
+    );
+  }
+
+  private async createNavigationNodeUnlocked(
+    dto: CreateNavigationNodeDto,
+  ): Promise<NavigationNodeDto> {
     await this.getParentOrThrow(dto.parentId);
     this.requireContentItemId(dto.contentItemId);
     await this.contentService.assertContentItemExists(dto.contentItemId);
@@ -349,7 +363,8 @@ export class NavigationNodeService {
     return stats;
   }
 
-  async deleteNavigationNodeById(id: string): Promise<void> {
+  /** 在任何写入之前完成整个删除范围的发布校验，供结构编排复用同一份范围。 */
+  async getDeletableSubtree(id: string): Promise<NavigationNode[]> {
     const node = await this.navigationRepository.findById(id);
     if (!node) {
       throw new NotFoundException(`NavigationNode ${id} not found`);
@@ -370,14 +385,29 @@ export class NavigationNodeService {
             );
           }
         } catch (err) {
-          if (err instanceof BadRequestException) throw err;
-          /* ContentItem 不存在则跳过 */
+          if (err instanceof NotFoundException) {
+            this.logger.warn(
+              `delete content missing nodeId=${n._id.toString()} contentItemId=${n.contentItemId}`,
+            );
+            continue;
+          }
+          this.logger.error(
+            `delete validation failed nodeId=${n._id.toString()} contentItemId=${n.contentItemId}`,
+            err instanceof Error ? err.stack : undefined,
+          );
+          throw err;
         }
       }
     }
 
-    const allIds = allNodes.map((n) => n._id.toString());
-    await this.navigationRepository.deleteManyByIds(allIds);
+    return allNodes;
+  }
+
+  /** 调用方必须先校验，并在拓扑锁内提交，不能在两步之间修改树。 */
+  async deletePreparedSubtree(nodes: NavigationNode[]): Promise<void> {
+    await this.navigationRepository.deleteManyByIds(
+      nodes.map((node) => node._id.toString()),
+    );
   }
 
   async createStructureNode(

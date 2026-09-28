@@ -26,6 +26,15 @@ export interface LearningProjectDiscardResult {
   deleted: number;
 }
 
+export interface LearningProjectOutline {
+  rootNode: StructureNode;
+  chapters: Array<{
+    node: StructureNode;
+    depth: number;
+    isIndependentLearningRoot: boolean;
+  }>;
+}
+
 /** 学习根进入规划页，其余页面进入最近学习根下的正文页。 */
 export function buildLearningUrl(resolved: LearningProjectResolve): string {
   const base = `/admin/notes/${encodeURIComponent(resolved.rootNode.id)}/learn`;
@@ -39,6 +48,11 @@ export const learningApi = {
   resolve: (nodeId: string) =>
     request<LearningProjectResolve>(
       `/learning/projects/resolve${toQueryString({ nodeId })}`,
+    ),
+
+  outline: (nodeId: string) =>
+    request<LearningProjectOutline>(
+      `/learning/projects/outline${toQueryString({ nodeId })}`,
     ),
 
   create: (rootNodeId: string) =>

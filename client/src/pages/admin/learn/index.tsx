@@ -73,6 +73,7 @@ import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-
 import { buildLearningUrl } from '@/services/learning';
 import { useLearningRoute } from './useLearningRoute';
 import { CommitForm } from '../components/CommitForm';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import {
   PlateMarkdownEditor,
   type EditorBridgeHandle,
@@ -108,7 +109,7 @@ function SortableChapterRow({
   onRemove,
 }: {
   ch: Chapter;
-  index: number;
+  index: number | null;
   current: boolean;
   onNavigate: (contentItemId: string) => void;
   onRemove: (navId: string) => void;
@@ -142,7 +143,7 @@ function SortableChapterRow({
         className="w-4 shrink-0 text-right tabular-nums text-2xs"
         style={{ color: 'var(--ink-ghost)' }}
       >
-        {index + 1}
+        {index === null ? null : index + 1}
       </span>
 
       <button
@@ -153,6 +154,10 @@ function SortableChapterRow({
       >
         {ch.title}
       </button>
+
+      {ch.isIndependentLearningRoot && (
+        <span className="shrink-0 text-2xs" style={{ color: 'var(--ink-ghost)' }}>独立学习</span>
+      )}
 
       <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
         <button
@@ -186,7 +191,9 @@ function ChapterOutline({
   onReorder: (navIds: string[]) => void;
 }) {
   const [open, setOpen] = useState(isTopic);
-  const currentIdx = chapters.findIndex((c) => c.contentItemId === currentContentId);
+  const ownedChapters = chapters.filter((chapter) => !chapter.isIndependentLearningRoot);
+  const ownedIndexById = new Map(ownedChapters.map((chapter, index) => [chapter.navId, index]));
+  const currentIdx = ownedChapters.findIndex((c) => c.contentItemId === currentContentId);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const handleDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
@@ -213,9 +220,9 @@ function ChapterOutline({
           <span className="text-2xs uppercase" style={{ letterSpacing: '0.06em' }}>
             我的篇目
             {isTopic
-              ? ` · ${chapters.length} 篇`
+              ? ` · ${ownedChapters.length} 篇`
               : currentIdx >= 0
-                ? ` · 第 ${currentIdx + 1}/${chapters.length} 篇`
+                ? ` · 第 ${currentIdx + 1}/${ownedChapters.length} 篇`
                 : ''}
           </span>
         </button>
@@ -247,11 +254,11 @@ function ChapterOutline({
                 items={chapters.map((c) => c.navId)}
                 strategy={verticalListSortingStrategy}
               >
-                {chapters.map((c, i) => (
+                {chapters.map((c) => (
                   <SortableChapterRow
                     key={c.navId}
                     ch={c}
-                    index={i}
+                    index={ownedIndexById.get(c.navId) ?? null}
                     current={c.contentItemId === currentContentId}
                     onNavigate={onNavigate}
                     onRemove={onRemove}
@@ -387,7 +394,9 @@ function NodeScreen({
   const navigate = useNavigate();
   const { id: topicNavId } = useParams<{ id: string }>(); // 学习路由 /admin/notes/:id/learn,:id = 主题 navId
   const { chapters, plan, refreshPlan, setStudied } = data;
-  const learningNodes = data.allChapters.length > 0 ? data.allChapters : chapters;
+  const learningNodes = data.allChapters.filter((chapter) => !chapter.isIndependentLearningRoot);
+  const learningNumberById = new Map(learningNodes.map((chapter, index) => [chapter.navId, index + 1]));
+  const [deleteChapter, setDeleteChapter] = useState<Chapter | null>(null);
   const currentCid = isTopic ? data.topicContentItemId : nodeId;
   const idx = isTopic ? -1 : learningNodes.findIndex((c) => c.contentItemId === nodeId);
   const chapter = idx >= 0 ? learningNodes[idx] : null;
@@ -418,7 +427,7 @@ function NodeScreen({
       : `在写 ${ref(title, currentCid)},所属 ${ref(data.topicTitle, data.topicContentItemId)}${planOverview}。`) +
     '\n' +
     (learningNodes.length
-      ? `《${data.topicTitle}》的学习节点(共 ${learningNodes.length},含所有后代):\n${chapterLines}`
+      ? `《${data.topicTitle}》的学习篇目(共 ${learningNodes.length}，不含独立子学习):\n${chapterLines}`
       : `《${data.topicTitle}》的篇目:(还没建,照规划新建一篇)`);
 
   // 左栏 = Aurora 的 AI 初稿(只读;总章态左是规划提案,不拉 aiDraft)。null=加载中。
@@ -606,7 +615,7 @@ function NodeScreen({
       x: Math.min(window.innerWidth - 88, Math.max(88, rect.right)),
       y: Math.min(window.innerHeight - 44, Math.max(48, rect.bottom + 10)),
     });
-  }, []);
+  }, [setPending]);
 
   const scheduleDraftSelectionPopover = useCallback(() => {
     window.requestAnimationFrame(updateDraftSelectionPopover);
@@ -726,7 +735,7 @@ function NodeScreen({
                   align="start"
                   className="max-h-[60vh] min-w-[13rem] overflow-y-auto"
                 >
-                  {learningNodes.map((c, i) => (
+                  {data.allChapters.map((c) => (
                     <DropdownMenuItem
                       key={c.navId}
                       onClick={() => onNavigate(c.contentItemId)}
@@ -736,8 +745,11 @@ function NodeScreen({
                         className="w-4 shrink-0 text-right tabular-nums text-2xs"
                         style={{ color: 'var(--ink-ghost)' }}
                       >
-                        {i + 1}
+                        {learningNumberById.get(c.navId)}
                       </span>
+                      {c.isIndependentLearningRoot && (
+                        <span className="shrink-0 text-2xs" style={{ color: 'var(--ink-ghost)' }}>独立学习</span>
+                      )}
                       <span
                         className="flex-1 truncate"
                         style={{
@@ -916,7 +928,7 @@ function NodeScreen({
                   isTopic={isTopic}
                   onNavigate={(cid) => onNavigate(cid)}
                   onAdd={() => setCreateChapterOpen(true)}
-                  onRemove={(navId) => void data.removeChapter(navId)}
+                  onRemove={(navId) => setDeleteChapter(chapters.find((chapter) => chapter.navId === navId) ?? null)}
                   onReorder={(navIds) => void data.reorderChapters(navIds)}
                 />
               )}
@@ -1048,6 +1060,18 @@ function NodeScreen({
         </div>
       </div>
 
+      {deleteChapter && (
+        <ConfirmDialog
+          node={{ id: deleteChapter.navId, name: deleteChapter.title }}
+          scope="notes"
+          onCancel={() => setDeleteChapter(null)}
+          onConfirm={async () => {
+            await data.removeChapter(deleteChapter.navId);
+            setDeleteChapter(null);
+          }}
+        />
+      )}
+
       {pending && (
         <button
           className="fixed z-50 flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-md transition-colors hover:bg-[var(--shelf)]"
@@ -1127,6 +1151,11 @@ function LearningWorkspace({ topicNavId }: { topicNavId: string }) {
         </div>
       </div>
     );
+  }
+
+  // 删除当前篇或其祖先后立即退出正文，不能继续保存已经移出目录的页面。
+  if (param && !data.allChapters.some((chapter) => chapter.contentItemId === param)) {
+    return <Navigate to={`/admin/notes/${encodeURIComponent(topicNavId)}/learn`} replace />;
   }
 
   return (

@@ -44,6 +44,14 @@ export class NavigationRepository {
     return this.navigationModel.findById(id);
   }
 
+  async findExistingIds(ids: string[]): Promise<string[]> {
+    if (ids.length === 0) return [];
+    const nodes = await this.navigationModel
+      .find({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) } })
+      .select('_id');
+    return nodes.map((node) => node._id.toString());
+  }
+
   /** scope 可选过滤：传入时只返回该 scope 下的节点 */
   async listByParentId(
     parentId?: string,
@@ -171,20 +179,24 @@ export class NavigationRepository {
     );
   }
 
+  /** 一次读取全部后代，不保证顺序；展示顺序由调用方按同级 order 生成。 */
   async findAllDescendants(rootId: string): Promise<NavigationNode[]> {
-    const result: NavigationNode[] = [];
-    const queue = [rootId];
-
-    while (queue.length > 0) {
-      const parentId = queue.shift()!;
-      const children = await this.navigationModel.find({ parentId });
-      for (const child of children) {
-        result.push(child);
-        queue.push(child._id.toString());
-      }
-    }
-
-    return result;
+    const [tree] = await this.navigationModel.aggregate<{
+      descendants: NavigationNode[];
+    }>([
+      { $match: { _id: new Types.ObjectId(rootId) } },
+      {
+        $graphLookup: {
+          from: this.navigationModel.collection.name,
+          startWith: '$_id',
+          connectFromField: '_id',
+          connectToField: 'parentId',
+          as: 'descendants',
+        },
+      },
+      { $project: { descendants: 1 } },
+    ]);
+    return tree?.descendants ?? [];
   }
 
   async findAllDescendantIds(rootId: string): Promise<string[]> {

@@ -69,4 +69,25 @@ export class LearningProjectRepository {
     );
     return project ? this.toDto(project) : null;
   }
+
+  async archiveActiveByIds(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    const now = new Date();
+    await this.model.updateMany(
+      { _id: { $in: ids }, status: 'active' },
+      { $set: { status: 'archived', archivedAt: now, updatedAt: now } },
+    );
+  }
+
+  /** 仅恢复本次删除前仍活动、且根节点仍存在的项目。 */
+  async restoreActiveByIds(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.model.updateMany(
+      { _id: { $in: ids }, status: 'archived' },
+      {
+        $set: { status: 'active', updatedAt: new Date() },
+        $unset: { archivedAt: '' },
+      },
+    );
+  }
 }

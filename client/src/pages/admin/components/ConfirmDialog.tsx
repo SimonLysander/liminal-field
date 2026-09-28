@@ -19,8 +19,10 @@ export const ConfirmDialog = ({
   node,
   onConfirm,
   onCancel,
+  scope,
 }: {
-  node: StructureNode;
+  node: Pick<StructureNode, 'id' | 'name'>;
+  scope?: string;
   onConfirm: () => Promise<void>;
   onCancel: () => void;
 }) => {
@@ -61,11 +63,11 @@ export const ConfirmDialog = ({
   return (
     <Modal
       open
-      onClose={onCancel}
+      onClose={() => { if (!loading) onCancel(); }}
       title={`确认删除「${node.name}」？`}
       footer={
         <>
-          <Button variant="ghost" size="sm" type="button" onClick={onCancel}>
+          <Button variant="ghost" size="sm" type="button" onClick={onCancel} disabled={loading}>
             取消
           </Button>
           <Button
@@ -73,7 +75,7 @@ export const ConfirmDialog = ({
             size="sm"
             type="button"
             onClick={() => void handleConfirm()}
-            disabled={loading || statsLoading}
+            disabled={loading || statsLoading || !stats}
           >
             {loading ? '删除中...' : '删除'}
           </Button>
@@ -93,6 +95,11 @@ export const ConfirmDialog = ({
           <span>此操作不可撤销。</span>
         )}
       </div>
+      {scope === 'notes' && (
+        <p className="mt-2 text-sm leading-relaxed" style={{ color: 'var(--ink-faded)' }}>
+          删除范围内的学习将一并结束，范围外的学习不受影响。
+        </p>
+      )}
       <FieldError>{error}</FieldError>
     </Modal>
   );

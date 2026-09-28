@@ -8,8 +8,9 @@
  * 结构 CRUD(建/排序/删)直接打 structureApi;读写正文和标题走 notesApi(draft / aidraft)。
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { structureApi, type StructureNode } from '@/services/structure';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { structureApi } from '@/services/structure';
+import { learningApi } from '@/services/learning';
 import { notesApi, type LearnPlan } from '@/services/workspace';
 import { banner } from '@/components/ui/banner-api';
 import { createLogger } from '@/lib/logger';
@@ -21,6 +22,7 @@ export interface Chapter {
   depth: number;
   parentId?: string;
   studied: boolean; // 有非空 aidraft = 研究过
+  isIndependentLearningRoot: boolean;
 }
 
 const logger = createLogger('learn-plan');
@@ -50,7 +52,8 @@ export function useLearningData(topicNavId: string): LearningData {
   const [topicContentItemId, setTopicContentItemId] = useState<string | null>(null);
   const [topicTitle, setTopicTitle] = useState('');
   const [allChapters, setAllChapters] = useState<Chapter[]>([]);
-  const [chapters, setChapters] = useState<Chapter[]>([]);
+  // 一个目录状态同时驱动篇目列表与正文导航，避免结构操作后两份顺序分离。
+  const chapters = useMemo(() => allChapters.filter((chapter) => chapter.depth === 0), [allChapters]);
   const [plan, setPlan] = useState<LearnPlan | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
   const loadRequestIdRef = useRef(0);
@@ -90,55 +93,45 @@ export function useLearningData(topicNavId: string): LearningData {
       setError(null);
       setPlan(null);
       setPlanError(null);
-      // visibility:'all' —— 管理端学习视图要看到未发布的新建篇目(默认 public 会把它们滤掉)
-      const res = await structureApi.getChildren(topicNavId, {
-        scope: 'notes',
-        visibility: 'all',
-      });
-      // path 是面包屑,末项(或 id 匹配项)= 主题节点本身,从中取它的 contentItemId
-      let self =
-        res.path.find((p) => p.id === topicNavId) ?? res.path[res.path.length - 1];
-      if (!self?.contentItemId) {
-        // 兜底:getChildren 的 path 不含自身/无 contentItemId 时,显式取该节点路径
-        const path = await structureApi
-          .getPathByNodeId(topicNavId)
-          .catch(() => [] as typeof res.path);
-        self = path.find((p) => p.id === topicNavId) ?? path[path.length - 1] ?? self;
-      }
-      const topicCid = self?.contentItemId ?? null;
-
-      const kids = res.children;
-      const allNodes = await collectDescendantNodes(topicNavId, kids);
+      const outline = await learningApi.outline(topicNavId);
+      const topicCid = outline.rootNode.contentItemId ?? null;
       // 一次批量探针判每篇是否研究过(有非空 aidraft);整批失败按"都没研究"降级,不阻塞整体。
       // 替掉原先「逐篇 getAiDraft 拉整篇正文只为一个布尔」的 N 个重复请求 + 流量浪费。
-      const cids = allNodes
-        .map((c) => c.contentItemId)
+      const cids = outline.chapters
+        .filter((chapter) => !chapter.isIndependentLearningRoot)
+        .map((chapter) => chapter.node.contentItemId)
         .filter((id): id is string => !!id);
       const studiedSet = new Set(
         cids.length
           ? await notesApi
               .aidraftsExist(cids)
               .then((r) => r.ids)
-              .catch(() => [] as string[])
+              .catch((cause) => {
+                logger.warn('load_studied_status_failed', {
+                  topicNavId,
+                  error: cause instanceof Error ? cause.message : String(cause),
+                });
+                return [] as string[];
+              })
           : [],
       );
-      const toChapter = (c: TreeNodeRef): Chapter => ({
-          navId: c.id,
-          contentItemId: c.contentItemId ?? '',
-          title: c.name,
-          depth: c.depth,
-          parentId: c.parentId,
-          studied: !!c.contentItemId && studiedSet.has(c.contentItemId),
-        });
       if (requestId !== loadRequestIdRef.current) return;
       setTopicContentItemId(topicCid);
-      setTopicTitle(self?.name ?? '学习');
-      setAllChapters(allNodes.map(toChapter));
-      setChapters(kids.map((c) => toChapter({ ...c, depth: 0 })));
+      setTopicTitle(outline.rootNode.name);
+      setAllChapters(outline.chapters.map(({ node, depth, isIndependentLearningRoot }) => ({
+        navId: node.id,
+        contentItemId: node.contentItemId ?? '',
+        title: node.name,
+        depth,
+        parentId: node.parentId,
+        studied: !isIndependentLearningRoot && !!node.contentItemId && studiedSet.has(node.contentItemId),
+        isIndependentLearningRoot,
+      })));
       await loadPlan(topicCid);
     } catch (e) {
       if (requestId === loadRequestIdRef.current) {
         setError(e instanceof Error ? e.message : '加载失败');
+        logger.error('load_directory_failed', { topicNavId, error: e instanceof Error ? e.message : String(e) });
       }
     } finally {
       if (requestId === loadRequestIdRef.current) setLoading(false);
@@ -153,7 +146,7 @@ export function useLearningData(topicNavId: string): LearningData {
     });
   }, [load]);
 
-  // 写操作统一:失败弹 banner + reload 把乐观更新纠回服务端真值(不静默吞错,守 CLAUDE.md "catch 必 log/提示")。
+  // 结构变更完成后统一重读后端目录，删除、排序和归属共用同一份权威状态。
   const createChapter = useCallback(async (title: string) => {
     try {
       const node = await structureApi.createNode({
@@ -172,31 +165,26 @@ export function useLearningData(topicNavId: string): LearningData {
 
   const removeChapter = useCallback(
     async (navId: string) => {
-      setChapters((cs) => cs.filter((c) => c.navId !== navId));
       try {
         await structureApi.deleteNode(navId);
       } catch (e) {
-        banner.error(e instanceof Error ? e.message : '删除失败');
-        await load();
+        logger.error('delete_chapter_failed', { navId, error: e instanceof Error ? e.message : String(e) });
+        throw e;
       }
+      await load();
     },
     [load],
   );
 
   const reorderChapters = useCallback(
     async (navIds: string[]) => {
-      // 乐观重排,再持久化;失败弹 banner + reload 纠回。
-      setChapters((cs) =>
-        navIds
-          .map((id) => cs.find((c) => c.navId === id))
-          .filter((c): c is Chapter => !!c),
-      );
       try {
         await structureApi.reorderSiblings(topicNavId, navIds);
       } catch (e) {
         banner.error(e instanceof Error ? e.message : '排序失败');
-        await load();
+        logger.error('reorder_chapters_failed', { topicNavId, error: e instanceof Error ? e.message : String(e) });
       }
+      await load();
     },
     [topicNavId, load],
   );
@@ -205,9 +193,6 @@ export function useLearningData(topicNavId: string): LearningData {
   // 消掉「refreshLeft 拉一遍 body + refreshStudied 内部又拉一遍同一 aidraft」的重复请求。
   const setStudied = useCallback((contentItemId: string, studied: boolean) => {
     setAllChapters((cs) =>
-      cs.map((c) => (c.contentItemId === contentItemId ? { ...c, studied } : c)),
-    );
-    setChapters((cs) =>
       cs.map((c) => (c.contentItemId === contentItemId ? { ...c, studied } : c)),
     );
   }, []);
@@ -234,49 +219,4 @@ export function useLearningData(topicNavId: string): LearningData {
     setStudied,
     refreshPlan,
   };
-}
-
-type TreeNodeRef = {
-  id: string;
-  name: string;
-  parentId?: string;
-  contentItemId?: string;
-  depth: number;
-};
-
-async function collectDescendantNodes(
-  rootNodeId: string,
-  rootChildren?: StructureNode[],
-): Promise<TreeNodeRef[]> {
-  const result: TreeNodeRef[] = [];
-
-  async function visit(
-    parentId: string,
-    depth: number,
-    knownChildren?: StructureNode[],
-  ) {
-    const children =
-      knownChildren ??
-      (
-        await structureApi.getChildren(parentId, {
-          scope: 'notes',
-          visibility: 'all',
-        })
-      ).children;
-    for (const child of children) {
-      result.push({
-        id: child.id,
-        name: child.name,
-        parentId: child.parentId,
-        contentItemId: child.contentItemId,
-        depth,
-      });
-      if (child.hasChildren) {
-        await visit(child.id, depth + 1);
-      }
-    }
-  }
-
-  await visit(rootNodeId, 0, rootChildren);
-  return result;
 }

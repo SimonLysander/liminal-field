@@ -12,10 +12,13 @@ describe('StructureMutationService', () => {
   beforeEach(() => {
     navigationService = {
       updateStructureNode: jest.fn(),
-      deleteNavigationNodeById: jest.fn(),
+      getDeletableSubtree: jest.fn().mockResolvedValue([]),
+      deletePreparedSubtree: jest.fn(),
     } as unknown as jest.Mocked<NavigationNodeService>;
     learningProjectService = {
-      assertDeleteAllowed: jest.fn(),
+      runSubtreeDeletion: jest.fn(
+        (_ids: string[], operation: () => Promise<void>) => operation(),
+      ),
     } as unknown as jest.Mocked<LearningProjectService>;
     topologyLock = {
       runExclusive: jest.fn((operation: () => Promise<unknown>) => operation()),
@@ -68,11 +71,22 @@ describe('StructureMutationService', () => {
     await service.deleteStructureNode('node');
 
     expect(topologyLock.runExclusive).toHaveBeenCalledTimes(1);
-    expect(learningProjectService.assertDeleteAllowed).toHaveBeenCalledWith(
-      'node',
+    expect(navigationService.getDeletableSubtree).toHaveBeenCalledWith('node');
+    expect(learningProjectService.runSubtreeDeletion).toHaveBeenCalledWith(
+      [],
+      expect.any(Function),
     );
-    expect(navigationService.deleteNavigationNodeById).toHaveBeenCalledWith(
-      'node',
+    expect(navigationService.deletePreparedSubtree).toHaveBeenCalledWith([]);
+  });
+
+  it('does not end learning or delete anything when validation fails', async () => {
+    navigationService.getDeletableSubtree.mockRejectedValue(
+      new Error('published'),
     );
+    await expect(service.deleteStructureNode('node')).rejects.toThrow(
+      'published',
+    );
+    expect(learningProjectService.runSubtreeDeletion).not.toHaveBeenCalled();
+    expect(navigationService.deletePreparedSubtree).not.toHaveBeenCalled();
   });
 });

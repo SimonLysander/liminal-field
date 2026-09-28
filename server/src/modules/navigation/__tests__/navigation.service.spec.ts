@@ -5,6 +5,7 @@ import { ContentVisibility } from '../../content/dto/content-query.dto';
 import { NavigationScope } from '../navigation.entity';
 import { NavigationRepository } from '../navigation.repository';
 import { NavigationNodeService } from '../navigation.service';
+import { NavigationTopologyLockService } from '../navigation-topology-lock.service';
 
 // 节点同质化(2026-05-29):无 nodeType,每个节点都挂 contentItemId,"容器" 由是否有子节点判定。
 function createNode(input: {
@@ -52,9 +53,16 @@ describe('NavigationNodeService', () => {
       createContent: jest.fn(),
       assertContentItemExists: jest.fn(),
       isContentItemReadable: jest.fn(),
+      getContentListItem: jest
+        .fn()
+        .mockResolvedValue({ publishedVersion: null, title: 'x' }),
     } as unknown as jest.Mocked<ContentService>;
 
-    service = new NavigationNodeService(navigationRepository, contentService);
+    service = new NavigationNodeService(
+      navigationRepository,
+      contentService,
+      new NavigationTopologyLockService(),
+    );
   });
 
   it('创建节点:校验内容项存在后写入(不带 nodeType)', async () => {
@@ -92,6 +100,38 @@ describe('NavigationNodeService', () => {
         name: 'Invalid node',
       } as never),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('checks parent existence after a concurrent topology operation releases the lock', async () => {
+    const lock = new NavigationTopologyLockService();
+    service = new NavigationNodeService(
+      navigationRepository,
+      contentService,
+      lock,
+    );
+    let release!: () => void;
+    let entered!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const deletion = lock.runExclusive(() => {
+      entered();
+      return new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    });
+    await ready;
+    const creation = service.createNavigationNode({
+      name: 'late child',
+      parentId: new Types.ObjectId().toString(),
+      contentItemId: 'ci_late',
+    });
+    expect(navigationRepository.findById).not.toHaveBeenCalled();
+    navigationRepository.findById.mockResolvedValue(null);
+    release();
+    await deletion;
+    await expect(creation).rejects.toBeInstanceOf(NotFoundException);
+    expect(navigationRepository.create).not.toHaveBeenCalled();
   });
 
   it('结构创建未传 sortOrder 时追加到同级最后', async () => {
@@ -144,17 +184,42 @@ describe('NavigationNodeService', () => {
     navigationRepository.findAllDescendants.mockResolvedValue([child] as never);
     navigationRepository.deleteManyByIds.mockResolvedValue(undefined);
     // 未发布 → 允许删
-    (
-      contentService as unknown as { getContentListItem: jest.Mock }
-    ).getContentListItem = jest
-      .fn()
-      .mockResolvedValue({ publishedVersion: null, title: 'x' });
 
-    await service.deleteNavigationNodeById(parent._id.toString());
+    await service.deletePreparedSubtree(
+      await service.getDeletableSubtree(parent._id.toString()),
+    );
 
     expect(navigationRepository.deleteManyByIds).toHaveBeenCalledWith([
       parent._id.toString(),
       child._id.toString(),
+    ]);
+  });
+
+  it('does not delete anything when checking publication fails unexpectedly', async () => {
+    const page = createNode({ name: 'page', contentItemId: 'ci_page' });
+    navigationRepository.findById.mockResolvedValue(page as never);
+    navigationRepository.findAllDescendants.mockResolvedValue([]);
+    contentService.getContentListItem.mockRejectedValue(
+      new Error('database unavailable'),
+    );
+    await expect(
+      service.getDeletableSubtree(page._id.toString()),
+    ).rejects.toThrow('database unavailable');
+    expect(navigationRepository.deleteManyByIds).not.toHaveBeenCalled();
+  });
+
+  it('allows removing navigation for explicitly missing content', async () => {
+    const page = createNode({ name: 'page', contentItemId: 'ci_missing' });
+    navigationRepository.findById.mockResolvedValue(page as never);
+    navigationRepository.findAllDescendants.mockResolvedValue([]);
+    contentService.getContentListItem.mockRejectedValue(
+      new NotFoundException('missing content'),
+    );
+    await service.deletePreparedSubtree(
+      await service.getDeletableSubtree(page._id.toString()),
+    );
+    expect(navigationRepository.deleteManyByIds).toHaveBeenCalledWith([
+      page._id.toString(),
     ]);
   });
 

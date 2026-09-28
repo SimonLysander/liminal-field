@@ -4,11 +4,14 @@ import type {
   LearningProjectDto,
   LearningProjectResolveDto,
   LearningProjectDiscardDto,
+  LearningProjectOutlineDto,
 } from '../src/modules/learning/dto/learning-project.dto';
 import { StructureModule } from '../src/modules/structure/structure.module';
 import { EditorDraftRepository } from '../src/modules/workspace/editor-draft.repository';
 import { PendingWriteRepository } from '../src/modules/agent/approval/pending-write.repository';
-import { TestContext, login } from './helpers';
+import { LearningProjectRepository } from '../src/modules/learning/learning-project.repository';
+import { NavigationRepository } from '../src/modules/navigation/navigation.repository';
+import { TestContext, login, commitNoteContent } from './helpers';
 
 describe('Nested learning projects (e2e)', () => {
   const ctx = new TestContext();
@@ -148,7 +151,162 @@ describe('Nested learning projects (e2e)', () => {
     await supertest(ctx.app.getHttpServer())
       .delete(`/api/v1/structure-nodes/${child.id}`)
       .set('Cookie', cookie)
+      .expect(200);
+    expect(
+      (await ctx.app.get(LearningProjectRepository).findById(childProject.id))
+        ?.status,
+    ).toBe('archived');
+    expect((await resolve(parent.id)).project?.rootNodeId).toBe(parent.id);
+  });
+
+  it('deletes an ordinary child without ending its parent learning or changing sibling drafts', async () => {
+    const parent = await createNode('普通删除父级');
+    const child = await createNode('普通删除子级', parent.id);
+    const leaf = await createNode('普通删除叶子', child.id);
+    const sibling = await createNode('保留兄弟', parent.id);
+    const project = await start(parent.id);
+    await saveAi(sibling.contentItemId!, '保留初稿');
+    await supertest(ctx.app.getHttpServer())
+      .delete(`/api/v1/structure-nodes/${child.id}`)
+      .set('Cookie', cookie)
+      .expect(200);
+    expect((await resolve(sibling.id)).project?.id).toBe(project.id);
+    expect(
+      (await drafts.findAiDraftByContentItemId(sibling.contentItemId!))
+        ?.bodyMarkdown,
+    ).toBe('保留初稿');
+    await supertest(ctx.app.getHttpServer())
+      .get('/api/v1/learning/projects/resolve')
+      .query({ nodeId: leaf.id })
+      .set('Cookie', cookie)
+      .expect(404);
+  });
+
+  it('ends every learning project inside a deleted subtree while leaving outside learning active', async () => {
+    const parent = await createNode('范围删除父级');
+    const child = await createNode('范围删除子级', parent.id);
+    const nested = await createNode('范围删除独立后代', child.id);
+    const sibling = await createNode('范围外独立学习', parent.id);
+    const parentProject = await start(parent.id);
+    const childProject = await start(child.id);
+    const nestedProject = await start(nested.id);
+    const siblingProject = await start(sibling.id);
+    await supertest(ctx.app.getHttpServer())
+      .delete(`/api/v1/structure-nodes/${child.id}`)
+      .set('Cookie', cookie)
+      .expect(200);
+    const repository = ctx.app.get(LearningProjectRepository);
+    for (const project of [childProject, nestedProject]) {
+      expect((await repository.findById(project.id))?.status).toBe('archived');
+    }
+    for (const project of [parentProject, siblingProject]) {
+      expect((await repository.findById(project.id))?.status).toBe('active');
+    }
+  });
+
+  it('does not archive projects or delete nodes when any descendant is published', async () => {
+    const root = await createNode('发布保护学习根');
+    const leaf = await createNode('已发布的学习子页', root.id);
+    const project = await start(root.id);
+    await commitNoteContent(ctx.app, cookie, leaf.contentItemId!);
+    await supertest(ctx.app.getHttpServer())
+      .put(`/api/v1/spaces/notes/items/${leaf.contentItemId!}/publish`)
+      .set('Cookie', cookie)
+      .send({})
+      .expect(200);
+    await supertest(ctx.app.getHttpServer())
+      .delete(`/api/v1/structure-nodes/${root.id}`)
+      .set('Cookie', cookie)
       .expect(400);
+    expect((await resolve(leaf.id)).project?.id).toBe(project.id);
+    expect(
+      (await ctx.app.get(LearningProjectRepository).findById(project.id))
+        ?.status,
+    ).toBe('active');
+  });
+
+  it('restores learning when the navigation delete fails after projects were archived', async () => {
+    const root = await createNode('删除失败恢复学习');
+    const project = await start(root.id);
+    const remove = jest
+      .spyOn(ctx.app.get(NavigationRepository), 'deleteManyByIds')
+      .mockRejectedValueOnce(new Error('simulated delete failure'));
+    try {
+      await supertest(ctx.app.getHttpServer())
+        .delete(`/api/v1/structure-nodes/${root.id}`)
+        .set('Cookie', cookie)
+        .expect(500);
+      const restored = await ctx.app
+        .get(LearningProjectRepository)
+        .findById(project.id);
+      expect(restored?.status).toBe('active');
+      expect(restored?.archivedAt).toBeUndefined();
+      expect((await resolve(root.id)).project?.id).toBe(project.id);
+    } finally {
+      remove.mockRestore();
+    }
+  });
+
+  it('keeps ended projects ended when deletion completed but its response failed', async () => {
+    const root = await createNode('删除响应丢失');
+    const project = await start(root.id);
+    const navigation = ctx.app.get(NavigationRepository);
+    const originalDelete = navigation.deleteManyByIds.bind(navigation);
+    const remove = jest
+      .spyOn(navigation, 'deleteManyByIds')
+      .mockImplementationOnce(async (ids) => {
+        await originalDelete(ids);
+        throw new Error('simulated lost response');
+      });
+    try {
+      await supertest(ctx.app.getHttpServer())
+        .delete(`/api/v1/structure-nodes/${root.id}`)
+        .set('Cookie', cookie)
+        .expect(500);
+      expect(
+        (await ctx.app.get(LearningProjectRepository).findById(project.id))
+          ?.status,
+      ).toBe('archived');
+      expect(await navigation.findById(root.id)).toBeNull();
+    } finally {
+      remove.mockRestore();
+    }
+  });
+
+  it('returns an ordered outline with independent roots as entries instead of owned chapters', async () => {
+    const root = await createNode('目录学习根');
+    const nested = await createNode('独立目录', root.id);
+    const owned = await createNode('当前篇目', root.id);
+    const ownedLeaf = await createNode('当前子篇', owned.id);
+    await createNode('独立子篇不计入', nested.id);
+    await start(root.id);
+    await start(nested.id);
+    const readOutline = async () => {
+      const res = await supertest(ctx.app.getHttpServer())
+        .get('/api/v1/learning/projects/outline')
+        .set('Cookie', cookie)
+        .query({ nodeId: root.id })
+        .expect(200);
+      return (res.body as { data: LearningProjectOutlineDto }).data;
+    };
+    expect(
+      (await readOutline()).chapters.map((chapter) => [
+        chapter.node.id,
+        chapter.isIndependentLearningRoot,
+      ]),
+    ).toEqual([
+      [nested.id, true],
+      [owned.id, false],
+      [ownedLeaf.id, false],
+    ]);
+    await supertest(ctx.app.getHttpServer())
+      .post('/api/v1/structure-nodes/reorder')
+      .set('Cookie', cookie)
+      .send({ parentId: root.id, nodeIds: [owned.id, nested.id] })
+      .expect(201);
+    expect(
+      (await readOutline()).chapters.map((chapter) => chapter.node.id),
+    ).toEqual([owned.id, ownedLeaf.id, nested.id]);
   });
 
   it('rejects an old writer approval when the page becomes a planning root', async () => {

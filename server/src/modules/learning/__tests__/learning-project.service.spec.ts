@@ -47,10 +47,13 @@ describe('LearningProjectService', () => {
       findActiveByRootNodeIds: jest.fn().mockResolvedValue([]),
       findById: jest.fn(),
       archive: jest.fn(),
+      archiveActiveByIds: jest.fn(),
+      restoreActiveByIds: jest.fn(),
     } as unknown as jest.Mocked<LearningProjectRepository>;
     navigationRepo = {
       findAllDescendants: jest.fn().mockResolvedValue([]),
       findAllDescendantIds: jest.fn().mockResolvedValue([]),
+      findExistingIds: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<NavigationRepository>;
     navigationService = {
       findStructurePathByNodeId: jest.fn(),
@@ -226,12 +229,149 @@ describe('LearningProjectService', () => {
     expect(write).not.toHaveBeenCalled();
   });
 
-  it('still rejects deleting any subtree containing an active learning root', async () => {
-    navigationRepo.findAllDescendantIds.mockResolvedValue(['child']);
+  it('ends only the projects rooted in the deletion range before deleting', async () => {
     projectRepo.findActiveByRootNodeIds.mockResolvedValue([project('child')]);
-    await expect(service.assertDeleteAllowed('root')).rejects.toThrow(
-      '存在进行中的学习',
+    const remove = jest.fn(() => {
+      expect(projectRepo.archiveActiveByIds).toHaveBeenCalledWith(['p_child']);
+      return Promise.resolve();
+    });
+    await service.runSubtreeDeletion(['child', 'leaf'], remove);
+    expect(projectRepo.findActiveByRootNodeIds).toHaveBeenCalledWith([
+      'child',
+      'leaf',
+    ]);
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(
+      editorDraftRepo.deleteAiDraftsByContentItemIds,
+    ).not.toHaveBeenCalled();
+    expect(projectRepo.restoreActiveByIds).not.toHaveBeenCalled();
+  });
+
+  it('restores active learning when deletion fails and the root still exists', async () => {
+    projectRepo.findActiveByRootNodeIds.mockResolvedValue([project('child')]);
+    navigationRepo.findExistingIds.mockResolvedValue(['child']);
+    await expect(
+      service.runSubtreeDeletion(['child'], () =>
+        Promise.reject(new Error('delete failed')),
+      ),
+    ).rejects.toThrow('delete failed');
+    expect(projectRepo.restoreActiveByIds).toHaveBeenCalledWith(['p_child']);
+  });
+
+  it('does not delete when ending learning fails, and restores partially archived projects', async () => {
+    projectRepo.findActiveByRootNodeIds.mockResolvedValue([project('child')]);
+    projectRepo.archiveActiveByIds.mockRejectedValue(
+      new Error('archive failed'),
     );
+    navigationRepo.findExistingIds.mockResolvedValue(['child']);
+    const remove = jest.fn();
+    await expect(service.runSubtreeDeletion(['child'], remove)).rejects.toThrow(
+      'archive failed',
+    );
+    expect(remove).not.toHaveBeenCalled();
+    expect(projectRepo.restoreActiveByIds).toHaveBeenCalledWith(['p_child']);
+  });
+
+  it('does not reactivate deleted roots when the deletion response was lost', async () => {
+    projectRepo.findActiveByRootNodeIds.mockResolvedValue([
+      project('child'),
+      project('remaining'),
+    ]);
+    navigationRepo.findExistingIds.mockResolvedValue(['remaining']);
+    await expect(
+      service.runSubtreeDeletion(['child', 'remaining'], () =>
+        Promise.reject(new Error('response lost')),
+      ),
+    ).rejects.toThrow('response lost');
+    expect(projectRepo.restoreActiveByIds).toHaveBeenCalledWith([
+      'p_remaining',
+    ]);
+  });
+
+  it('reports both deletion and restoration failures', async () => {
+    projectRepo.findActiveByRootNodeIds.mockResolvedValue([project('child')]);
+    navigationRepo.findExistingIds.mockRejectedValue(
+      new Error('database unavailable'),
+    );
+    await expect(
+      service.runSubtreeDeletion(['child'], () =>
+        Promise.reject(new Error('delete failed')),
+      ),
+    ).rejects.toBeInstanceOf(AggregateError);
+  });
+
+  it('returns ordered owned chapters and independent root entries without their descendants', async () => {
+    const root = new Types.ObjectId();
+    const child = new Types.ObjectId();
+    const leaf = new Types.ObjectId();
+    const sibling = new Types.ObjectId();
+    const nested = new Types.ObjectId();
+    navigationService.findStructurePathByNodeId.mockResolvedValue([
+      node(root.toString()),
+    ]);
+    projectRepo.findActiveByRootNodeIds
+      .mockResolvedValueOnce([project(root.toString())])
+      .mockResolvedValueOnce([project(nested.toString())]);
+    navigationRepo.findAllDescendants.mockResolvedValue([
+      {
+        _id: leaf,
+        parentId: child,
+        name: 'leaf',
+        order: 0,
+        contentItemId: 'ci_leaf',
+      },
+      {
+        _id: sibling,
+        parentId: root,
+        name: 'sibling',
+        order: 2,
+        contentItemId: 'ci_sibling',
+      },
+      {
+        _id: nested,
+        parentId: root,
+        name: 'nested',
+        order: 0,
+        contentItemId: 'ci_nested',
+      },
+      {
+        _id: new Types.ObjectId(),
+        parentId: nested,
+        name: 'excluded',
+        order: 0,
+      },
+      {
+        _id: child,
+        parentId: root,
+        name: 'child',
+        order: 1,
+        contentItemId: 'ci_child',
+      },
+    ] as never);
+    const outline = await service.getOutline(root.toString());
+    expect(
+      outline.chapters.map((chapter) => [
+        chapter.node.name,
+        chapter.depth,
+        chapter.isIndependentLearningRoot,
+      ]),
+    ).toEqual([
+      ['nested', 0, true],
+      ['child', 0, false],
+      ['leaf', 1, false],
+      ['sibling', 0, false],
+    ]);
+    expect(outline.chapters[0].node.hasChildren).toBe(true);
+  });
+
+  it('rejects outlines requested from a page that inherits an ancestor project', async () => {
+    navigationService.findStructurePathByNodeId.mockResolvedValue([
+      node('root'),
+      node('leaf', 'root'),
+    ]);
+    projectRepo.findActiveByRootNodeIds.mockResolvedValue([project('root')]);
+    await expect(service.getOutline('leaf')).rejects.toThrow('学习归属已变化');
+    expect(navigationRepo.findAllDescendants).not.toHaveBeenCalled();
   });
 
   it('discards only owned pages and protects every nested independent subtree regardless of result order', async () => {
