@@ -15,7 +15,7 @@
  * - agent.afterChat    → CompactionListener（触发 compaction 检查）
  * - agent.afterToolUse → ToolUseListener（记录工具调用日志）
  */
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SessionHandler } from './session.handler';
 import { MemoryHandler } from './memory.handler';
@@ -389,13 +389,17 @@ export class AgentLifecycle {
       return ctx;
     }
     const requestedContentItemId = ctx.learningNoteId ?? ctx.learningTopicId;
-    if (!requestedContentItemId) {
-      return ctx;
+    if (
+      !requestedContentItemId ||
+      (ctx.learningNoteId && ctx.learningTopicId)
+    ) {
+      throw new BadRequestException('学习入口必须指定一个规划页面或正文页面');
     }
 
     try {
-      const resolved = await this.learningProjectService.resolveByContentItemId(
+      const resolved = await this.learningProjectService.resolveWriteTarget(
         requestedContentItemId,
+        ctx.learningTopicId ? 'plan' : 'draft',
       );
       const project = resolved.project;
       const rootContentItemId =
@@ -422,7 +426,7 @@ export class AgentLifecycle {
           err instanceof Error ? err.message : String(err)
         }`,
       );
-      return ctx;
+      throw err;
     }
   }
 

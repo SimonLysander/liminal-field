@@ -69,7 +69,9 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { buildLearningUrl } from '@/services/learning';
+import { useLearningRoute } from './useLearningRoute';
 import { CommitForm } from '../components/CommitForm';
 import {
   PlateMarkdownEditor,
@@ -1077,18 +1079,32 @@ function NodeScreen({
 
 export default function LearnView() {
   const { id: topicNavId = '' } = useParams();
+  return <LearningWorkspace key={topicNavId} topicNavId={topicNavId} />;
+}
+
+function LearningWorkspace({ topicNavId }: { topicNavId: string }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const data = useLearningData(topicNavId);
 
   const param = searchParams.get('node');
-  const currentCid = param && data.chapters.some((c) => c.contentItemId === param) ? param : null;
-  const isTopic = !currentCid;
+  const route = useLearningRoute(topicNavId, param);
+  const isTopic = route.resolved?.currentNode.id === route.resolved?.rootNode.id;
+  const currentCid = isTopic ? null : route.resolved?.currentNode.contentItemId ?? null;
 
-  // 删的正是当前篇时,落回总章(由调用方触发后,param 已失配 → 自然回总章,这里只管导航 setter)
   const onNavigate = (cid: string | null) => setSearchParams(cid ? { node: cid } : {});
 
-  if (data.loading) return <LoadingState variant="full" />;
-  if (data.error) {
+  if (route.loading) return <LoadingState variant="full" />;
+  if (route.resolved) {
+    const resolved = route.resolved;
+    const expectedCid = resolved.currentNode.id === resolved.rootNode.id
+      ? null : resolved.currentNode.contentItemId;
+    if (resolved.rootNode.id !== topicNavId || expectedCid !== param) {
+      return <Navigate to={buildLearningUrl(resolved)} replace />;
+    }
+  }
+  if (data.loading && !route.error) return <LoadingState variant="full" />;
+  const error = route.error ?? data.error;
+  if (error) {
     return (
       <div
         className="flex h-screen items-center justify-center"
@@ -1099,10 +1115,10 @@ export default function LearnView() {
             学习加载失败
           </p>
           <p className="mt-1 text-sm" style={{ color: 'var(--ink-faded)' }}>
-            {data.error}
+            {error}
           </p>
           <button
-            onClick={() => void data.reload()}
+            onClick={() => { route.retry(); void data.reload(); }}
             className="mt-4 rounded-md px-3.5 py-1.5 text-sm font-medium outline-none"
             style={{ background: 'var(--accent)', color: 'var(--accent-contrast)' }}
           >

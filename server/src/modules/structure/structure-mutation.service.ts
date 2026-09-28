@@ -22,10 +22,9 @@ export class StructureMutationService {
       return this.navigationService.updateStructureNode(id, dto);
     }
 
-    return this.topologyLock.runExclusive(async () => {
-      await this.learningProjectService.assertMoveAllowed(id, dto.parentId);
-      return this.navigationService.updateStructureNode(id, dto);
-    });
+    return this.topologyLock.runExclusive(() =>
+      this.navigationService.updateStructureNode(id, dto),
+    );
   }
 
   async deleteStructureNode(id: string): Promise<void> {

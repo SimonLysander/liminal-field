@@ -34,8 +34,7 @@ export type WorkspaceMode = 'formal' | 'draft';
 export type LearningEntryState =
   | 'loading'
   | 'available'
-  | 'active'
-  | 'blocked';
+  | 'active';
 
 export type FormalContentState = {
   id: string;

@@ -14,7 +14,6 @@ export interface LearningProjectDto {
 export interface LearningProjectResolveDto {
   project: LearningProjectDto | null;
   canStart: boolean;
-  startBlockedReason: 'descendant-project' | null;
   rootNode: StructureNodeDto;
   currentNode: StructureNodeDto;
   path: StructureNodeDto[];

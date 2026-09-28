@@ -122,10 +122,6 @@ export function FormalSidePanel({
                 <SideLink label="放弃学习" onClick={onDiscardLearning} />
               )}
             </div>
-          ) : learningState === 'blocked' ? (
-            <p className="text-xs leading-relaxed" style={{ color: 'var(--ink-ghost)' }}>
-              下级页面已有进行中的学习
-            </p>
           ) : learningState === 'loading' ? (
             <p className="text-xs leading-relaxed" style={{ color: 'var(--ink-ghost)' }}>
               正在读取学习状态

@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 // 编辑页是独立工作区，整页跳转避免把内容管理页的临时状态带入编辑器。
 import { smoothBounce } from '@/lib/motion';
+import { createLogger } from '@/lib/logger';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ContentVersionView } from '../components/ContentVersionView';
 import { FormalSidePanel } from '../components/FormalSidePanel';
@@ -22,7 +23,7 @@ import { structureApi } from '@/services/structure';
 import { deleteSession } from '@/services/agent';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { banner } from '@/components/ui/banner-api';
-import { learningApi, type LearningProjectResolve } from '@/services/learning';
+import { buildLearningUrl, learningApi, type LearningProjectResolve } from '@/services/learning';
 import {
   buildStartLearningConfirmMessage,
   getLearningEntryState,
@@ -31,6 +32,8 @@ import {
 interface ContentAdminProps {
   scope?: 'notes' | 'anthology';
 }
+
+const logger = createLogger('learning-entry');
 
 const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
   const workspace = useAdminWorkspace({ scope });
@@ -151,15 +154,9 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
   const enterLearning = useCallback(async () => {
     if (scope !== 'notes' || !activeNode?.id || !activeNode.contentItemId) return;
     try {
-      const resolved =
-        currentLearningResolve ?? (await learningApi.resolve(activeNode.id));
+      const resolved = await learningApi.resolve(activeNode.id);
       if (resolved.project) {
-        const query = `?node=${encodeURIComponent(activeNode.contentItemId)}`;
-        window.location.href = `/admin/notes/${resolved.rootNode.id}/learn${query}`;
-        return;
-      }
-      if (resolved.startBlockedReason === 'descendant-project') {
-        banner.info('下级页面已有进行中的学习，不能从当前页面重复开始');
+        window.location.href = buildLearningUrl(resolved);
         return;
       }
 
@@ -176,15 +173,15 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
     } catch (e) {
       banner.error(e instanceof Error ? e.message : '进入学习失败');
     }
-  }, [activeNode, confirm, currentLearningResolve, scope]);
+  }, [activeNode, confirm, scope]);
 
-  /* 放弃学习:清掉所属 LearningProject 下 root + 所有后代的 AI 产物,
+  /* 放弃学习:清掉所属项目的 AI 产物，排除独立子级学习及其后代,
    * 保留篇目结构与我自己的草稿/正文。删除范围以后端 resolver 为准,前端只清对应会话。 */
   const handleDiscardLearning = useCallback(async () => {
     if (!currentLearningResolve?.project) return;
     const ok = await confirm({
       title: '放弃学习',
-      message: `将清除「${currentLearningResolve.rootNode.name}」学习空间里由 Aurora 生成的规划和草稿。你创建的页面、自己写的草稿和正文都会保留。确认放弃？`,
+      message: `将清除「${currentLearningResolve.rootNode.name}」学习空间里由 Aurora 生成的规划和草稿。下级页面的独立学习，以及你创建的页面、自己写的草稿和正文都会保留。确认放弃？`,
       danger: true,
       confirmLabel: '放弃',
     });
@@ -193,15 +190,30 @@ const ContentAdmin = ({ scope = 'notes' }: ContentAdminProps = {}) => {
       const result = await learningApi.discard(
         currentLearningResolve.project.id,
       );
+      setLearningResolve(null);
       // 一并清掉 Aurora 对话会话(主题规划 + 各篇写作),否则再「开始学习」会挂着旧上下文。
       // 会话 key 与学习页一致:learn-{contentItemId}。best-effort,单条失败不阻塞。
       await Promise.all(
         result.affectedContentItemIds.map((id) =>
-          deleteSession(`learn-${id}`).catch(() => undefined),
+          deleteSession(`learn-${id}`).catch((cause: unknown) => {
+            logger.warn('session_cleanup_failed', {
+              contentItemId: id,
+              error: cause instanceof Error ? cause.message : String(cause),
+            });
+          }),
         ),
       );
-      setLearningResolve((cur) => cur ? { ...cur, project: null, canStart: true } : cur);
-      banner.success('已放弃，Aurora 生成内容与对话已清空');
+      // 放弃子级独立学习后，当前页面可能重新归属上级学习，不能直接置为空状态。
+      banner.success('已放弃学习，Aurora 生成内容已清空');
+      try {
+        setLearningResolve(await learningApi.resolve(currentLearningResolve.currentNode.id));
+      } catch (cause) {
+        logger.warn('refresh_after_discard_failed', {
+          nodeId: currentLearningResolve.currentNode.id,
+          error: cause instanceof Error ? cause.message : String(cause),
+        });
+        banner.error('学习已放弃，但状态读取失败，请刷新页面');
+      }
     } catch (e) {
       banner.error(e instanceof Error ? e.message : '放弃失败');
     }

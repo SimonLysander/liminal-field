@@ -3,25 +3,18 @@ import {
   buildStartLearningConfirmMessage,
   getLearningEntryState,
 } from '../learning-entry';
-import type { LearningProjectResolve } from '@/services/learning';
+import { buildLearningUrl, type LearningProjectResolve } from '@/services/learning';
 
 describe('buildStartLearningConfirmMessage', () => {
   it('explains the selected page and scope before creating a learning project', () => {
     expect(buildStartLearningConfirmMessage('曝光三角形')).toBe(
-      '将为「曝光三角形」开启学习空间。\n\n范围包含这个页面下方的所有页面；如果其中已有正在进行的学习，系统会阻止重复创建。',
+      '将为「曝光三角形」开启学习空间。\n\n范围包含这个页面及下方的页面。下级页面已经开始的独立学习会保留，进入这些页面时仍继续原来的学习。',
     );
   });
 
   it.each([
     [null, 'loading'],
     [resolveState({ canStart: true }), 'available'],
-    [
-      resolveState({
-        canStart: false,
-        startBlockedReason: 'descendant-project',
-      }),
-      'blocked',
-    ],
     [
       resolveState({
         canStart: false,
@@ -56,10 +49,21 @@ function resolveState(
   return {
     project: null,
     canStart: true,
-    startBlockedReason: null,
     rootNode: currentNode,
     currentNode,
     path: [currentNode],
     ...overrides,
   };
 }
+
+describe('buildLearningUrl', () => {
+  it('opens a learning root as a plan without a writer query', () => {
+    expect(buildLearningUrl(resolveState({}))).toBe('/admin/notes/root/learn');
+  });
+
+  it('opens a descendant under its resolved nearest learning root', () => {
+    const resolved = resolveState({});
+    resolved.currentNode = { ...resolved.currentNode, id: 'leaf', contentItemId: 'ci_leaf' };
+    expect(buildLearningUrl(resolved)).toBe('/admin/notes/root/learn?node=ci_leaf');
+  });
+});

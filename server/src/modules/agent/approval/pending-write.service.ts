@@ -21,6 +21,7 @@ import {
   type PendingWriteApproval,
 } from './pending-write.entity';
 import { EditorDraftRepository } from '../../workspace/editor-draft.repository';
+import { LearningProjectService } from '../../learning/learning-project.service';
 import { AgentMemoryRepository } from '../memory/agent-memory.repository';
 import { AgentMemoryObservationRepository } from '../memory/agent-memory-observation.repository';
 import { commitDraftWrite } from '../tools/write-draft.tool';
@@ -104,6 +105,7 @@ export class PendingWriteCommitService {
     private readonly editorDraftRepo: EditorDraftRepository,
     private readonly memoryRepo: AgentMemoryRepository,
     private readonly observationRepo: AgentMemoryObservationRepository,
+    private readonly learningProjectService: LearningProjectService,
   ) {}
 
   /** 精确读取单张审批卡，供跨设备慢提交按 callId 收敛到权威终态。 */
@@ -204,12 +206,15 @@ export class PendingWriteCommitService {
             );
           }
           // 与直写路径共用同一个落库入口，避免审批后退化成全文覆盖。
-          await commitDraftWrite(
-            this.editorDraftRepo,
-            pending.targetContentItemId,
-            payload,
-            now,
-            commitFence,
+          const targetId = pending.targetContentItemId;
+          await this.learningProjectService.runWrite(targetId, 'draft', () =>
+            commitDraftWrite(
+              this.editorDraftRepo,
+              targetId,
+              payload,
+              now,
+              commitFence,
+            ),
           );
           break;
         }
@@ -243,16 +248,22 @@ export class PendingWriteCommitService {
           });
           const summary =
             understanding.split(/[。！？\n]/)[0]?.slice(0, 100) ?? '';
-          const written = await this.editorDraftRepo.saveAiDraftFenced(
-            {
-              contentItemId: pending.targetContentItemId,
-              bodyMarkdown,
-              title: goal,
-              summary,
-              changeNote: 'learn-plan',
-              savedAt: now,
-            },
-            commitFence,
+          const targetId = pending.targetContentItemId;
+          const written = await this.learningProjectService.runWrite(
+            targetId,
+            'plan',
+            () =>
+              this.editorDraftRepo.saveAiDraftFenced(
+                {
+                  contentItemId: targetId,
+                  bodyMarkdown,
+                  title: goal,
+                  summary,
+                  changeNote: 'learn-plan',
+                  savedAt: now,
+                },
+                commitFence,
+              ),
           );
           if (!written) {
             throw new ApprovalSupersededError(

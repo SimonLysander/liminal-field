@@ -29,16 +29,54 @@ function mocks() {
   const obsRepo = {
     appendManyIdempotent: jest.fn().mockResolvedValue(undefined),
   };
+  const learningService = {
+    runWrite: jest.fn(
+      (_id: string, _kind: string, operation: () => Promise<unknown>) =>
+        operation(),
+    ),
+  };
   const svc = new PendingWriteCommitService(
     pendingRepo as never,
     editorRepo as never,
     memoryRepo as never,
     obsRepo as never,
+    learningService as never,
   );
-  return { svc, pendingRepo, editorRepo, memoryRepo, obsRepo };
+  return { svc, pendingRepo, editorRepo, memoryRepo, obsRepo, learningService };
 }
 
 describe('PendingWriteCommitService.approve', () => {
+  it.each(['write_draft', 'write_learn_plan'])(
+    'revalidates %s targets and preserves the AI draft when the learning role changed',
+    async (toolName) => {
+      const { svc, pendingRepo, editorRepo, learningService } = mocks();
+      pendingRepo.findById.mockResolvedValue({
+        sessionKey: 's',
+        toolName,
+        targetContentItemId: 'ci',
+        payload:
+          toolName === 'write_draft'
+            ? { markdown: '正文', changeSummary: '改写正文' }
+            : {
+                goal: '目标',
+                understanding: '理解',
+                items: [{ title: '篇目', thread: '结构', why: '原因' }],
+                conclusion: '总结',
+              },
+      });
+      learningService.runWrite.mockRejectedValue(new Error('学习归属已变化'));
+
+      await expect(svc.approve('tc', 's')).rejects.toThrow('学习归属已变化');
+      expect(learningService.runWrite).toHaveBeenCalledWith(
+        'ci',
+        toolName === 'write_draft' ? 'draft' : 'plan',
+        expect.any(Function),
+      );
+      expect(editorRepo.saveAiDraftFenced).not.toHaveBeenCalled();
+      expect(pendingRepo.completeApproval).not.toHaveBeenCalled();
+      expect(pendingRepo.reopenAfterFailedApproval).toHaveBeenCalled();
+    },
+  );
   it('pending 不存在 → not_found', async () => {
     const { svc, pendingRepo } = mocks();
     pendingRepo.findById.mockResolvedValue(null);

@@ -1,29 +1,35 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { Types } from 'mongoose';
 import { LearningProjectService } from '../learning-project.service';
 import { LearningProjectRepository } from '../learning-project.repository';
 import { NavigationRepository } from '../../navigation/navigation.repository';
 import { NavigationNodeService } from '../../navigation/navigation.service';
+import { NavigationTopologyLockService } from '../../navigation/navigation-topology-lock.service';
 import { EditorDraftRepository } from '../../workspace/editor-draft.repository';
 import type { StructureNodeDto } from '../../navigation/dto/structure-node.dto';
-import { NavigationTopologyLockService } from '../../navigation/navigation-topology-lock.service';
+import type { LearningProjectDto } from '../dto/learning-project.dto';
 
-function node(input: {
-  id: string;
-  name?: string;
-  parentId?: string;
-  contentItemId: string;
-}): StructureNodeDto {
+function node(id: string, parentId?: string): StructureNodeDto {
   return {
-    id: input.id,
-    name: input.name ?? input.id,
+    id,
+    name: id,
     type: 'DOC',
     scope: 'notes',
-    parentId: input.parentId,
-    contentItemId: input.contentItemId,
+    parentId,
+    contentItemId: `ci_${id}`,
     sortOrder: 0,
     hasChildren: false,
     createdAt: new Date('2026-07-09T00:00:00.000Z'),
     updatedAt: undefined,
+  };
+}
+
+function project(rootNodeId: string): LearningProjectDto {
+  return {
+    id: `p_${rootNodeId}`,
+    rootNodeId,
+    rootContentItemId: `ci_${rootNodeId}`,
+    status: 'active',
   };
 }
 
@@ -38,28 +44,24 @@ describe('LearningProjectService', () => {
   beforeEach(() => {
     projectRepo = {
       createActive: jest.fn(),
-      findActiveByRootNodeIds: jest.fn(),
+      findActiveByRootNodeIds: jest.fn().mockResolvedValue([]),
       findById: jest.fn(),
       archive: jest.fn(),
     } as unknown as jest.Mocked<LearningProjectRepository>;
-
     navigationRepo = {
-      findAllDescendants: jest.fn(),
-      findAllDescendantIds: jest.fn(),
+      findAllDescendants: jest.fn().mockResolvedValue([]),
+      findAllDescendantIds: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<NavigationRepository>;
-
     navigationService = {
       findStructurePathByNodeId: jest.fn(),
+      findStructurePathByContentItemId: jest.fn(),
     } as unknown as jest.Mocked<NavigationNodeService>;
-
     editorDraftRepo = {
-      deleteAiDraftsByContentItemIds: jest.fn(),
+      deleteAiDraftsByContentItemIds: jest.fn().mockResolvedValue(0),
     } as unknown as jest.Mocked<EditorDraftRepository>;
-
     topologyLock = {
       runExclusive: jest.fn((operation: () => Promise<unknown>) => operation()),
     } as unknown as jest.Mocked<NavigationTopologyLockService>;
-
     service = new LearningProjectService(
       projectRepo,
       navigationRepo,
@@ -69,300 +71,247 @@ describe('LearningProjectService', () => {
     );
   });
 
-  it('resolveByNodeId returns startable state when no ancestor has an active project', async () => {
-    const root = node({ id: 'root', contentItemId: 'ci_root' });
-    const child = node({
-      id: 'child',
-      parentId: 'root',
-      contentItemId: 'ci_child',
-    });
+  it('allows starting on a parent without inspecting existing descendant projects', async () => {
     navigationService.findStructurePathByNodeId.mockResolvedValue([
-      root,
-      child,
+      node('root'),
     ]);
-    projectRepo.findActiveByRootNodeIds.mockResolvedValue([]);
-    navigationRepo.findAllDescendantIds.mockResolvedValue([]);
+    const result = await service.resolveByNodeId('root');
 
-    const result = await service.resolveByNodeId('child');
-
-    expect(result.project).toBeNull();
-    expect(result.canStart).toBe(true);
-    expect(result.startBlockedReason).toBeNull();
-    expect(result.currentNode.id).toBe('child');
-    expect(result.rootNode.id).toBe('child');
-  });
-
-  it('resolveByNodeId picks the nearest active ancestor project', async () => {
-    const root = node({ id: 'root', contentItemId: 'ci_root' });
-    const mid = node({ id: 'mid', parentId: 'root', contentItemId: 'ci_mid' });
-    const leaf = node({
-      id: 'leaf',
-      parentId: 'mid',
-      contentItemId: 'ci_leaf',
+    expect(result).toMatchObject({
+      project: null,
+      canStart: true,
+      rootNode: { id: 'root' },
     });
-    navigationService.findStructurePathByNodeId.mockResolvedValue([
-      root,
-      mid,
-      leaf,
-    ]);
-    projectRepo.findActiveByRootNodeIds.mockResolvedValue([
-      {
-        id: 'p_root',
-        rootNodeId: 'root',
-        rootContentItemId: 'ci_root',
-        status: 'active',
-      },
-      {
-        id: 'p_mid',
-        rootNodeId: 'mid',
-        rootContentItemId: 'ci_mid',
-        status: 'active',
-      },
-    ] as never);
-
-    const result = await service.resolveByNodeId('leaf');
-
-    expect(result.project?.id).toBe('p_mid');
-    expect(result.rootNode.id).toBe('mid');
-    expect(result.canStart).toBe(false);
-    expect(result.startBlockedReason).toBeNull();
+    expect(projectRepo.findActiveByRootNodeIds).toHaveBeenCalledTimes(1);
+    expect(projectRepo.findActiveByRootNodeIds).toHaveBeenCalledWith(['root']);
     expect(navigationRepo.findAllDescendantIds).not.toHaveBeenCalled();
   });
 
-  it('resolveByNodeId blocks starting from a parent with an active descendant project', async () => {
-    const root = node({ id: 'root', contentItemId: 'ci_root' });
-    navigationService.findStructurePathByNodeId.mockResolvedValue([root]);
-    navigationRepo.findAllDescendantIds.mockResolvedValue(['child']);
-    projectRepo.findActiveByRootNodeIds
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        {
-          id: 'p_child',
-          rootNodeId: 'child',
-          rootContentItemId: 'ci_child',
-          status: 'active',
-        },
-      ] as never);
+  it.each(['mid', 'leaf'])(
+    'resolves %s to its nearest independent learning root',
+    async (id) => {
+      const path = [node('root'), node('mid', 'root'), node('leaf', 'mid')];
+      navigationService.findStructurePathByNodeId.mockResolvedValue(
+        path.slice(0, id === 'mid' ? 2 : 3),
+      );
+      projectRepo.findActiveByRootNodeIds.mockResolvedValue([
+        project('root'),
+        project('mid'),
+      ]);
 
-    const result = await service.resolveByNodeId('root');
+      const result = await service.resolveByNodeId(id);
 
-    expect(result.project).toBeNull();
-    expect(result.canStart).toBe(false);
-    expect(result.startBlockedReason).toBe('descendant-project');
-  });
+      expect(result).toMatchObject({
+        project: project('mid'),
+        canStart: false,
+        rootNode: { id: 'mid' },
+        currentNode: { id },
+      });
+    },
+  );
 
-  it('startProject rejects roots that overlap an existing active project', async () => {
-    const root = node({ id: 'root', contentItemId: 'ci_root' });
-    navigationService.findStructurePathByNodeId.mockResolvedValue([root]);
-    navigationRepo.findAllDescendants.mockResolvedValue([
-      { _id: { toString: () => 'child' }, contentItemId: 'ci_child' },
-    ] as never);
-    projectRepo.findActiveByRootNodeIds.mockResolvedValue([
-      {
-        id: 'p_child',
-        rootNodeId: 'child',
-        rootContentItemId: 'ci_child',
-        status: 'active',
-      },
-    ] as never);
-
-    await expect(service.startProject('root')).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
-    expect(projectRepo.createActive).not.toHaveBeenCalled();
-  });
-
-  it('startProject maps duplicate active-root insert races to a business error', async () => {
-    const root = node({ id: 'root', contentItemId: 'ci_root' });
-    navigationService.findStructurePathByNodeId.mockResolvedValue([root]);
-    navigationRepo.findAllDescendants.mockResolvedValue([]);
-    projectRepo.findActiveByRootNodeIds.mockResolvedValue([]);
-    projectRepo.createActive.mockRejectedValue({ code: 11000 });
-
-    await expect(service.startProject('root')).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
-  });
-
-  it('startProject checks ancestors and descendants while keeping sibling projects independent', async () => {
-    const parent = node({ id: 'parent', contentItemId: 'ci_parent' });
-    const root = node({
-      id: 'root',
-      parentId: 'parent',
-      contentItemId: 'ci_root',
-    });
+  it('does not assign sibling pages to an independent child project', async () => {
     navigationService.findStructurePathByNodeId.mockResolvedValue([
-      parent,
-      root,
+      node('root'),
+      node('sibling', 'root'),
     ]);
-    navigationRepo.findAllDescendants.mockResolvedValue([
-      { _id: { toString: () => 'child' }, contentItemId: 'ci_child' },
-      { _id: { toString: () => 'leaf' }, contentItemId: 'ci_leaf' },
-    ] as never);
-    projectRepo.findActiveByRootNodeIds.mockResolvedValue([]);
-    projectRepo.createActive.mockResolvedValue({
-      id: 'p1',
-      rootNodeId: 'root',
-      rootContentItemId: 'ci_root',
-      status: 'active',
-    });
-
-    await service.startProject('root');
-
+    projectRepo.findActiveByRootNodeIds.mockResolvedValue([project('root')]);
+    expect((await service.resolveByNodeId('sibling')).project?.id).toBe(
+      'p_root',
+    );
     expect(projectRepo.findActiveByRootNodeIds).toHaveBeenCalledWith([
-      'parent',
       'root',
-      'child',
-      'leaf',
+      'sibling',
     ]);
+  });
+
+  it('creates a project without ancestor or descendant exclusivity', async () => {
+    navigationService.findStructurePathByNodeId.mockResolvedValue([
+      node('parent'),
+      node('root', 'parent'),
+    ]);
+    projectRepo.createActive.mockResolvedValue(project('root'));
+    await expect(service.startProject('root')).resolves.toEqual(
+      project('root'),
+    );
+
+    expect(projectRepo.findActiveByRootNodeIds).toHaveBeenCalledWith(['root']);
     expect(projectRepo.createActive).toHaveBeenCalledWith({
       rootNodeId: 'root',
       rootContentItemId: 'ci_root',
     });
-  });
-
-  it('startProject serializes topology validation and project creation', async () => {
-    const root = node({ id: 'root', contentItemId: 'ci_root' });
-    navigationService.findStructurePathByNodeId.mockResolvedValue([root]);
-    navigationRepo.findAllDescendants.mockResolvedValue([]);
-    projectRepo.findActiveByRootNodeIds.mockResolvedValue([]);
-    projectRepo.createActive.mockResolvedValue({
-      id: 'p1',
-      rootNodeId: 'root',
-      rootContentItemId: 'ci_root',
-      status: 'active',
-    });
-
-    await service.startProject('root');
-
+    expect(navigationRepo.findAllDescendants).not.toHaveBeenCalled();
     expect(topologyLock.runExclusive).toHaveBeenCalledTimes(1);
-    expect(projectRepo.createActive).toHaveBeenCalledTimes(1);
   });
 
-  it('assertMoveAllowed permits moving ordinary nodes between projects', async () => {
-    navigationRepo.findAllDescendantIds.mockResolvedValue(['child']);
-    projectRepo.findActiveByRootNodeIds.mockResolvedValue([]);
-
-    await expect(
-      service.assertMoveAllowed('node', 'target'),
-    ).resolves.toBeUndefined();
-
-    expect(navigationService.findStructurePathByNodeId).not.toHaveBeenCalled();
+  it('rejects a second active project on the exact same page', async () => {
+    navigationService.findStructurePathByNodeId.mockResolvedValue([
+      node('root'),
+    ]);
+    projectRepo.findActiveByRootNodeIds.mockResolvedValue([project('root')]);
+    await expect(service.startProject('root')).rejects.toThrow(
+      '当前页面已开始学习',
+    );
+    expect(projectRepo.createActive).not.toHaveBeenCalled();
   });
 
-  it('assertMoveAllowed rejects nesting an active project under another one', async () => {
-    const target = node({ id: 'target', contentItemId: 'ci_target' });
-    navigationRepo.findAllDescendantIds.mockResolvedValue(['project-root']);
-    projectRepo.findActiveByRootNodeIds
-      .mockResolvedValueOnce([
-        {
-          id: 'moving-project',
-          rootNodeId: 'project-root',
-          rootContentItemId: 'ci_moving',
-          status: 'active',
-        },
-      ])
-      .mockResolvedValueOnce([
-        {
-          id: 'target-project',
-          rootNodeId: 'target',
-          rootContentItemId: 'ci_target',
-          status: 'active',
-        },
-      ]);
-    navigationService.findStructurePathByNodeId.mockResolvedValue([target]);
-
-    await expect(service.assertMoveAllowed('node', 'target')).rejects.toThrow(
-      '两个进行中的学习项目范围重叠',
+  it('maps the database unique-root race to the same business error', async () => {
+    navigationService.findStructurePathByNodeId.mockResolvedValue([
+      node('root'),
+    ]);
+    projectRepo.createActive.mockRejectedValue({ code: 11000 });
+    await expect(service.startProject('root')).rejects.toThrow(
+      '当前页面已开始学习',
     );
   });
 
-  it('assertMoveAllowed leaves structural cycle detection to navigation', async () => {
-    const target = node({ id: 'target', contentItemId: 'ci_target' });
-    const project = {
-      id: 'same-project',
-      rootNodeId: 'project-root',
-      rootContentItemId: 'ci_project',
-      status: 'active' as const,
-    };
-    navigationRepo.findAllDescendantIds.mockResolvedValue(['project-root']);
-    projectRepo.findActiveByRootNodeIds
-      .mockResolvedValueOnce([project])
-      .mockResolvedValueOnce([project]);
-    navigationService.findStructurePathByNodeId.mockResolvedValue([target]);
+  it.each([
+    ['root', 'plan', true],
+    ['leaf', 'draft', true],
+    ['root', 'draft', false],
+    ['leaf', 'plan', false],
+  ] as const)(
+    'guards the %s page for a %s write',
+    async (id, kind, allowed) => {
+      const path =
+        id === 'root' ? [node('root')] : [node('root'), node('leaf', 'root')];
+      navigationService.findStructurePathByContentItemId.mockResolvedValue(
+        path,
+      );
+      navigationService.findStructurePathByNodeId.mockResolvedValue(path);
+      projectRepo.findActiveByRootNodeIds.mockResolvedValue([project('root')]);
+      const write = jest.fn().mockResolvedValue('saved');
 
-    await expect(
-      service.assertMoveAllowed('node', 'target'),
-    ).resolves.toBeUndefined();
+      if (allowed) {
+        await expect(service.runWrite(`ci_${id}`, kind, write)).resolves.toBe(
+          'saved',
+        );
+        expect(write).toHaveBeenCalledTimes(1);
+      } else {
+        await expect(
+          service.runWrite(`ci_${id}`, kind, write),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(write).not.toHaveBeenCalled();
+      }
+      expect(topologyLock.runExclusive).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('rejects a stale writer after its page becomes an independent learning root', async () => {
+    const path = [node('root'), node('child', 'root')];
+    navigationService.findStructurePathByContentItemId.mockResolvedValue(path);
+    navigationService.findStructurePathByNodeId.mockResolvedValue(path);
+    projectRepo.findActiveByRootNodeIds.mockResolvedValue([
+      project('root'),
+      project('child'),
+    ]);
+    const write = jest.fn();
+    await expect(service.runWrite('ci_child', 'draft', write)).rejects.toThrow(
+      '学习归属已变化',
+    );
+    expect(write).not.toHaveBeenCalled();
   });
 
-  it('assertDeleteAllowed rejects deleting a subtree with an active project', async () => {
-    navigationRepo.findAllDescendantIds.mockResolvedValue(['project-root']);
-    projectRepo.findActiveByRootNodeIds.mockResolvedValue([
-      {
-        id: 'p1',
-        rootNodeId: 'project-root',
-        rootContentItemId: 'ci_root',
-        status: 'active',
-      },
+  it('rejects writes after the learning project has been discarded', async () => {
+    navigationService.findStructurePathByContentItemId.mockResolvedValue([
+      node('root'),
     ]);
+    navigationService.findStructurePathByNodeId.mockResolvedValue([
+      node('root'),
+    ]);
+    const write = jest.fn();
+    await expect(service.runWrite('ci_root', 'plan', write)).rejects.toThrow(
+      '学习归属已变化',
+    );
+    expect(write).not.toHaveBeenCalled();
+  });
 
-    await expect(service.assertDeleteAllowed('node')).rejects.toThrow(
+  it('still rejects deleting any subtree containing an active learning root', async () => {
+    navigationRepo.findAllDescendantIds.mockResolvedValue(['child']);
+    projectRepo.findActiveByRootNodeIds.mockResolvedValue([project('child')]);
+    await expect(service.assertDeleteAllowed('root')).rejects.toThrow(
       '存在进行中的学习',
     );
   });
 
-  it('discardProject deletes root and descendant aidrafts then archives the project', async () => {
+  it('discards only owned pages and protects every nested independent subtree regardless of result order', async () => {
+    const root = new Types.ObjectId();
+    const child = new Types.ObjectId();
+    const middle = new Types.ObjectId();
+    const leaf = new Types.ObjectId();
+    const sibling = new Types.ObjectId();
+    const nested = new Types.ObjectId();
+    const nodes = [
+      { _id: leaf, parentId: middle, contentItemId: 'ci_leaf' },
+      { _id: sibling, parentId: root, contentItemId: 'ci_sibling' },
+      { _id: child, parentId: root, contentItemId: 'ci_child' },
+      { _id: nested, parentId: root, contentItemId: 'ci_nested' },
+      { _id: middle, parentId: child, contentItemId: 'ci_middle' },
+    ];
     projectRepo.findById.mockResolvedValue({
-      id: 'p1',
-      rootNodeId: 'root',
+      ...project(root.toString()),
       rootContentItemId: 'ci_root',
-      status: 'active',
-    } as never);
-    navigationRepo.findAllDescendants.mockResolvedValue([
-      { _id: { toString: () => 'child' }, contentItemId: 'ci_child' },
-      { _id: { toString: () => 'leaf' }, contentItemId: 'ci_leaf' },
-    ] as never);
-    editorDraftRepo.deleteAiDraftsByContentItemIds.mockResolvedValue(3);
-    projectRepo.archive.mockResolvedValue({
-      id: 'p1',
-      rootNodeId: 'root',
-      rootContentItemId: 'ci_root',
-      status: 'archived',
-    } as never);
+    });
+    navigationRepo.findAllDescendants.mockResolvedValue(nodes as never);
+    projectRepo.findActiveByRootNodeIds.mockResolvedValue([
+      project(child.toString()),
+      project(nested.toString()),
+    ]);
+    editorDraftRepo.deleteAiDraftsByContentItemIds.mockResolvedValue(2);
 
-    const result = await service.discardProject('p1');
+    const result = await service.discardProject(`p_${root.toString()}`);
 
-    expect(editorDraftRepo.deleteAiDraftsByContentItemIds).toHaveBeenCalledWith(
-      ['ci_root', 'ci_child', 'ci_leaf'],
-    );
-    expect(projectRepo.archive).toHaveBeenCalledWith('p1');
-    expect(topologyLock.runExclusive).toHaveBeenCalledTimes(1);
     expect(result).toEqual({
-      affectedContentItemIds: ['ci_root', 'ci_child', 'ci_leaf'],
-      deleted: 3,
+      affectedContentItemIds: ['ci_root', 'ci_sibling'],
+      deleted: 2,
+    });
+    expect(editorDraftRepo.deleteAiDraftsByContentItemIds).toHaveBeenCalledWith(
+      ['ci_root', 'ci_sibling'],
+    );
+    expect(projectRepo.archive).toHaveBeenCalledTimes(1);
+    expect(projectRepo.archive).toHaveBeenCalledWith(`p_${root.toString()}`);
+    expect(topologyLock.runExclusive).toHaveBeenCalledTimes(1);
+  });
+
+  it('discards the full current subtree if it has no independent child projects', async () => {
+    projectRepo.findById.mockResolvedValue(project('root'));
+    navigationRepo.findAllDescendants.mockResolvedValue([
+      { _id: new Types.ObjectId(), contentItemId: 'ci_leaf' },
+    ] as never);
+    editorDraftRepo.deleteAiDraftsByContentItemIds.mockResolvedValue(2);
+    expect(await service.discardProject('p_root')).toEqual({
+      affectedContentItemIds: ['ci_root', 'ci_leaf'],
+      deleted: 2,
     });
   });
 
-  it('discardProject is idempotent for archived projects', async () => {
+  it('does not archive a project if draft deletion fails', async () => {
+    projectRepo.findById.mockResolvedValue(project('root'));
+    editorDraftRepo.deleteAiDraftsByContentItemIds.mockRejectedValue(
+      new Error('database unavailable'),
+    );
+    await expect(service.discardProject('p_root')).rejects.toThrow(
+      'database unavailable',
+    );
+    expect(projectRepo.archive).not.toHaveBeenCalled();
+  });
+
+  it('is idempotent for archived projects', async () => {
     projectRepo.findById.mockResolvedValue({
-      id: 'p1',
-      rootNodeId: 'root',
-      rootContentItemId: 'ci_root',
+      ...project('root'),
       status: 'archived',
-    } as never);
-
-    const result = await service.discardProject('p1');
-
-    expect(result).toEqual({ affectedContentItemIds: [], deleted: 0 });
+    });
+    expect(await service.discardProject('p_root')).toEqual({
+      affectedContentItemIds: [],
+      deleted: 0,
+    });
     expect(
       editorDraftRepo.deleteAiDraftsByContentItemIds,
     ).not.toHaveBeenCalled();
   });
 
-  it('discardProject rejects missing projects', async () => {
+  it('rejects missing projects', async () => {
     projectRepo.findById.mockResolvedValue(null);
-
     await expect(service.discardProject('missing')).rejects.toBeInstanceOf(
       NotFoundException,
     );

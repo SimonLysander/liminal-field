@@ -16,7 +16,6 @@ export interface LearningProject {
 export interface LearningProjectResolve {
   project: LearningProject | null;
   canStart: boolean;
-  startBlockedReason: 'descendant-project' | null;
   rootNode: StructureNode;
   currentNode: StructureNode;
   path: StructureNode[];
@@ -25,6 +24,15 @@ export interface LearningProjectResolve {
 export interface LearningProjectDiscardResult {
   affectedContentItemIds: string[];
   deleted: number;
+}
+
+/** 学习根进入规划页，其余页面进入最近学习根下的正文页。 */
+export function buildLearningUrl(resolved: LearningProjectResolve): string {
+  const base = `/admin/notes/${encodeURIComponent(resolved.rootNode.id)}/learn`;
+  const cid = resolved.currentNode.contentItemId;
+  return resolved.currentNode.id !== resolved.rootNode.id && cid
+    ? `${base}?node=${encodeURIComponent(cid)}`
+    : base;
 }
 
 export const learningApi = {

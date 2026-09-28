@@ -82,6 +82,87 @@ describe('AgentLifecycle.onSessionLoad', () => {
 });
 
 describe('AgentLifecycle.onBeforeChat', () => {
+  function learningLifecycle() {
+    const assemble = jest.fn().mockReturnValue({});
+    const resolveWriteTarget = jest.fn();
+    const lifecycle = new AgentLifecycle(
+      {} as never,
+      { loadCore: jest.fn().mockResolvedValue([]) } as never,
+      { buildSystemPrompt: jest.fn().mockReturnValue('system') } as never,
+      { assemble } as never,
+      {} as never,
+      { getOwnerProfile: jest.fn().mockResolvedValue({ name: '' }) } as never,
+      { findSession: jest.fn().mockResolvedValue(null) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {
+        findCurrentView: jest.fn().mockResolvedValue(null),
+        findRecent: jest.fn().mockResolvedValue([]),
+      } as never,
+      { findByIds: jest.fn().mockResolvedValue([]) } as never,
+      { resolveWriteTarget } as never,
+    );
+    return { lifecycle, assemble, resolveWriteTarget };
+  }
+
+  it.each(['plan', 'draft'] as const)(
+    'checks the current %s role before assembling tools',
+    async (kind) => {
+      const { lifecycle, assemble, resolveWriteTarget } = learningLifecycle();
+      resolveWriteTarget.mockRejectedValue(new Error('学习归属已变化'));
+      await expect(
+        lifecycle.onBeforeChat(
+          {
+            message: { role: 'user', parts: [{ type: 'text', text: '继续' }] },
+            entryContext: {
+              source: 'learning-editor',
+              sessionKey: 'learn-ci',
+              ...(kind === 'plan'
+                ? { learningTopicId: 'ci' }
+                : { learningNoteId: 'ci' }),
+            },
+          },
+          {},
+          Promise.resolve([]),
+        ),
+      ).rejects.toThrow('学习归属已变化');
+      expect(resolveWriteTarget).toHaveBeenCalledWith('ci', kind);
+      expect(assemble).not.toHaveBeenCalled();
+    },
+  );
+
+  it('preserves an independent child planning target rather than rewriting its ancestor', async () => {
+    const { lifecycle, assemble, resolveWriteTarget } = learningLifecycle();
+    resolveWriteTarget.mockResolvedValue({
+      project: { id: 'p_child', rootContentItemId: 'ci_child' },
+      rootNode: { id: 'child', name: '子级主题', contentItemId: 'ci_child' },
+      currentNode: { id: 'child', name: '子级主题', contentItemId: 'ci_child' },
+    });
+    await lifecycle.onBeforeChat(
+      {
+        message: { role: 'user', parts: [{ type: 'text', text: '修改规划' }] },
+        entryContext: {
+          source: 'learning-editor',
+          sessionKey: 'learn-ci_child',
+          learningTopicId: 'ci_child',
+        },
+      },
+      {},
+      Promise.resolve([]),
+    );
+    expect(assemble).toHaveBeenCalledWith(
+      expect.objectContaining({
+        learningTopicId: 'ci_child',
+        learningNoteId: undefined,
+      }),
+      undefined,
+      undefined,
+      undefined,
+    );
+  });
+
   it('passes the current request, recent conversation and scene to sub-agent assembly', async () => {
     const assemble = jest.fn().mockReturnValue({});
     const getRecentMessages = jest.fn();

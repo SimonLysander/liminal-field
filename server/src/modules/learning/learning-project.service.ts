@@ -49,29 +49,14 @@ export class LearningProjectService {
       [...path].reverse().find((node) => projectByRoot.has(node.id)) ??
       currentNode;
     const project = projectByRoot.get(rootNode.id) ?? null;
-    let startBlockedReason: LearningProjectResolveDto['startBlockedReason'] =
-      null;
-
-    if (!project) {
-      // 当前节点不属于任何项目时，仍要检查下级项目；否则页面会允许点击，
-      // 最终却被 startProject 的父子互斥校验拒绝。
-      const descendantNodeIds =
-        await this.navigationRepo.findAllDescendantIds(nodeId);
-      const descendantProjects =
-        await this.projectRepo.findActiveByRootNodeIds(descendantNodeIds);
-      if (descendantProjects.length > 0) {
-        startBlockedReason = 'descendant-project';
-      }
-    }
 
     this.logger.debug(
-      `resolve learning nodeId=${nodeId} projectId=${project?.id ?? 'none'} rootNodeId=${rootNode.id} startBlockedReason=${startBlockedReason ?? 'none'}`,
+      `resolve learning nodeId=${nodeId} projectId=${project?.id ?? 'none'} rootNodeId=${rootNode.id}`,
     );
 
     return {
       project,
-      canStart: !project && !startBlockedReason,
-      startBlockedReason,
+      canStart: !project,
       rootNode,
       currentNode,
       path,
@@ -103,6 +88,36 @@ export class LearningProjectService {
     );
   }
 
+  /** 规划与正文共用页面的 AI 初稿槽位，必须以当前树上的最近学习根区分角色。 */
+  async resolveWriteTarget(
+    contentItemId: string,
+    kind: 'plan' | 'draft',
+  ): Promise<LearningProjectResolveDto> {
+    const resolved = await this.resolveByContentItemId(contentItemId);
+    const isRoot = resolved.currentNode.id === resolved.rootNode.id;
+    if (!resolved.project || isRoot !== (kind === 'plan')) {
+      this.logger.warn(
+        `learning write target changed contentItemId=${contentItemId} kind=${kind} projectId=${resolved.project?.id ?? 'none'} rootNodeId=${resolved.rootNode.id}`,
+      );
+      throw new BadRequestException(
+        '该页面的学习归属已变化，请重新进入学习后再操作',
+      );
+    }
+    return resolved;
+  }
+
+  /** 校验与落库共享拓扑锁，防止审批期间移动或创建学习改变目标角色。 */
+  async runWrite<T>(
+    contentItemId: string,
+    kind: 'plan' | 'draft',
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    return this.topologyLock.runExclusive(async () => {
+      await this.resolveWriteTarget(contentItemId, kind);
+      return operation();
+    });
+  }
+
   private async startProjectUnlocked(
     rootNodeId: string,
   ): Promise<LearningProjectDto> {
@@ -116,20 +131,11 @@ export class LearningProjectService {
       throw new BadRequestException('学习根节点缺少 contentItemId');
     }
 
-    const descendants =
-      await this.navigationRepo.findAllDescendants(rootNodeId);
-    const descendantNodeIds = descendants.map((node) => node._id.toString());
-
-    // 父子项目必须互斥：祖先路径用于发现已有的上级项目，后代用于发现已有的下级项目。
-    const overlapCandidateRootNodeIds = uniqueStrings([
-      ...path.map((node) => node.id),
-      ...descendantNodeIds,
+    const existing = await this.projectRepo.findActiveByRootNodeIds([
+      rootNodeId,
     ]);
-    const overlaps = await this.projectRepo.findActiveByRootNodeIds(
-      overlapCandidateRootNodeIds,
-    );
-    if (overlaps.length > 0) {
-      throw new BadRequestException('当前节点已与一个学习项目范围重叠');
+    if (existing.length > 0) {
+      throw new BadRequestException('当前页面已开始学习');
     }
 
     this.logger.log(
@@ -143,41 +149,9 @@ export class LearningProjectService {
       });
     } catch (err) {
       if (isMongoDuplicateKeyError(err)) {
-        throw new BadRequestException('当前节点已与一个学习项目范围重叠');
+        throw new BadRequestException('当前页面已开始学习');
       }
       throw err;
-    }
-  }
-
-  /**
-   * 普通节点可以在学习项目之间自由移动；只有移动子树本身包含活动项目根，
-   * 且目标位置已经属于另一个活动项目时，移动才会制造真实的父子项目重叠。
-   */
-  async assertMoveAllowed(
-    nodeId: string,
-    targetParentId?: string | null,
-  ): Promise<void> {
-    if (!targetParentId) return;
-
-    const movingDescendantIds =
-      await this.navigationRepo.findAllDescendantIds(nodeId);
-    const movingProjectRoots = await this.projectRepo.findActiveByRootNodeIds(
-      uniqueStrings([nodeId, ...movingDescendantIds]),
-    );
-    if (movingProjectRoots.length === 0) return;
-
-    const targetPath =
-      await this.navigationService.findStructurePathByNodeId(targetParentId);
-    const targetProjects = await this.projectRepo.findActiveByRootNodeIds(
-      targetPath.map((node) => node.id),
-    );
-    const movingProjectIds = new Set(
-      movingProjectRoots.map((project) => project.id),
-    );
-    if (targetProjects.some((project) => !movingProjectIds.has(project.id))) {
-      throw new BadRequestException(
-        '移动后会使两个进行中的学习项目范围重叠，请先放弃其中一个学习项目',
-      );
     }
   }
 
@@ -215,13 +189,35 @@ export class LearningProjectService {
     const descendants = await this.navigationRepo.findAllDescendants(
       project.rootNodeId,
     );
+    const nestedProjects = await this.projectRepo.findActiveByRootNodeIds(
+      descendants.map((node) => node._id.toString()),
+    );
+    const childrenByParent = new Map<string, string[]>();
+    for (const node of descendants) {
+      const parentId = node.parentId?.toString();
+      if (!parentId) continue;
+      const children = childrenByParent.get(parentId) ?? [];
+      children.push(node._id.toString());
+      childrenByParent.set(parentId, children);
+    }
+    // 独立子级学习根及其后代不属于当前项目的清理范围；不依赖查询返回顺序。
+    const protectedIds = new Set<string>();
+    const pending = nestedProjects.map((nested) => nested.rootNodeId);
+    while (pending.length > 0) {
+      const id = pending.pop()!;
+      if (protectedIds.has(id)) continue;
+      protectedIds.add(id);
+      pending.push(...(childrenByParent.get(id) ?? []));
+    }
     const affectedContentItemIds = uniqueStrings([
       project.rootContentItemId,
-      ...descendants.map((node) => node.contentItemId).filter(Boolean),
+      ...descendants
+        .filter((node) => !protectedIds.has(node._id.toString()))
+        .map((node) => node.contentItemId),
     ]);
 
     this.logger.log(
-      `discard learning projectId=${projectId} rootNodeId=${project.rootNodeId} affected=${affectedContentItemIds.length}`,
+      `discard learning projectId=${projectId} rootNodeId=${project.rootNodeId} affected=${affectedContentItemIds.length} nestedProjects=${nestedProjects.length}`,
     );
 
     try {

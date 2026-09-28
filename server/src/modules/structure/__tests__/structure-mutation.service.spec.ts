@@ -15,7 +15,6 @@ describe('StructureMutationService', () => {
       deleteNavigationNodeById: jest.fn(),
     } as unknown as jest.Mocked<NavigationNodeService>;
     learningProjectService = {
-      assertMoveAllowed: jest.fn(),
       assertDeleteAllowed: jest.fn(),
     } as unknown as jest.Mocked<LearningProjectService>;
     topologyLock = {
@@ -37,13 +36,12 @@ describe('StructureMutationService', () => {
     await service.updateStructureNode('node', { name: '新名称' });
 
     expect(topologyLock.runExclusive).not.toHaveBeenCalled();
-    expect(learningProjectService.assertMoveAllowed).not.toHaveBeenCalled();
     expect(navigationService.updateStructureNode).toHaveBeenCalledWith('node', {
       name: '新名称',
     });
   });
 
-  it('serializes and validates reparenting before changing the tree', async () => {
+  it('serializes reparenting without forbidding nested learning projects', async () => {
     navigationService.updateStructureNode.mockResolvedValue({
       id: 'node',
     } as never);
@@ -51,30 +49,19 @@ describe('StructureMutationService', () => {
     await service.updateStructureNode('node', { parentId: 'target' });
 
     expect(topologyLock.runExclusive).toHaveBeenCalledTimes(1);
-    expect(learningProjectService.assertMoveAllowed).toHaveBeenCalledWith(
-      'node',
-      'target',
-    );
     expect(navigationService.updateStructureNode).toHaveBeenCalledWith('node', {
       parentId: 'target',
     });
-    expect(
-      learningProjectService.assertMoveAllowed.mock.invocationCallOrder[0],
-    ).toBeLessThan(
-      navigationService.updateStructureNode.mock.invocationCallOrder[0],
-    );
   });
 
-  it('does not mutate the tree when learning validation rejects a move', async () => {
-    learningProjectService.assertMoveAllowed.mockRejectedValue(
-      new Error('overlap'),
-    );
+  it('still propagates navigation cycle validation failures', async () => {
+    navigationService.updateStructureNode.mockRejectedValue(new Error('cycle'));
 
     await expect(
       service.updateStructureNode('node', { parentId: 'target' }),
-    ).rejects.toThrow('overlap');
+    ).rejects.toThrow('cycle');
 
-    expect(navigationService.updateStructureNode).not.toHaveBeenCalled();
+    expect(topologyLock.runExclusive).toHaveBeenCalledTimes(1);
   });
 
   it('validates deletion before removing the subtree', async () => {
