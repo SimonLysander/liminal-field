@@ -21,6 +21,7 @@ import { yamlLoader } from './config/yaml.loader';
 import { StartupDiagnosticsService } from './startup-diagnostics.service';
 import { PiAiModule } from './infrastructure/ai/pi-ai.module';
 import { StructureModule } from './modules/structure/structure.module';
+import { ExternalReadModule } from './modules/external-read/external-read.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { StructureModule } from './modules/structure/structure.module';
     DigestModule,
     LearningModule,
     StructureModule,
+    ExternalReadModule,
   ],
   controllers: [AppController],
   providers: [AppService, StartupDiagnosticsService],

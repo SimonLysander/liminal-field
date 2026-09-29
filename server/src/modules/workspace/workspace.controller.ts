@@ -526,8 +526,8 @@ export class WorkspaceController {
 
   /**
    * 详情路由:各 scope 返回不同的 DTO 格式。
-   * - notes: ContentDetailDto(含 latestVersion/publishedVersion + bodyMarkdown),
-   *   前端 NoteReader 依赖嵌套版本结构渲染标题和发布状态
+   * - notes: 管理端 ContentDetailDto；公开端 PublicContentDetailDto，
+   *   只含已发布版本的正文和元信息，不返回未发布版本或修改记录
    * - gallery: GalleryPostDetailDto(含照片列表)
    * - anthology: Phase 1 起管理端返回 toAdminDetail(含 bodyMarkdown 卷首语 + 容器状态),
    *   展示端走专用 anthology/public/items/:id 接口
@@ -562,7 +562,9 @@ export class WorkspaceController {
       return this.anthologyViewService.toPublicDetail(id);
     }
     if (scope === 'notes') {
-      return this.noteViewService.getById(id, visibility);
+      return visibility === ContentVisibility.all
+        ? this.noteViewService.getById(id, 'all')
+        : this.noteViewService.getPublicById(id);
     }
     return this.workspaceService.getById(scope, id);
   }

@@ -149,6 +149,8 @@ AuthModule          — 鉴权层（多设备 JWT，bcrypt 密码验证）
 | `unpublish` | publishedVersion := null | 无 | 内容对外不可见 |
 | `discardDraft` | 删除 editorDraft | 无 | 清理 MinIO 草稿资源 |
 
+**公开读取约束**：笔记详情、文集目录及篇目阅读的标题、摘要、日期与正文必须来自当前已发布版本，不能回退到 `latestVersion` 或最新导航名称。阅读视图的 `updatedAt` 使用所读快照的 `createdAt`，不随未发布提交变化。公开笔记详情使用独立 DTO，不返回 `latestVersion`、`changeLogs` 或未发布修改标记；管理端明确请求 `visibility=all` 时仍读取最新提交。已发布快照缺失时返回错误，不降级读取未发布内容。
+
 ### 3.3 存储层设计
 
 #### Git 知识库（ContentRepoService + ContentGitService）
@@ -267,6 +269,36 @@ POST   /api/v1/structure-nodes/reorder           → 同级排序
 GET    /api/v1/structure-nodes/:id/path          → 面包屑路径
 GET    /api/v1/contents/:contentItemId/structure-path → 反查路径
 ```
+
+#### 外部 Agent 公开读取
+
+`ExternalReadModule` 提供只读 HTTP 接口和标准 MCP 适配器，不依赖内置 Agent 的会话、工具调用或审批状态。二者共用读取服务、Zod Schema 和公开错误分类；HTTP 权威参数、响应 Schema 和工具说明由 `GET /api/v1/external/openapi.json` 发布，MCP 通过 `tools/list` 提供同名工具与 Schema。
+
+公开路由 `/connect` 提供无需登录、内容固定的客户端渲染接入说明，并非预渲染 HTML；不执行 JavaScript 时无法读取说明正文。页面及入口名称为「接入说明」，复用展示端布局、导航、阅读字体和大纲；入口位于桌面侧栏的站点信息区，以及移动端首页底部。接入方式采用 Ariakit Tab，默认 MCP，配置、调用示例及响应与错误格式统一随当前方式切换；可读取内容与使用范围共用。「技术说明」常驻展示参数表、可复制示例、分页与错误处理，通过大纲定位各工具，不使用折叠。MCP 示例为 `tools/call` 的参数，由客户端处理握手及发送，不是完整 JSON-RPC 请求。说明正文不加载会话或内容数据；地址取当前页面 `window.location.origin`，不硬编码本地地址，参数完整定义以服务端 Schema 为准。
+
+说明页面向人，实际接入不依赖抓取其 HTML：MCP 客户端直接配置服务器地址；支持 HTTP 请求的 Agent 可使用页面的「复制 HTTP 接入说明」。该提示唯一真源为 `server/src/prompts/external-tools.ts`，通过现有 OpenAPI 文档的 `x-agent-instructions` 扩展发布，使用 `PUBLIC_SITE_URL` 生成地址；不增加工具或接口。前端仅在打开 HTTP 页签时获取并校验此扩展，加载完成后才允许复制，退出时取消请求；失败仍保留 OpenAPI 地址。不具备 HTTP 请求能力的聊天工具不能仅凭提示获得调用能力。
+
+```text
+GET /api/v1/external/browse   → 公开栏目与直接下级目录
+GET /api/v1/external/search   → 公开标题、摘要和正文的字面关键词搜索
+GET /api/v1/external/content  → 公开正文、章节引用、来源和实际引用的附件
+GET /api/v1/external/assets   → 图片缩略图、非图片附件或原始文本；不提供原图
+POST /api/v1/external/mcp     → 标准 MCP Streamable HTTP
+```
+
+MCP 采用官方 `@modelcontextprotocol/sdk`，在同一 Nest 进程中按请求创建 server/transport，使用无状态 JSON 响应模式；无独立服务、持久会话或后台 SSE 连接，非 POST 请求返回 `405 Allow: POST`。存在 Origin 时必须与 `PUBLIC_SITE_URL` 一致；无 Origin 的服务端客户端可接入。协议握手、消息校验和工具 Schema 校验交由 SDK。目录、搜索和正文返回标准 `structuredContent` 与兼容文本；执行失败返回 `isError=true` 与公开错误码，协议错误保留 JSON-RPC 响应，不经过业务 HTTP 包装。
+
+MCP 附件每次复用公开权限和版本检查，不超过 4 MiB 的 WebP 图片缩略图以内联 `image` 返回，UTF-8 文本以内嵌 `resource` 返回。其他类型、编码或更大的文件返回标准 `resource_link`，其地址指向同一公开 HTTP 附件入口；图片链接仍然只能取得缩略图。内联字节上限限制协议缓冲内存；流读取失败返回工具错误，不输出部分文件。客户端是否能处理图片、资源或链接取决于其自身能力。
+
+权限固定为公开读取，管理员 Cookie 不提升权限；没有草稿、版本选择或写入操作。笔记的目录可见性与自身正文是否已发布分开判断；文集条目要求父级与自身均已发布。正文读取校验快照归属，标题、摘要和正文取同一公开版本。简报目录与搜索每期只列最新报告；已有公开报告 URL 仍按展示端的规则可读，但不提供 ContentSnapshot 历史读取。
+
+目录、搜索和正文通过显式游标分页，不静默截断。章节与分页标识绑定公开版本，重新发布后返回 `409 CONTENT_CHANGED`，取消发布或删除后返回 `404 RESOURCE_NOT_FOUND`。正文字符偏移采用 JavaScript UTF-16 单位；超长块可分段，`partialBlock` 表示页边界是否截断块。单次正文请求只解析一次 Markdown，附件提取、章节和分页复用该解析结果，章节分页将块边界转换为节内偏移，不建立跨请求缓存。附件、章节目录与引用来源是整篇元数据，不随正文页重复截断。
+
+附件只来自公开正文的真实资源引用或公开画廊的 `photos`，不枚举目录、不读取草稿存储，也不对图片、音频、PDF 自动生成 OCR 或转录内容。图片只允许 `preview`，复用 OSS 的最长边 896 像素、WebP 视觉规格；原图请求返回 `415 REPRESENTATION_UNAVAILABLE`，不提供 `originalUrl`，不读取 Git 原图，也不进行本地解码或缩放。预览未配置时，附件保留元信息、`representations=[]`、`url=null`；OSS 明确缺少预览对象时也返回 415，不回退原图。非图片文件仍通过 OSS 流式读取；OSS 未启用或明确缺少对象时，可读取该公开快照的 Git 归档，不能退回最新工作区。签名引用使用从 `JWT_SECRET` 派生的独立密钥，不可用作登录凭证，且每次读取仍校验当前公开权限。
+
+多模态读取是独立的可选链路：目录、搜索和正文只处理附件元信息，不访问附件存储；附件失败只返回本次 HTTP 错误或 MCP `isError`，不影响后续正文请求或其他工具。预览不可用属于正常的能力边界，不作为整个服务失败；存储网络和流错误保留日志及错误码。
+
+`PUBLIC_SITE_URL` 是部署级 HTTP(S) origin，用于 OpenAPI、公开页面 URL 校验、MCP Origin 校验和附件绝对地址；本地测试可设为 `http://localhost:4399`。接口不要求用户登录，也不代表 Web ChatGPT 自动获得调用能力；外部客户端通过 HTTP 或支持 Streamable HTTP 的 MCP 客户端使用这些操作。
 
 #### Workspace（通用 CRUD，所有 scope 共享）
 

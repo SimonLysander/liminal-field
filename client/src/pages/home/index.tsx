@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ArrowUpRight } from 'lucide-react';
 import { motion } from 'motion/react';
 import { appleEase } from '@/lib/motion';
 import { homeApi } from '@/services/workspace';
@@ -335,6 +336,15 @@ export default function HomePage() {
             </div>
           )}
         </div>
+        <footer className="mt-8 border-t border-[var(--separator)] pt-4 md:hidden">
+          <Link
+            to="/connect"
+            className="inline-flex items-center gap-1 rounded-sm text-sm text-[var(--ink-faded)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-4"
+          >
+            接入说明
+            <ArrowUpRight size={12} aria-hidden="true" />
+          </Link>
+        </footer>
       </div>
 
       </motion.div>

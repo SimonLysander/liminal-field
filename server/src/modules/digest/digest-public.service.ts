@@ -39,6 +39,36 @@ export class DigestPublicService {
     private readonly infoSourceRepo: InfoSourceRepository,
   ) {}
 
+  /** Public topic identity is live metadata, unlike versioned notes and anthology pages. */
+  async listTopicHeaders(): Promise<
+    Array<{ id: string; name: string; description: string }>
+  > {
+    const nodes = await this.navigationRepository.findRootNodes(
+      NavigationScope.digest,
+    );
+    const headers = new Map(
+      (
+        await this.contentRepository.findLiveHeaders(
+          nodes.map((node) => node.contentItemId),
+        )
+      ).map((topic) => [topic._id, topic]),
+    );
+    return nodes
+      .flatMap((node) => {
+        const topic = headers.get(node.contentItemId);
+        return topic
+          ? [
+              {
+                id: node.contentItemId,
+                name: topic.latestVersion?.title ?? '',
+                description: topic.latestVersion?.summary ?? '',
+              },
+            ]
+          : [];
+      })
+      .reverse();
+  }
+
   async getReport(topicId: string, reportId: string): Promise<PublicReportDto> {
     const topicContent = await this.contentRepository.findById(topicId);
     if (!topicContent) {

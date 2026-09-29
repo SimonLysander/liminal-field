@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { execFile } from 'child_process';
+import { execFile, spawn } from 'child_process';
+import type { Readable } from 'stream';
 import { mkdir, readdir, readFile, stat, unlink, writeFile } from 'fs/promises';
 import { basename, extname, join, parse, resolve } from 'path';
 import { randomUUID } from 'crypto';
@@ -437,6 +438,44 @@ export class ContentRepoService {
         );
       }
     }
+  }
+
+  /** Stream a single immutable archived file; never follow a worktree path. */
+  async readArchivedAssetStream(
+    contentId: string,
+    fileName: string,
+    commitHash: string,
+  ): Promise<Readable> {
+    if (
+      !/^[A-Za-z0-9_-]+$/.test(contentId) ||
+      basename(fileName) !== fileName ||
+      fileName === '.' ||
+      fileName === '..' ||
+      fileName.includes('\\') ||
+      [...fileName].some((character) => character.charCodeAt(0) < 32) ||
+      !/^[a-f0-9]{40}$/.test(commitHash)
+    ) {
+      throw new BadRequestException('Invalid archived asset path');
+    }
+    const object = `${commitHash}:content/${contentId}/assets/${fileName}`;
+    // Validate before sending headers; stream only this publication's immutable Git blob.
+    const type = await this.git.raw(['cat-file', '-t', object]);
+    if (type.trim() !== 'blob') throw new Error('Archived asset is not a file');
+    const child = spawn('git', ['show', object], {
+      cwd: this.repoRoot,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    child.on('error', (error) => child.stdout.destroy(error));
+    child.on('exit', (code, signal) => {
+      if (code !== 0 && !child.stdout.destroyed)
+        child.stdout.destroy(
+          new Error(`Archived asset read failed: ${code ?? signal}`),
+        );
+    });
+    child.stdout.on('close', () => {
+      if (child.exitCode === null) child.kill();
+    });
+    return child.stdout;
   }
 
   /**

@@ -79,7 +79,7 @@ export class AnthologyEntryDetailDto {
   summary?: string;
   /** 内容日期(frontmatter),兜底 snapshot createdAt。 */
   date: string | null;
-  /** 最后更新时间(最新 snapshot 的 createdAt),与 NoteReader 的 updatedAt 同语义。 */
+  /** 当前读取版本的 snapshot.createdAt；公开视图取已发布版本。 */
   updatedAt: string;
   bodyMarkdown: string;
   /** 上一个子节点(按索引顺序),null 表示已是第一个。nodeId = 子 contentItemId。 */

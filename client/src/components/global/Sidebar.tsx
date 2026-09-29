@@ -8,8 +8,8 @@
  *     Apple Books' left panel aesthetic.
  *   - Fixed 200px width: identical to admin TreePanel for visual consistency
  *     when switching between display and admin views.
- *   - Lucide icons (size=16, strokeWidth=1.5): unified icon style across all
- *     navigation items for a clean, consistent feel.
+ *   - AnimateIcons Lucide-style icons (size=16, strokeWidth=2) share hover
+ *     and reduced-motion behavior with mobile and admin navigation.
  *   - Notes sub-nav uses breadcrumb drill-down instead of a tree, since
  *     useParams() doesn't work outside <Routes> — we parse location.pathname
  *     directly to extract the active noteId.
@@ -17,8 +17,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useSearchHotkey } from '@/hooks/use-search-hotkey';
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { AnimatePresence, motion } from 'motion/react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Logo } from '@/components/Logo';
 import { SearchPanel } from '@/components/global/SearchPanel';
 import { useTheme } from '@/hooks/use-theme';
@@ -26,16 +26,15 @@ import { structureApi } from '@/services/structure';
 import type { StructureNode } from '@/services/structure';
 import { anthologyApi } from '@/services/workspace';
 import type { AnthologyPublicListItem, AnthologyPublicDetail } from '@/services/workspace';
-import { FileText, Search, ChevronLeft } from 'lucide-react';
+import { FileText, ChevronLeft } from 'lucide-react';
 import { type Space, spaces, labels, spaceToPath, pathToSpace } from './nav-spaces';
 import { AnimateIconsNavIcon } from './AnimateIconsNavIcon';
-import { ThemeToggleIcon } from './ThemeToggleIcon';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import { LoadingState } from '@/components/LoadingState';
 
 /* ---------- Data ---------- */
 
-/* Space / spaces / labels / NavIcons / spaceToPath / pathToSpace
+/* Space / spaces / labels / spaceToPath / pathToSpace
  * 均从 nav-spaces 共享模块导入（Sidebar 与 BottomTabBar 单一来源）。 */
 
 function NavigationIcon({ space, isHovered }: { space: Space; isHovered: boolean }) {
@@ -162,7 +161,6 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const active = pathToSpace(location.pathname);
   const { theme, setTheme } = useTheme();
-  const reducedMotion = useReducedMotion() ?? false;
 
   /* ── 全局搜索 ⌘K ────────────────────────────────── */
   const { searchOpen, setSearchOpen } = useSearchHotkey();
@@ -172,6 +170,10 @@ export default function Sidebar() {
    *   node = 当前选中/打开的内容节点 id(叶子文档或主题正文) */
   const [searchParams, setSearchParams] = useSearchParams();
   const [hoveredSpace, setHoveredSpace] = useState<Space | null>(null);
+  const [connectHovered, setConnectHovered] = useState(false);
+  const [searchHovered, setSearchHovered] = useState(false);
+  const [themeHovered, setThemeHovered] = useState(false);
+  const themeAction = theme === 'daylight' ? '切换至深色' : '切换至浅色';
   const activeTopicId = searchParams.get('at');
   const activeNoteId = searchParams.get('node');
 
@@ -286,6 +288,7 @@ export default function Sidebar() {
   };
 
   const isGallery = active === 'gallery';
+  const isConnect = location.pathname === '/connect';
 
   return (
     <aside
@@ -312,8 +315,10 @@ export default function Sidebar() {
           ...(isGallery ? { visibility: 'hidden' } as const : {}),
         }}
         onClick={() => setSearchOpen(true)}
+        onMouseEnter={() => setSearchHovered(true)}
+        onMouseLeave={() => setSearchHovered(false)}
       >
-        <Search size={13} strokeWidth={2} style={{ opacity: 0.4, color: 'var(--ink)' }} />
+        <AnimateIconsNavIcon space="search" size={16} isHovered={searchHovered} />
         <span>搜索</span>
         <kbd className="ml-auto text-sm" style={{ opacity: 0.45, color: 'var(--ink-ghost)' }}>⌘K</kbd>
       </button>
@@ -357,6 +362,30 @@ export default function Sidebar() {
             </div>
           );
         })}
+      </nav>
+
+      <nav
+        aria-label="站点信息"
+        className="mx-2 mt-3 border-t border-[var(--separator)] pt-2"
+        style={isGallery ? { visibility: 'hidden' } : undefined}
+      >
+        <Link
+          to="/connect"
+          aria-current={isConnect ? 'page' : undefined}
+          onMouseEnter={() => setConnectHovered(true)}
+          onMouseLeave={() => setConnectHovered(false)}
+          className="nav-item flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-base transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2"
+          style={{
+            background: isConnect ? 'var(--shelf)' : undefined,
+            color: isConnect ? 'var(--ink)' : 'var(--ink-faded)',
+            fontWeight: isConnect ? 500 : 400,
+          }}
+        >
+          <span className="flex items-center" style={{ color: isConnect ? 'var(--accent)' : undefined }}>
+            <AnimateIconsNavIcon space="connect" size={16} duration={1.2} isHovered={connectHovered} />
+          </span>
+          接入说明
+        </Link>
       </nav>
 
       {/* Sub-nav: Notes — tree drill-down, fetches per level */}
@@ -658,10 +687,12 @@ export default function Sidebar() {
           onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors duration-150 hover:bg-[var(--shelf)]"
           style={{ color: 'var(--ink-faded)' }}
-          aria-label="切换主题"
-          title="切换主题"
+          aria-label={themeAction}
+          title={themeAction}
+          onMouseEnter={() => setThemeHovered(true)}
+          onMouseLeave={() => setThemeHovered(false)}
         >
-          <ThemeToggleIcon theme={theme} reducedMotion={reducedMotion} />
+          <AnimateIconsNavIcon space="theme" size={16} isHovered={themeHovered} />
         </button>
       </div>
     </aside>

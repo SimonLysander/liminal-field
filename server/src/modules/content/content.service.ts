@@ -850,7 +850,11 @@ export class ContentService {
         );
     }
 
-    return this.toDetailDto(content, { bodyMarkdown }, { publicView });
+    const detail = this.toDetailDto(content, { bodyMarkdown }, { publicView });
+    // A private commit must not change the date of the public reading version.
+    return publicView
+      ? { ...detail, updatedAt: snapshot.createdAt.toISOString() }
+      : detail;
   }
 
   /**

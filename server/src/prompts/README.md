@@ -22,6 +22,7 @@
 |---|---|---|
 | `tool-descriptions.ts` | 全部工具的 description | `ToolAssembler` 组装时按工具名套用 |
 | `feedback.ts` | 给模型的带外反馈文案(如 HITL 审批回灌) | `AgentService` |
+| `external-tools.ts` | 外部公开读取工具描述、参数说明及可复制的 HTTP 接入提示 | `ExternalReadModule` 的 HTTP / MCP 接口及 OpenAPI 文档 |
 | `builtin-skills.ts` | 内置 skill 元数据 + 指向 body md | `SkillService` |
 | `builtin-agents.ts` | 内置 agent 元数据(tools/挂哪些 skill/档位)+ 共享上下文与 systemPrompt md | `SystemConfigService` |
 

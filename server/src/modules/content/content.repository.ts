@@ -31,6 +31,13 @@ export interface UpdateContentItemInput {
   publishedAt?: Date | null;
 }
 
+export interface PublicContentHead {
+  _id: string;
+  publishedVersion: ContentVersion | null;
+  createdAt: Date;
+  publishedAt?: Date | null;
+}
+
 @Injectable()
 export class ContentRepository {
   constructor(
@@ -53,6 +60,29 @@ export class ContentRepository {
 
   async findById(id: string): Promise<ContentItem | null> {
     return this.contentItemModel.findById(id);
+  }
+
+  /** Read-only projection: neither private heads nor change logs enter the public catalog. */
+  async findPublicHeads(ids: string[]): Promise<PublicContentHead[]> {
+    if (ids.length === 0) return [];
+    return this.contentItemModel
+      .find({ _id: { $in: ids } })
+      .select('_id publishedVersion createdAt publishedAt')
+      .lean<PublicContentHead[]>();
+  }
+
+  /** Digest topics expose live titles publicly, but not their content history. */
+  async findLiveHeaders(ids: string[]): Promise<
+    Array<{
+      _id: string;
+      latestVersion?: Pick<ContentVersion, 'title' | 'summary'>;
+    }>
+  > {
+    if (ids.length === 0) return [];
+    return this.contentItemModel
+      .find({ _id: { $in: ids } })
+      .select('_id latestVersion.title latestVersion.summary')
+      .lean();
   }
 
   async update(

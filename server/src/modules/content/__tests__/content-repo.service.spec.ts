@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { mkdtemp, readFile, rm } from 'fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises';
+import simpleGit from 'simple-git';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { ContentRepoService } from '../content-repo.service';
@@ -59,6 +60,42 @@ describe('ContentRepoService', () => {
     await expect(
       service.writeMainMarkdown('ci_empty', '   \n\n  '),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rejects archived directories and traversal rather than returning a Git tree listing', async () => {
+    const git = simpleGit(tempDirectory);
+    await git.init();
+    await git.addConfig('user.name', 'Test');
+    await git.addConfig('user.email', 'test@example.com');
+    const directory = join(
+      tempDirectory,
+      'content',
+      'ci_tree',
+      'assets',
+      'folder',
+    );
+    await mkdir(directory, { recursive: true });
+    await writeFile(
+      join(directory, 'hidden.txt'),
+      'Not a directly referenced file',
+    );
+    await git.add('.');
+    await git.commit('Fixture');
+    const hash = await git.revparse(['HEAD']);
+    await expect(
+      service.readArchivedAssetStream('ci_tree', 'folder', hash),
+    ).rejects.toThrow('Archived asset is not a file');
+    for (const name of [
+      '.',
+      '..',
+      '../hidden.txt',
+      'folder/hidden.txt',
+      '\u0000',
+    ]) {
+      await expect(
+        service.readArchivedAssetStream('ci_tree', name, hash),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    }
   });
 
   it('rejects non-relative asset paths', async () => {

@@ -5,13 +5,16 @@
  * 与 Sidebar 共用 nav-spaces 的数据定义，防止数据漂移。
  */
 
+import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { spaces, labels, NavIcons, spaceToPath, pathToSpace } from './nav-spaces';
+import { AnimateIconsNavIcon } from './AnimateIconsNavIcon';
+import { spaces, labels, spaceToPath, pathToSpace, type Space } from './nav-spaces';
 
 export default function BottomTabBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const active = pathToSpace(location.pathname);
+  const [hoveredSpace, setHoveredSpace] = useState<Space | null>(null);
 
   return (
     <nav
@@ -22,7 +25,6 @@ export default function BottomTabBar() {
       }}
     >
       {spaces.map((space) => {
-        const Icon = NavIcons[space];
         const isActive = space === active;
         const color = isActive ? 'var(--accent)' : 'var(--ink-faded)';
 
@@ -32,8 +34,10 @@ export default function BottomTabBar() {
             className="flex flex-1 flex-col items-center justify-center gap-0.5 cursor-pointer"
             style={{ color, background: 'transparent', border: 'none' }}
             onClick={() => navigate(spaceToPath(space))}
+            onMouseEnter={() => setHoveredSpace(space)}
+            onMouseLeave={() => setHoveredSpace(null)}
           >
-            <Icon size={22} strokeWidth={1.5} />
+            <AnimateIconsNavIcon space={space} size={22} isHovered={hoveredSpace === space} />
             <span className="text-2xs" style={{ color }}>
               {labels[space]}
             </span>

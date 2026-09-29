@@ -28,13 +28,13 @@ import { ComposeNode } from './workflow/nodes/compose.node';
 import { CommitNode } from './workflow/nodes/commit.node';
 import { DigestWorkflowService } from './workflow/digest-workflow.service';
 import { DigestWorkflowController } from './digest-workflow.controller';
-import { DigestPublicController } from './digest-public.controller';
-import { DigestPublicService } from './digest-public.service';
+import { DigestPublicModule } from './digest-public.module';
 import { DigestSchedulerService } from './digest-scheduler.service';
 
 @Module({
   imports: [
     DigestSharedModule,
+    DigestPublicModule,
     ContentModule,
     NavigationModule,
     SettingsModule,
@@ -44,7 +44,6 @@ import { DigestSchedulerService } from './digest-scheduler.service';
     InfoSourceController,
     TopicController,
     DigestWorkflowController,
-    DigestPublicController,
   ],
   providers: [
     InfoSourceService,
@@ -56,9 +55,6 @@ import { DigestSchedulerService } from './digest-scheduler.service';
     DigestWorkflowService,
     // scheduler(onModuleInit 时注册所有 enabled cron job)
     DigestSchedulerService,
-    // 公开端服务
-    DigestPublicService,
-    // 一次性迁移老 ContentItem 时代的 digest 报告(onModuleInit 自动跑)
   ],
   exports: [
     InfoSourceService,
@@ -67,6 +63,7 @@ import { DigestSchedulerService } from './digest-scheduler.service';
     DigestSchedulerService,
     // 共享层导出穿透:让其他模块只 import DigestModule 也能拿到 repo
     DigestSharedModule,
+    DigestPublicModule,
   ],
 })
 export class DigestModule {}

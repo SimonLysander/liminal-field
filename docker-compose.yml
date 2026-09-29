@@ -57,6 +57,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       COOKIE_SECURE: ${COOKIE_SECURE:-}
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://lux-stirring.space}
       # RSSHub 内部地址；容器名即 DNS，port 1200 为 RSSHub 默认
       RSSHUB_BASE_URL: ${RSSHUB_BASE_URL:-http://rsshub:1200}
       # AI 运行边界只防永久挂起/无限循环；默认值对长推理和深度研究留足余量。

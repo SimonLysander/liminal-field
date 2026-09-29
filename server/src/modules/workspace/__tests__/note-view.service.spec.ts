@@ -6,6 +6,8 @@ import { ContentGitService } from '../../content/content-git.service';
 import { OssService } from '../../oss/oss.service';
 import { EditorDraftRepository } from '../editor-draft.repository';
 import { NavigationRepository } from '../../navigation/navigation.repository';
+import { ContentStatus } from '../../content/content-item.entity';
+import { ContentDetailDto } from '../../content/dto/content-detail.dto';
 
 describe('NoteViewService', () => {
   let service: NoteViewService;
@@ -116,6 +118,77 @@ describe('NoteViewService', () => {
         { visibility: 'public' },
         { scope: 'notes', rawAssets: false },
       );
+    });
+  });
+
+  describe('getPublicById()', () => {
+    const detail: ContentDetailDto = {
+      id: 'ci_1',
+      title: 'Published title',
+      summary: 'Published summary',
+      status: ContentStatus.published,
+      latestVersion: {
+        versionId: 'latest',
+        commitHash: '',
+        title: 'Private title',
+        summary: 'Private summary',
+      },
+      publishedVersion: {
+        versionId: 'published',
+        commitHash: '',
+        title: 'Published title',
+        summary: 'Published summary',
+      },
+      hasUnpublishedChanges: true,
+      changeLogs: [],
+      bodyMarkdown: '---\ntitle: Published title\n---\n\nPublished body',
+      headings: [],
+      createdAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
+      publishedAt: '2026-04-02T00:00:00.000Z',
+    };
+
+    it('returns published metadata and stripped body without private version fields', async () => {
+      contentService.getContentById.mockResolvedValue(detail);
+
+      const result = await service.getPublicById('ci_1');
+
+      expect(result).toEqual({
+        id: detail.id,
+        title: detail.title,
+        summary: detail.summary,
+        status: 'published',
+        publishedVersion: detail.publishedVersion,
+        bodyMarkdown: 'Published body',
+        headings: [],
+        createdAt: detail.createdAt,
+        updatedAt: detail.updatedAt,
+        publishedAt: detail.publishedAt,
+      });
+      expect(result).not.toHaveProperty('latestVersion');
+      expect(result).not.toHaveProperty('hasUnpublishedChanges');
+      expect(result).not.toHaveProperty('changeLogs');
+      expect(contentService.getContentById).toHaveBeenCalledWith(
+        'ci_1',
+        { visibility: 'public' },
+        { scope: 'notes', rawAssets: false },
+      );
+    });
+
+    it('rejects a detail without a published pointer instead of exposing the latest version', async () => {
+      contentService.getContentById.mockResolvedValue({
+        ...detail,
+        publishedVersion: null,
+      });
+      await expect(service.getPublicById('ci_1')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('propagates a missing published snapshot', async () => {
+      const error = new NotFoundException('Published snapshot not found');
+      contentService.getContentById.mockRejectedValue(error);
+      await expect(service.getPublicById('ci_1')).rejects.toBe(error);
     });
   });
 

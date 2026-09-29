@@ -5,8 +5,6 @@
  * 值与 Sidebar.tsx 原定义完全一致（2026-05-23 抽出）。
  */
 
-import { Home, FileText, BookOpen, Image, Newspaper, type LucideIcon } from 'lucide-react';
-
 export type Space = 'home' | 'notes' | 'anthology' | 'gallery' | 'digest';
 
 /** nav 实际展示的 tab（Aurora 只在管理端编辑器里，展示端/访客端不暴露） */
@@ -20,24 +18,16 @@ export const labels: Record<Space, string> = {
   digest: '简报',
 };
 
-export const NavIcons: Record<Space, LucideIcon> = {
-  home: Home,
-  notes: FileText,
-  anthology: BookOpen,
-  gallery: Image,
-  digest: Newspaper,
-};
-
 export function spaceToPath(space: Space): string {
   if (space === 'notes') return '/note';
   return `/${space}`;
 }
 
-export function pathToSpace(pathname: string): Space {
+export function pathToSpace(pathname: string): Space | undefined {
   const seg = pathname.split('/')[1];
   if (seg === 'note') return 'notes';
   if (seg === 'anthology') return 'anthology';
   if (seg === 'digest') return 'digest';
   if (spaces.includes(seg as Space)) return seg as Space;
-  return 'notes';
+  return undefined;
 }

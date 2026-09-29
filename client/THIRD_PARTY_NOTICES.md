@@ -6,6 +6,11 @@ The animated navigation icons in
 `src/components/global/AnimateIconsNavIcon.tsx` adapt animation definitions from
 [@animateicons/react](https://github.com/Avijit07x/animateicons).
 
+The selected upstream Lucide-style icons are `house`, `notebook-pen`,
+`book-open-text`, `image`, `mails`, `file-code`, `search`, and `sun-moon`.
+Source files are in the upstream
+[Lucide icon directory](https://github.com/Avijit07x/animateicons/tree/main/icons/lucide).
+
 MIT License
 
 Copyright (c) 2025 Avijit Dey

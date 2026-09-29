@@ -72,6 +72,7 @@ describe('ContentService', () => {
 
   it('returns public content detail from the published version pointer', async () => {
     const now = new Date('2026-04-17T08:00:00.000Z');
+    const committedAt = new Date('2026-05-17T08:00:00.000Z');
     // V2: latestVersion / publishedVersion 必须带 versionId（hasUnpublishedChanges 用 versionId 比较）
     contentRepository.findById.mockResolvedValue({
       id: 'ci_test',
@@ -98,7 +99,7 @@ describe('ContentService', () => {
         },
       ],
       createdAt: now,
-      updatedAt: now,
+      updatedAt: committedAt,
     } as never);
     // V2: getContentById 从 snapshotRepository 读正文，而非 readContentSource
     snapshotRepository.findByVersionId.mockResolvedValue({

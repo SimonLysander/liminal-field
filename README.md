@@ -2,6 +2,21 @@
 
 个人内容管理系统。笔记、画廊、文集三个内容模块，统一的版本管理和发布体系。
 
+## 外部 Agent 只读接入
+
+公开接入说明页：`/connect`（客户端渲染，无需登录）；机器可读接口说明：`GET /api/v1/external/openapi.json`。浏览、搜索、正文和附件读取均无需登录，只读取公开内容；没有草稿、历史版本或修改能力。HTTP API 与标准 MCP 共用读取服务，无需启动独立进程。图片仅提供缩略图，不提供原图；附件失败不影响正文读取。
+
+MCP 地址：`/api/v1/external/mcp`，传输类型为 **Streamable HTTP**，无需密钥。使用官方 TypeScript SDK，无状态、JSON 响应模式，不保留 MCP 会话或开放独立 SSE 连接。提供 `browse_library`、`search_content`、`read_content`、`read_asset` 四项只读工具。
+
+```sh
+curl 'http://localhost:4399/api/v1/external/browse'
+curl 'http://localhost:4399/api/v1/external/search?query=相机&within=notes'
+```
+
+目录和搜索返回的 `target` 可用于 `/api/v1/external/content?target=...`。使用返回的 `nextCursor` 翻页、`sectionRef` 读取一节、`assetRef` 读取附件。JSON 成功结果使用 `{code:0,msg:"ok",data:...}`，附件直接返回文件。参数和响应以 OpenAPI 为准，权限与资源读取约束见 [架构文档](docs/architecture/overview.md)。
+
+部署级 `PUBLIC_SITE_URL` 配置公开站点 origin；本地使用完整页面 URL 作为 target 时设为 `http://localhost:4399`。路径形式的 `/note?node=...` 不需要更改本地站点 origin。
+
 ## 架构总览
 
 ```

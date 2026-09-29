@@ -881,11 +881,12 @@ body.theme-transitioning [data-slate-leaf] {
  * textarea 走 :focus-within 容器级提示（chat composer / advisor composer），
  * 不入此规范；只保留 outline:none。
  *
- * 局部 input（.input-ghost / Input 组件 / .metadata-input / SearchPanel）的
+ * cmdk 输入框属于整块搜索或命令面板，保持透明，不单独绘制 hover/focus 底色。
+ * 局部独立 input（.input-ghost / Input 组件 / .metadata-input）的
  * :hover/:focus background 规则已撤回，统一由此规范驱动。
  */
-input:not([type="checkbox"]):not([type="radio"]):hover,
-input:not([type="checkbox"]):not([type="radio"]):focus {
+input:not([type="checkbox"]):not([type="radio"]):not([cmdk-input]):hover,
+input:not([type="checkbox"]):not([type="radio"]):not([cmdk-input]):focus {
   background: var(--hover-overlay);
   outline: none;
   box-shadow: none;

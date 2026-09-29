@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import OSS from 'ali-oss';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
+import { Readable } from 'stream';
 import type { MinioDraftStorageStatus } from '../minio/minio-draft-storage-status';
 
 @Injectable()
@@ -232,6 +233,18 @@ export class OssService implements OnModuleInit, MinioDraftStorageStatus {
     return Buffer.isBuffer(result.content)
       ? result.content
       : Buffer.from(result.content as Uint8Array);
+  }
+
+  /** Stream large public attachments without buffering them in the application. */
+  async getObjectStream(
+    objectKey: string,
+    process?: string,
+  ): Promise<Readable> {
+    const result = await this.client.getStream(objectKey, { process });
+    const stream: unknown = result.stream;
+    if (!(stream instanceof Readable))
+      throw new Error('OSS returned no readable stream');
+    return stream;
   }
 
   /**

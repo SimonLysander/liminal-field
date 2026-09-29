@@ -28,6 +28,7 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { Readable } from 'stream';
 import simpleGit from 'simple-git';
 import supertest from 'supertest';
 
@@ -166,6 +167,16 @@ export class TestContext {
           }),
         getObject: jest.fn().mockImplementation((key: string) => {
           return Promise.resolve(store.get(key) ?? Buffer.alloc(0));
+        }),
+        getObjectStream: jest.fn().mockImplementation((key: string) => {
+          const buffer = store.get(key);
+          if (!buffer)
+            return Promise.reject(
+              Object.assign(new Error('Object not found'), {
+                code: 'NoSuchKey',
+              }),
+            );
+          return Promise.resolve(Readable.from(buffer));
         }),
         listByPrefix: jest.fn().mockImplementation((prefix: string) => {
           return Promise.resolve(

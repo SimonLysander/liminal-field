@@ -24,6 +24,14 @@ export interface CreateDigestReportInput {
   publishedAt: Date;
 }
 
+export interface PublicReportSummary {
+  _id: string;
+  topicId: string;
+  headline: string;
+  deck: string;
+  publishedAt: Date;
+}
+
 @Injectable()
 export class DigestReportRepository {
   constructor(
@@ -37,6 +45,70 @@ export class DigestReportRepository {
 
   async findById(id: string): Promise<DigestReport | null> {
     return this.model.findById(id).exec();
+  }
+
+  /** Same per-period publication rule as the public reader, without loading report bodies. */
+  async listPublicSummaries(
+    topicIds: string[],
+  ): Promise<PublicReportSummary[]> {
+    if (topicIds.length === 0) return [];
+    return this.model.aggregate<PublicReportSummary>([
+      { $match: { topicId: { $in: topicIds } } },
+      { $sort: { publishedAt: -1, _id: -1 } },
+      {
+        $group: {
+          _id: { topicId: '$topicId', periodKey: '$periodKey' },
+          report: { $first: '$$ROOT' },
+        },
+      },
+      { $replaceWith: '$report' },
+      {
+        $project: { _id: 1, topicId: 1, headline: 1, deck: 1, publishedAt: 1 },
+      },
+      { $sort: { publishedAt: -1, _id: -1 } },
+    ]);
+  }
+
+  async searchPublicReports(
+    ids: string[],
+    keyword: string,
+  ): Promise<Array<{ id: string; snippet: string }>> {
+    if (ids.length === 0) return [];
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return this.model.aggregate<{ id: string; snippet: string }>([
+      {
+        $match: {
+          _id: { $in: ids },
+          $or: [
+            { headline: { $regex: escaped, $options: 'i' } },
+            { deck: { $regex: escaped, $options: 'i' } },
+            { markdown: { $regex: escaped, $options: 'i' } },
+          ],
+        },
+      },
+      {
+        $set: {
+          match: {
+            $regexFind: { input: '$markdown', regex: escaped, options: 'i' },
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          id: '$_id',
+          snippet: {
+            $substrCP: [
+              '$markdown',
+              {
+                $max: [0, { $subtract: [{ $ifNull: ['$match.idx', 0] }, 100] }],
+              },
+              400,
+            ],
+          },
+        },
+      },
+    ]);
   }
 
   /** 按 topic 列报告,默认按 publishedAt 倒序(最新在前)。

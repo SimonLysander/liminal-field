@@ -69,6 +69,21 @@ export interface ContentDetail {
   publishedAt?: string | null;
 }
 
+export type PublicContentDetail = Pick<
+  ContentDetail,
+  | 'id'
+  | 'title'
+  | 'summary'
+  | 'bodyMarkdown'
+  | 'headings'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'publishedAt'
+> & {
+  status: 'published';
+  publishedVersion: ContentVersion;
+};
+
 export interface CreateContentDto {
   title: string;
   summary?: string;
@@ -374,10 +389,14 @@ export const workspaceApi = {
 // ─── notesApi — notes scope 专用，兼容原 contentItemsApi 接口 ───
 
 export const notesApi = {
-  /** 按 ID 获取笔记详情，支持 visibility 过滤 */
-  getById: (id: string, options?: { visibility?: ContentVisibility }) =>
+  /** Public reading never includes unpublished heads or change logs, even when logged in. */
+  getPublicById: (id: string) =>
+    request<PublicContentDetail>(`/spaces/notes/items/${id}?visibility=public`),
+
+  /** 管理端读取最新稿；公开阅读使用 getPublicById。 */
+  getById: (id: string, options: { visibility: 'all' }) =>
     request<ContentDetail>(
-      `/spaces/notes/items/${id}${toQueryString({ visibility: options?.visibility })}`,
+      `/spaces/notes/items/${id}${toQueryString({ visibility: options.visibility })}`,
     ),
 
   /** 列出笔记，支持 visibility / status 过滤 */

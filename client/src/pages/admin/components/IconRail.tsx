@@ -2,11 +2,12 @@
 
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { FileText, Image, BookOpen, RefreshCw, LogOut, Settings, Search, Sun, Moon } from 'lucide-react';
+import { RefreshCw, LogOut, Settings } from 'lucide-react';
 import { authApi } from '@/services/auth';
 import { resetAuth } from '@/App';
 import { Logo } from '@/components/Logo';
 import { SearchPanel } from '@/components/global/SearchPanel';
+import { AnimateIconsNavIcon } from '@/components/global/AnimateIconsNavIcon';
 import { useSearchHotkey } from '@/hooks/use-search-hotkey';
 import { useTheme } from '@/hooks/use-theme';
 import { SyncDialog } from './SyncDialog';
@@ -20,10 +21,10 @@ import { SyncDialog } from './SyncDialog';
  */
 
 const NAV_ITEMS = [
-  { path: '/admin/notes', icon: FileText, label: '笔记管理' },
-  { path: '/admin/anthology', icon: BookOpen, label: '文集管理' },
-  { path: '/admin/gallery', icon: Image, label: '画廊管理' },
-  { path: '/admin/settings', icon: Settings, label: '设置' },
+  { path: '/admin/notes', space: 'notes', label: '笔记管理' },
+  { path: '/admin/anthology', space: 'anthology', label: '文集管理' },
+  { path: '/admin/gallery', space: 'gallery', label: '画廊管理' },
+  { path: '/admin/settings', space: null, label: '设置' },
 ] as const;
 
 export function IconRail() {
@@ -32,6 +33,8 @@ export function IconRail() {
   const [syncOpen, setSyncOpen] = useState(false);
   const { searchOpen, setSearchOpen } = useSearchHotkey();
   const { theme, setTheme } = useTheme();
+  const [hoveredControl, setHoveredControl] = useState<string | null>(null);
+  const themeAction = theme === 'daylight' ? '切换至深色' : '切换至浅色';
 
   /* 匹配当前路径到导航项（前缀匹配） */
   const activePath = NAV_ITEMS.find((item) =>
@@ -66,15 +69,17 @@ export function IconRail() {
           className="flex items-center justify-center rounded-lg transition-colors duration-150 mb-1"
           style={{ width: 36, height: 36, color: 'var(--ink-ghost)' }}
           title="搜索 (⌘K)"
+          aria-label="搜索"
           onClick={() => setSearchOpen(true)}
+          onMouseEnter={() => setHoveredControl('search')}
+          onMouseLeave={() => setHoveredControl(null)}
         >
-          <Search size={18} strokeWidth={1.5} />
+          <AnimateIconsNavIcon space="search" size={16} isHovered={hoveredControl === 'search'} />
         </button>
 
         {/* Nav icons */}
         {NAV_ITEMS.map((item) => {
           const isActive = activePath === item.path;
-          const Icon = item.icon;
           return (
             <button
               key={item.path}
@@ -86,9 +91,16 @@ export function IconRail() {
                 color: isActive ? 'var(--ink)' : 'var(--ink-ghost)',
               }}
               title={item.label}
+              aria-label={item.label}
               onClick={() => navigate(item.path)}
+              onMouseEnter={() => setHoveredControl(item.path)}
+              onMouseLeave={() => setHoveredControl(null)}
             >
-              <Icon size={18} strokeWidth={1.5} />
+              {item.space ? (
+                <AnimateIconsNavIcon space={item.space} size={16} isHovered={hoveredControl === item.path} />
+              ) : (
+                <Settings size={18} strokeWidth={1.5} />
+              )}
             </button>
           );
         })}
@@ -100,11 +112,12 @@ export function IconRail() {
             onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}
             className="flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-[var(--shelf)]"
             style={{ color: 'var(--ink-ghost)' }}
-            title="切换主题"
-            aria-label="切换主题"
+            title={themeAction}
+            aria-label={themeAction}
+            onMouseEnter={() => setHoveredControl('theme')}
+            onMouseLeave={() => setHoveredControl(null)}
           >
-            <Sun size={15} strokeWidth={1.8} className="theme-icon-light" />
-            <Moon size={15} strokeWidth={1.8} className="theme-icon-dark" />
+            <AnimateIconsNavIcon space="theme" size={16} isHovered={hoveredControl === 'theme'} />
           </button>
           <button
             onClick={() => setSyncOpen(true)}

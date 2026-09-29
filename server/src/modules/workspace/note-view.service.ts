@@ -25,6 +25,7 @@ import { ContentRepoService } from '../content/content-repo.service';
 import { ContentGitService } from '../content/content-git.service';
 import { OssService } from '../oss/oss.service';
 import { ContentDetailDto } from '../content/dto/content-detail.dto';
+import { PublicContentDetailDto } from '../content/dto/public-content-detail.dto';
 import { ContentListItemDto } from '../content/dto/content-list-item.dto';
 import { ContentHistoryEntryDto } from '../content/dto/content-history.dto';
 import { ContentVisibility } from '../content/dto/content-query.dto';
@@ -163,6 +164,10 @@ export class NoteViewService {
     // 剥掉 frontmatter，只把正文返回给前端
     const { body } = stripNoteFrontmatter(detail.bodyMarkdown);
     return { ...detail, bodyMarkdown: body };
+  }
+
+  async getPublicById(id: string): Promise<PublicContentDetailDto> {
+    return PublicContentDetailDto.fromDetail(await this.getById(id, 'public'));
   }
 
   /**

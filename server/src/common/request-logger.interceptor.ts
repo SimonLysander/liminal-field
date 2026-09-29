@@ -20,6 +20,24 @@ function statusFromError(err: unknown): number {
   return 500;
 }
 
+export function requestLogUrl(raw: string): string {
+  if (!raw.startsWith('/api/v1/external/')) return raw;
+  const url = new URL(raw, 'http://localhost');
+  url.pathname = url.pathname.replace(
+    /(\/external\/assets\/)[^/]+$/,
+    '$1[reference]',
+  );
+  for (const key of ['cursor', 'sectionRef', 'assetRef'])
+    if (url.searchParams.has(key)) url.searchParams.set(key, '[reference]');
+  // Keywords may contain pasted personal text; their content is not needed for HTTP diagnostics.
+  if (url.searchParams.has('query'))
+    url.searchParams.set(
+      'query',
+      `[${url.searchParams.get('query')!.length} characters]`,
+    );
+  return `${url.pathname}${url.search}`;
+}
+
 /**
  * 替代 Fastify 默认的 JSON 请求日志，输出人类可读的单行格式：
  *   GET /api/v1/auth/check → 200 (12ms)
@@ -30,7 +48,8 @@ export class RequestLoggerInterceptor implements NestInterceptor {
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const request = context.switchToHttp().getRequest<FastifyRequest>();
-    const { method, url } = request;
+    const { method } = request;
+    const url = requestLogUrl(request.url);
     const startTime = Date.now();
 
     return next.handle().pipe(

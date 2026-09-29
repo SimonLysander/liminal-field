@@ -225,13 +225,13 @@ export function SearchPanel({ open, onOpenChange, admin }: SearchPanelProps) {
               >
                 {/* ── Input row ── */}
                 <div className="flex items-center gap-3 px-4" style={{ height: 52 }}>
-                  <Search size={18} strokeWidth={2} className="flex-shrink-0" style={{ color: 'var(--ink-ghost)' }} />
+                  <Search size={18} strokeWidth={2} className="flex-shrink-0" style={{ color: 'var(--ink-faded)' }} />
                   <CommandPrimitive.Input
                     ref={inputRef}
                     value={query}
                     onValueChange={handleInput}
                     placeholder="搜索..."
-                    className="h-full flex-1 bg-transparent text-base outline-none placeholder:text-[var(--ink-ghost)]"
+                    className="h-full min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-[var(--ink-faded)]"
                     style={{ color: 'var(--ink)', caretColor: 'var(--accent)', border: 'none', boxShadow: 'none' }}
                   />
                 </div>

@@ -111,6 +111,71 @@ describe('Notes Publish (e2e)', () => {
   });
 
   describe('未登录访问控制', () => {
+    it('提交未发布修改后，公开响应仍隔离最新标题、正文和版本记录', async () => {
+      const id = await createNoteItem(ctx.app, cookie, 'Published title');
+      await commitNoteContent(
+        ctx.app,
+        cookie,
+        id,
+        '# Published body',
+        'Published title',
+      );
+      await supertest(ctx.app.getHttpServer())
+        .put(`/api/v1/spaces/notes/items/${id}/publish`)
+        .set('Cookie', cookie)
+        .send({})
+        .expect(200);
+
+      const before = await supertest(ctx.app.getHttpServer())
+        .get(`/api/v1/spaces/notes/items/${id}`)
+        .expect(200);
+
+      await commitNoteContent(
+        ctx.app,
+        cookie,
+        id,
+        '# Private body',
+        'Private title',
+      );
+
+      const anonymous = await supertest(ctx.app.getHttpServer())
+        .get(`/api/v1/spaces/notes/items/${id}?visibility=all`)
+        .expect(200);
+      const signedInPublic = await supertest(ctx.app.getHttpServer())
+        .get(`/api/v1/spaces/notes/items/${id}?visibility=public`)
+        .set('Cookie', cookie)
+        .expect(200);
+
+      for (const response of [anonymous, signedInPublic]) {
+        expect(response.body.data).toMatchObject({
+          title: 'Published title',
+          summary: 'Published title',
+          status: 'published',
+          bodyMarkdown: '# Published body',
+          updatedAt: before.body.data.updatedAt,
+          publishedVersion: expect.objectContaining({
+            title: 'Published title',
+          }),
+        });
+        expect(response.body.data).not.toHaveProperty('latestVersion');
+        expect(response.body.data).not.toHaveProperty('changeLogs');
+        expect(response.body.data).not.toHaveProperty('hasUnpublishedChanges');
+        expect(JSON.stringify(response.body.data)).not.toContain('Private');
+      }
+
+      const admin = await supertest(ctx.app.getHttpServer())
+        .get(`/api/v1/spaces/notes/items/${id}?visibility=all`)
+        .set('Cookie', cookie)
+        .expect(200);
+      expect(admin.body.data).toMatchObject({
+        title: 'Private title',
+        bodyMarkdown: '# Private body',
+        hasUnpublishedChanges: true,
+        latestVersion: expect.objectContaining({ title: 'Private title' }),
+      });
+      expect(admin.body.data).toHaveProperty('changeLogs');
+    });
+
     it('已发布笔记 → 无 cookie 可访问，返回已发布版内容', async () => {
       const id = await createNoteItem(ctx.app, cookie, '公开笔记');
       await commitNoteContent(

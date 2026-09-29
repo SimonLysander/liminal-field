@@ -266,12 +266,37 @@ export class AnthologyViewService {
     return this.contentService.getLatestSnapshot(nodeId, null);
   }
 
-  /** 条目子 ContentItem 的标题:取其 latestVersion.title。 */
+  /** 标题与当前读取版本一致；公开视图不能回退到最新的导航名称。 */
   private entryTitle(
     node: NavigationNode,
-    item: { latestVersion?: { title: string } } | null,
+    item: {
+      latestVersion?: { title: string };
+      publishedVersion?: { title: string } | null;
+    } | null,
+    usePublished = false,
   ): string {
+    // node.name follows the latest commit, so it is not a public-title fallback.
+    if (usePublished) return item?.publishedVersion?.title ?? '';
     return item?.latestVersion?.title || node.name;
+  }
+
+  private async loadPublishedSnapshot(
+    contentItemId: string,
+    versionId: string | undefined,
+  ): Promise<ContentSnapshot> {
+    if (!versionId) {
+      throw new NotFoundException(
+        `Published content ${contentItemId} not found`,
+      );
+    }
+    const snapshot = await this.snapshotRepository.findByVersionId(versionId);
+    if (!snapshot) {
+      throw new NotFoundException(
+        `Published content ${contentItemId} not found`,
+      );
+    }
+    this.assertMainSnapshotBelongsTo(snapshot, contentItemId, versionId);
+    return snapshot;
   }
 
   /**
@@ -308,19 +333,29 @@ export class AnthologyViewService {
    */
   private async toEntryRefs(
     nodes: NavigationNode[],
+    usePublished = false,
   ): Promise<AnthologyEntryRef[]> {
     return Promise.all(
       nodes.map(async (node) => {
         const nodeId = node.contentItemId;
         const item = await this.contentRepository.findById(nodeId);
-        const snapshot = await this.loadEntryLatestSnapshot(nodeId);
+        const snapshot = usePublished
+          ? await this.loadPublishedSnapshot(
+              nodeId,
+              item?.publishedVersion?.versionId,
+            )
+          : await this.loadEntryLatestSnapshot(nodeId);
         const parsed = snapshot
           ? parseEntryContent(snapshot.bodyMarkdown)
           : { date: null, bodyMarkdown: '' };
         const date =
           parsed.date ??
           (snapshot ? snapshot.createdAt.toISOString().split('T')[0] : null);
-        return { nodeId, title: this.entryTitle(node, item), date };
+        return {
+          nodeId,
+          title: this.entryTitle(node, item, usePublished),
+          date,
+        };
       }),
     );
   }
@@ -491,6 +526,7 @@ export class AnthologyViewService {
   private async loadPublishedIndex(contentItemId: string): Promise<{
     item: NonNullable<Awaited<ReturnType<ContentRepository['findById']>>>;
     indexData: ParsedAnthologyIndex;
+    updatedAt: string;
   }> {
     const item = await this.contentRepository.findById(contentItemId);
     if (!item)
@@ -501,14 +537,17 @@ export class AnthologyViewService {
       );
     }
 
-    const publishedSnapshot = await this.snapshotRepository.findByVersionId(
-      item.publishedVersion.versionId!,
+    const publishedSnapshot = await this.loadPublishedSnapshot(
+      contentItemId,
+      item.publishedVersion.versionId,
     );
-    const indexData = publishedSnapshot
-      ? parseAnthologyIndex(publishedSnapshot.bodyMarkdown)
-      : { title: '', description: '', body: '' };
+    const indexData = parseAnthologyIndex(publishedSnapshot.bodyMarkdown);
 
-    return { item, indexData };
+    return {
+      item,
+      indexData,
+      updatedAt: publishedSnapshot.createdAt.toISOString(),
+    };
   }
 
   /** 已发布的子条目节点(按 order)。供展示端列表/详情共用。 */
@@ -528,7 +567,8 @@ export class AnthologyViewService {
   async toPublicListItem(
     contentItemId: string,
   ): Promise<AnthologyPublicListItemDto> {
-    const { item, indexData } = await this.loadPublishedIndex(contentItemId);
+    const { item, indexData, updatedAt } =
+      await this.loadPublishedIndex(contentItemId);
     const anthologyNode = await this.getAnthologyNode(contentItemId);
     const publishedNodes = await this.listPublishedEntryNodes(anthologyNode);
 
@@ -537,7 +577,7 @@ export class AnthologyViewService {
       title: item.publishedVersion!.title || indexData.title,
       description: indexData.description,
       entryCount: publishedNodes.length,
-      updatedAt: item.updatedAt.toISOString(),
+      updatedAt,
     };
   }
 
@@ -558,7 +598,7 @@ export class AnthologyViewService {
       description: indexData.description,
       // 卷首语:容器节点本身的正文(serializeAnthologyIndex 的 body 段)
       bodyMarkdown: indexData.body,
-      entries: await this.toEntryRefs(publishedNodes),
+      entries: await this.toEntryRefs(publishedNodes, true),
     };
   }
 
@@ -599,7 +639,7 @@ export class AnthologyViewService {
 
     const visibleRefs = visiblePairs.map(({ node, item }) => ({
       nodeId: node.contentItemId,
-      title: this.entryTitle(node, item),
+      title: this.entryTitle(node, item, usePublished),
     }));
 
     // 校验目标条目确实挂在该文集下且(在 usePublished 下)可见
@@ -622,9 +662,7 @@ export class AnthologyViewService {
     let entrySnapshot: ContentSnapshot | null;
     if (usePublished) {
       const publishedVid = entryItem?.publishedVersion?.versionId;
-      entrySnapshot = publishedVid
-        ? await this.snapshotRepository.findByVersionId(publishedVid)
-        : null;
+      entrySnapshot = await this.loadPublishedSnapshot(nodeId, publishedVid);
     } else {
       entrySnapshot = await this.loadEntryLatestSnapshot(nodeId);
     }
@@ -632,10 +670,6 @@ export class AnthologyViewService {
     const { prev, next } = this.buildPrevNext(visibleRefs, entryIdx);
 
     if (!entrySnapshot) {
-      // 展示端:已发布条目却查不到正文快照(版本悬空)→ 严格 404
-      if (usePublished) {
-        throw new NotFoundException(`Entry ${nodeId} has no content snapshot`);
-      }
       // 管理端:正文快照缺失 → 返回空正文让编辑器正常打开(自愈),不堵死用户。
       return {
         nodeId,
@@ -648,15 +682,14 @@ export class AnthologyViewService {
       };
     }
 
-    // updatedAt 取该子节点最新 snapshot 的 createdAt(与 NoteReader 同语义)
-    const latestSnapshot = await this.loadEntryLatestSnapshot(nodeId);
+    // All public metadata follows the same frozen snapshot as the body.
     const parsed = parseEntryContent(entrySnapshot.bodyMarkdown);
 
     return {
       nodeId,
-      title: this.entryTitle(entryNode, entryItem),
+      title: this.entryTitle(entryNode, entryItem, usePublished),
       date: parsed.date ?? entrySnapshot.createdAt.toISOString().split('T')[0],
-      updatedAt: (latestSnapshot ?? entrySnapshot).createdAt.toISOString(),
+      updatedAt: entrySnapshot.createdAt.toISOString(),
       bodyMarkdown: parsed.bodyMarkdown,
       prev,
       next,

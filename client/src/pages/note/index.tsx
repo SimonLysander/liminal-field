@@ -11,7 +11,7 @@ import { motion } from 'motion/react';
 import { banner } from '@/components/ui/banner-api';
 import { smoothBounce } from '@/lib/motion';
 import { notesApi as contentItemsApi } from '@/services/workspace';
-import type { ContentDetail } from '@/services/workspace';
+import type { PublicContentDetail } from '@/services/workspace';
 import { structureApi } from '@/services/structure';
 import MarkdownBody from '@/components/shared/MarkdownBody';
 import { MarkdownTocPanel, type TocEntry } from '@/components/shared/MarkdownTocPanel';
@@ -64,11 +64,11 @@ function NoteListView() {
  * 抽屉下钻承载，故主面板只负责呈现主题自身正文。
  *
  * 数据流：topicId →（公开的 /structure-nodes/:id/path）取末节点拿 contentItemId
- *        → notesApi.getById（不传 visibility=all，仅取已发布正文）。
+ *        → notesApi.getPublicById（仅取已发布正文和元信息）。
  * 任一步失败或正文为空 → 回退到 NoteListView 邀请空态，不打断阅读体验。
  */
 function FolderReader({ nodeId }: { nodeId: string }) {
-  const [content, setContent] = useState<ContentDetail | null>(null);
+  const [content, setContent] = useState<PublicContentDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -86,8 +86,8 @@ function FolderReader({ nodeId }: { nodeId: string }) {
           if (!cancelled) setContent(null);
           return;
         }
-        // 不传 visibility=all：展示端只读已发布正文，未发布则后端 404，按空正文处理
-        const data = await contentItemsApi.getById(contentItemId);
+        // 明确读取公开版本；未发布则后端 404，按空正文处理。
+        const data = await contentItemsApi.getPublicById(contentItemId);
         if (!cancelled) setContent(data);
       } catch {
         // 主题无正文 / 未发布 / 加载失败：静默降级为空态，沿用既有邀请页
@@ -114,7 +114,7 @@ function FolderReader({ nodeId }: { nodeId: string }) {
     return <NoteListView />;
   }
 
-  const title = content.publishedVersion?.title ?? content.latestVersion.title ?? '';
+  const title = content.title;
   /* 元信息(reader 类「读完仪式感」三件套:更新于 + 字数 + 阅读时间);与 NoteReader 同规格 */
   const wordCount = content.bodyMarkdown.length || 0;
   const readMin = Math.max(1, Math.ceil(wordCount / 400));
@@ -200,7 +200,7 @@ function FolderReader({ nodeId }: { nodeId: string }) {
 
 function NoteReader({ id }: { id: string }) {
   const navigate = useNavigate();
-  const [content, setContent] = useState<ContentDetail | null>(null);
+  const [content, setContent] = useState<PublicContentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const centerRef = useRef<HTMLDivElement>(null);
 
@@ -211,7 +211,7 @@ function NoteReader({ id }: { id: string }) {
       if (cancelled) return;
       setLoading(true);
       try {
-        const data = await contentItemsApi.getById(id);
+        const data = await contentItemsApi.getPublicById(id);
         if (!cancelled) setContent(data);
       } catch {
         if (cancelled) return;
@@ -241,8 +241,8 @@ function NoteReader({ id }: { id: string }) {
   }, [content]);
 
   /* 标题信息 */
-  const title = content?.publishedVersion?.title ?? content?.latestVersion.title ?? '';
-  const summary = content?.publishedVersion?.summary ?? '';
+  const title = content?.title ?? '';
+  const summary = content?.summary ?? '';
   const wordCount = content?.bodyMarkdown.length || 0;
   const readMin = Math.max(1, Math.ceil(wordCount / 400));
 

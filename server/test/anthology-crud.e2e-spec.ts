@@ -689,6 +689,10 @@ describe('Anthology 发布 (e2e, Phase 1 page-tree)', () => {
       .send({})
       .expect(200);
 
+    const publishedRes = await supertest(ctx.app.getHttpServer())
+      .get(`/api/v1/spaces/anthology/public/items/${id}/entries/${nodeId}`)
+      .expect(200);
+
     // 编辑条目(走通用 PUT)
     await supertest(ctx.app.getHttpServer())
       .put(`/api/v1/spaces/anthology/items/${nodeId}`)
@@ -715,7 +719,19 @@ describe('Anthology 发布 (e2e, Phase 1 page-tree)', () => {
       .get(`/api/v1/spaces/anthology/public/items/${id}/entries/${nodeId}`)
       .expect(200);
     expect(publicRes.body.data.nodeId).toBe(nodeId);
+    expect(publicRes.body.data.title).toBe('原始标题');
+    expect(publicRes.body.data.date).toBe(publishedRes.body.data.date);
+    expect(publicRes.body.data.updatedAt).toBe(
+      publishedRes.body.data.updatedAt,
+    );
     expect(publicRes.body.data.bodyMarkdown).toContain('原始正文');
+
+    const directoryRes = await supertest(ctx.app.getHttpServer())
+      .get(`/api/v1/spaces/anthology/public/items/${id}`)
+      .expect(200);
+    expect(directoryRes.body.data.entries).toEqual([
+      { nodeId, title: '原始标题', date: publishedRes.body.data.date },
+    ]);
   });
 
   it('取消发布 → 展示端列表不含该文集', async () => {

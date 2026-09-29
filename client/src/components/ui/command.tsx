@@ -43,7 +43,7 @@ const CommandInput = React.forwardRef<
     /* 分隔线用项目 separator 色 0.5px，避免 border-b 默认黑边和外层 popover 的圆角边混淆 */
     style={{ borderBottom: '0.5px solid var(--separator)' }}
   >
-    <Search className="h-4 w-4 shrink-0" style={{ color: 'var(--ink-ghost)' }} />
+    <Search className="h-4 w-4 shrink-0" style={{ color: 'var(--ink-faded)' }} />
     <CommandPrimitive.Input
       ref={ref}
       className={cn(
@@ -52,7 +52,7 @@ const CommandInput = React.forwardRef<
         // 显式 inline style border:none + boxShadow:none 绕开浏览器 user-agent
         // input :focus 默认蓝紫 ring（Tailwind 的 outline-none 在某些浏览器对
         // box-shadow 形式的 focus indicator 不够，必须 inline 覆盖）。
-        'flex h-9 w-full bg-transparent text-sm outline-none placeholder:text-[var(--ink-ghost)] disabled:cursor-not-allowed disabled:opacity-50',
+        'flex h-9 w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-[var(--ink-faded)] disabled:cursor-not-allowed disabled:opacity-50',
         className,
       )}
       style={{

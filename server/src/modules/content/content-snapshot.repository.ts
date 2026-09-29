@@ -31,6 +31,61 @@ export class ContentSnapshotRepository {
     return this.model.findById(versionId);
   }
 
+  /** Restrict the database search to the already-authorized published snapshot IDs. */
+  async searchPublishedSnapshots(
+    versionIds: string[],
+    keyword: string,
+  ): Promise<
+    Array<{ versionId: string; contentItemId: string; snippet: string }>
+  > {
+    if (versionIds.length === 0) return [];
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return this.model.aggregate<{
+      versionId: string;
+      contentItemId: string;
+      snippet: string;
+    }>([
+      {
+        $match: {
+          _id: { $in: versionIds },
+          fileName: null,
+          $or: [
+            { title: { $regex: escaped, $options: 'i' } },
+            { summary: { $regex: escaped, $options: 'i' } },
+            { bodyMarkdown: { $regex: escaped, $options: 'i' } },
+          ],
+        },
+      },
+      {
+        $set: {
+          match: {
+            $regexFind: {
+              input: '$bodyMarkdown',
+              regex: escaped,
+              options: 'i',
+            },
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          versionId: '$_id',
+          contentItemId: 1,
+          snippet: {
+            $substrCP: [
+              '$bodyMarkdown',
+              {
+                $max: [0, { $subtract: [{ $ifNull: ['$match.idx', 0] }, 100] }],
+              },
+              400,
+            ],
+          },
+        },
+      },
+    ]);
+  }
+
   /** 按 contentItemId 查询版本列表，最新在前（只查 main.md，即 fileName=null） */
   async listByContentItemId(contentItemId: string): Promise<ContentSnapshot[]> {
     return this.model
