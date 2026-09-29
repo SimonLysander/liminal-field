@@ -249,7 +249,7 @@ describe('PendingWriteRepository.stash', () => {
       { _id: 'call-1', status: 'pending', expiresAt: { $gt: now } },
       {
         $set: { status: 'rejected', resolvedAt: now },
-        $unset: { expiresAt: 1, payload: 1, preview: 1 },
+        $unset: { expiresAt: 1, payload: 1, preview: 1, draftSectionBase: 1 },
       },
     );
   });

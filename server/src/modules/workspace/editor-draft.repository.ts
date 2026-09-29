@@ -250,6 +250,34 @@ export class EditorDraftRepository {
     return (await this.upsertAiDraftFenced(input, approvalFence)) != null;
   }
 
+  /**
+   * 小节合并按读取的快照做 CAS，而不是按审批卡的生成顺序覆盖整篇。
+   * 分配新的整篇屏障，防止更早的全文审批随后抹掉已合入的小节。
+   */
+  async saveAiDraftIfUnchanged(
+    input: SaveAiDraftInput,
+    expected: Pick<EditorDraft, 'bodyMarkdown' | 'approvalFence'>,
+  ): Promise<boolean> {
+    const sequence = await this.writeFenceCounterRepo.next(
+      `draft:${input.contentItemId}`,
+    );
+    const result = await this.editorDraftModel.updateOne(
+      {
+        _id: this.buildAiDraftId(input.contentItemId),
+        bodyMarkdown: expected.bodyMarkdown,
+        approvalFence: expected.approvalFence ?? { $exists: false },
+      },
+      {
+        $set: {
+          ...input,
+          fileName: null,
+          approvalFence: buildDirectWriteFence(sequence),
+        },
+      },
+    );
+    return result.matchedCount === 1;
+  }
+
   private async upsertAiDraftFenced(
     input: SaveAiDraftInput,
     approvalFence: string,

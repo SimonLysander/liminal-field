@@ -75,7 +75,7 @@ function approvalStatusLabel(status: WriteApprovalStatus): string {
     case 'rejected':
       return '已拒绝';
     case 'superseded':
-      return '已被更新内容取代';
+      return '未写入：目标内容已更新';
     case 'expired':
       return '审批已过期';
     case 'pending':
@@ -133,7 +133,7 @@ export function WriteApprovalCard({
     onStatusChange?.(toolCallId, terminalApproval);
     if (terminalStatus === 'approved') onApproved?.();
     if (terminalStatus === 'superseded') {
-      banner.info('这项修改已被更新的内容取代');
+      banner.info('目标内容已更新，这项修改未写入');
     }
   };
 

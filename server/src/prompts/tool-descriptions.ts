@@ -71,7 +71,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
 
   write_draft: `把研究成果写成当前笔记节点的 AI 初稿（aidraft），供用户只读参考。只写当前这一篇，目标节点已由系统固定，无法改变。每次都给 changeSummary，简明说明这次改了什么及其取舍；缺它会被退回。
 
-首次起草、重构主线或标题层级时，用 replace_document（默认）提交一篇完整 Markdown。只重写已有的一节时，用 replace_section：sectionPath 给从 H1 到目标标题的完整路径，sectionMarkdown 只给该标题下的新正文，不重复标题；其中只能有更低级子标题。局部重写依赖同一会话里已经生成的完整初稿和来源表；不确定当前初稿结构时不要猜，改用整篇重写。局部模式仍须传整篇完整 sources（无来源传 []）；已有来源保持内容、顺序和序号，新来源追加在末尾。新正文含 CIT 时才提交该小节的 citationAudit。
+首次起草、重构主线或标题层级时，用 replace_document（默认）提交一篇完整 Markdown。只重写已有的一节时，用 replace_section：sectionPath 给从 H1 到目标标题的完整路径，sectionMarkdown 只给该标题下的新正文，不重复标题；其中只能有更低级子标题。局部重写依赖同一会话里已经生成的完整初稿和来源表；不确定当前初稿结构时不要猜，改用整篇重写。审批时将该节合入最新初稿，不覆盖相邻小节；目标小节或其子节已发生变化时，该修改不会写入。局部模式仍须传整篇完整 sources（无来源传 []）；已有来源保持内容、顺序和序号，新来源追加在末尾。新正文含 CIT 时才提交该小节的 citationAudit。
 
 正文使用编辑器稳定支持的 Markdown：H1-H3、自然段、内联链接与图片、列表、引用块、表格、代码块、分隔线和 KaTeX。标题使用 # 语法，链接直接写 URL；来源角标使用 [@#CIT N]。工具会校验整篇结构并返回具体行号，收到格式错误后修正再写入。
 

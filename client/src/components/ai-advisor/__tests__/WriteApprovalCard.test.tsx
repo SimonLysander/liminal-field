@@ -58,7 +58,7 @@ describe('WriteApprovalCard', () => {
       />,
     );
 
-    expect(screen.getByText('已被更新内容取代')).toBeTruthy();
+    expect(screen.getByText('未写入：目标内容已更新')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '允许' })).toBeNull();
     expect(screen.queryByRole('button', { name: '拒绝' })).toBeNull();
   });

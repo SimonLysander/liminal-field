@@ -214,6 +214,7 @@ export class PendingWriteCommitService {
               payload,
               now,
               commitFence,
+              pending.draftSectionBase,
             ),
           );
           break;

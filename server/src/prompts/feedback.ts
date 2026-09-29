@@ -20,7 +20,7 @@ export function approvalResultsFeedback(resolved: ResolvedWrite[]): string {
       r.status === 'approved'
         ? '已获用户批准并写入'
         : r.status === 'superseded'
-          ? '已被后续版本取代,未写入'
+          ? '目标内容已更新,本项修改未写入'
           : '被用户拒绝,未写入';
     return `- ${r.toolName}:${verb}`;
   });

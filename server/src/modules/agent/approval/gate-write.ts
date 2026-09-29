@@ -14,8 +14,11 @@
  * - execute 被替换为门禁逻辑；只有领域校验通过的参数才会暂存
  * - 没有 sessionKey 时上游不得装配写工具，避免绕过审批直接写入
  */
-import { Logger } from '@nestjs/common';
-import { PendingWriteRepository } from './pending-write.repository';
+import { BadRequestException, Logger } from '@nestjs/common';
+import {
+  PendingWriteRepository,
+  type StashPendingWriteInput,
+} from './pending-write.repository';
 import { toolResult } from '../tools/tool-result';
 
 // 模块级 logger:gateWrite 是工厂函数无 class 容器,沿用 skill.tool 同款 module-scope Logger。
@@ -48,6 +51,10 @@ export interface GateWriteOptions {
    * 返回错误文案则不暂存、直接回 invalid。
    */
   validate?: (args: Record<string, unknown>) => string | null;
+  /** 系统级前置条件，在校验之后捕获，不混入模型原始参数。 */
+  prepare?: (
+    args: Record<string, unknown>,
+  ) => Promise<Pick<StashPendingWriteInput, 'draftSectionBase'>>;
   /** 把工具入参映射成审批卡的统一展示契约(三层) */
   buildPreview: (args: Record<string, unknown>) => ApprovalPreview;
 }
@@ -95,6 +102,7 @@ export function gateWrite(
     //    buildPreview/stash 失败(如 Mongo 故障)不透传异常——带上下文 log 后回 error tool result,
     //    否则流层吞掉、服务端无痕(CLAUDE.md「catch 必 log / 关键写入失败带上下文」)。
     try {
+      const prepared = await opts.prepare?.(recordArgs);
       const preview = opts.buildPreview(recordArgs);
       // ApprovalPreview 严格类型不带 index signature,落 Mongo Mixed / 拼进 toolResult 处统一窄化为 Record
       const previewRecord = preview as Record<string, unknown>;
@@ -105,6 +113,7 @@ export function gateWrite(
         targetContentItemId: opts.targetContentItemId,
         agentKey: opts.agentKey,
         payload: recordArgs,
+        draftSectionBase: prepared?.draftSectionBase,
         preview: previewRecord,
         now: new Date(),
       });
@@ -116,6 +125,16 @@ export function gateWrite(
         ...previewRecord,
       });
     } catch (err) {
+      if (err instanceof BadRequestException) {
+        logger.warn({
+          event: 'prepare_invalid',
+          toolName: opts.toolName,
+          sessionKey: opts.sessionKey,
+          toolCallId,
+          reason: err.message,
+        });
+        return toolResult(err.message, undefined, { status: 'invalid' });
+      }
       const stack = err instanceof Error ? err.stack : String(err);
       logger.error(
         `gateWrite 暂存失败 toolName=${opts.toolName} sessionKey=${opts.sessionKey} toolCallId=${toolCallId} err=${stack}`,

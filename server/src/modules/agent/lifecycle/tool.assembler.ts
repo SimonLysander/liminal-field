@@ -77,6 +77,7 @@ import {
 import {
   createWriteDraftTool,
   validateDraftWriteInput,
+  captureDraftSectionBase,
 } from '../tools/write-draft.tool';
 import { extractSections } from '../tools/markdown.utils';
 import { createReadContentTool } from '../tools/read-node-content.tool';
@@ -418,6 +419,13 @@ export class ToolAssembler {
                 toolName: 'write_draft',
                 targetContentItemId: entryContext.learningNoteId,
                 validate: validateDraftWrite, // 缺改动摘要 / 引用悬空都退回让模型补
+                prepare: async (args) => ({
+                  draftSectionBase: await captureDraftSectionBase(
+                    this.editorDraftRepo,
+                    entryContext.learningNoteId!,
+                    args,
+                  ),
+                }),
                 buildPreview: (args) => {
                   const operation = args['operation'] ?? 'replace_document';
                   const md = (args['markdown'] as string) ?? '';

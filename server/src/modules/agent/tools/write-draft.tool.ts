@@ -12,11 +12,22 @@
  *   markdown — 完整 AI 初稿正文（含标题和所有章节）
  */
 import { tool, jsonSchema } from 'ai';
+import { BadRequestException, Logger } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import type { EditorDraftRepository } from '../../workspace/editor-draft.repository';
 import { ApprovalSupersededError } from '../approval/approval-superseded.error';
 import { validateDraftMarkdownContract } from './draft-markdown-contract';
-import { replaceDraftSection } from './draft-section';
+import { readDraftSection, replaceDraftSection } from './draft-section';
 import { toolResult } from './tool-result';
+
+const logger = new Logger('DraftWrite');
+
+/** 系统捕获的前置条件，不暴露为模型参数。 */
+export interface DraftSectionBase {
+  hash: string;
+  sourceCount: number;
+  occurrenceCount: number;
+}
 
 /** 从 markdown 提取标题：优先取第一个 # 标题，退而取首行（去除空白），截断至 80 字。 */
 export function extractTitle(markdown: string): string {
@@ -349,8 +360,12 @@ export function composeAiDraftBody(
 ): string {
   const srcs = sources ?? [];
   if (srcs.length === 0) return markdown;
+  return `${renderCitations(markdown, srcs)}\n\n${sourceAppendix(srcs)}`;
+}
+
+function renderCitations(markdown: string, srcs: DraftSource[]): string {
   // [@#CIT 1,3-5] → 展开成各自可点的 [1](u1#cit-1 "title")。#cit-N 只供前端稳定命中 citation 样式。
-  const linked = markdown.replace(CITATION_MARKER, (whole, refBody: string) => {
+  return markdown.replace(CITATION_MARKER, (whole, refBody: string) => {
     const parts = parseCitationNumbers(refBody).map((n) => {
       const s = srcs[n - 1];
       if (!s) return String(n);
@@ -358,7 +373,209 @@ export function composeAiDraftBody(
     });
     return parts.length ? parts.join(',') : whole;
   });
-  return `${linked}\n\n${sourceAppendix(srcs)}`;
+}
+
+/** 只解析系统自身生成的来源尾部，并通过序号和序列化回验拒绝异常格式。 */
+function readGeneratedSources(bodyMarkdown: string): DraftSource[] {
+  const delimiter = '\n\n## 来源\n\n';
+  const start = bodyMarkdown.lastIndexOf(delimiter);
+  if (start < 0) {
+    if (/\]\([^\s)]+#cit-\d+(?:\s+"[^"]*")?\)/.test(bodyMarkdown)) {
+      throw new Error('当前 AI 初稿缺少引用对应的来源表。');
+    }
+    return [];
+  }
+  const sources = bodyMarkdown
+    .slice(start + delimiter.length)
+    .split('\n')
+    .map((line, index) => {
+      const match = line.match(/^(\d+)\. \[(.*)\]\((.*)\)$/);
+      if (!match || Number(match[1]) !== index + 1) {
+        throw new Error('当前 AI 初稿的来源表格式无效。');
+      }
+      return { title: match[2], url: match[3] };
+    });
+  if (
+    bodyMarkdown.slice(start) !== `\n\n${sourceAppendix(sources)}` ||
+    validateCitations('', sources)
+  ) {
+    throw new Error('当前 AI 初稿的来源表格式无效。');
+  }
+  return sources;
+}
+
+function sameSource(left: DraftSource, right: DraftSource): boolean {
+  return left.title === right.title && left.url === right.url;
+}
+
+function sectionHash(
+  markdown: string,
+  input: DraftWriteInput,
+  sources: DraftSource[],
+): string {
+  const section = readDraftSection(markdown, {
+    sectionPath: input.sectionPath!,
+    sectionOccurrence: input.sectionOccurrence,
+  });
+  // 比较最终引用链接而非临时 CIT 序号；相邻小节追加来源不会改变该范围的校验值。
+  return createHash('sha256')
+    .update(renderCitations(section.text, sources))
+    .digest('hex');
+}
+
+export async function captureDraftSectionBase(
+  repo: Pick<EditorDraftRepository, 'findAiDraftByContentItemId'>,
+  targetId: string,
+  input: DraftWriteInput,
+): Promise<DraftSectionBase | undefined> {
+  if (operationOf(input) !== 'replace_section') return undefined;
+  const draft = await repo.findAiDraftByContentItemId(targetId);
+  if (!draft) throw new BadRequestException('当前没有可重写的 AI 初稿。');
+  try {
+    const sources = readGeneratedSources(draft.bodyMarkdown);
+    const markdown = restoreAiDraftMarkdown(
+      draft.bodyMarkdown,
+      input.sources ?? [],
+    );
+    // 同时检验目标定位和新正文层级，不创建一张批准后才发现无法替换的卡片。
+    replaceDraftSection(markdown, {
+      sectionPath: input.sectionPath!,
+      sectionOccurrence: input.sectionOccurrence,
+      sectionMarkdown: input.sectionMarkdown!,
+    });
+    return {
+      hash: sectionHash(markdown, input, sources),
+      sourceCount: sources.length,
+      occurrenceCount: readDraftSection(markdown, {
+        sectionPath: input.sectionPath!,
+        sectionOccurrence: input.sectionOccurrence,
+      }).occurrenceCount,
+    };
+  } catch (error) {
+    // 纯内容/定位校验失败反馈给模型；上面的 Mongo 读取错误仍按存储故障处理。
+    throw new BadRequestException(
+      error instanceof Error ? error.message : '无法定位目标小节。',
+      { cause: error },
+    );
+  }
+}
+
+/** 保留已写入的来源序号，再将本审批新增的来源合入并重映射本小节的引用。 */
+function mergeSectionSources(
+  current: DraftSource[],
+  input: DraftWriteInput,
+  baseCount: number,
+): { sources: DraftSource[]; sectionMarkdown: string } {
+  const proposed = input.sources ?? [];
+  if (
+    current.length < baseCount ||
+    proposed.length < baseCount ||
+    !current
+      .slice(0, baseCount)
+      .every((source, i) => sameSource(source, proposed[i]))
+  ) {
+    throw new ApprovalSupersededError(
+      '当前初稿的基础来源表已变化，不能应用该小节修改。',
+    );
+  }
+  const sources = [...current];
+  const mapping = proposed.map((source, i) => {
+    if (i < baseCount) return i + 1;
+    let index = sources.findIndex((existing) => sameSource(existing, source));
+    if (index < 0) index = sources.push(source) - 1;
+    return index + 1;
+  });
+  const sectionMarkdown = input.sectionMarkdown!.replace(
+    CITATION_MARKER,
+    (_whole, refs: string) =>
+      `[@#CIT ${parseCitationNumbers(refs)
+        .map((number) => mapping[number - 1])
+        .join(',')}]`,
+  );
+  return { sources, sectionMarkdown };
+}
+
+async function commitSectionWrite(
+  repo: Pick<
+    EditorDraftRepository,
+    'findAiDraftByContentItemId' | 'saveAiDraftIfUnchanged'
+  >,
+  targetId: string,
+  input: DraftWriteInput,
+  base: DraftSectionBase,
+  savedAt: Date,
+): Promise<DraftWriteResult> {
+  // 仅在另一写入抢先提交时重新读取、重算；每次都重新验证小节，不盲目重放旧全文。
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const current = await repo.findAiDraftByContentItemId(targetId);
+    if (!current) throw new ApprovalSupersededError('目标 AI 初稿已不存在。');
+    const currentSources = readGeneratedSources(current.bodyMarkdown);
+    const markdown = restoreAiDraftMarkdown(
+      current.bodyMarkdown,
+      currentSources,
+    );
+    let range: ReturnType<typeof readDraftSection>;
+    try {
+      range = readDraftSection(markdown, {
+        sectionPath: input.sectionPath!,
+        sectionOccurrence: input.sectionOccurrence,
+      });
+    } catch {
+      throw new ApprovalSupersededError('目标小节的位置或标题已变化。');
+    }
+    if (range.occurrenceCount !== base.occurrenceCount) {
+      throw new ApprovalSupersededError(
+        '同名小节的数量已变化，无法确认原目标。',
+      );
+    }
+    const merged = mergeSectionSources(currentSources, input, base.sourceCount);
+    const replaced = replaceDraftSection(markdown, {
+      sectionPath: input.sectionPath!,
+      sectionOccurrence: input.sectionOccurrence,
+      sectionMarkdown: merged.sectionMarkdown,
+    });
+    const desiredHash = sectionHash(replaced.markdown, input, merged.sources);
+    const currentHash = sectionHash(markdown, input, currentSources);
+    const bodyMarkdown = composeAiDraftBody(replaced.markdown, merged.sources);
+    const result: DraftWriteResult = {
+      bodyMarkdown,
+      operation: 'replace_section',
+      sectionLabel: replaced.sectionLabel,
+      sourceCount: merged.sources.length,
+      summary: extractSummary(replaced.markdown),
+      title: current.title?.trim() || extractTitle(replaced.markdown),
+    };
+    // 写入成功但裁决响应丢失时，重放只确认已经达成的结果，不再次覆盖正文。
+    if (currentHash === desiredHash) {
+      return {
+        ...result,
+        bodyMarkdown: current.bodyMarkdown,
+        sourceCount: currentSources.length,
+      };
+    }
+    if (currentHash !== base.hash) {
+      throw new ApprovalSupersededError('目标小节已更新，不能用旧修改覆盖。');
+    }
+    const citationError = validateCitations(replaced.markdown, merged.sources);
+    if (citationError) throw new Error(citationError);
+    if (merged.sources.length > 0 && !citationMarkers(replaced.markdown)) {
+      throw new Error('完整初稿提供了 sources，却没有任何引用角标。');
+    }
+    const written = await repo.saveAiDraftIfUnchanged(
+      {
+        contentItemId: targetId,
+        bodyMarkdown,
+        title: result.title,
+        summary: result.summary,
+        changeNote: 'learn-draft',
+        savedAt,
+      },
+      current,
+    );
+    logger.debug({ event: 'section_commit', targetId, attempt, written });
+    if (written) return result;
+  }
+  throw new Error('初稿正在被并发更新，本次小节修改尚未写入。');
 }
 
 /**
@@ -368,17 +585,30 @@ export function composeAiDraftBody(
 export async function commitDraftWrite(
   editorDraftRepo: Pick<
     EditorDraftRepository,
-    'findAiDraftByContentItemId' | 'saveAiDraft' | 'saveAiDraftFenced'
+    | 'findAiDraftByContentItemId'
+    | 'saveAiDraft'
+    | 'saveAiDraftFenced'
+    | 'saveAiDraftIfUnchanged'
   >,
   noteContentItemId: string,
   input: DraftWriteInput,
   savedAt = new Date(),
   approvalFence?: string,
+  sectionBase?: DraftSectionBase,
 ): Promise<DraftWriteResult> {
   const validationError = validateDraftWriteInput(input);
   if (validationError) throw new Error(validationError);
 
   const operation = operationOf(input)!;
+  if (operation === 'replace_section' && sectionBase) {
+    return commitSectionWrite(
+      editorDraftRepo,
+      noteContentItemId,
+      input,
+      sectionBase,
+      savedAt,
+    );
+  }
   const sources = input.sources ?? [];
   let markdown: string;
   let sectionLabel: string | undefined;

@@ -1,4 +1,5 @@
 import { index, modelOptions, prop, Severity } from '@typegoose/typegoose';
+import type { DraftSectionBase } from '../tools/write-draft.tool';
 
 /**
  * PendingWrite — HITL 工具门禁的「待审批写入」暂存记录。
@@ -79,6 +80,10 @@ export class PendingWrite {
   /** 工具原始入参；仅 pending/committing 保留，进入终态后删除。 */
   @prop({ type: () => Object })
   payload?: Record<string, unknown>;
+
+  /** 小节审批生成时由系统捕获；不接受模型传入，裁决后与正文载荷一并删除。 */
+  @prop({ type: () => Object })
+  draftSectionBase?: DraftSectionBase;
 
   /** 给前端审批卡的轻量预览；进入终态后删除。 */
   @prop({ type: () => Object })

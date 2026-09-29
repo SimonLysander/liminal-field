@@ -90,6 +90,43 @@ describe('gateWrite', () => {
     expect(repo.stash).not.toHaveBeenCalled();
   });
 
+  it('捕获系统前置条件，不信任参数中伪造的快照', async () => {
+    const repo = mkRepo();
+    const base = { hash: 'actual', sourceCount: 0, occurrenceCount: 1 };
+    const gated = gateWrite(mkRealTool(), {
+      toolName: 'write_draft',
+      sessionKey: 's',
+      pendingWriteRepo: repo,
+      prepare: () => Promise.resolve({ draftSectionBase: base }),
+      buildPreview: () => ({}),
+    }) as {
+      execute: (a: unknown, o: { toolCallId: string }) => Promise<string>;
+    };
+    await gated.execute(
+      { draftSectionBase: { hash: 'forged' } },
+      { toolCallId: 'call' },
+    );
+    expect(repo.stash).toHaveBeenCalledWith(
+      expect.objectContaining({ draftSectionBase: base }),
+    );
+  });
+
+  it('前置条件捕获失败时不创建无法执行的审批卡', async () => {
+    const repo = mkRepo();
+    const gated = gateWrite(mkRealTool(), {
+      toolName: 'write_draft',
+      sessionKey: 's',
+      pendingWriteRepo: repo,
+      prepare: () => Promise.reject(new Error('目标不存在')),
+      buildPreview: () => ({}),
+    }) as {
+      execute: (a: unknown, o: { toolCallId: string }) => Promise<string>;
+    };
+    const result = parse(await gated.execute({}, { toolCallId: 'call' }));
+    expect(result.meta?.status).toBe('error');
+    expect(repo.stash).not.toHaveBeenCalled();
+  });
+
   it('非对象参数 → invalid,且不进入工具级校验和预览', async () => {
     const repo = mkRepo();
     const validate = jest.fn();

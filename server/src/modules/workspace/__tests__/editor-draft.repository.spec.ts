@@ -75,4 +75,34 @@ describe('EditorDraftRepository.saveAiDraftFenced', () => {
     });
     expect(writeFenceCounterRepo.next).toHaveBeenCalledWith('draft:ci-1');
   });
+
+  it('小节合并只更新仍与读取快照相同的文档，且不 upsert', async () => {
+    const model = {
+      updateOne: jest.fn().mockResolvedValue({ matchedCount: 1 }),
+    };
+    const counters = { next: jest.fn().mockResolvedValue(9) };
+    const repository = new EditorDraftRepository(
+      model as never,
+      counters as never,
+    );
+    await expect(
+      repository.saveAiDraftIfUnchanged(input, {
+        bodyMarkdown: '旧正文',
+        approvalFence: '旧版本',
+      }),
+    ).resolves.toBe(true);
+    expect(model.updateOne).toHaveBeenCalledWith(
+      { _id: 'aidraft:ci-1', bodyMarkdown: '旧正文', approvalFence: '旧版本' },
+      {
+        $set: expect.objectContaining({
+          bodyMarkdown: input.bodyMarkdown,
+          approvalFence: '00000000000000000009:0000000000',
+        }),
+      },
+    );
+    model.updateOne.mockResolvedValueOnce({ matchedCount: 0 });
+    await expect(
+      repository.saveAiDraftIfUnchanged(input, { bodyMarkdown: '旧正文' }),
+    ).resolves.toBe(false);
+  });
 });

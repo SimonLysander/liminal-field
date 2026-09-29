@@ -9,6 +9,15 @@ export interface ReplaceDraftSectionResult {
   sectionLabel: string;
 }
 
+export interface DraftSectionRange {
+  contentStart: number;
+  end: number;
+  level: number;
+  label: string;
+  text: string;
+  occurrenceCount: number;
+}
+
 type MarkdownHeading = {
   contentStart: number;
   level: number;
@@ -89,12 +98,13 @@ function validateSectionBody(markdown: string, targetLevel: number): void {
   }
 }
 
-export function replaceDraftSection(
+export function readDraftSection(
   markdown: string,
-  input: ReplaceDraftSectionInput,
-): ReplaceDraftSectionResult {
+  input: Pick<ReplaceDraftSectionInput, 'sectionPath' | 'sectionOccurrence'>,
+): DraftSectionRange {
   const sectionPath = normalizePath(input.sectionPath);
-  const candidates = scanHeadings(markdown).filter((heading) =>
+  const allHeadings = scanHeadings(markdown);
+  const candidates = allHeadings.filter((heading) =>
     samePath(heading.path, sectionPath),
   );
 
@@ -119,20 +129,35 @@ export function replaceDraftSection(
     );
   }
 
-  validateSectionBody(input.sectionMarkdown, target.level);
-  const allHeadings = scanHeadings(markdown);
   const targetIndex = allHeadings.findIndex(
     (heading) => heading.start === target.start,
   );
   const nextBoundary = allHeadings
     .slice(targetIndex + 1)
     .find((heading) => heading.level <= target.level);
+  const end = nextBoundary?.start ?? markdown.length;
+  return {
+    contentStart: target.contentStart,
+    end,
+    level: target.level,
+    label: sectionPath.join(' > '),
+    text: markdown.slice(target.start, end).trim(),
+    occurrenceCount: candidates.length,
+  };
+}
+
+export function replaceDraftSection(
+  markdown: string,
+  input: ReplaceDraftSectionInput,
+): ReplaceDraftSectionResult {
+  const target = readDraftSection(markdown, input);
+  validateSectionBody(input.sectionMarkdown, target.level);
   const body = input.sectionMarkdown.trim();
-  const suffix = markdown.slice(nextBoundary?.start ?? markdown.length);
+  const suffix = markdown.slice(target.end);
   const replacement = body ? `\n${body}${suffix ? '\n\n' : '\n'}` : '';
 
   return {
     markdown: `${markdown.slice(0, target.contentStart)}${replacement}${suffix}`,
-    sectionLabel: sectionPath.join(' > '),
+    sectionLabel: target.label,
   };
 }

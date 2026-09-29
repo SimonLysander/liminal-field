@@ -17,6 +17,7 @@ export interface StashPendingWriteInput {
   targetContentItemId?: string | null;
   agentKey?: string | null;
   payload: Record<string, unknown>;
+  draftSectionBase?: PendingWrite['draftSectionBase'];
   preview?: Record<string, unknown>;
   now: Date;
 }
@@ -68,6 +69,7 @@ export class PendingWriteRepository {
             targetContentItemId: input.targetContentItemId ?? null,
             agentKey: input.agentKey ?? null,
             payload: input.payload,
+            draftSectionBase: input.draftSectionBase,
             preview: input.preview ?? {},
             status: 'pending',
             createdAt: input.now,
@@ -170,7 +172,7 @@ export class PendingWriteRepository {
           commitStartedAt: null,
           commitToken: null,
         },
-        $unset: { expiresAt: 1, payload: 1, preview: 1 },
+        $unset: { expiresAt: 1, payload: 1, preview: 1, draftSectionBase: 1 },
       },
     );
     return res.modifiedCount === 1;
@@ -191,7 +193,7 @@ export class PendingWriteRepository {
           commitStartedAt: null,
           commitToken: null,
         },
-        $unset: { expiresAt: 1, payload: 1, preview: 1 },
+        $unset: { expiresAt: 1, payload: 1, preview: 1, draftSectionBase: 1 },
       },
     );
     return res.modifiedCount === 1;
@@ -203,7 +205,7 @@ export class PendingWriteRepository {
       { _id: toolCallId, status: 'pending', expiresAt: { $gt: now } },
       {
         $set: { status: 'rejected', resolvedAt: now },
-        $unset: { expiresAt: 1, payload: 1, preview: 1 },
+        $unset: { expiresAt: 1, payload: 1, preview: 1, draftSectionBase: 1 },
       },
     );
     return res.modifiedCount === 1;
