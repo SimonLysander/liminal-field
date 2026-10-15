@@ -29,6 +29,7 @@ import type { AnthologyPublicListItem, AnthologyPublicDetail } from '@/services/
 import { FileText, ChevronLeft } from 'lucide-react';
 import { type Space, spaces, labels, spaceToPath, pathToSpace } from './nav-spaces';
 import { AnimateIconsNavIcon } from './AnimateIconsNavIcon';
+import { SiteRegistration } from './SiteRegistration';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import { LoadingState } from '@/components/LoadingState';
 
@@ -364,9 +365,10 @@ export default function Sidebar() {
         })}
       </nav>
 
+      {/* 辅助入口以字号和留白区分，下方横线隔开站点导航与内容目录。 */}
       <nav
         aria-label="站点信息"
-        className="mx-2 mt-3 border-t border-[var(--separator)] pt-2"
+        className="mx-2 mt-2 shrink-0 border-b border-[var(--separator)] pb-3"
         style={isGallery ? { visibility: 'hidden' } : undefined}
       >
         <Link
@@ -374,15 +376,15 @@ export default function Sidebar() {
           aria-current={isConnect ? 'page' : undefined}
           onMouseEnter={() => setConnectHovered(true)}
           onMouseLeave={() => setConnectHovered(false)}
-          className="nav-item flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-base transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2"
+          className="nav-item flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2"
           style={{
             background: isConnect ? 'var(--shelf)' : undefined,
             color: isConnect ? 'var(--ink)' : 'var(--ink-faded)',
             fontWeight: isConnect ? 500 : 400,
           }}
         >
-          <span className="flex items-center" style={{ color: isConnect ? 'var(--accent)' : undefined }}>
-            <AnimateIconsNavIcon space="connect" size={16} duration={1.2} isHovered={connectHovered} />
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center" style={{ color: isConnect ? 'var(--accent)' : undefined }}>
+            <AnimateIconsNavIcon space="connect" size={14} duration={1.2} isHovered={connectHovered} />
           </span>
           接入说明
         </Link>
@@ -390,14 +392,13 @@ export default function Sidebar() {
 
       {/* Sub-nav: Notes — tree drill-down, fetches per level */}
       {active === 'notes' && (
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <div className="my-3" />
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-3">
 
           {/* 面包屑导航 — 单行返回路径模式
            *  根层级：section 标题样式，无箭头
            *  有层级：← 箭头回退一级 + 路径段可点击
            *  超长时 hover … 弹出完整路径 */}
-          <div className="mt-3 px-5 pb-2">
+          <div className="shrink-0 px-5 pb-2">
             {breadcrumb.length === 0 ? (
               /* 根层级 — 纯标题，不可点击 */
               <span
@@ -570,15 +571,14 @@ export default function Sidebar() {
         *   根:文集列表(像笔记根级)
         *   钻入:← 文集 面包屑 + 该文集的篇章列表 + 当前篇高亮 */}
       {active === 'anthology' && (
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <div className="my-3" />
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-3">
 
           {/* 面包屑 — 钻入态分工:
                 ←        = 回上一级(根)
                 父级名块 = 进父级正文(Overview);当前已在父级正文时高亮 var(--shelf) 背景
               「父级正文」语义:文集自身的卷首语正文页(/anthology?node=cixxx),
                 跟「篇章正文页」并列,都是 page tree 上的节点 */}
-          <div className="mt-3 px-5 pb-2">
+          <div className="shrink-0 px-5 pb-2">
             {!anthologyContainerId ? (
               /* 根态:section 标题 */
               <span
@@ -672,28 +672,31 @@ export default function Sidebar() {
 
       {/* Gallery 页面是全屏沉浸式，侧边栏不需要额外内容 */}
 
-      {/* Bottom — 主题切换 + ambient phrase
+      {/* Bottom — 主题切换、问候与备案信息
           主题按钮: 全站统一入口(删 Topbar 后唯一切换处), 永远在左 sidebar 底
           不跟任何右栏 Aurora panel 冲突 */}
-      <div className="mt-auto flex items-center justify-between gap-2 px-3 py-4" style={isGallery ? { visibility: 'hidden' } : undefined}>
-        <span
-          className="min-w-0 flex-1 truncate text-xs leading-relaxed"
-          style={{ color: 'var(--ink-ghost)', letterSpacing: '-0.01em' }}
-        >
-          {getAmbientPhrase()}
-        </span>
-        <button
-          type="button"
-          onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors duration-150 hover:bg-[var(--shelf)]"
-          style={{ color: 'var(--ink-faded)' }}
-          aria-label={themeAction}
-          title={themeAction}
-          onMouseEnter={() => setThemeHovered(true)}
-          onMouseLeave={() => setThemeHovered(false)}
-        >
-          <AnimateIconsNavIcon space="theme" size={16} isHovered={themeHovered} />
-        </button>
+      <div className="mt-auto shrink-0 px-3 pb-3 pt-2">
+        <div className="flex items-center justify-between gap-2" style={isGallery ? { visibility: 'hidden' } : undefined}>
+          <span
+            className="min-w-0 flex-1 truncate text-xs leading-relaxed"
+            style={{ color: 'var(--ink-ghost)', letterSpacing: '-0.01em' }}
+          >
+            {getAmbientPhrase()}
+          </span>
+          <button
+            type="button"
+            onClick={() => setTheme(theme === 'daylight' ? 'midnight' : 'daylight')}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors duration-150 hover:bg-[var(--shelf)]"
+            style={{ color: 'var(--ink-faded)' }}
+            aria-label={themeAction}
+            title={themeAction}
+            onMouseEnter={() => setThemeHovered(true)}
+            onMouseLeave={() => setThemeHovered(false)}
+          >
+            <AnimateIconsNavIcon space="theme" size={16} isHovered={themeHovered} />
+          </button>
+        </div>
+        <SiteRegistration className="mt-1 block w-fit" />
       </div>
     </aside>
   );

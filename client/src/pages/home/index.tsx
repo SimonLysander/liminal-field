@@ -6,6 +6,7 @@ import { appleEase } from '@/lib/motion';
 import { homeApi } from '@/services/workspace';
 import type { HomeData } from '@/services/workspace';
 import { LoadingState } from '@/components/LoadingState';
+import { SiteRegistration } from '@/components/global/SiteRegistration';
 import { PaperGarden } from './PaperGarden';
 
 /* ---------- Helpers ---------- */
@@ -336,14 +337,15 @@ export default function HomePage() {
             </div>
           )}
         </div>
-        <footer className="mt-8 border-t border-[var(--separator)] pt-4 md:hidden">
+        <footer className="mt-8 border-t border-[var(--separator)] pt-4 text-center md:hidden">
           <Link
             to="/connect"
-            className="inline-flex items-center gap-1 rounded-sm text-sm text-[var(--ink-faded)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-4"
+            className="mb-4 inline-flex items-center gap-1 rounded-sm text-sm text-[var(--ink-faded)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-4"
           >
             接入说明
             <ArrowUpRight size={12} aria-hidden="true" />
           </Link>
+          <SiteRegistration className="block" />
         </footer>
       </div>
 
